@@ -14,9 +14,7 @@ setuptools.setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/samhitech/microEye",
-    project_urls={
-        "Microscope": "TBA",
-    },
+    project_urls={},
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
