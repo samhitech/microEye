@@ -37,6 +37,8 @@ This toolkit is compatible with the [hardware](#hardware) we are using in our mi
 
 ### How to use
 
+    from microEye.acquisition_module import acquisition_module
+    
     try:
         app, window = acquisition_module.StartGUI()
         app.exec_()
@@ -56,6 +58,8 @@ This toolkit is compatible with the [hardware](#hardware) we are using in our mi
 
 ### How to use
 
+    from microEye.control_module import control_module
+    
     app, window = control_module.StartGUI()
     app.exec_()
 
