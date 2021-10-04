@@ -1,4 +1,4 @@
-from io_matchbox import *
+from .io_matchbox import *
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtSerialPort import *

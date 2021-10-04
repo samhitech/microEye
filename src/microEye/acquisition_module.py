@@ -16,9 +16,9 @@ from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 from pyueye import ueye
 
-from thread_worker import *
-from ueye_camera import IDS_Camera
-from ueye_panel import IDS_Panel
+from .thread_worker import *
+from .ueye_camera import IDS_Camera
+from .ueye_panel import IDS_Panel
 
 
 class acquisition_module(QMainWindow):
@@ -585,15 +585,24 @@ class acquisition_module(QMainWindow):
         # set darkmode from *qdarkstyle* (not compatible with pyqt6)
         app.setStyleSheet(qdarkstyle.load_stylesheet(qt_api='pyqt5'))
         # sets the app icon
+        dirname = os.path.dirname(__file__)
         app_icon = QIcon()
-        app_icon.addFile('icons/16.png', QSize(16, 16))
-        app_icon.addFile('icons/24.png', QSize(24, 24))
-        app_icon.addFile('icons/32.png', QSize(32, 32))
-        app_icon.addFile('icons/48.png', QSize(48, 48))
-        app_icon.addFile('icons/64.png', QSize(64, 64))
-        app_icon.addFile('icons/128.png', QSize(128, 128))
-        app_icon.addFile('icons/256.png', QSize(256, 256))
-        app_icon.addFile('icons/512.png', QSize(512, 512))
+        app_icon.addFile(
+            os.path.join(dirname, 'icons/16.png'), QSize(16, 16))
+        app_icon.addFile(
+            os.path.join(dirname, 'icons/24.png'), QSize(24, 24))
+        app_icon.addFile(
+            os.path.join(dirname, 'icons/32.png'), QSize(32, 32))
+        app_icon.addFile(
+            os.path.join(dirname, 'icons/48.png'), QSize(48, 48))
+        app_icon.addFile(
+            os.path.join(dirname, 'icons/64.png'), QSize(64, 64))
+        app_icon.addFile(
+            os.path.join(dirname, 'icons/128.png'), QSize(128, 128))
+        app_icon.addFile(
+            os.path.join(dirname, 'icons/256.png'), QSize(256, 256))
+        app_icon.addFile(
+            os.path.join(dirname, 'icons/512.png'), QSize(512, 512))
 
         app.setWindowIcon(app_icon)
 
@@ -602,23 +611,3 @@ class acquisition_module(QMainWindow):
 
         window = acquisition_module()
         return app, window
-
-
-if __name__ == '__main__':
-
-    print("Launching Camera Viewer GUI")
-    print()
-    try:
-        app, window = acquisition_module.StartGUI()
-        app.exec_()
-    except Exception as e:
-        traceback.print_exc()
-    finally:
-        for cam in window.ids_cams:
-            cam.dispose()
-
-        # Destroys the OpenCv windows
-        cv2.destroyAllWindows()
-
-        print()
-        print("END")

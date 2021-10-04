@@ -16,9 +16,9 @@ from pyqtgraph.metaarray.MetaArray import axis
 from pyueye import ueye
 from tifffile.tifffile import astype
 
-from qlist_slider import *
-from thread_worker import *
-from ueye_camera import IDS_Camera
+from .qlist_slider import *
+from .thread_worker import *
+from .ueye_camera import IDS_Camera
 
 
 class IDS_Panel(QGroupBox):
