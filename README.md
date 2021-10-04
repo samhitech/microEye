@@ -18,6 +18,10 @@ This toolkit is compatible with the [hardware](#hardware) we are using in our mi
 - pyqtgraph
 - qdarkstyle
 
+## How to Install [Package](https://pypi.org/project/microEye/)
+
+    > pip install microEye
+
 ## Microscope Scheme
 
 ![scheme](https://user-images.githubusercontent.com/89871015/135764774-8c2dbc12-bff1-4325-97bc-7f1fc356f517.png)
