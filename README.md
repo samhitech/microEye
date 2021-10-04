@@ -1,6 +1,12 @@
 # microEye
 A python toolkit for fluorescence microscopy that features IDS uEye industrial-grade CMOS cameras.
 
+The *Acquisition Module* allows multi-cam image acquisition within one graphical user interface.
+
+The *Control Module* allows setting the laser excitation presets, manual focus and automatic focus stabilization by monitoring the peak position of a totally internally reflected IR beam and moving the piezo stage accordingly. 
+
+This toolkit is compatible with the [hardware](#hardware) we are using in our microscope. For further details check our microscope's github (TBA)
+
 ## Uses Packages
  
 - Numpy 
@@ -12,6 +18,10 @@ A python toolkit for fluorescence microscopy that features IDS uEye industrial-g
 - pyqtgraph
 - qdarkstyle
 
+## Microscope Scheme
+
+![scheme](https://user-images.githubusercontent.com/89871015/135764774-8c2dbc12-bff1-4325-97bc-7f1fc356f517.png)
+
 ## Hardware 
 
 - IDS uEye industrial-grade CMOS cameras, specifically [UI-3060CP Rev. 2](https://en.ids-imaging.com/store/products/cameras/ui-3060cp-rev-2.html) 
@@ -21,9 +31,24 @@ A python toolkit for fluorescence microscopy that features IDS uEye industrial-g
 - RelayBox arduino for laser control using the camera flash signal with different presets (code TBA)
 - Parts list related to our iteration of [hohlbeinlab miCube](https://hohlbeinlab.github.io/miCube/index.html) (TBA)
 
-## Microscope Scheme
+## Acquisition Module
 
-![scheme](https://user-images.githubusercontent.com/89871015/135764774-8c2dbc12-bff1-4325-97bc-7f1fc356f517.png)
+![acquisition_module](https://user-images.githubusercontent.com/89871015/135764990-b9ac0062-4710-4a10-b2f8-a16f34d77ee1.png)
+
+### How to use
+
+    try:
+        app, window = acquisition_module.StartGUI()
+        app.exec_()
+    except Exception as e:
+        traceback.print_exc()
+    finally:
+        # dispose camera adapters
+        for cam in window.ids_cams:
+            cam.dispose()
+
+        # Destroys the OpenCv windows
+        cv2.destroyAllWindows()
 
 ## Control Module
 
@@ -34,11 +59,21 @@ A python toolkit for fluorescence microscopy that features IDS uEye industrial-g
     app, window = control_module.StartGUI()
     app.exec_()
 
-## Acquisition Module
+## Authors
 
-![acquisition_module](https://user-images.githubusercontent.com/89871015/135764990-b9ac0062-4710-4a10-b2f8-a16f34d77ee1.png)
+Mohammad Nour Alsamsam
 
-### How to use
+[![Twitter URL](https://img.shields.io/twitter/url/https/twitter.com/samhightech.svg?style=social&label=Follow%20%40samhightech)](https://twitter.com/samhightech)
+    
+## People Involved
 
-    app, window = acquisition_module.StartGUI()
-    app.exec_()
+Dr. Marijonas Tutkus
+
+[![Twitter URL](https://img.shields.io/twitter/url/https/twitter.com/MTutkus.svg?style=social&label=Follow%20%40MTutkus)](https://twitter.com/MTutkus)
+
+
+Aurimas Kopūstas
+
+## Acknowledgement
+
+![ack](https://user-images.githubusercontent.com/89871015/135897106-12656072-932e-45ea-abeb-54e86ba60eb0.png)
