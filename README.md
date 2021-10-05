@@ -75,12 +75,12 @@ Mohammad Nour Alsamsam
     
 ## People Involved
 
-Dr. Marijonas Tutkus
+Dr. Marijonas Tutkus (supervision)
 
 [![Twitter URL](https://img.shields.io/twitter/url/https/twitter.com/MTutkus.svg?style=social&label=Follow%20%40MTutkus)](https://twitter.com/MTutkus)
 
 
-Aurimas Kopūstas
+Aurimas Kopūstas (sample preparation and experiments)
 
 ## Acknowledgement
 
