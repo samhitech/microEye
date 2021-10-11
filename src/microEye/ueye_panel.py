@@ -742,17 +742,6 @@ class IDS_Panel(QGroupBox):
 
         self._stop_thread = False  # set stop acquisition workers flag to false
 
-        #  Pass the capture function to be executed
-        if self.c_worker is None or self.c_worker.done:
-            # Any other args, kwargs are passed to the run function
-            self.c_worker = thread_worker(
-                self._capture, nRet, self.cam, progress=False, z_stage=False)
-            # Execute
-            self._threadpool.start(self.c_worker)
-
-        # Giving the capture thread a head start over the display one
-        QThread.msleep(500)
-
         # Pass the display function to be executed
         if self.d_worker is None or self.d_worker.done:
             self.d_worker = thread_worker(
@@ -766,6 +755,17 @@ class IDS_Panel(QGroupBox):
                 self._save, nRet, progress=False, z_stage=False)
             # Execute
             self._threadpool.start(self.s_worker)
+
+        #  Pass the capture function to be executed
+        if self.c_worker is None or self.c_worker.done:
+            # Any other args, kwargs are passed to the run function
+            self.c_worker = thread_worker(
+                self._capture, nRet, self.cam, progress=False, z_stage=False)
+            # Execute
+            self._threadpool.start(self.c_worker)
+
+        # Giving the capture thread a head start over the display one
+        QThread.msleep(500)
 
     def start_dis_save_workers(self, nRet):
         """
@@ -939,7 +939,8 @@ class IDS_Panel(QGroupBox):
 
                 QThread.usleep(100)
                 # Flag that ends the loop
-                if self._stop_thread & self._buffer.empty():
+                if self._stop_thread & self._buffer.empty() \
+                        & self.c_worker.done:
                     break
         except Exception:
             traceback.print_exc()
@@ -958,6 +959,7 @@ class IDS_Panel(QGroupBox):
             return code from IDS_Camera, ueye.IS_SUCCESS = 0 to run.
         '''
         try:
+            frames_saved = 0
             while(nRet == ueye.IS_SUCCESS):
                 # save in case frame stack is not empty
                 if not self._frames.empty():
@@ -987,9 +989,13 @@ class IDS_Panel(QGroupBox):
                     # for save time estimations
                     self._save_time = time.msecsTo(QDateTime.currentDateTime())
 
+                    frames_saved = frames_saved + 1
+
                 QThread.usleep(100)
                 # Flag that ends the loop
-                if self._frames.empty() & self._stop_thread:
+                print(frames_saved, self._counter)
+                if self._frames.empty() & self._stop_thread \
+                        & self.d_worker.done:
                     break
         except Exception:
             traceback.print_exc()
