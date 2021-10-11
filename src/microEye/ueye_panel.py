@@ -1034,6 +1034,7 @@ class IDS_Panel(QGroupBox):
                 'AOI h': self.cam.set_rectAOI.s32Height.value,
                 'AOI x': self.cam.set_rectAOI.s32X.value,
                 'AOI y': self.cam.set_rectAOI.s32Y.value,
+                'Zoom': self._zoom,
             }
 
             with open(filename, 'w') as file:
@@ -1065,6 +1066,7 @@ class IDS_Panel(QGroupBox):
                 'AOI h',
                 'AOI x',
                 'AOI y',
+                'Zoom',
             ]
             with open(filename, 'r') as file:
                 config = json.load(file)
@@ -1099,6 +1101,10 @@ class IDS_Panel(QGroupBox):
                     self.cam_flash_delay_slider.setValue(self.find_nearest(
                         self.cam_flash_delay_slider.values,
                         float(config['flash delay'])))
+
+                    self._zoom = float(config['Zoom'])
+                    self.zoom_lbl.setText(
+                        "Resize " + "{:.0f}%".format(self._zoom*100))
                 else:
                     QMessageBox.warning(
                         self, "Warning", "Camera model is different.")
