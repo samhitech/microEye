@@ -993,7 +993,6 @@ class IDS_Panel(QGroupBox):
 
                 QThread.usleep(100)
                 # Flag that ends the loop
-                print(frames_saved, self._counter)
                 if self._frames.empty() & self._stop_thread \
                         & self.d_worker.done:
                     break
