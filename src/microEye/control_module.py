@@ -1,9 +1,10 @@
-import struct
+import ctypes
 import os
+import struct
 import sys
 import time
 import traceback
-import ctypes
+from queue import Queue
 
 import numpy as np
 import qdarkstyle
@@ -16,12 +17,11 @@ from scipy.optimize import curve_fit
 from scipy.signal import find_peaks
 
 from .io_matchbox import *
-from .piezo_concept import *
-from .thread_worker import *
-from .port_config import *
+from .IR_Cam import *
 from .laser_panel import *
-
-from queue import Queue
+from .piezo_concept import *
+from .port_config import *
+from .thread_worker import *
 
 
 class control_module(QMainWindow):
@@ -53,12 +53,7 @@ class control_module(QMainWindow):
             "Time: " + QDateTime.currentDateTime().toString("hh:mm:ss,zzz"))
 
         # PiezoConcept
-        self.piezoConcept = piezo_concept(self, readyRead=self.rx_piezo)
-        self.piezoConcept.setBaudRate(115200)
-        self.piezoConcept.setPortName('COM5')
-        self.piezoConcept.ZPosition = 50000
-        self.piezoConcept.Received = ''
-        self.PzRes = ''
+        self.stage = stage()
 
         # MatchBox
         self.match_box = io_matchbox(self)  # readyRead=self.rx_mbox)
@@ -67,13 +62,7 @@ class control_module(QMainWindow):
         self.match_box.setPortName('COM3')
 
         # Serial Port IR CAM
-        self.serial = QSerialPort(
-            self,
-            readyRead=self.receive
-        )
-        self.serial.ydata = None
-        self.serial.setBaudRate(115200)
-        self.serial.setPortName('COM4')
+        self.IR_Cam = IR_Cam()
 
         # Serial Port Laser Relay
         self.laserRelay = QSerialPort(
@@ -92,12 +81,13 @@ class control_module(QMainWindow):
         # Data variables
         n_data = 128
         self.xdata = np.array(list(range(n_data)))
-        self.ydata_buffer = Queue()
-        self.ydata_buffer.put(np.array([0 for i in range(n_data)]))
+        # self.ydata_buffer = Queue()
+        # self.ydata_buffer.put(np.array([0 for i in range(n_data)]))
         self.y_index = 0
         self.centerDataX = np.array(list(range(500)))
         self.centerData = np.ones((500,))
         self.error_buffer = np.zeros((20,))
+        self.error_integral = 0
         self.ydata_temp = None
         self.popt = None
         self.frames_saved = 0
@@ -126,9 +116,6 @@ class control_module(QMainWindow):
         # Execute
         self._threadpool.start(self.worker)
 
-        # self.peak_fit(self.worker.signals.move_stage_z, data)
-        # self.update_graphs()
-
         self.show()
 
     def center(self):
@@ -143,33 +130,34 @@ class control_module(QMainWindow):
         '''Initializes the window layout
         '''
         Hlayout = QHBoxLayout()
+        self.VL_layout = QGridLayout()
 
         # General settings groupbox
-        Reg_GBox = QGroupBox("Control")
+        Reg_GBox = QGroupBox("Devices")
+        self.VL_layout.addWidget(Reg_GBox, 0, 0)
 
         # vertical layout
         Reg_Layout = QVBoxLayout()
         Reg_GBox.setLayout(Reg_Layout)
 
+        # IR Cam combobox
+        ir_cam_layout = QHBoxLayout()
+        self.ir_cam_cbox = QComboBox()
+        self.ir_cam_cbox.addItem('Parallax CCD (TSL1401)')
+        self.ir_cam_set_btn = QPushButton(
+            "Set",
+            clicked=self.setIRcam
+        )
+        ir_cam_layout.addWidget(self.ir_cam_cbox, 3)
+        ir_cam_layout.addWidget(self.ir_cam_set_btn, 1)
+        self.ir_widget = None
+
         # ALEX checkbox
         self.ALEX = QCheckBox("ALEX")
         self.ALEX.state = "ALEX"
         self.ALEX.setChecked(False)
-        Reg_Layout.addWidget(self.ALEX)
 
         # IR CCD array arduino buttons
-        self.cam_connect_btn = QPushButton(
-            "IR Connect",
-            clicked=lambda: self.connectToPort(self.serial)
-        )
-        self.cam_disconnect_btn = QPushButton(
-            "IR Disconnect",
-            clicked=lambda: self.disconnectFromPort(self.serial)
-        )
-        self.cam_config_btn = QPushButton(
-            "IR CAM Config.",
-            clicked=lambda: self.open_dialog(self.serial)
-        )
 
         # records IR peak-fit position
         self.start_IR_btn = QPushButton(
@@ -183,15 +171,15 @@ class control_module(QMainWindow):
 
         # IO MatchBox controls
         self.mbox_connect_btn = QPushButton(
-            "MBox Connect",
+            "Connect",
             clicked=lambda: self.match_box.OpenCOM()
         )
         self.mbox_disconnect_btn = QPushButton(
-            "MBox Disconnect",
+            "Disconnect",
             clicked=lambda: self.match_box.CloseCOM()
         )
         self.mbox_config_btn = QPushButton(
-            "MBox Config.",
+            "Config.",
             clicked=lambda: self.open_dialog(self.match_box)
         )
         self.get_set_curr_btn = QPushButton(
@@ -205,131 +193,67 @@ class control_module(QMainWindow):
 
         # Arduino RelayBox controls
         self.laser_relay_connect_btn = QPushButton(
-            "Laser Relay Connect",
+            "Connect",
             clicked=lambda: self.connectToPort(self.laserRelay)
         )
         self.laser_relay_disconnect_btn = QPushButton(
-            "Laser Relay Disconnect",
+            "Disconnect",
             clicked=lambda: self.disconnectFromPort(self.laserRelay)
         )
         self.laser_relay_btn = QPushButton(
-            "Laser Relay Config.",
+            "Config.",
             clicked=lambda: self.open_dialog(self.laserRelay)
         )
         self.send_laser_relay_btn = QPushButton(
-            "Laser Relay Send",
+            "Send Setting",
             clicked=lambda: self.sendConfig(self.laserRelay)
         )
 
         # Piezostage controls
-        self.piezo_connect_btn = QPushButton(
-            "Piezo Concept Connect",
-            clicked=lambda: self.connectToPort(self.piezoConcept)
+        stage_layout = QHBoxLayout()
+        self.stage_cbox = QComboBox()
+        self.stage_cbox.addItem('PiezoConcept FOC100')
+        self.stage_set_btn = QPushButton(
+            "Set",
+            clicked=self.setStage
         )
-        self.piezo_disconnect_btn = QPushButton(
-            "Piezo Concept Disconnect",
-            clicked=lambda: self.disconnectFromPort(self.piezoConcept)
-        )
-        self.piezo_config_btn = QPushButton(
-            "Piezo Concept Config.",
-            clicked=lambda: self.open_dialog(self.piezoConcept)
-        )
+        stage_layout.addWidget(self.stage_cbox, 3)
+        stage_layout.addWidget(self.stage_set_btn, 1)
+        self.stage_widget = None
 
-        self.piezo_tracking_btn = QPushButton(
-            "Focus Tracking Off",
-            clicked=lambda: self.autoFocusTracking()
-        )
-        self.center_pixel = 57
-        self.piezoTracking = False
+        Reg_Layout.addWidget(QLabel('IR Camera:'))
+        Reg_Layout.addLayout(ir_cam_layout)
+        Reg_Layout.addWidget(QLabel('Stage:'))
+        Reg_Layout.addLayout(stage_layout)
 
-        fine_step = 25
-        coarse_step = 1
-        self.fine_steps_label = QLabel("Fine step " + str(fine_step) + " nm")
-        self.fine_steps_slider = QSlider(Qt.Orientation.Horizontal)
-        self.fine_steps_slider.setMinimum(1)
-        self.fine_steps_slider.setMaximum(1000)
-        self.fine_steps_slider.setValue(fine_step)
-        self.fine_steps_slider.setTickInterval(200)
-        self.fine_steps_slider.valueChanged.connect(
-            self.fine_steps_valuechange)
-
-        self.coarse_steps_label = QLabel(
-            "Coarse step " + str(coarse_step) + " um")
-        self.coarse_steps_slider = QSlider(Qt.Orientation.Horizontal)
-        self.coarse_steps_slider.setMinimum(1)
-        self.coarse_steps_slider.setMaximum(20)
-        self.coarse_steps_slider.setValue(coarse_step)
-        self.coarse_steps_slider.setTickInterval(4)
-        self.coarse_steps_slider.valueChanged.connect(
-            self.coarse_steps_valuechange)
-
-        self.piezo_HOME_btn = QPushButton(
-            "⌂",
-            clicked=lambda: self.piezoConcept.HOME()
-        )
-        self.piezo_REFRESH_btn = QPushButton(
-            "R",
-            clicked=lambda: self.piezoConcept.REFRESH()
-        )
-        self.piezo_B_UP_btn = QPushButton(
-            "<<",
-            clicked=lambda: self.piezoConcept.UP(
-                self.coarse_steps_slider.value() * 1000)
-        )
-        self.piezo_S_UP_btn = QPushButton(
-            "<",
-            clicked=lambda: self.piezoConcept.UP(
-                self.fine_steps_slider.value())
-        )
-        self.piezo_S_DOWN_btn = QPushButton(
-            ">",
-            clicked=lambda: self.piezoConcept.DOWN(
-                self.fine_steps_slider.value())
-        )
-        self.piezo_B_DOWN_btn = QPushButton(
-            ">>",
-            clicked=lambda: self.piezoConcept.DOWN(
-                self.coarse_steps_slider.value() * 1000)
-        )
-        self.Directions = QHBoxLayout()
-        self.Directions.addWidget(self.piezo_HOME_btn)
-        self.Directions.addWidget(self.piezo_REFRESH_btn)
-        self.Directions.addWidget(self.piezo_B_UP_btn)
-        self.Directions.addWidget(self.piezo_S_UP_btn)
-        self.Directions.addWidget(self.piezo_S_DOWN_btn)
-        self.Directions.addWidget(self.piezo_B_DOWN_btn)
-
-        Reg_Layout.addWidget(self.cam_connect_btn)
-        Reg_Layout.addWidget(self.cam_disconnect_btn)
-        Reg_Layout.addWidget(self.cam_config_btn)
         Reg_Layout.addWidget(self.start_IR_btn)
         Reg_Layout.addWidget(self.stop_IR_btn)
 
-        Reg_Layout.addWidget(self.mbox_connect_btn)
-        Reg_Layout.addWidget(self.mbox_disconnect_btn)
-        Reg_Layout.addWidget(self.mbox_config_btn)
-        Reg_Layout.addWidget(self.get_set_curr_btn)
-        Reg_Layout.addWidget(self.get_curr_curr_btn)
+        mbox_btns_0 = QHBoxLayout()
+        mbox_btns_1 = QHBoxLayout()
+        mbox_btns_0.addWidget(self.mbox_connect_btn)
+        mbox_btns_0.addWidget(self.mbox_disconnect_btn)
+        mbox_btns_0.addWidget(self.mbox_config_btn)
+        mbox_btns_1.addWidget(self.get_set_curr_btn)
+        mbox_btns_1.addWidget(self.get_curr_curr_btn)
+        Reg_Layout.addWidget(QLabel('IO MatchBox:'))
+        Reg_Layout.addLayout(mbox_btns_0)
+        Reg_Layout.addLayout(mbox_btns_1)
 
-        Reg_Layout.addWidget(self.laser_relay_connect_btn)
-        Reg_Layout.addWidget(self.laser_relay_disconnect_btn)
-        Reg_Layout.addWidget(self.laser_relay_btn)
-        Reg_Layout.addWidget(self.send_laser_relay_btn)
-
-        Reg_Layout.addWidget(self.piezo_connect_btn)
-        Reg_Layout.addWidget(self.piezo_disconnect_btn)
-        Reg_Layout.addWidget(self.piezo_config_btn)
-        Reg_Layout.addWidget(self.fine_steps_label)
-        Reg_Layout.addWidget(self.fine_steps_slider)
-        Reg_Layout.addWidget(self.coarse_steps_label)
-        Reg_Layout.addWidget(self.coarse_steps_slider)
-        temp = QWidget()
-        temp.setLayout(self.Directions)
-        Reg_Layout.addWidget(temp)
-        Reg_Layout.addWidget(self.piezo_tracking_btn)
+        relay_btns_0 = QHBoxLayout()
+        relay_btns_1 = QHBoxLayout()
+        relay_btns_0.addWidget(self.laser_relay_connect_btn)
+        relay_btns_0.addWidget(self.laser_relay_disconnect_btn)
+        relay_btns_0.addWidget(self.laser_relay_btn)
+        relay_btns_1.addWidget(self.ALEX)
+        relay_btns_1.addWidget(self.send_laser_relay_btn, 1)
+        Reg_Layout.addWidget(QLabel('Laser Relay:'))
+        Reg_Layout.addLayout(relay_btns_0)
+        Reg_Layout.addLayout(relay_btns_1)
 
         Reg_Layout.addStretch()
 
+        lasersLayout = QGridLayout()
         # Laser #1 405nm panel
         self.L1_GBox = laser_panel(4, 405,
                                    self.match_box, 280, "Laser #1 (405nm)")
@@ -346,29 +270,29 @@ class control_module(QMainWindow):
         self.L4_GBox = laser_panel(1, 638,
                                    self.match_box, 280, "Laser #4 (638nm)")
 
+        lasersLayout.addWidget(self.L1_GBox, 0, 0)
+        lasersLayout.addWidget(self.L2_GBox, 1, 0)
+        lasersLayout.addWidget(self.L3_GBox, 0, 1)
+        lasersLayout.addWidget(self.L4_GBox, 1, 1)
+
         # Plot Canvas
-
-        layout = QVBoxLayout()
+        labelStyle = {'color': '#FFF', 'font-size': '10pt'}
+        graphs_layout = QVBoxLayout()
         self.graph_IR = PlotWidget()
+        self.graph_IR.setLabel("bottom", "Pixel", **labelStyle)
+        self.graph_IR.setLabel("left", "Signal", "V", **labelStyle)
         self.graph_Peak = PlotWidget()
-        layout.addWidget(self.graph_IR)
-        layout.addWidget(self.graph_Peak)
-        # layout.addWidget(toolbar)
-        # layout.addWidget(self.canvas)
-        # layout.addWidget(toolbar2)
-        # layout.addWidget(self.canvas2)
+        self.graph_Peak.setLabel("bottom", "Frame", **labelStyle)
+        self.graph_Peak.setLabel("left", "Center Pixel", **labelStyle)
+        graphs_layout.addWidget(self.graph_IR)
+        graphs_layout.addWidget(self.graph_Peak)
 
-        # Create a placeholder widget to hold our toolbar and canvas.
-        widget = QWidget()
-        widget.setLayout(layout)
+        # Right VLayout
 
         # Create a placeholder widget to hold the controls
-        Hlayout.addWidget(Reg_GBox, 1)
-        Hlayout.addWidget(self.L1_GBox, 1)
-        Hlayout.addWidget(self.L2_GBox, 1)
-        Hlayout.addWidget(self.L3_GBox, 1)
-        Hlayout.addWidget(self.L4_GBox, 1)
-        Hlayout.addWidget(widget, 5)
+        Hlayout.addLayout(self.VL_layout, 1)
+        Hlayout.addLayout(lasersLayout, 2)
+        Hlayout.addLayout(graphs_layout, 2)
 
         AllWidgets = QWidget()
         AllWidgets.setLayout(Hlayout)
@@ -407,18 +331,6 @@ class control_module(QMainWindow):
         except Exception as e:
             print('Failed Laser Relay Send Config: ' + str(e))
 
-    def fine_steps_valuechange(self):
-        '''Updates the fine step label.
-        '''
-        self.fine_steps_label.setText(
-            "Fine step " + str(self.fine_steps_slider.value()) + " nm")
-
-    def coarse_steps_valuechange(self):
-        '''Updates the coarse step label.
-        '''
-        self.coarse_steps_label.setText(
-            "Coarse step " + str(self.coarse_steps_slider.value()) + " um")
-
     def worker_function(self, progress_callback, movez_callback):
         '''A worker function running in the threadpool.
 
@@ -431,9 +343,9 @@ class control_module(QMainWindow):
         while(self.isVisible()):
             try:
                 # proceed only if the buffer is not empty
-                if not self.ydata_buffer.empty():
+                if not self.IR_Cam.isEmpty:
                     # if (self.ydata != self.ydata_temp).any():
-                    data: np.ndarray = self.ydata_buffer.get()
+                    data: np.ndarray = self.IR_Cam.get()
                     self._exec_time = time.msecsTo(QDateTime.currentDateTime())
                     time = QDateTime.currentDateTime()
                     # self.ydata_temp = self.ydata
@@ -473,53 +385,26 @@ class control_module(QMainWindow):
             self.centerData = np.roll(self.centerData, -1)
             self.centerData[-1] = self.popt[1]
 
-            if self.piezoTracking:
-                avg = np.average(self.centerData[-1] - self.center_pixel)
+            if self.stage.piezoTracking:
+                err = np.average(self.centerData[-1] - self.stage.center_pixel)
+                tau = self.stage.tau if self.stage.tau > 0 \
+                    else (self._exec_time / 1000)
+                self.error_integral += err * tau
+                diff = (err - self.error_buffer[-1]) / tau
                 self.error_buffer = np.roll(self.error_buffer, -1)
-                self.error_buffer[-1] = avg
-                # step = max(
-                #     1, abs(int(avg*self.fine_steps_slider.value()/10)))
-                step = max(1, abs(int(avg*26.45)))
-                # step = max(1, abs(int(avg*(90 + 108*0.05))))
-                # step = max(
-                #     1,
-                #     abs(int(avg*(120 + 240*0.05) +
-                #         15*(avg - self.error_buffer[-2]))))
-                if abs(avg) > 0.016:
-                    if avg > 0:
-                        movez_callback.emit(True, step)
+                self.error_buffer[-1] = err
+                step = int((err * self.stage.pConst) +
+                           (self.error_integral * self.stage.iConst) +
+                           (diff * self.stage.dConst))
+                if abs(err) > self.stage.threshold:
+                    if step > 0:
+                        movez_callback.emit(True, abs(step))
                     else:
-                        movez_callback.emit(False, step)
-                # if avg > 2:
-                #     print(avg)
-                #     movez_callback.emit(True, 25)
-                # if avg > 1:
-                #     print(avg)
-                #     movez_callback.emit(True, 10)
-                # elif avg > 0.1:
-                #     print(avg)
-                #     movez_callback.emit(True, 5)
-                # elif avg > 0.03:
-                #     print(avg)
-                #     movez_callback.emit(True, 2)
-                # elif avg > 0.01:
-                #     print(avg)
-                #     movez_callback.emit(True, 1)
-                # elif avg < -2:
-                #     print(avg)
-                #     movez_callback.emit(False, 25)
-                # elif avg < -1:
-                #     print(avg)
-                #     movez_callback.emit(False, 10)
-                # elif avg < -0.1:
-                #     print(avg)
-                #     movez_callback.emit(False, 5)
-                # elif avg < -0.03:
-                #     print(avg)
-                #     movez_callback.emit(False, 2)
-                # elif avg < -0.01:
-                #     print(avg)
-                #     movez_callback.emit(False, 1)
+                        movez_callback.emit(False, abs(step))
+            else:
+                self.stage.center_pixel = self.centerData[-1]
+                self.error_buffer = np.zeros((20,))
+                self.error_integral = 0
 
         except Exception as e:
             print('Failed Gauss. fit: ' + str(e))
@@ -527,9 +412,9 @@ class control_module(QMainWindow):
     def movez_stage(self, up: bool, step: int):
         print(up, step)
         if not up:
-            self.piezoConcept.UP(step)
+            self.stage.UP(step)
         else:
-            self.piezoConcept.DOWN(step)
+            self.stage.DOWN(step)
 
     def update_graphs(self, data):
         '''Updates the graphs.
@@ -566,8 +451,8 @@ class control_module(QMainWindow):
     def update_gui(self):
         '''Recurring timer updates the status bar and GUI
         '''
-        IR = ("    |  IR " +
-              ('connected' if self.serial.isOpen() else 'disconnected'))
+        IR = ("    |  IR Cam " +
+              ('connected' if self.IR_Cam.isOpen else 'disconnected'))
         MBox = ("    |  MBox " +
                 ('connected' if self.match_box.isOpen() else 'disconnected'))
         MBox_RESPONSE = ''
@@ -576,13 +461,13 @@ class control_module(QMainWindow):
 
         RelayBox = ("    |  Relay " + ('connected' if self.laserRelay.isOpen()
                     else 'disconnected'))
-        Piezo = ("    |  Piezo " + ('connected' if self.piezoConcept.isOpen()
+        Piezo = ("    |  Piezo " + ('connected' if self.stage.isOpen()
                  else 'disconnected'))
 
         Position = ''
-        if self.piezoConcept.isOpen():
+        if self.stage.isOpen():
             # self.piezoConcept.GETZ()
-            Position = "    |  Position " + self.piezoConcept.Received
+            Position = "    |  Position " + self.stage.Received
         Frames = "    | Frames Saved: " + str(self.frames_saved)
 
         Worker = "    | Execution time: {:d}".format(self._exec_time)
@@ -592,18 +477,18 @@ class control_module(QMainWindow):
             + Piezo + Position + Frames + Worker)
 
         # update indicators
-        if self.serial.isOpen():
-            self.cam_connect_btn.setStyleSheet("background-color: green")
+        if self.IR_Cam.isOpen:
+            self.IR_Cam._connect_btn.setStyleSheet("background-color: green")
         else:
-            self.cam_connect_btn.setStyleSheet("background-color: red")
+            self.IR_Cam._connect_btn.setStyleSheet("background-color: red")
         if self.match_box.isOpen():
             self.mbox_connect_btn.setStyleSheet("background-color: green")
         else:
             self.mbox_connect_btn.setStyleSheet("background-color: red")
-        if self.piezoConcept.isOpen():
-            self.piezo_connect_btn.setStyleSheet("background-color: green")
+        if self.stage.isOpen():
+            self.stage._connect_btn.setStyleSheet("background-color: green")
         else:
-            self.piezo_connect_btn.setStyleSheet("background-color: red")
+            self.stage._connect_btn.setStyleSheet("background-color: red")
         if self.laserRelay.isOpen():
             self.laser_relay_connect_btn.setStyleSheet(
                 "background-color: green")
@@ -635,19 +520,6 @@ class control_module(QMainWindow):
                 portname, baudrate = dialog.get_results()
                 serial.setPortName(portname)
                 serial.setBaudRate(baudrate)
-
-    @pyqtSlot()
-    def receive(self):
-        '''IR CCD array serial port data ready signal
-        '''
-        if self.serial.bytesAvailable() >= 260:
-            barray = self.serial.read(260)
-            temp = np.array((np.array(struct.unpack(
-                'h'*(len(barray)//2), barray)) * 5.0 / 1023.0))
-            if (temp[0] != 0 or temp[-1] != 0) and \
-               self.serial.bytesAvailable() >= 2:
-                self.serial.read(2)
-            self.ydata_buffer.put(temp[1:129])
 
     @pyqtSlot(str, bytes)
     def rx_mbox(self, res, cmd):
@@ -716,27 +588,6 @@ class control_module(QMainWindow):
             else:
                 self.match_box.SendCommand(io_matchbox.CUR_CUR)
 
-    @pyqtSlot()
-    def rx_piezo(self):
-        '''PiezoConcept stage dataReady signal.
-        '''
-        self.piezoConcept.Received = str(
-            self.piezoConcept.readAll(),
-            encoding='utf8')
-        if self.piezoConcept.LastCmd != "GETZ":
-            self.piezoConcept.GETZ()
-
-    def autoFocusTracking(self):
-        '''Toggles autofocus tracking option.
-        '''
-        if self.piezoTracking:
-            self.piezoTracking = False
-            self.piezo_tracking_btn.setText("Focus Tracking Off")
-        else:
-            self.piezoTracking = True
-            self.piezo_tracking_btn.setText("Focus Tracking On")
-            self.center_pixel = self.centerData[-1]
-
     @pyqtSlot(QSerialPort)
     def connectToPort(self, serial: QSerialPort):
         '''Opens the supplied serial port.
@@ -776,6 +627,26 @@ class control_module(QMainWindow):
             self.file.close()
             self.file = None
             self.frames_saved = 0
+
+    @pyqtSlot()
+    def setIRcam(self):
+        if 'TSL1401' in self.ir_cam_cbox.currentText():
+            if not self.IR_Cam.isOpen:
+                self.IR_Cam = ParallaxLineScanner()
+                if self.ir_widget is not None:
+                    self.VL_layout.removeWidget(self.ir_widget)
+                self.ir_widget = self.IR_Cam.getQWidget()
+                self.VL_layout.addWidget(self.ir_widget, 1, 0)
+
+    @pyqtSlot()
+    def setStage(self):
+        if 'FOC100' in self.stage_cbox.currentText():
+            if not self.stage.isOpen():
+                self.stage = piezo_concept()
+                if self.stage_widget is not None:
+                    self.VL_layout.removeWidget(self.stage_widget)
+                self.stage_widget = self.stage.getQWidget()
+                self.VL_layout.addWidget(self.stage_widget, 2, 0)
 
     def StartGUI():
         '''Initializes a new QApplication and control_module.

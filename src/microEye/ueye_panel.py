@@ -1,5 +1,5 @@
-import os
 import json
+import os
 import time
 import traceback
 from queue import Queue
@@ -8,6 +8,7 @@ import cv2
 import numpy as np
 import pyqtgraph as pg
 import tifffile as tf
+from numpy import random
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
@@ -19,6 +20,7 @@ from tifffile.tifffile import astype
 from .qlist_slider import *
 from .thread_worker import *
 from .ueye_camera import IDS_Camera
+from .uImage import uImage
 
 
 class IDS_Panel(QGroupBox):
@@ -262,6 +264,14 @@ class IDS_Panel(QGroupBox):
         self.preview_ch_box = QCheckBox("Preview")
         self.preview_ch_box.setChecked(True)
 
+        # preview checkbox
+        self.slow_lut_rbtn = QRadioButton("LUT Numpy (12bit)")
+        self.slow_lut_rbtn.setChecked(True)
+        self.fast_lut_rbtn = QRadioButton("LUT Opencv (8bit)")
+        self.lut_btns = QButtonGroup()
+        self.lut_btns.addButton(self.slow_lut_rbtn)
+        self.lut_btns.addButton(self.fast_lut_rbtn)
+
         # display size
         self.zoom_layout = QHBoxLayout()
         self.zoom_lbl = QLabel("Resize " + "{:.0f}%".format(self._zoom*100))
@@ -363,6 +373,8 @@ class IDS_Panel(QGroupBox):
         self.first_tab_Layout.addStretch()
 
         self.second_tab_Layout.addWidget(self.preview_ch_box)
+        self.second_tab_Layout.addWidget(self.slow_lut_rbtn)
+        self.second_tab_Layout.addWidget(self.fast_lut_rbtn)
         self.second_tab_Layout.addLayout(self.zoom_layout)
 
         self.second_tab_Layout.addWidget(self.histogram_lbl)
@@ -869,68 +881,44 @@ class IDS_Panel(QGroupBox):
             # Continuous image display
             while(nRet == ueye.IS_SUCCESS):
                 # for display time estimations
-                self._dis_time = time.msecsTo(QDateTime.currentDateTime())
-                time = QDateTime.currentDateTime()
 
                 # proceed only if the buffer is not empty
                 if not self._buffer.empty():
+                    self._dis_time = time.msecsTo(QDateTime.currentDateTime())
+                    time = QDateTime.currentDateTime()
 
                     # reshape image into proper shape
                     # (height, width, bytes per pixel)
-                    frame = np.reshape(
-                        self._buffer.get(),
-                        (cam.height.value, cam.width.value,
-                         cam.bytes_per_pixel)).astype(np.uint16)
-
-                    # for monochrome sensors > 8bit (ours 12bit)
-                    if (cam.bytes_per_pixel == 2):
-                        frame = (frame[:, :, 1] << 8) | frame[:, :, 0]
+                    frame = uImage.fromUINT16(
+                        self._buffer.get(), cam.height.value, cam.width.value)
 
                     # add to saving stack
                     if self.cam_save_temp.isChecked():
-                        self._frames.put((frame, self._temps.get()))
-
-                    # calculate image histogram
-                    self._hist = cv2.calcHist(
-                        [frame], [0], None,
-                        [4096], [0, 4096]) / float(np.prod(frame.shape))
-
-                    # calculate the cdf
-                    cdf = self._hist[:, 0].cumsum()
-                    # update the hist plot
-                    self._plot_ref.setData(self._hist[:, 0])
-                    self._cdf_plot_ref.setData(cdf)
+                        self._frames.put((frame.image, self._temps.get()))
 
                     if self.preview_ch_box.isChecked():
-
+                        _range = None
                         # image stretching
+                        if not self.auto_stretch.isChecked():
+                            _range = (self.alpha.value(), self.beta.value())
+
+                        frame.equalizeLUT(
+                            _range, self.slow_lut_rbtn.isChecked())
                         if self.auto_stretch.isChecked():
-                            p2 = np.where(cdf >= 0.00001)[0][0]
-                            p98 = np.where(cdf >= 0.9999)[0][0]
-                            self.alpha.setValue(p2)
-                            self.beta.setValue(p98)
-                            self.histogram.setXRange(p2, p98)
-                            self.hist_cdf.setXRange(p2, p98)
-                            c = 255.0 / (p98 - p2)
-                            ac = p2 * c
-                            frame = np.subtract(
-                                frame.dot(c), ac).astype(np.uint8)
-                        else:
-                            a = self.alpha.value()
-                            b = self.beta.value()
-                            self.histogram.setXRange(a, b)
-                            self.hist_cdf.setXRange(a, b)
-                            c = 255.0 / (b - a)
-                            ac = a * c
-                            frame = np.subtract(
-                                frame.dot(c), ac).astype(np.uint8)
+                            self.alpha.setValue(frame._min)
+                            self.beta.setValue(frame._max)
+                        self.histogram.setXRange(frame._min, frame._max)
+                        self.hist_cdf.setXRange(frame._min, frame._max)
+
+                        self._plot_ref.setData(frame._hist[:, 0])
+                        self._cdf_plot_ref.setData(frame._cdf)
 
                         # resizing the image
-                        frame = cv2.resize(
-                            frame, (0, 0), fx=self._zoom, fy=self._zoom)
+                        frame._view = cv2.resize(
+                            frame._view, (0, 0), fx=self._zoom, fy=self._zoom)
 
                         # display it
-                        cv2.imshow(cam.name, frame)
+                        cv2.imshow(cam.name, frame._view)
                         cv2.waitKey(1)
                     else:
                         cv2.waitKey(1)
