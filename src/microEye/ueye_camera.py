@@ -3,6 +3,81 @@ from pyueye import ueye
 import numpy as np
 
 
+formats_ = {ueye.IS_CM_SENSOR_RAW8: 8,
+            ueye.IS_CM_SENSOR_RAW10: 16,
+            ueye.IS_CM_SENSOR_RAW12: 16,
+            ueye.IS_CM_SENSOR_RAW16: 16,
+
+            ueye.IS_CM_MONO8: 8,
+            ueye.IS_CM_MONO10: 16,
+            ueye.IS_CM_MONO12: 16,
+            ueye.IS_CM_MONO16: 16,
+
+            ueye.IS_CM_RGB8_PLANAR: 24,
+            ueye.IS_CM_RGB8_PACKED: 24,
+            ueye.IS_CM_RGBA8_PACKED: 32,
+            ueye.IS_CM_RGBY8_PACKED: 32,
+            ueye.IS_CM_RGB10_PACKED: 32,
+
+            ueye.IS_CM_RGB10_UNPACKED: 48,
+            ueye.IS_CM_RGB12_UNPACKED: 48,
+            ueye.IS_CM_RGBA12_UNPACKED: 64,
+
+            ueye.IS_CM_BGR5_PACKED: 16,
+            ueye.IS_CM_BGR565_PACKED: 16,
+            ueye.IS_CM_BGR8_PACKED: 24,
+            ueye.IS_CM_BGRA8_PACKED: 32,
+            ueye.IS_CM_BGRY8_PACKED: 32,
+            ueye.IS_CM_BGR10_PACKED: 32,
+
+            ueye.IS_CM_BGR10_UNPACKED: 48,
+            ueye.IS_CM_BGR12_UNPACKED: 48,
+            ueye.IS_CM_BGRA12_UNPACKED: 64,
+
+            ueye.IS_CM_UYVY_PACKED: 16,
+            ueye.IS_CM_UYVY_MONO_PACKED: 16,
+            ueye.IS_CM_UYVY_BAYER_PACKED: 16,
+            ueye.IS_CM_CBYCRY_PACKED: 16
+            }
+
+formats_strs = {ueye.IS_CM_SENSOR_RAW8: "IS_CM_SENSOR_RAW8",
+                ueye.IS_CM_SENSOR_RAW10: "IS_CM_SENSOR_RAW10",
+                ueye.IS_CM_SENSOR_RAW12: "IS_CM_SENSOR_RAW12",
+                ueye.IS_CM_SENSOR_RAW16: "IS_CM_SENSOR_RAW16",
+
+                ueye.IS_CM_MONO8: "IS_CM_MONO8",
+                ueye.IS_CM_MONO10: "IS_CM_MONO10",
+                ueye.IS_CM_MONO12: "IS_CM_MONO12",
+                ueye.IS_CM_MONO16: "IS_CM_MONO16",
+
+                ueye.IS_CM_RGB8_PLANAR: "IS_CM_RGB8_PLANAR",
+                ueye.IS_CM_RGB8_PACKED: "IS_CM_RGB8_PACKED",
+                ueye.IS_CM_RGBA8_PACKED: "IS_CM_RGB8_PACKED",
+                ueye.IS_CM_RGBY8_PACKED: "IS_CM_RGBY8_PACKED",
+                ueye.IS_CM_RGB10_PACKED: "IS_CM_RGB10_PACKED",
+
+                ueye.IS_CM_RGB10_UNPACKED: "IS_CM_RGB10_UNPACKED",
+                ueye.IS_CM_RGB12_UNPACKED: "IS_CM_RGB12_UNPACKED",
+                ueye.IS_CM_RGBA12_UNPACKED: "IS_CM_RGBA12_UNPACKED",
+
+                ueye.IS_CM_BGR5_PACKED: "IS_CM_BGR5_PACKED",
+                ueye.IS_CM_BGR565_PACKED: "IS_CM_BGR565_PACKED",
+                ueye.IS_CM_BGR8_PACKED: "IS_CM_BGR8_PACKED",
+                ueye.IS_CM_BGRA8_PACKED: "IS_CM_BGRA8_PACKED",
+                ueye.IS_CM_BGRY8_PACKED: "IS_CM_BGRY8_PACKED",
+                ueye.IS_CM_BGR10_PACKED: "IS_CM_BGR10_PACKED",
+
+                ueye.IS_CM_BGR10_UNPACKED: "IS_CM_BGR10_UNPACKED",
+                ueye.IS_CM_BGR12_UNPACKED: "IS_CM_BGR12_UNPACKED",
+                ueye.IS_CM_BGRA12_UNPACKED: "IS_CM_BGRA12_UNPACKED",
+
+                ueye.IS_CM_UYVY_PACKED: "IS_CM_UYVY_PACKED",
+                ueye.IS_CM_UYVY_MONO_PACKED: "IS_CM_UYVY_MONO_PACKED",
+                ueye.IS_CM_UYVY_BAYER_PACKED: "IS_CM_UYVY_BAYER_PACKED",
+                ueye.IS_CM_CBYCRY_PACKED: "IS_CM_CBYCRY_PACKED"
+                }
+
+
 class IDS_Camera:
     '''A class to handle an IDS uEye camera.'''
 
@@ -145,6 +220,7 @@ class IDS_Camera:
             dictionary containing
             {camID, devID, senID, Status, InUse, Model, Serial}
         '''
+        cam_list = []
         cam_count = ueye.c_int(0)
         nRet = ueye.is_GetNumberOfCameras(cam_count)
         if nRet == ueye.IS_SUCCESS and cam_count > 0:
@@ -152,7 +228,6 @@ class IDS_Camera:
                 ueye.UEYE_CAMERA_INFO * cam_count.value)
             pucl.dwCount = cam_count.value
             if (ueye.is_GetCameraList(pucl) == ueye.IS_SUCCESS):
-                cam_list = []
                 for index in range(cam_count.value):
                     cam_list.append({
                         "camID": pucl.uci[index].dwCameraID.value,
@@ -161,10 +236,11 @@ class IDS_Camera:
                         "Status": pucl.uci[index].dwStatus.value,
                         "InUse": pucl.uci[index].dwInUse.value,
                         "Model": pucl.uci[index].Model.decode('utf-8'),
-                        "Serial": pucl.uci[index].SerNo.decode('utf-8')})
+                        "Serial": pucl.uci[index].SerNo.decode('utf-8'),
+                        "Driver": 'uEye'})
                 if output:
                     print(cam_list)
-                return cam_list
+        return cam_list
 
     def get_coded_info(self):
         '''Reads out the data hard-coded in the non-volatile camera memory
@@ -241,53 +317,64 @@ class IDS_Camera:
     def setColorMode(self):
         '''Set the right color mode, by camera default.
         '''
-        if int.from_bytes(self.sInfo.nColorMode.value, byteorder='big') == \
-                ueye.IS_COLORMODE_BAYER:
-            # setup the color depth to the current windows setting
-            ueye.is_GetColorDepth(
-                self.hCam,
-                self.nBitsPerPixel,
-                self.m_nColorMode)
-            self.bytes_per_pixel = int(np.ceil(self.nBitsPerPixel / 8))
-            print("IS_COLORMODE_BAYER: ", )
-            print("\tm_nColorMode: \t\t", self.m_nColorMode)
-            print("\tnBitsPerPixel: \t\t", self.nBitsPerPixel)
-            print("\tbytes_per_pixel: \t\t", self.bytes_per_pixel)
-            print()
+        self.m_nColorMode = ueye.is_SetColorMode(
+            self.hCam, ueye.IS_GET_COLOR_MODE)
+        self.nBitsPerPixel = ueye.INT(formats_[self.m_nColorMode])
+        self.bytes_per_pixel = int(self.nBitsPerPixel / 8)
 
-        elif int.from_bytes(self.sInfo.nColorMode.value, byteorder='big') == \
-                ueye.IS_COLORMODE_CBYCRY:
-            # for color camera models use RGB32 mode
-            self.m_nColorMode = ueye.IS_CM_BGRA8_PACKED
-            self.nBitsPerPixel = ueye.INT(32)
-            self.bytes_per_pixel = int(np.ceil(self.nBitsPerPixel / 8))
-            print("IS_COLORMODE_CBYCRY: ", )
-            print("\tm_nColorMode: \t\t", self.m_nColorMode)
-            print("\tnBitsPerPixel: \t\t", self.nBitsPerPixel)
-            print("\tbytes_per_pixel: \t\t", self.bytes_per_pixel)
-            print()
+        # TODO: check with IDS why different GET_COLOR_MODE methods
+        # if int.from_bytes(self.sInfo.nColorMode.value, byteorder='big') == \
+        #         ueye.IS_COLORMODE_BAYER:
+        #     # setup the color depth to the current windows setting
+        #     ueye.is_GetColorDepth(
+        #         self.hCam,
+        #         self.nBitsPerPixel,
+        #         self.m_nColorMode)
+        #     self.bytes_per_pixel = int(np.ceil(self.nBitsPerPixel / 8))
+        #     print("IS_COLORMODE_BAYER: ", )
+        #     print("\tm_nColorMode: \t\t", self.m_nColorMode)
+        #     print("\tnBitsPerPixel: \t\t", self.nBitsPerPixel)
+        #     print("\tbytes_per_pixel: \t\t", self.bytes_per_pixel)
+        #     print()
 
-        elif int.from_bytes(self.sInfo.nColorMode.value, byteorder='big') == \
-                ueye.IS_COLORMODE_MONOCHROME:
-            # for mono camera models that uses CM_MONO12 mode
-            self.m_nColorMode = ueye.IS_CM_MONO12
-            self.nBitsPerPixel = ueye.INT(12)
-            self.bytes_per_pixel = int(np.ceil(self.nBitsPerPixel / 8))
-            print("IS_COLORMODE_MONOCHROME: ", )
-            print("\tm_nColorMode: \t\t", self.m_nColorMode)
-            print("\tnBitsPerPixel: \t\t", self.nBitsPerPixel)
-            print("\tbytes_per_pixel: \t\t", self.bytes_per_pixel)
-            print()
+        # elif int.from_bytes(self.sInfo.nColorMode.value, byteorder='big') ==\
+        #         ueye.IS_COLORMODE_CBYCRY:
+        #     # for color camera models use RGB32 mode
+        #     self.m_nColorMode = ueye.IS_CM_BGRA8_PACKED
+        #     self.nBitsPerPixel = ueye.INT(32)
+        #     self.bytes_per_pixel = int(np.ceil(self.nBitsPerPixel / 8))
+        #     print("IS_COLORMODE_CBYCRY: ", )
+        #     print("\tm_nColorMode: \t\t", self.m_nColorMode)
+        #     print("\tnBitsPerPixel: \t\t", self.nBitsPerPixel)
+        #     print("\tbytes_per_pixel: \t\t", self.bytes_per_pixel)
+        #     print()
 
-        else:
-            # for monochrome camera models use Y8 mode
-            self.m_nColorMode = ueye.IS_CM_MONO8
-            self.nBitsPerPixel = ueye.INT(8)
-            self.bytes_per_pixel = int(np.ceil(self.nBitsPerPixel / 8))
-            print("IS_COLORMODE_MONOCHROME Else: ", )
-            print("\tm_nColorMode: \t\t", self.m_nColorMode)
-            print("\tnBitsPerPixel: \t\t", self.nBitsPerPixel)
-            print("\tbytes_per_pixel: \t\t", self.bytes_per_pixel)
+        # elif int.from_bytes(self.sInfo.nColorMode.value, byteorder='big') ==\
+        #         ueye.IS_COLORMODE_MONOCHROME:
+        #     # for mono camera models that uses CM_MONO12 mode
+        #     self.m_nColorMode = ueye.IS_CM_MONO12
+        #     self.nBitsPerPixel = ueye.INT(12)
+        #     self.bytes_per_pixel = int(np.ceil(self.nBitsPerPixel / 8))
+        #     print("IS_COLORMODE_MONOCHROME: ", )
+        #     print("\tm_nColorMode: \t\t", self.m_nColorMode)
+        #     print("\tnBitsPerPixel: \t\t", self.nBitsPerPixel)
+        #     print("\tbytes_per_pixel: \t\t", self.bytes_per_pixel)
+        #     print()
+
+        # else:
+        #     # for monochrome camera models use Y8 mode
+        #     self.m_nColorMode = ueye.IS_CM_MONO8
+        #     self.nBitsPerPixel = ueye.INT(8)
+        #     self.bytes_per_pixel = int(np.ceil(self.nBitsPerPixel / 8))
+        #     print("IS_COLORMODE_MONOCHROME Else: ", )
+        #     print("\tm_nColorMode: \t\t", self.m_nColorMode)
+        #     print("\tnBitsPerPixel: \t\t", self.nBitsPerPixel)
+        #     print("\tbytes_per_pixel: \t\t", self.bytes_per_pixel)
+
+        print(formats_strs[self.m_nColorMode], )
+        print("\tm_nColorMode: \t\t", self.m_nColorMode)
+        print("\tnBitsPerPixel: \t\t", self.nBitsPerPixel)
+        print("\tbytes_per_pixel: \t\t", self.bytes_per_pixel)
 
         nRet = ueye.is_SetColorMode(self.hCam, self.m_nColorMode)
 

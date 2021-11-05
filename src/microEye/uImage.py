@@ -95,3 +95,9 @@ class uImage():
     def fromUINT16(buffer, height, width):
         res = np.ndarray(shape=(height, width), dtype='<u2', buffer=buffer)
         return uImage(res)
+
+    def fromBuffer(buffer, height, width, bytes_per_pixel):
+        if bytes_per_pixel == 1:
+            return uImage.fromUINT8(buffer, height, width)
+        else:
+            return uImage.fromUINT16(buffer, height, width)

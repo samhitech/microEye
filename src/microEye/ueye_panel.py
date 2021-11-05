@@ -52,7 +52,7 @@ class IDS_Panel(QGroupBox):
         self.d_worker = None  # worker for display
         self.s_worker = None  # worker for saving
         # number of bins for the histogram (4096 is set for 12bit mono-camera)
-        self._nBins = 4096
+        self._nBins = 2**cam.nBitsPerPixel.value
         self._hist = np.arange(0, self._nBins) * 0  # arrays for the Hist plot
         self._bins = np.arange(0, self._nBins)      # arrays for the Hist plot
         self._threadpool = threadpool  # the threadpool for workers
@@ -889,8 +889,9 @@ class IDS_Panel(QGroupBox):
 
                     # reshape image into proper shape
                     # (height, width, bytes per pixel)
-                    frame = uImage.fromUINT16(
-                        self._buffer.get(), cam.height.value, cam.width.value)
+                    frame = uImage.fromBuffer(
+                        self._buffer.get(),
+                        cam.height.value, cam.width.value, cam.bytes_per_pixel)
 
                     # add to saving stack
                     if self.cam_save_temp.isChecked():

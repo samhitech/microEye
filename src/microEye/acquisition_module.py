@@ -18,6 +18,8 @@ from pyueye import ueye
 
 from .thread_worker import *
 from .ueye_camera import IDS_Camera
+from .thorlabs import *
+from .thorlabs_panel import Thorlabs_Panel
 from .ueye_panel import IDS_Panel
 
 
@@ -43,9 +45,11 @@ class acquisition_module(QMainWindow):
 
         # Cameras
         self.ids_cams: list[IDS_Camera] = []
+        self.thorlabs_cams: list[thorlabs_camera] = []
 
         # Panels
         self.ids_panels: list[IDS_Panel] = []
+        self.thor_panels: list[Thorlabs_Panel] = []
 
         # Threading
         self.threadpool = QThreadPool()
@@ -86,16 +90,17 @@ class acquisition_module(QMainWindow):
         self.Vlayout = QVBoxLayout()
 
         # CAM Table
-        self.cam_list = IDS_Camera.get_camera_list()
+        self.cam_list = IDS_Camera.get_camera_list() + \
+            thorlabs_camera.get_camera_list()
 
         if self.cam_list is None:
             self.cam_list = []
 
-        self.ids_model = QStandardItemModel(len(self.cam_list), 7)
+        self.ids_model = QStandardItemModel(len(self.cam_list), 8)
 
         self.ids_model.setHorizontalHeaderLabels(
             ["In Use", "Camera ID", "Device ID",
-             "Model", "Serial", "Status", "Sensor ID"])
+             "Model", "Serial", "Status", "Sensor ID", 'Driver'])
 
         for i in range(len(self.cam_list)):
             self.ids_model.setItem(
@@ -119,6 +124,9 @@ class acquisition_module(QMainWindow):
             self.ids_model.setItem(
                 i, 6,
                 QStandardItem(str(self.cam_list[i]["senID"])))
+            self.ids_model.setItem(
+                i, 7,
+                QStandardItem(str(self.cam_list[i]["Driver"])))
 
         self.ids_table = QTableView()
         self.ids_table.setModel(self.ids_model)
@@ -229,8 +237,14 @@ class acquisition_module(QMainWindow):
         for panel in self.ids_panels:
             panel.frames_tbox.setText(value)
 
+        for panel in self.thor_panels:
+            panel.frames_tbox.setText(value)
+
     def experiment_name_changed(self, value):
         for panel in self.ids_panels:
+            panel.experiment_name.setText(value)
+
+        for panel in self.thor_panels:
             panel.experiment_name.setText(value)
 
     def image_stats(self, filename):
@@ -280,6 +294,10 @@ class acquisition_module(QMainWindow):
             panel._directory = self.save_directory
             panel.save_dir_edit.setText(self.save_directory)
 
+        for panel in self.thor_panels:
+            panel._directory = self.save_directory
+            panel.save_dir_edit.setText(self.save_directory)
+
     def remove_camera_clicked(self):
         if not self._stop_mcam_thread:
             QMessageBox.warning(
@@ -291,20 +309,36 @@ class acquisition_module(QMainWindow):
         if len(self.ids_table.selectedIndexes()) > 0:
             cam = self.cam_list[self.ids_table.currentIndex().row()]
 
-            for pan in self.ids_panels:
-                if pan.cam.Cam_ID == cam["camID"]:
-                    if not pan.cam.acquisition:
-                        pan.cam.dispose()
-                    # if not pan.master:
-                    #     self.ids_panels[0].slaves.remove(pan.cam)
-                    pan._dispose_cam = True
-                    pan._stop_thread = True
-                    self.ids_cams.remove(pan.cam)
-                    self.ids_panels.remove(pan)
-                    self.Hlayout.removeWidget(pan)
-                    pan.setParent(None)
-                    self.refresh_list_clicked()
-                    break
+            if 'uEye' in cam["Driver"]:
+                for pan in self.ids_panels:
+                    if pan.cam.Cam_ID == cam["camID"]:
+                        if not pan.cam.acquisition:
+                            pan.cam.dispose()
+                        # if not pan.master:
+                        #     self.ids_panels[0].slaves.remove(pan.cam)
+                        pan._dispose_cam = True
+                        pan._stop_thread = True
+                        self.ids_cams.remove(pan.cam)
+                        self.ids_panels.remove(pan)
+                        self.Hlayout.removeWidget(pan)
+                        pan.setParent(None)
+                        self.refresh_list_clicked()
+                        break
+            if 'UC480' in cam["Driver"]:
+                for pan in self.thor_panels:
+                    if pan.cam.hCam.value == cam["camID"]:
+                        if not pan.cam.acquisition:
+                            pan.cam.free_memory()
+                            pan.cam.dispose()
+
+                        pan._dispose_cam = True
+                        pan._stop_thread = True
+                        self.thorlabs_cams.remove(pan.cam)
+                        self.thor_panels.remove(pan)
+                        self.Hlayout.removeWidget(pan)
+                        pan.setParent(None)
+                        self.refresh_list_clicked()
+                        break
         else:
             QMessageBox.warning(
                 self,
@@ -325,20 +359,36 @@ class acquisition_module(QMainWindow):
             cam = self.cam_list[self.ids_table.currentIndex().row()]
             # print(cam)
             if cam["InUse"] == 0:
-                ids_cam = IDS_Camera(cam["camID"])
-                ids_cam.initialize()
-                self.ids_cams.append(ids_cam)
-                ids_panel = IDS_Panel(
-                    self.threadpool,
-                    ids_cam, cam["Model"] + " " + cam["Serial"])
-                ids_panel._directory = self.save_directory
-                if len(self.ids_panels) == 0:
-                    ids_panel.master = True
-                else:
-                    ids_panel.master = False
-                ids_panel.exposureChanged.connect(self.master_exposure_changed)
-                self.ids_panels.append(ids_panel)
-                self.Hlayout.addWidget(ids_panel, 1)
+                if 'uEye' in cam["Driver"]:
+                    ids_cam = IDS_Camera(cam["camID"])
+                    nRet = ids_cam.initialize()
+                    self.ids_cams.append(ids_cam)
+                    ids_panel = IDS_Panel(
+                        self.threadpool,
+                        ids_cam, cam["Model"] + " " + cam["Serial"])
+                    ids_panel._directory = self.save_directory
+                    if len(self.ids_panels) == 0:
+                        ids_panel.master = True
+                    else:
+                        ids_panel.master = False
+                    ids_panel.exposureChanged.connect(
+                        self.master_exposure_changed)
+                    self.ids_panels.append(ids_panel)
+                    self.Hlayout.addWidget(ids_panel, 1)
+                if 'UC480' in cam["Driver"]:
+                    thor_cam = thorlabs_camera(cam["camID"])
+                    nRet = thor_cam.initialize()
+                    if nRet == CMD.IS_SUCCESS:
+                        self.thorlabs_cams.append(thor_cam)
+                        thor_panel = Thorlabs_Panel(
+                            self.threadpool,
+                            thor_cam, cam["Model"] + " " + cam["Serial"])
+                        thor_panel._directory = self.save_directory
+                        thor_panel.master = False
+                        thor_panel.exposureChanged.connect(
+                            self.master_exposure_changed)
+                        self.thor_panels.append(thor_panel)
+                        self.Hlayout.addWidget(thor_panel, 1)
                 self.refresh_list_clicked()
             else:
                 QMessageBox.warning(
@@ -494,17 +544,18 @@ class acquisition_module(QMainWindow):
                                 )
 
     def refresh_list_clicked(self):
-        self.cam_list = IDS_Camera.get_camera_list()
+        self.cam_list = IDS_Camera.get_camera_list() + \
+            thorlabs_camera.get_camera_list()
 
         if self.cam_list is None:
             self.cam_list = []
             print('No cameras connected.')
 
-        self.ids_model = QStandardItemModel(len(self.cam_list), 7)
+        self.ids_model = QStandardItemModel(len(self.cam_list), 8)
 
         self.ids_model.setHorizontalHeaderLabels(
             ["In Use", "Camera ID", "Device ID",
-             "Model", "Serial", "Status", "Sensor ID"])
+             "Model", "Serial", "Status", "Sensor ID", 'Driver'])
 
         for i in range(len(self.cam_list)):
             self.ids_model.setItem(
@@ -528,6 +579,9 @@ class acquisition_module(QMainWindow):
             self.ids_model.setItem(
                 i, 6,
                 QStandardItem(str(self.cam_list[i]["senID"])))
+            self.ids_model.setItem(
+                i, 7,
+                QStandardItem(str(self.cam_list[i]["Driver"])))
 
         self.ids_table.setModel(self.ids_model)
 
@@ -558,6 +612,23 @@ class acquisition_module(QMainWindow):
                 " Save {:d} | {:.2f} ms ".format(
                     panel._frames.qsize(), panel._save_time))
             exe = exe + " | CAM " + str(panel.cam.Cam_ID) + \
+                panel.info_temp.text() + panel.info_cap.text() + \
+                panel.info_disp.text() + panel.info_save.text()
+
+        for panel in self.thor_panels:
+            panel.info_temp.setText(
+                " T {:.2f} °C".format(panel.cam.temperature))
+            panel.info_cap.setText(
+                " Capture {:d} | {:.2f} ms ".format(
+                    panel._counter,
+                    panel._exec_time))
+            panel.info_disp.setText(
+                " Display {:d} | {:.2f} ms ".format(
+                    panel._buffer.qsize(), panel._dis_time))
+            panel.info_save.setText(
+                " Save {:d} | {:.2f} ms ".format(
+                    panel._frames.qsize(), panel._save_time))
+            exe = exe + " | CAM " + str(panel.cam.hCam.value) + \
                 panel.info_temp.text() + panel.info_cap.text() + \
                 panel.info_disp.text() + panel.info_save.text()
 
