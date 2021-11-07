@@ -113,6 +113,20 @@ class UC480_CAPTURE_STATUS_INFO(Structure):
     ]
 
 
+class _UC480_CAPTURE_STATUS:
+    IS_CAP_STATUS_API_NO_DEST_MEM = 0xa2
+    IS_CAP_STATUS_API_CONVERSION_FAILED = 0xa3
+    IS_CAP_STATUS_API_IMAGE_LOCKED = 0xa5
+    IS_CAP_STATUS_DRV_OUT_OF_BUFFERS = 0xb2
+    IS_CAP_STATUS_DRV_DEVICE_NOT_READY = 0xb4
+    IS_CAP_STATUS_USB_TRANSFER_FAILED = 0xc7
+    IS_CAP_STATUS_DEV_MISSED_IMAGES = 0xe5
+    IS_CAP_STATUS_DEV_TIMEOUT = 0xd6
+    IS_CAP_STATUS_DEV_FRAME_CAPTURE_FAILED = 0xd9
+    IS_CAP_STATUS_ETH_BUFFER_OVERRUN = 0xe4
+    IS_CAP_STATUS_ETH_MISSED_IMAGES = 0xe5
+
+
 def UC480_CAMERA_LIST(uci=(UC480_CAMERA_INFO * 1)):
     _uci = uci if isinstance(uci, type) else type(uci)
 
@@ -130,7 +144,15 @@ def UC480_CAMERA_LIST(uci=(UC480_CAMERA_INFO * 1)):
 
 class CMD:
     IS_SUCCESS = 0
+    IS_NO_SUCCESS = -1
+    IS_INVALID_CAMERA_HANDLE = 1
+    IS_INVALID_HANDLE = 1
+    IS_IO_REQUEST_FAILED = 2
+    IS_INVALID_MEMORY_POINTER = 49
+    IS_INVALID_PARAMETER = 125
 
+
+class PCLK_CMD:
     IS_PIXELCLOCK_CMD_GET_NUMBER = 1
     IS_PIXELCLOCK_CMD_GET_LIST = 2
     IS_PIXELCLOCK_CMD_GET_RANGE = 3
@@ -221,6 +243,118 @@ class FLASH_MODE:
     '''
 
 
+class DEV_FE_CMD:
+    IS_DEVICE_FEATURE_CMD_GET_SUPPORTED_FEATURES = 1
+    IS_DEVICE_FEATURE_CMD_SET_LINESCAN_MODE = 2
+    IS_DEVICE_FEATURE_CMD_GET_LINESCAN_MODE = 3
+    IS_DEVICE_FEATURE_CMD_SET_LINESCAN_NUMBER = 4
+    IS_DEVICE_FEATURE_CMD_GET_LINESCAN_NUMBER = 5
+    IS_DEVICE_FEATURE_CMD_SET_SHUTTER_MODE = 6
+    IS_DEVICE_FEATURE_CMD_GET_SHUTTER_MODE = 7
+    IS_DEVICE_FEATURE_CMD_SET_PREFER_XS_HS_MODE = 8
+    IS_DEVICE_FEATURE_CMD_GET_PREFER_XS_HS_MODE = 9
+    IS_DEVICE_FEATURE_CMD_GET_DEFAULT_PREFER_XS_HS_MODE = 10
+    IS_DEVICE_FEATURE_CMD_GET_LOG_MODE_DEFAULT = 11
+    IS_DEVICE_FEATURE_CMD_GET_LOG_MODE = 12
+    IS_DEVICE_FEATURE_CMD_SET_LOG_MODE = 13
+    IS_DEVICE_FEATURE_CMD_GET_LOG_MODE_MANUAL_VALUE_DEFAULT = 14
+    IS_DEVICE_FEATURE_CMD_GET_LOG_MODE_MANUAL_VALUE_RANGE = 15
+    IS_DEVICE_FEATURE_CMD_GET_LOG_MODE_MANUAL_VALUE = 16
+    IS_DEVICE_FEATURE_CMD_SET_LOG_MODE_MANUAL_VALUE = 17
+    IS_DEVICE_FEATURE_CMD_GET_LOG_MODE_MANUAL_GAIN_DEFAULT = 18
+    IS_DEVICE_FEATURE_CMD_GET_LOG_MODE_MANUAL_GAIN_RANGE = 19
+    IS_DEVICE_FEATURE_CMD_GET_LOG_MODE_MANUAL_GAIN = 20
+    IS_DEVICE_FEATURE_CMD_SET_LOG_MODE_MANUAL_GAIN = 21
+    IS_DEVICE_FEATURE_CMD_GET_VERTICAL_AOI_MERGE_MODE_DEFAULT = 22
+    IS_DEVICE_FEATURE_CMD_GET_VERTICAL_AOI_MERGE_MODE = 23
+    IS_DEVICE_FEATURE_CMD_SET_VERTICAL_AOI_MERGE_MODE = 24
+    IS_DEVICE_FEATURE_CMD_GET_VERTICAL_AOI_MERGE_POSITION_DEFAULT = 25
+    IS_DEVICE_FEATURE_CMD_GET_VERTICAL_AOI_MERGE_POSITION_RANGE = 26
+    IS_DEVICE_FEATURE_CMD_GET_VERTICAL_AOI_MERGE_POSITION = 27
+    IS_DEVICE_FEATURE_CMD_SET_VERTICAL_AOI_MERGE_POSITION = 28
+    IS_DEVICE_FEATURE_CMD_GET_FPN_CORRECTION_MODE_DEFAULT = 29
+    IS_DEVICE_FEATURE_CMD_GET_FPN_CORRECTION_MODE = 30
+    IS_DEVICE_FEATURE_CMD_SET_FPN_CORRECTION_MODE = 31
+    IS_DEVICE_FEATURE_CMD_GET_SENSOR_SOURCE_GAIN_RANGE = 32
+    IS_DEVICE_FEATURE_CMD_GET_SENSOR_SOURCE_GAIN_DEFAULT = 33
+    IS_DEVICE_FEATURE_CMD_GET_SENSOR_SOURCE_GAIN = 34
+    IS_DEVICE_FEATURE_CMD_SET_SENSOR_SOURCE_GAIN = 35
+    IS_DEVICE_FEATURE_CMD_GET_BLACK_REFERENCE_MODE_DEFAULT = 36
+    IS_DEVICE_FEATURE_CMD_GET_BLACK_REFERENCE_MODE = 37
+    IS_DEVICE_FEATURE_CMD_SET_BLACK_REFERENCE_MODE = 38
+    IS_DEVICE_FEATURE_CMD_GET_ALLOW_RAW_WITH_LUT = 39
+    IS_DEVICE_FEATURE_CMD_SET_ALLOW_RAW_WITH_LUT = 40
+    IS_DEVICE_FEATURE_CMD_GET_SUPPORTED_SENSOR_BIT_DEPTHS = 41
+    IS_DEVICE_FEATURE_CMD_GET_SENSOR_BIT_DEPTH_DEFAULT = 42
+    IS_DEVICE_FEATURE_CMD_GET_SENSOR_BIT_DEPTH = 43
+    IS_DEVICE_FEATURE_CMD_SET_SENSOR_BIT_DEPTH = 44
+    IS_DEVICE_FEATURE_CMD_GET_TEMPERATURE = 45
+    IS_DEVICE_FEATURE_CMD_GET_JPEG_COMPRESSION = 46
+    IS_DEVICE_FEATURE_CMD_SET_JPEG_COMPRESSION = 47
+    IS_DEVICE_FEATURE_CMD_GET_JPEG_COMPRESSION_DEFAULT = 48
+    IS_DEVICE_FEATURE_CMD_GET_JPEG_COMPRESSION_RANGE = 49
+    IS_DEVICE_FEATURE_CMD_GET_NOISE_REDUCTION_MODE = 50
+    IS_DEVICE_FEATURE_CMD_SET_NOISE_REDUCTION_MODE = 51
+    IS_DEVICE_FEATURE_CMD_GET_NOISE_REDUCTION_MODE_DEFAULT = 52
+    IS_DEVICE_FEATURE_CMD_GET_TIMESTAMP_CONFIGURATION = 53
+    IS_DEVICE_FEATURE_CMD_SET_TIMESTAMP_CONFIGURATION = 54
+    IS_DEVICE_FEATURE_CMD_GET_VERTICAL_AOI_MERGE_HEIGHT_DEFAULT = 55
+    IS_DEVICE_FEATURE_CMD_GET_VERTICAL_AOI_MERGE_HEIGHT_NUMBER = 56
+    IS_DEVICE_FEATURE_CMD_GET_VERTICAL_AOI_MERGE_HEIGHT_LIST = 57
+    IS_DEVICE_FEATURE_CMD_GET_VERTICAL_AOI_MERGE_HEIGHT = 58
+    IS_DEVICE_FEATURE_CMD_SET_VERTICAL_AOI_MERGE_HEIGHT = 59
+    IS_DEVICE_FEATURE_CMD_GET_VERTICAL_AOI_MERGE_ADDITIONAL_POSITION_DEF = 60
+    IS_DEVICE_FEATURE_CMD_GET_VERTICAL_AOI_MERGE_ADDITIONAL_POSITION_RANGE = 61
+    IS_DEVICE_FEATURE_CMD_GET_VERTICAL_AOI_MERGE_ADDITIONAL_POSITION = 62
+    IS_DEVICE_FEATURE_CMD_SET_VERTICAL_AOI_MERGE_ADDITIONAL_POSITION = 63
+    IS_DEVICE_FEATURE_CMD_GET_SENSOR_TEMPERATURE_NUMERICAL_VALUE = 64
+    IS_DEVICE_FEATURE_CMD_SET_IMAGE_EFFECT = 65
+    IS_DEVICE_FEATURE_CMD_GET_IMAGE_EFFECT = 66
+    IS_DEVICE_FEATURE_CMD_GET_IMAGE_EFFECT_DEFAULT = 67
+    IS_DEVICE_FEATURE_CMD_GET_EXTENDED_PIXELCLOCK_RANGE_ENABLE_DEFAULT = 68
+    IS_DEVICE_FEATURE_CMD_GET_EXTENDED_PIXELCLOCK_RANGE_ENABLE = 69
+    IS_DEVICE_FEATURE_CMD_SET_EXTENDED_PIXELCLOCK_RANGE_ENABLE = 70
+    IS_DEVICE_FEATURE_CMD_MULTI_INTEGRATION_GET_SCOPE = 71
+    IS_DEVICE_FEATURE_CMD_MULTI_INTEGRATION_GET_PARAMS = 72
+    IS_DEVICE_FEATURE_CMD_MULTI_INTEGRATION_SET_PARAMS = 73
+    IS_DEVICE_FEATURE_CMD_MULTI_INTEGRATION_GET_MODE_DEFAULT = 74
+    IS_DEVICE_FEATURE_CMD_MULTI_INTEGRATION_GET_MODE = 75
+    IS_DEVICE_FEATURE_CMD_MULTI_INTEGRATION_SET_MODE = 76
+    IS_DEVICE_FEATURE_CMD_SET_I2C_TARGET = 77
+    IS_DEVICE_FEATURE_CMD_SET_WIDE_DYNAMIC_RANGE_MODE = 78
+    IS_DEVICE_FEATURE_CMD_GET_WIDE_DYNAMIC_RANGE_MODE = 79
+    IS_DEVICE_FEATURE_CMD_GET_WIDE_DYNAMIC_RANGE_MODE_DEFAULT = 80
+    IS_DEVICE_FEATURE_CMD_GET_SUPPORTED_BLACK_REFERENCE_MODES = 81
+    IS_DEVICE_FEATURE_CMD_SET_LEVEL_CONTROLLED_TRIGGER_INPUT_MODE = 82
+    IS_DEVICE_FEATURE_CMD_GET_LEVEL_CONTROLLED_TRIGGER_INPUT_MODE = 83
+    IS_DEVICE_FEATURE_CMD_GET_LEVEL_CONTROLLED_TRIGGER_INPUT_MODE_DEFAULT = 84
+    IS_DEVICE_FEATURE_CMD_GET_VERTICAL_AOI_MERGE_MODE_SUPPORTED_LINE_MODES = 85
+    IS_DEVICE_FEATURE_CMD_SET_REPEATED_START_CONDITION_I2C = 86
+    IS_DEVICE_FEATURE_CMD_GET_REPEATED_START_CONDITION_I2C = 87
+    IS_DEVICE_FEATURE_CMD_GET_REPEATED_START_CONDITION_I2C_DEFAULT = 88
+    IS_DEVICE_FEATURE_CMD_GET_TEMPERATURE_STATUS = 89
+    IS_DEVICE_FEATURE_CMD_GET_MEMORY_MODE_ENABLE = 90
+    IS_DEVICE_FEATURE_CMD_SET_MEMORY_MODE_ENABLE = 91
+    IS_DEVICE_FEATURE_CMD_GET_MEMORY_MODE_ENABLE_DEFAULT = 92
+    IS_DEVICE_FEATURE_CMD_93 = 93
+    IS_DEVICE_FEATURE_CMD_94 = 94
+    IS_DEVICE_FEATURE_CMD_95 = 95
+    IS_DEVICE_FEATURE_CMD_96 = 96
+    IS_DEVICE_FEATURE_CMD_GET_SUPPORTED_EXTERNAL_INTERFACES = 97
+    IS_DEVICE_FEATURE_CMD_GET_EXTERNAL_INTERFACE = 98
+    IS_DEVICE_FEATURE_CMD_SET_EXTERNAL_INTERFACE = 99
+    IS_DEVICE_FEATURE_CMD_EXTENDED_AWB_LIMITS_GET = 100
+    IS_DEVICE_FEATURE_CMD_EXTENDED_AWB_LIMITS_SET = 101
+    IS_DEVICE_FEATURE_CMD_GET_MEMORY_MODE_ENABLE_SUPPORTED = 102
+
+
+class SENSOR_BIT_DEPTH:
+    IS_SENSOR_BIT_DEPTH_AUTO = 0x00000000
+    IS_SENSOR_BIT_DEPTH_8_BIT = 0x00000001
+    IS_SENSOR_BIT_DEPTH_10_BIT = 0x00000002
+    IS_SENSOR_BIT_DEPTH_12_BIT = 0x00000004
+
+
 class TRIGGER:
 
     IS_GET_EXTERNALTRIGGER = 0x8000
@@ -285,6 +419,22 @@ class IO_CMD:
     IS_IO_CMD_FLASH_GET_AUTO_FREERUN_DEFAULT = 33
     IS_IO_CMD_FLASH_GET_AUTO_FREERUN = 34
     IS_IO_CMD_FLASH_SET_AUTO_FREERUN = 35
+
+
+class ColorMode:
+    IS_COLORMODE_INVALID = 0
+    IS_COLORMODE_MONOCHROME = 1
+    IS_COLORMODE_BAYER = 2
+    IS_COLORMODE_CBYCRY = 4
+    IS_COLORMODE_JPEG = 8
+
+
+ColorModeStr = {
+    ColorMode.IS_COLORMODE_INVALID: 'IS_COLORMODE_INVALID',
+    ColorMode.IS_COLORMODE_MONOCHROME: 'IS_COLORMODE_MONOCHROME',
+    ColorMode.IS_COLORMODE_BAYER: 'IS_COLORMODE_BAYER',
+    ColorMode.IS_COLORMODE_CBYCRY: 'IS_COLORMODE_CBYCRY',
+    ColorMode.IS_COLORMODE_JPEG: 'IS_COLORMODE_JPEG'}
 
 
 class _ColorModes:
@@ -437,6 +587,7 @@ class thorlabs_camera():
     def __init__(self, hCam=0):
         if os.path.isfile(thorlabs_camera.uc480_file):
             self.bit_depth = int(8)
+            self.supported_bit_depth = c_uint(0)
             self.bytes_per_pixel = int(self.bit_depth / 8)
             self.color_mode = c_int(0)
             self.minAOI = IS_SIZE_2D()
@@ -471,6 +622,9 @@ class thorlabs_camera():
             self.sInfo = SENSORINFO()
             self.cInfo = BOARDINFO()
             self.dInfo = IS_DEVICE_INFO()
+            self.dInfo_not_supported = False
+
+            self.CaptureStatusInfo = UC480_CAPTURE_STATUS_INFO()
 
             self.acquisition = False
             self.capture_video = False
@@ -530,16 +684,20 @@ class thorlabs_camera():
     def get_device_info(self):
         '''Gets the device info, used to get the sensor temp.
         '''
-        nRet = self.uc480.is_DeviceInfo(
-            self.hCam,
-            IS_DEVICE_INFO_CMD_GET_DEVICE_INFO,
-            byref(self.dInfo),
-            sizeof(self.dInfo))
+        if not self.dInfo_not_supported:
+            nRet = self.uc480.is_DeviceInfo(
+                self.hCam,
+                IS_DEVICE_INFO_CMD_GET_DEVICE_INFO,
+                byref(self.dInfo),
+                sizeof(IS_DEVICE_INFO))
 
-        if nRet != CMD.IS_SUCCESS:
-            print("is_DeviceInfo ERROR", nRet)
+            if nRet != CMD.IS_SUCCESS:
+                self.dInfo_not_supported = True
+                print("is_DeviceInfo ERROR", nRet)
 
-        return nRet
+            return nRet
+        else:
+            return 125
 
     def get_temperature(self):
         '''Reads out the sensor temperature value
@@ -656,15 +814,79 @@ class thorlabs_camera():
     def setColorMode(self):
         '''Set the right color mode, by camera default.
         '''
-        self.color_mode = self.uc480.is_SetColorMode(
-            self.hCam, IS_GET_COLOR_MODE)
-        self.bit_depth = int(formats_[self.color_mode])
-        self.bytes_per_pixel = int(self.bit_depth / 8)
+        # self.color_mode = self.uc480.is_SetColorMode(
+        #     self.hCam, IS_GET_COLOR_MODE)
+        nCmode = int.from_bytes(self.sInfo.nColorMode, byteorder='big')
+        nRet = self.uc480.is_DeviceFeature(
+            self.hCam,
+            DEV_FE_CMD.IS_DEVICE_FEATURE_CMD_GET_SUPPORTED_SENSOR_BIT_DEPTHS,
+            byref(self.supported_bit_depth), sizeof(self.supported_bit_depth))
+        print('nRet', nRet)
+        if nCmode == \
+                ColorMode.IS_COLORMODE_BAYER:
+            # setup the color depth to the current windows setting
+            self.uc480.is_GetColorDepth(
+                self.hCam,
+                byref(self.bit_depth),
+                byref(self.color_mode))
+            self.bytes_per_pixel = int(np.ceil(self.bit_depth / 8))
+            print(ColorModeStr[nCmode], ": ", )
+            print("\tcolor_mode: \t\t", formats_strs[self.color_mode])
+            print("\tbit_depth: \t\t", self.bit_depth)
+            print("\tbytes_per_pixel: \t\t", self.bytes_per_pixel)
+            print()
 
-        print(formats_strs[self.color_mode], )
-        print("\tm_nColorMode: \t\t", self.color_mode)
-        print("\tnBitsPerPixel: \t\t", self.bit_depth)
-        print("\tbytes_per_pixel: \t\t", self.bytes_per_pixel)
+        elif nCmode ==\
+                ColorMode.IS_COLORMODE_CBYCRY:
+            # for color camera models use RGB32 mode
+            self.color_mode = _ColorModes.IS_CM_BGRA8_PACKED
+            self.bit_depth = int(32)
+            self.bytes_per_pixel = int(np.ceil(self.bit_depth / 8))
+            print(ColorModeStr[nCmode], ": ", )
+            print("\tcolor_mode: \t\t", formats_strs[self.color_mode])
+            print("\tbit_depth: \t\t", self.bit_depth)
+            print("\tbytes_per_pixel: \t\t", self.bytes_per_pixel)
+            print()
+
+        elif nCmode ==\
+                ColorMode.IS_COLORMODE_MONOCHROME:
+            # for mono camera models that uses CM_MONO12 mode
+            print('Sbit', self.supported_bit_depth)
+            if nRet == CMD.IS_SUCCESS:
+                if (self.supported_bit_depth and
+                        SENSOR_BIT_DEPTH.IS_SENSOR_BIT_DEPTH_12_BIT) != 0:
+                    self.color_mode = _ColorModes.IS_CM_MONO12
+                    self.bit_depth = int(12)
+                    self.bytes_per_pixel = int(np.ceil(self.bit_depth / 8))
+                elif (self.supported_bit_depth and
+                        SENSOR_BIT_DEPTH.IS_SENSOR_BIT_DEPTH_10_BIT) != 0:
+                    self.color_mode = _ColorModes.IS_CM_MONO10
+                    self.bit_depth = int(10)
+                    self.bytes_per_pixel = int(np.ceil(self.bit_depth / 8))
+                elif (self.supported_bit_depth and
+                        SENSOR_BIT_DEPTH.IS_SENSOR_BIT_DEPTH_8_BIT) != 0:
+                    self.color_mode = _ColorModes.IS_CM_MONO8
+                    self.bit_depth = int(8)
+                    self.bytes_per_pixel = int(np.ceil(self.bit_depth / 8))
+            else:
+                self.color_mode = _ColorModes.IS_CM_MONO8
+                self.bit_depth = int(8)
+                self.bytes_per_pixel = int(np.ceil(self.bit_depth / 8))
+            print(ColorModeStr[nCmode], ": ", )
+            print("\tcolor_mode: \t\t", formats_strs[self.color_mode])
+            print("\tbit_depth: \t\t", self.bit_depth)
+            print("\tbytes_per_pixel: \t\t", self.bytes_per_pixel)
+            print()
+
+        else:
+            # for monochrome camera models use Y8 mode
+            self.color_mode = _ColorModes.IS_CM_MONO8
+            self.bit_depth = int(8)
+            self.bytes_per_pixel = int(np.ceil(self.bit_depth / 8))
+            print("Else: ", )
+            print("\tcolor_mode: \t\t", formats_strs[self.color_mode])
+            print("\tbit_depth: \t\t", self.bit_depth)
+            print("\tbytes_per_pixel: \t\t", self.bytes_per_pixel)
 
         nRet = self.uc480.is_SetColorMode(
             self.hCam, self.color_mode)
@@ -714,7 +936,7 @@ class thorlabs_camera():
         is_PixelClock.argtypes = [c_int, c_uint, POINTER(c_uint), c_uint]
         nRet = is_PixelClock(
             self.hCam,
-            CMD.IS_PIXELCLOCK_CMD_GET,
+            PCLK_CMD.IS_PIXELCLOCK_CMD_GET,
             byref(self.pixel_clock),
             sizeof(self.pixel_clock))
 
@@ -742,7 +964,7 @@ class thorlabs_camera():
         is_PixelClock.argtypes = [c_int, c_uint, POINTER(c_uint), c_uint]
         nRet = is_PixelClock(
             self.hCam,
-            CMD.IS_PIXELCLOCK_CMD_SET,
+            PCLK_CMD.IS_PIXELCLOCK_CMD_SET,
             byref(set),
             sizeof(set))
 
@@ -758,13 +980,13 @@ class thorlabs_camera():
         is_PixelClock.argtypes = [c_int, c_uint, POINTER(c_uint), c_uint]
         nRet = is_PixelClock(
             self.hCam,
-            CMD.IS_PIXELCLOCK_CMD_GET_DEFAULT,
+            PCLK_CMD.IS_PIXELCLOCK_CMD_GET_DEFAULT,
             byref(self.pixel_clock_def),
             sizeof(self.pixel_clock_def))
 
         nRet = is_PixelClock(
             self.hCam,
-            CMD.IS_PIXELCLOCK_CMD_GET_NUMBER,
+            PCLK_CMD.IS_PIXELCLOCK_CMD_GET_NUMBER,
             byref(self.pixel_clock_count),
             sizeof(self.pixel_clock_count))
 
@@ -779,7 +1001,7 @@ class thorlabs_camera():
 
             nRet = is_PixelClock(
                 self.hCam,
-                CMD.IS_PIXELCLOCK_CMD_GET_LIST,
+                PCLK_CMD.IS_PIXELCLOCK_CMD_GET_LIST,
                 self.pixel_clock_list,
                 self.pixel_clock_count.value * sizeof(c_uint))
 
@@ -1086,7 +1308,7 @@ class thorlabs_camera():
             params,
             sizeof(params))
         if nRet != CMD.IS_SUCCESS:
-            print("set_flash_params ERROR")
+            print("set_flash_params ERROR", nRet)
         else:
             self.get_flash_params()
         return nRet
@@ -1097,9 +1319,9 @@ class thorlabs_camera():
         nRet = self.uc480.is_IO(
             self.hCam,
             IO_CMD.IS_IO_CMD_FLASH_SET_MODE,
-            mode, sizeof(mode))
+            byref(mode), sizeof(mode))
         if nRet != CMD.IS_SUCCESS:
-            print("is_IO Set Flash Mode ERROR")
+            print("is_IO Set Flash Mode ERROR", nRet)
         return nRet
 
     # Get current flash mode
@@ -1177,16 +1399,30 @@ class thorlabs_camera():
         self.memory_allocated = False
         return nRet
 
-    def is_WaitForNextImage(self, wait=0):
+    def is_WaitForNextImage(self, wait=0, log=True):
         nret = self.uc480.is_WaitForNextImage(
             self.hCam, wait,
             byref(self.current_buffer), byref(self.current_id))
         if nret == CMD.IS_SUCCESS:
-            print(
-                "is_WaitForNextImage, Status IS_SUCCESS: {}".format(nret))
-        if nret == IS_TIMED_OUT:
-            print(
-                "is_WaitForNextImage, Status IS_TIMED_OUT: {}".format(nret))
+            if log:
+                logging.debug("is_WaitForNextImage, IS_SUCCESS: {}"
+                              .format(nret))
+        elif nret == IS_TIMED_OUT:
+            if log:
+                logging.debug("is_WaitForNextImage, IS_TIMED_OUT: {}"
+                              .format(nret))
+        elif nret == IS_CAPTURE_STATUS:
+            if log:
+                logging.debug("is_WaitForNextImage, IS_CAPTURE_STATUS: {}"
+                              .format(nret))
+            self.CaptureStatusInfo = UC480_CAPTURE_STATUS_INFO()
+            nRet = self.uc480.is_CaptureStatus(
+                self.hCam, CS_CMD.IS_CAPTURE_STATUS_INFO_CMD_GET,
+                self.CaptureStatusInfo, sizeof(self.CaptureStatusInfo))
+            if nRet == CMD.IS_SUCCESS:
+                self.uc480.is_CaptureStatus(
+                    self.hCam, CS_CMD.IS_CAPTURE_STATUS_INFO_CMD_RESET,
+                    None, 0)
         return nret
 
     def get_data(self):

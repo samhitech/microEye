@@ -1,10 +1,12 @@
 import json
+import logging
 import os
 import time
 import traceback
 from queue import Queue
 
 import cv2
+from lmfit.minimizer import minimize
 import numpy as np
 import pyqtgraph as pg
 import tifffile as tf
@@ -30,7 +32,8 @@ class IDS_Panel(QGroupBox):
 
     exposureChanged = pyqtSignal()
 
-    def __init__(self, threadpool, cam: IDS_Camera, *args, **kwargs):
+    def __init__(self, threadpool, cam: IDS_Camera,
+                 *args, mini=False, **kwargs):
         """
         Initializes a new IDS_Panel Qt widget
         | Inherits QGroupBox
@@ -73,6 +76,8 @@ class IDS_Panel(QGroupBox):
         self._zoom = 0.25  # display resize
         self._directory = ""  # save directory
         self._save_path = ""  # save path
+
+        self.mini = mini
 
         # main layout
         self.main_layout = QVBoxLayout()
@@ -258,11 +263,11 @@ class IDS_Panel(QGroupBox):
 
         # save to hard drive checkbox
         self.cam_save_temp = QCheckBox("Save to dir")
-        self.cam_save_temp.setChecked(False)
+        self.cam_save_temp.setChecked(self.mini)
 
         # preview checkbox
         self.preview_ch_box = QCheckBox("Preview")
-        self.preview_ch_box.setChecked(True)
+        self.preview_ch_box.setChecked(not self.mini)
 
         # preview checkbox
         self.slow_lut_rbtn = QRadioButton("LUT Numpy (12bit)")
@@ -352,30 +357,34 @@ class IDS_Panel(QGroupBox):
         self.first_tab_Layout.addWidget(self.cam_exposure_lbl)
         self.first_tab_Layout.addWidget(self.cam_exposure_ledit)
         self.first_tab_Layout.addWidget(self.cam_exposure_slider)
-        self.first_tab_Layout.addWidget(self.cam_flash_mode_lbl)
-        self.first_tab_Layout.addWidget(self.cam_flash_mode_cbox)
-        self.first_tab_Layout.addWidget(self.cam_flash_duration_lbl)
-        self.first_tab_Layout.addWidget(self.cam_flash_duration_ledit)
-        self.first_tab_Layout.addWidget(self.cam_flash_duration_slider)
-        self.first_tab_Layout.addWidget(self.cam_flash_delay_lbl)
-        self.first_tab_Layout.addWidget(self.cam_flash_delay_ledit)
-        self.first_tab_Layout.addWidget(self.cam_flash_delay_slider)
+        if not self.mini:
+            self.first_tab_Layout.addWidget(self.cam_flash_mode_lbl)
+            self.first_tab_Layout.addWidget(self.cam_flash_mode_cbox)
+            self.first_tab_Layout.addWidget(self.cam_flash_duration_lbl)
+            self.first_tab_Layout.addWidget(self.cam_flash_duration_ledit)
+            self.first_tab_Layout.addWidget(self.cam_flash_duration_slider)
+            self.first_tab_Layout.addWidget(self.cam_flash_delay_lbl)
+            self.first_tab_Layout.addWidget(self.cam_flash_delay_ledit)
+            self.first_tab_Layout.addWidget(self.cam_flash_delay_slider)
         self.first_tab_Layout.addLayout(self.config_Hlay)
         self.first_tab_Layout.addWidget(self.cam_freerun_btn)
         self.first_tab_Layout.addWidget(self.cam_trigger_btn)
         self.first_tab_Layout.addWidget(self.cam_stop_btn)
-        self.first_tab_Layout.addWidget(QLabel("Experiment:"))
-        self.first_tab_Layout.addWidget(self.experiment_name)
-        self.first_tab_Layout.addWidget(QLabel("Save Directory:"))
-        self.first_tab_Layout.addLayout(self.save_dir_layout)
-        self.first_tab_Layout.addWidget(self.frames_tbox)
-        self.first_tab_Layout.addWidget(self.cam_save_temp)
+        if not self.mini:
+            self.first_tab_Layout.addWidget(QLabel("Experiment:"))
+            self.first_tab_Layout.addWidget(self.experiment_name)
+            self.first_tab_Layout.addWidget(QLabel("Save Directory:"))
+            self.first_tab_Layout.addLayout(self.save_dir_layout)
+            self.first_tab_Layout.addWidget(self.frames_tbox)
+            self.first_tab_Layout.addWidget(self.cam_save_temp)
         self.first_tab_Layout.addStretch()
 
-        self.second_tab_Layout.addWidget(self.preview_ch_box)
+        if not self.mini:
+            self.second_tab_Layout.addWidget(self.preview_ch_box)
         self.second_tab_Layout.addWidget(self.slow_lut_rbtn)
         self.second_tab_Layout.addWidget(self.fast_lut_rbtn)
-        self.second_tab_Layout.addLayout(self.zoom_layout)
+        if not self.mini:
+            self.second_tab_Layout.addLayout(self.zoom_layout)
 
         self.second_tab_Layout.addWidget(self.histogram_lbl)
         self.second_tab_Layout.addWidget(self.alpha)
@@ -424,6 +433,25 @@ class IDS_Panel(QGroupBox):
             the IDS_Camera to set as panel camera.
         '''
         self._cam = cam
+
+    @property
+    def buffer(self):
+        if self._frames is not None:
+            return self._frames
+        else:
+            return Queue()
+
+    @property
+    def isEmpty(self) -> bool:
+        return self.buffer.empty()
+
+    def get(self) -> np.ndarray:
+        if not self.isEmpty:
+            return self._frames.get()
+
+    @property
+    def isOpen(self) -> bool:
+        return self.cam.acquisition
 
     def set_AOI(self):
         '''Sets the AOI for the slected IDS_Camera
@@ -679,17 +707,15 @@ class IDS_Panel(QGroupBox):
         cam : IDS_Camera
             IDS Camera python adapter
         """
-
+        nRet = 0
         if cam.acquisition:
             return  # if acquisition is already going on
 
         if not cam.memory_allocated:
-            cam.allocate_memory()  # allocate memory
+            cam.allocate_memory_buffer()  # allocate memory
 
         if not cam.capture_video:
             cam.start_live_capture()  # start live capture (freerun mode)
-
-        nRet = cam.enable_queue_mode()  # enable queue mode
 
         cam.refresh_info()  # refresh adapter info
 
@@ -716,13 +742,14 @@ class IDS_Panel(QGroupBox):
             IDS Camera python adapter
         """
 
+        nRet = 0
         if cam.acquisition:
             return  # if acquisition is already going on
 
         if not cam.memory_allocated:
-            cam.allocate_memory()  # allocate memory
+            cam.allocate_memory_buffer()  # allocate memory
 
-        nRet = cam.enable_queue_mode()  # enable queue mode
+        # nRet = cam.enable_queue_mode()  # enable queue mode
 
         cam.refresh_info()  # refresh adapter info
 
@@ -762,11 +789,12 @@ class IDS_Panel(QGroupBox):
             self._threadpool.start(self.d_worker)
 
         # Pass the save function to be executed
-        if self.s_worker is None or self.s_worker.done:
-            self.s_worker = thread_worker(
-                self._save, nRet, progress=False, z_stage=False)
-            # Execute
-            self._threadpool.start(self.s_worker)
+        if not self.mini:
+            if self.s_worker is None or self.s_worker.done:
+                self.s_worker = thread_worker(
+                    self._save, nRet, progress=False, z_stage=False)
+                # Execute
+                self._threadpool.start(self.s_worker)
 
         #  Pass the capture function to be executed
         if self.c_worker is None or self.c_worker.done:
@@ -798,11 +826,12 @@ class IDS_Panel(QGroupBox):
             self._threadpool.start(self.d_worker)
 
         # Pass the save function to be executed
-        if self.s_worker is None or self.s_worker.done:
-            self.s_worker = thread_worker(
-                self._save, nRet, progress=False, z_stage=False)
-            # Execute
-            self._threadpool.start(self.s_worker)
+        if not self.mini:
+            if self.s_worker is None or self.s_worker.done:
+                self.s_worker = thread_worker(
+                    self._save, nRet, progress=False, z_stage=False)
+                # Execute
+                self._threadpool.start(self.s_worker)
 
     def _capture(self, nRet, cam: IDS_Camera):
         '''Capture function executed by the capture worker.
@@ -835,18 +864,20 @@ class IDS_Panel(QGroupBox):
                 if not cam.capture_video:
                     ueye.is_FreezeVideo(cam.hCam, ueye.IS_WAIT)
 
-                # In order to display the image in an OpenCV window we need to
-                # extract the data of our image memory and add it to the stack
-                data = cam.get_data()
+                nRet = cam.is_WaitForNextImage(500, not self.mini)
+                if nRet == ueye.IS_SUCCESS:
+                    cam.get_pitch()
+                    data = cam.get_data()
 
-                if not np.array_equal(temp, data):
                     self._buffer.put(data.copy())
                     # add sensor temperature to the stack
                     self._temps.put(cam.get_temperature())
                     temp = data.copy()
                     self._counter = self._counter + 1
-                    if self._counter >= nFrames:
+                    if self._counter >= nFrames and not self.mini:
                         self._stop_thread = True
+                        logging.debug('Stop')
+                    cam.unlock_buffer()
 
                 QThread.usleep(100)  # sleep 100us
 
@@ -895,7 +926,10 @@ class IDS_Panel(QGroupBox):
 
                     # add to saving stack
                     if self.cam_save_temp.isChecked():
-                        self._frames.put((frame.image, self._temps.get()))
+                        if not self.mini:
+                            self._frames.put((frame.image, self._temps.get()))
+                        else:
+                            self._frames.put(frame.image)
 
                     if self.preview_ch_box.isChecked():
                         _range = None
@@ -934,7 +968,8 @@ class IDS_Panel(QGroupBox):
         except Exception:
             traceback.print_exc()
         finally:
-            cv2.destroyWindow(cam.name)
+            if not self.mini:
+                cv2.destroyWindow(cam.name)
 
     def _save(self, nRet):
         '''Save function executed by the save worker.

@@ -21,6 +21,7 @@ from .ueye_camera import IDS_Camera
 from .thorlabs import *
 from .thorlabs_panel import Thorlabs_Panel
 from .ueye_panel import IDS_Panel
+from .CameraListWidget import CameraListWidget
 
 
 class acquisition_module(QMainWindow):
@@ -90,85 +91,23 @@ class acquisition_module(QMainWindow):
         self.Vlayout = QVBoxLayout()
 
         # CAM Table
-        self.cam_list = IDS_Camera.get_camera_list() + \
-            thorlabs_camera.get_camera_list()
+        self.camWidget = CameraListWidget()
+        self.camWidget.addCamera.connect(self.add_camera_clicked)
+        self.camWidget.removeCamera.connect(self.remove_camera_clicked)
 
-        if self.cam_list is None:
-            self.cam_list = []
-
-        self.ids_model = QStandardItemModel(len(self.cam_list), 8)
-
-        self.ids_model.setHorizontalHeaderLabels(
-            ["In Use", "Camera ID", "Device ID",
-             "Model", "Serial", "Status", "Sensor ID", 'Driver'])
-
-        for i in range(len(self.cam_list)):
-            self.ids_model.setItem(
-                i, 0,
-                QStandardItem(str(self.cam_list[i]["InUse"])))
-            self.ids_model.setItem(
-                i, 1,
-                QStandardItem(str(self.cam_list[i]["camID"])))
-            self.ids_model.setItem(
-                i, 2,
-                QStandardItem(str(self.cam_list[i]["devID"])))
-            self.ids_model.setItem(
-                i, 3,
-                QStandardItem(self.cam_list[i]["Model"]))
-            self.ids_model.setItem(
-                i, 4,
-                QStandardItem(self.cam_list[i]["Serial"]))
-            self.ids_model.setItem(
-                i, 5,
-                QStandardItem(str(self.cam_list[i]["Status"])))
-            self.ids_model.setItem(
-                i, 6,
-                QStandardItem(str(self.cam_list[i]["senID"])))
-            self.ids_model.setItem(
-                i, 7,
-                QStandardItem(str(self.cam_list[i]["Driver"])))
-
-        self.ids_table = QTableView()
-        self.ids_table.setModel(self.ids_model)
-        self.ids_table.clearSelection()
-        self.ids_table.horizontalHeader().setStretchLastSection(True)
-        self.ids_table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.ResizeToContents)
-        self.ids_table.setSelectionBehavior(
-            QAbstractItemView.SelectionBehavior.SelectRows)
-        self.ids_table.setSelectionMode(
-            QAbstractItemView.SelectionMode.SingleSelection)
-
-        self.ids_buttons = QHBoxLayout()
-
-        self.ids_add_cam = QPushButton("Add Camera",
-                                       clicked=lambda:
-                                       self.add_camera_clicked())
-
-        self.ids_remove_cam = QPushButton("Remove Camera",
-                                          clicked=lambda:
-                                          self.remove_camera_clicked())
-
-        self.ids_refresh = QPushButton("Refresh List",
-                                       clicked=lambda:
-                                       self.refresh_list_clicked())
-
-        self.ids_start_macq = QPushButton("Start Multi-Cam Acquisition",
-                                          clicked=lambda:
-                                          self.start_multi_cam_acq())
-        self.ids_start_macq.setToolTip("Trigger mode acquisition | \
+        self.start_macq = QPushButton(
+            "Start Multi-Cam Acquisition",
+            clicked=lambda: self.start_multi_cam_acq())
+        self.start_macq.setToolTip("Trigger mode acquisition | \
         First Cam Must Be Software Triggered | \
         Second Cam Externally Triggered by the First Flash Optocoupler.")
 
-        self.ids_stop_macq = QPushButton("Stop Acquisition",
-                                         clicked=lambda:
-                                         self.stop_multi_cam_acq())
+        self.stop_macq = QPushButton(
+            "Stop Acquisition",
+            clicked=lambda: self.stop_multi_cam_acq())
 
-        self.ids_buttons.addWidget(self.ids_add_cam)
-        self.ids_buttons.addWidget(self.ids_remove_cam)
-        self.ids_buttons.addWidget(self.ids_refresh)
-        self.ids_buttons.addWidget(self.ids_start_macq, 2)
-        self.ids_buttons.addWidget(self.ids_stop_macq, 2)
+        self.camWidget.HL_buttons.addWidget(self.start_macq, 2)
+        self.camWidget.HL_buttons.addWidget(self.stop_macq, 2)
 
         self.acq_mode_radio = QHBoxLayout()
 
@@ -205,8 +144,7 @@ class acquisition_module(QMainWindow):
                                           clicked=lambda:
                                           self.stack_to_stats_clicked())
 
-        self.Vlayout.addWidget(self.ids_table)
-        self.Vlayout.addLayout(self.ids_buttons)
+        self.Vlayout.addWidget(self.camWidget)
         self.Vlayout.addLayout(self.acq_mode_radio)
         self.Vlayout.addWidget(QLabel("Experiment:"))
         self.Vlayout.addWidget(self.experiment_name)
@@ -298,7 +236,7 @@ class acquisition_module(QMainWindow):
             panel._directory = self.save_directory
             panel.save_dir_edit.setText(self.save_directory)
 
-    def remove_camera_clicked(self):
+    def remove_camera_clicked(self, cam):
         if not self._stop_mcam_thread:
             QMessageBox.warning(
                 self, "Warning",
@@ -306,47 +244,37 @@ class acquisition_module(QMainWindow):
                 QMessageBox.StandardButton.Ok)
             return
 
-        if len(self.ids_table.selectedIndexes()) > 0:
-            cam = self.cam_list[self.ids_table.currentIndex().row()]
+        if 'uEye' in cam["Driver"]:
+            for pan in self.ids_panels:
+                if pan.cam.Cam_ID == cam["camID"]:
+                    if not pan.cam.acquisition:
+                        pan.cam.dispose()
+                    # if not pan.master:
+                    #     self.ids_panels[0].slaves.remove(pan.cam)
+                    pan._dispose_cam = True
+                    pan._stop_thread = True
+                    self.ids_cams.remove(pan.cam)
+                    self.ids_panels.remove(pan)
+                    self.Hlayout.removeWidget(pan)
+                    pan.setParent(None)
+                    break
+        if 'UC480' in cam["Driver"]:
+            for pan in self.thor_panels:
+                # if pan.cam.hCam.value == cam["camID"]:
+                if pan.cam.cInfo.SerNo.decode('utf-8') == cam["Serial"]:
+                    if not pan.cam.acquisition:
+                        pan.cam.free_memory()
+                        pan.cam.dispose()
 
-            if 'uEye' in cam["Driver"]:
-                for pan in self.ids_panels:
-                    if pan.cam.Cam_ID == cam["camID"]:
-                        if not pan.cam.acquisition:
-                            pan.cam.dispose()
-                        # if not pan.master:
-                        #     self.ids_panels[0].slaves.remove(pan.cam)
-                        pan._dispose_cam = True
-                        pan._stop_thread = True
-                        self.ids_cams.remove(pan.cam)
-                        self.ids_panels.remove(pan)
-                        self.Hlayout.removeWidget(pan)
-                        pan.setParent(None)
-                        self.refresh_list_clicked()
-                        break
-            if 'UC480' in cam["Driver"]:
-                for pan in self.thor_panels:
-                    if pan.cam.hCam.value == cam["camID"]:
-                        if not pan.cam.acquisition:
-                            pan.cam.free_memory()
-                            pan.cam.dispose()
+                    pan._dispose_cam = True
+                    pan._stop_thread = True
+                    self.thorlabs_cams.remove(pan.cam)
+                    self.thor_panels.remove(pan)
+                    self.Hlayout.removeWidget(pan)
+                    pan.setParent(None)
+                    break
 
-                        pan._dispose_cam = True
-                        pan._stop_thread = True
-                        self.thorlabs_cams.remove(pan.cam)
-                        self.thor_panels.remove(pan)
-                        self.Hlayout.removeWidget(pan)
-                        pan.setParent(None)
-                        self.refresh_list_clicked()
-                        break
-        else:
-            QMessageBox.warning(
-                self,
-                "Warning",
-                "Please select a device.",
-                QMessageBox.StandardButton.Ok)
-
-    def add_camera_clicked(self):
+    def add_camera_clicked(self, cam):
         if not self._stop_mcam_thread:
             QMessageBox.warning(
                 self,
@@ -355,52 +283,43 @@ class acquisition_module(QMainWindow):
                 QMessageBox.StandardButton.Ok)
             return
 
-        if len(self.ids_table.selectedIndexes()) > 0:
-            cam = self.cam_list[self.ids_table.currentIndex().row()]
-            # print(cam)
-            if cam["InUse"] == 0:
-                if 'uEye' in cam["Driver"]:
-                    ids_cam = IDS_Camera(cam["camID"])
-                    nRet = ids_cam.initialize()
-                    self.ids_cams.append(ids_cam)
-                    ids_panel = IDS_Panel(
+        # print(cam)
+        if cam["InUse"] == 0:
+            if 'uEye' in cam["Driver"]:
+                ids_cam = IDS_Camera(cam["camID"])
+                nRet = ids_cam.initialize()
+                self.ids_cams.append(ids_cam)
+                ids_panel = IDS_Panel(
+                    self.threadpool,
+                    ids_cam, cam["Model"] + " " + cam["Serial"])
+                ids_panel._directory = self.save_directory
+                if len(self.ids_panels) == 0:
+                    ids_panel.master = True
+                else:
+                    ids_panel.master = False
+                ids_panel.exposureChanged.connect(
+                    self.master_exposure_changed)
+                self.ids_panels.append(ids_panel)
+                self.Hlayout.addWidget(ids_panel, 1)
+            if 'UC480' in cam["Driver"]:
+                thor_cam = thorlabs_camera(cam["camID"])
+                nRet = thor_cam.initialize()
+                if nRet == CMD.IS_SUCCESS:
+                    self.thorlabs_cams.append(thor_cam)
+                    thor_panel = Thorlabs_Panel(
                         self.threadpool,
-                        ids_cam, cam["Model"] + " " + cam["Serial"])
-                    ids_panel._directory = self.save_directory
-                    if len(self.ids_panels) == 0:
-                        ids_panel.master = True
-                    else:
-                        ids_panel.master = False
-                    ids_panel.exposureChanged.connect(
+                        thor_cam, cam["Model"] + " " + cam["Serial"])
+                    thor_panel._directory = self.save_directory
+                    thor_panel.master = False
+                    thor_panel.exposureChanged.connect(
                         self.master_exposure_changed)
-                    self.ids_panels.append(ids_panel)
-                    self.Hlayout.addWidget(ids_panel, 1)
-                if 'UC480' in cam["Driver"]:
-                    thor_cam = thorlabs_camera(cam["camID"])
-                    nRet = thor_cam.initialize()
-                    if nRet == CMD.IS_SUCCESS:
-                        self.thorlabs_cams.append(thor_cam)
-                        thor_panel = Thorlabs_Panel(
-                            self.threadpool,
-                            thor_cam, cam["Model"] + " " + cam["Serial"])
-                        thor_panel._directory = self.save_directory
-                        thor_panel.master = False
-                        thor_panel.exposureChanged.connect(
-                            self.master_exposure_changed)
-                        self.thor_panels.append(thor_panel)
-                        self.Hlayout.addWidget(thor_panel, 1)
-                self.refresh_list_clicked()
-            else:
-                QMessageBox.warning(
-                    self,
-                    "Warning",
-                    "Device is in use or already added.",
-                    QMessageBox.StandardButton.Ok)
+                    self.thor_panels.append(thor_panel)
+                    self.Hlayout.addWidget(thor_panel, 1)
         else:
             QMessageBox.warning(
                 self,
                 "Warning",
-                "Please select a device.",
+                "Device is in use or already added.",
                 QMessageBox.StandardButton.Ok)
 
     def stop_multi_cam_acq(self):
@@ -542,48 +461,6 @@ class acquisition_module(QMainWindow):
                                 panel.cam_exposure_slider.values,
                                 float(master.cam_exposure_ledit.text()))
                                 )
-
-    def refresh_list_clicked(self):
-        self.cam_list = IDS_Camera.get_camera_list() + \
-            thorlabs_camera.get_camera_list()
-
-        if self.cam_list is None:
-            self.cam_list = []
-            print('No cameras connected.')
-
-        self.ids_model = QStandardItemModel(len(self.cam_list), 8)
-
-        self.ids_model.setHorizontalHeaderLabels(
-            ["In Use", "Camera ID", "Device ID",
-             "Model", "Serial", "Status", "Sensor ID", 'Driver'])
-
-        for i in range(len(self.cam_list)):
-            self.ids_model.setItem(
-                i, 0,
-                QStandardItem(str(self.cam_list[i]["InUse"])))
-            self.ids_model.setItem(
-                i, 1,
-                QStandardItem(str(self.cam_list[i]["camID"])))
-            self.ids_model.setItem(
-                i, 2,
-                QStandardItem(str(self.cam_list[i]["devID"])))
-            self.ids_model.setItem(
-                i, 3,
-                QStandardItem(self.cam_list[i]["Model"]))
-            self.ids_model.setItem(
-                i, 4,
-                QStandardItem(self.cam_list[i]["Serial"]))
-            self.ids_model.setItem(
-                i, 5,
-                QStandardItem(str(self.cam_list[i]["Status"])))
-            self.ids_model.setItem(
-                i, 6,
-                QStandardItem(str(self.cam_list[i]["senID"])))
-            self.ids_model.setItem(
-                i, 7,
-                QStandardItem(str(self.cam_list[i]["Driver"])))
-
-        self.ids_table.setModel(self.ids_model)
 
     def recurring_timer_2(self):
         for cam in self.ids_cams:

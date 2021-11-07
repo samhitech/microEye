@@ -1,4 +1,5 @@
-from ctypes import c_uint
+from ctypes import *
+import logging
 from pyueye import ueye
 import numpy as np
 
@@ -77,6 +78,13 @@ formats_strs = {ueye.IS_CM_SENSOR_RAW8: "IS_CM_SENSOR_RAW8",
                 ueye.IS_CM_CBYCRY_PACKED: "IS_CM_CBYCRY_PACKED"
                 }
 
+color_modes_ = {
+    ueye.IS_COLORMODE_INVALID: 'IS_COLORMODE_INVALID',
+    ueye.IS_COLORMODE_MONOCHROME: 'IS_COLORMODE_MONOCHROME',
+    ueye.IS_COLORMODE_BAYER: 'IS_COLORMODE_BAYER',
+    ueye.IS_COLORMODE_CBYCRY: 'IS_COLORMODE_CBYCRY',
+    ueye.IS_COLORMODE_JPEG: 'IS_COLORMODE_JPEG'}
+
 
 class IDS_Camera:
     '''A class to handle an IDS uEye camera.'''
@@ -131,36 +139,47 @@ class IDS_Camera:
         self.sInfo = ueye.SENSORINFO()
         self.cInfo = ueye.CAMINFO()
         self.dInfo = ueye.IS_DEVICE_INFO()
-        self.pcImageMemory = ueye.c_mem_p()
-        self.MemID = ueye.int()
         self.rectAOI = ueye.IS_RECT()
         self.set_rectAOI = ueye.IS_RECT()
+        self.minAOI = ueye.IS_SIZE_2D()
+
         self.pitch = ueye.INT()
-        # 24: bits per pixel for color mode;
-        # take 8 bits per pixel for monochrome
-        self.nBitsPerPixel = ueye.INT(24)
+        self.MemInfo = []
+        self.current_buffer = c_void_p()
+        self.current_id = c_int()
+        self.pcImageMemory = ueye.c_mem_p()
+        self.MemID = ueye.int()
+
+        self.bit_depth = ueye.INT(24)
         # 3: channels for color mode(RGB);
         # take 1 channel for monochrome
-        self.channels = 3
-        # Y8/RGB16/RGB24/REG32
-        self.m_nColorMode = ueye.INT()
-        self.bytes_per_pixel = int(self.nBitsPerPixel / 8)
+        self.channels = 1
+        self.color_mode = ueye.INT()
+        self.bit_depth = ueye.UINT(0)
+        self.supported_bit_depth = ueye.UINT(0)
+        self.bytes_per_pixel = int(self.bit_depth / 8)
+
         self.pixel_clock = ueye.c_uint(0)
         self.pixel_clock_default = ueye.c_uint()
         self.pixel_clock_list = (ueye.c_uint * 5)()
         self.pixel_clock_range = (ueye.c_uint * 3)()
         self.pixel_clock_count = ueye.c_uint()
+
         self.minFrameRate = ueye.c_double(0)
         self.maxFrameRate = ueye.c_double(0)
         self.incFrameRate = ueye.c_double(0)
         self.currentFrameRate = ueye.c_double(0)
         self.exposure_range = (ueye.c_double * 3)()
         self.exposure_current = ueye.c_double(0)
+
         self.flash_mode = ueye.c_uint(ueye.IO_FLASH_MODE_OFF)
         self.flash_min = ueye.IO_FLASH_PARAMS()
         self.flash_max = ueye.IO_FLASH_PARAMS()
         self.flash_inc = ueye.IO_FLASH_PARAMS()
         self.flash_cur = ueye.IO_FLASH_PARAMS()
+
+        self.CaptureStatusInfo = ueye.UEYE_CAPTURE_STATUS_INFO()
+
         self.acquisition = False
         self.capture_video = False
         self.memory_allocated = False
@@ -317,66 +336,83 @@ class IDS_Camera:
     def setColorMode(self):
         '''Set the right color mode, by camera default.
         '''
-        self.m_nColorMode = ueye.is_SetColorMode(
-            self.hCam, ueye.IS_GET_COLOR_MODE)
-        self.nBitsPerPixel = ueye.INT(formats_[self.m_nColorMode])
-        self.bytes_per_pixel = int(self.nBitsPerPixel / 8)
+        # self.color_mode = ueye.is_SetColorMode(
+        #     self.hCam, ueye.IS_GET_COLOR_MODE)
+        nCmode = int.from_bytes(self.sInfo.nColorMode.value, byteorder='big')
+        nRet = ueye.is_DeviceFeature(
+            self.hCam,
+            ueye.IS_DEVICE_FEATURE_CMD_GET_SUPPORTED_SENSOR_BIT_DEPTHS,
+            self.supported_bit_depth, sizeof(self.supported_bit_depth))
+        print('nRet', nRet)
+        if nCmode == \
+                ueye.IS_COLORMODE_BAYER:
+            # setup the color depth to the current windows setting
+            ueye.is_GetColorDepth(
+                self.hCam,
+                self.bit_depth,
+                self.color_mode)
+            self.bytes_per_pixel = int(np.ceil(self.bit_depth / 8))
+            print(color_modes_[nCmode], ": ", )
+            print(
+                "\tcolor_mode: \t\t", formats_strs[self.color_mode.value])
+            print("\tbit_depth: \t\t", self.bit_depth)
+            print("\tbytes_per_pixel: \t\t", self.bytes_per_pixel)
+            print()
 
-        # TODO: check with IDS why different GET_COLOR_MODE methods
-        # if int.from_bytes(self.sInfo.nColorMode.value, byteorder='big') == \
-        #         ueye.IS_COLORMODE_BAYER:
-        #     # setup the color depth to the current windows setting
-        #     ueye.is_GetColorDepth(
-        #         self.hCam,
-        #         self.nBitsPerPixel,
-        #         self.m_nColorMode)
-        #     self.bytes_per_pixel = int(np.ceil(self.nBitsPerPixel / 8))
-        #     print("IS_COLORMODE_BAYER: ", )
-        #     print("\tm_nColorMode: \t\t", self.m_nColorMode)
-        #     print("\tnBitsPerPixel: \t\t", self.nBitsPerPixel)
-        #     print("\tbytes_per_pixel: \t\t", self.bytes_per_pixel)
-        #     print()
+        elif nCmode ==\
+                ueye.IS_COLORMODE_CBYCRY:
+            # for color camera models use RGB32 mode
+            self.color_mode = ueye.IS_CM_BGRA8_PACKED
+            self.bit_depth = ueye.INT(32)
+            self.bytes_per_pixel = int(np.ceil(self.bit_depth / 8))
+            print(color_modes_[nCmode], ": ", )
+            print("\tcolor_mode: \t\t", formats_strs[self.color_mode])
+            print("\tbit_depth: \t\t", self.bit_depth)
+            print("\tbytes_per_pixel: \t\t", self.bytes_per_pixel)
+            print()
 
-        # elif int.from_bytes(self.sInfo.nColorMode.value, byteorder='big') ==\
-        #         ueye.IS_COLORMODE_CBYCRY:
-        #     # for color camera models use RGB32 mode
-        #     self.m_nColorMode = ueye.IS_CM_BGRA8_PACKED
-        #     self.nBitsPerPixel = ueye.INT(32)
-        #     self.bytes_per_pixel = int(np.ceil(self.nBitsPerPixel / 8))
-        #     print("IS_COLORMODE_CBYCRY: ", )
-        #     print("\tm_nColorMode: \t\t", self.m_nColorMode)
-        #     print("\tnBitsPerPixel: \t\t", self.nBitsPerPixel)
-        #     print("\tbytes_per_pixel: \t\t", self.bytes_per_pixel)
-        #     print()
+        elif nCmode ==\
+                ueye.IS_COLORMODE_MONOCHROME:
+            # for mono camera models that uses CM_MONO12 mode
+            print('Sbit', self.supported_bit_depth)
+            if nRet == ueye.IS_SUCCESS:
+                if (self.supported_bit_depth and
+                        ueye.IS_SENSOR_BIT_DEPTH_12_BIT) != 0:
+                    self.color_mode = ueye.IS_CM_MONO12
+                    self.bit_depth = ueye.INT(12)
+                    self.bytes_per_pixel = int(np.ceil(self.bit_depth / 8))
+                elif (self.supported_bit_depth and
+                        ueye.IS_SENSOR_BIT_DEPTH_10_BIT) != 0:
+                    self.color_mode = ueye.IS_CM_MONO10
+                    self.bit_depth = ueye.INT(10)
+                    self.bytes_per_pixel = int(np.ceil(self.bit_depth / 8))
+                elif (self.supported_bit_depth and
+                        ueye.IS_SENSOR_BIT_DEPTH_8_BIT) != 0:
+                    self.color_mode = ueye.IS_CM_MONO8
+                    self.bit_depth = ueye.INT(8)
+                    self.bytes_per_pixel = int(np.ceil(self.bit_depth / 8))
+            else:
+                self.color_mode = ueye.IS_CM_MONO8
+                self.bit_depth = ueye.INT(8)
+                self.bytes_per_pixel = int(np.ceil(self.bit_depth / 8))
 
-        # elif int.from_bytes(self.sInfo.nColorMode.value, byteorder='big') ==\
-        #         ueye.IS_COLORMODE_MONOCHROME:
-        #     # for mono camera models that uses CM_MONO12 mode
-        #     self.m_nColorMode = ueye.IS_CM_MONO12
-        #     self.nBitsPerPixel = ueye.INT(12)
-        #     self.bytes_per_pixel = int(np.ceil(self.nBitsPerPixel / 8))
-        #     print("IS_COLORMODE_MONOCHROME: ", )
-        #     print("\tm_nColorMode: \t\t", self.m_nColorMode)
-        #     print("\tnBitsPerPixel: \t\t", self.nBitsPerPixel)
-        #     print("\tbytes_per_pixel: \t\t", self.bytes_per_pixel)
-        #     print()
+            print(color_modes_[nCmode], ": ", )
+            print("\tcolor_mode: \t\t", formats_strs[self.color_mode])
+            print("\tbit_depth: \t\t", self.bit_depth)
+            print("\tbytes_per_pixel: \t\t", self.bytes_per_pixel)
+            print()
 
-        # else:
-        #     # for monochrome camera models use Y8 mode
-        #     self.m_nColorMode = ueye.IS_CM_MONO8
-        #     self.nBitsPerPixel = ueye.INT(8)
-        #     self.bytes_per_pixel = int(np.ceil(self.nBitsPerPixel / 8))
-        #     print("IS_COLORMODE_MONOCHROME Else: ", )
-        #     print("\tm_nColorMode: \t\t", self.m_nColorMode)
-        #     print("\tnBitsPerPixel: \t\t", self.nBitsPerPixel)
-        #     print("\tbytes_per_pixel: \t\t", self.bytes_per_pixel)
+        else:
+            # for monochrome camera models use Y8 mode
+            self.color_mode = ueye.IS_CM_MONO8
+            self.bit_depth = ueye.INT(8)
+            self.bytes_per_pixel = int(np.ceil(self.bit_depth / 8))
+            print("Else: ", )
+            print("\tcolor_mode: \t\t", formats_strs[self.color_mode])
+            print("\tbit_depth: \t\t", self.bit_depth)
+            print("\tbytes_per_pixel: \t\t", self.bytes_per_pixel)
 
-        print(formats_strs[self.m_nColorMode], )
-        print("\tm_nColorMode: \t\t", self.m_nColorMode)
-        print("\tnBitsPerPixel: \t\t", self.nBitsPerPixel)
-        print("\tbytes_per_pixel: \t\t", self.bytes_per_pixel)
-
-        nRet = ueye.is_SetColorMode(self.hCam, self.m_nColorMode)
+        nRet = ueye.is_SetColorMode(self.hCam, self.color_mode)
 
     def get_AOI(self):
         '''Can be used to get the size and position
@@ -802,13 +838,19 @@ class IDS_Camera:
         print()
 
     # Allocates an image memory for an image having its dimensions defined by
-    # width and height and its color depth defined by nBitsPerPixel
+    # width and height and its color depth defined by bit_depth
     def allocate_memory(self):
+        if len(self.MemInfo) > 0:
+            self.free_memory()
+
+        self.pcImageMemory = ueye.c_mem_p()
+        self.MemID = ueye.c_int(0)
+        self.MemInfo.append([self.pcImageMemory, self.MemID])
         nRet = ueye.is_AllocImageMem(
             self.hCam,
             self.width,
             self.height,
-            self.nBitsPerPixel,
+            self.bit_depth,
             self.pcImageMemory,
             self.MemID)
         if nRet != ueye.IS_SUCCESS:
@@ -822,8 +864,6 @@ class IDS_Camera:
             if nRet != ueye.IS_SUCCESS:
                 print("is_SetImageMem ERROR")
             else:
-                # Set the desired color mode
-                nRet = ueye.is_SetColorMode(self.hCam, self.m_nColorMode)
                 self.memory_allocated = True
 
     # Activates the camera's live video mode (free run mode)
@@ -844,12 +884,82 @@ class IDS_Camera:
             self.capture_video = False
         return nRet
 
+    def allocate_memory_buffer(self, buffers: int = 100):
+        if len(self.MemInfo) > 0:
+            self.free_memory()
+
+        for x in range(buffers):
+            self.MemInfo.append([ueye.c_mem_p(), ueye.c_int(0)])
+            ret = ueye.is_AllocImageMem(
+                self.hCam, c_int(self.width), c_int(self.height),
+                self.bit_depth,
+                self.MemInfo[x][0], self.MemInfo[x][1])
+            ret = ueye.is_AddToSequence(
+                self.hCam, self.MemInfo[x][0], self.MemInfo[x][1])
+
+        ret = ueye.is_InitImageQueue(self.hCam, c_int(0))
+
+    def unlock_buffer(self):
+        return ueye.is_UnlockSeqBuf(
+            self.hCam, self.current_id, self.current_buffer)
+
+    def get_pitch(self):
+        x = ueye.c_int()
+        y = ueye.c_int()
+        bits = ueye.c_int()
+
+        pc_mem = ueye.c_mem_p()
+        pid = ueye.c_int()
+        ueye.is_GetActiveImageMem(self.hCam, pc_mem, pid)
+        ueye.is_InquireImageMem(
+            self.hCam, pc_mem, pid,
+            x, y, bits, self.pitch)
+
+        return self.pitch.value
+
+    # Releases an image memory that was allocated using is_AllocImageMem()
+    # and removes it from the driver management
+    def free_memory(self):
+        nRet = 0
+        for x in range(len(self.MemInfo)):
+            nRet += ueye.is_FreeImageMem(
+                self.hCam, self.MemInfo[x][0], self.MemInfo[x][1])
+        self.MemInfo.clear()
+        self.memory_allocated = False
+        return nRet
+
+    def is_WaitForNextImage(self, wait=0, log=True):
+        nret = ueye.is_WaitForNextImage(
+            self.hCam, wait,
+            byref(self.current_buffer), byref(self.current_id))
+        if nret == ueye.IS_SUCCESS:
+            if log:
+                logging.debug("is_WaitForNextImage, IS_SUCCESS: {}"
+                              .format(nret))
+        elif nret == ueye.IS_TIMED_OUT:
+            if log:
+                logging.debug("is_WaitForNextImage, IS_TIMED_OUT: {}"
+                              .format(nret))
+        elif nret == ueye.IS_CAPTURE_STATUS:
+            if log:
+                logging.debug("is_WaitForNextImage, IS_CAPTURE_STATUS: {}"
+                              .format(nret))
+            self.CaptureStatusInfo = ueye.UEYE_CAPTURE_STATUS_INFO()
+            nRet = ueye.is_CaptureStatus(
+                self.hCam, ueye.IS_CAPTURE_STATUS_INFO_CMD_GET,
+                self.CaptureStatusInfo, sizeof(self.CaptureStatusInfo))
+            if nRet == ueye.IS_SUCCESS:
+                ueye.is_CaptureStatus(
+                    self.hCam, ueye.IS_CAPTURE_STATUS_INFO_CMD_RESET,
+                    None, 0)
+        return nret
+
     # Enables the queue mode for existing image memory sequences
     def enable_queue_mode(self):
         nRet = ueye.is_InquireImageMem(
             self.hCam, self.pcImageMemory,
             self.MemID, self.width,
-            self.height, self.nBitsPerPixel, self.pitch)
+            self.height, self.bit_depth, self.pitch)
         if nRet != ueye.IS_SUCCESS:
             print("is_InquireImageMem ERROR")
 
@@ -861,15 +971,8 @@ class IDS_Camera:
         return ueye.get_data(
             self.pcImageMemory,
             self.width, self.height,
-            self.nBitsPerPixel,
+            self.bit_depth,
             self.pitch, copy=False)
-
-    # Releases an image memory that was allocated using is_AllocImageMem()
-    # and removes it from the driver management
-    def free_memory(self):
-        nRet = ueye.is_FreeImageMem(self.hCam, self.pcImageMemory, self.MemID)
-        self.memory_allocated = False
-        return nRet
 
     # Disables the hCam camera handle and releases the data structures
     # and memory areas taken up by the uEye camera

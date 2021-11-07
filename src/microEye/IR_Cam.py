@@ -15,9 +15,13 @@ class IR_Cam():
     '''An abstract class for IR cameras.'''
 
     def __init__(self) -> None:
+        self.name = 'Dummy'
         self._buffer = Queue()
         self._buffer.put(np.array([0 for i in range(128)]))
         self._connect_btn = QPushButton()
+
+    def isDummy(self) -> bool:
+        return True
 
     @property
     def buffer(self):
@@ -42,6 +46,7 @@ class ParallaxLineScanner(IR_Cam):
     def __init__(self) -> None:
         super().__init__()
 
+        self.name = 'Parallax CCD Array (TSL1401) LineScanner'
         self._buffer.put(np.array([0 for i in range(128)]))
         self.serial = QSerialPort(
             None,
@@ -49,6 +54,9 @@ class ParallaxLineScanner(IR_Cam):
         )
         self.serial.setBaudRate(115200)
         self.serial.setPortName('COM4')
+
+    def isDummy(self) -> bool:
+        return False
 
     def open(self):
         '''Opens the serial port.'''

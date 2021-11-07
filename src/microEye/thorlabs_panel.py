@@ -1,5 +1,6 @@
 import json
 import os
+import queue
 import time
 import traceback
 from queue import Queue
@@ -30,7 +31,8 @@ class Thorlabs_Panel(QGroupBox):
 
     exposureChanged = pyqtSignal()
 
-    def __init__(self, threadpool, cam: thorlabs_camera, *args, **kwargs):
+    def __init__(self, threadpool, cam: thorlabs_camera,
+                 *args, mini: bool = False, **kwargs):
         """
         Initializes a new Thorlabs_Panel Qt widget
         | Inherits QGroupBox
@@ -73,6 +75,8 @@ class Thorlabs_Panel(QGroupBox):
         self._zoom = 0.25  # display resize
         self._directory = ""  # save directory
         self._save_path = ""  # save path
+
+        self.mini = mini
 
         # main layout
         self.main_layout = QVBoxLayout()
@@ -258,11 +262,11 @@ class Thorlabs_Panel(QGroupBox):
 
         # save to hard drive checkbox
         self.cam_save_temp = QCheckBox("Save to dir")
-        self.cam_save_temp.setChecked(False)
+        self.cam_save_temp.setChecked(self.mini)
 
         # preview checkbox
         self.preview_ch_box = QCheckBox("Preview")
-        self.preview_ch_box.setChecked(True)
+        self.preview_ch_box.setChecked(not self.mini)
 
         # preview checkbox
         self.slow_lut_rbtn = QRadioButton("LUT Numpy (12bit)")
@@ -352,30 +356,34 @@ class Thorlabs_Panel(QGroupBox):
         self.first_tab_Layout.addWidget(self.cam_exposure_lbl)
         self.first_tab_Layout.addWidget(self.cam_exposure_ledit)
         self.first_tab_Layout.addWidget(self.cam_exposure_slider)
-        self.first_tab_Layout.addWidget(self.cam_flash_mode_lbl)
-        self.first_tab_Layout.addWidget(self.cam_flash_mode_cbox)
-        self.first_tab_Layout.addWidget(self.cam_flash_duration_lbl)
-        self.first_tab_Layout.addWidget(self.cam_flash_duration_ledit)
-        self.first_tab_Layout.addWidget(self.cam_flash_duration_slider)
-        self.first_tab_Layout.addWidget(self.cam_flash_delay_lbl)
-        self.first_tab_Layout.addWidget(self.cam_flash_delay_ledit)
-        self.first_tab_Layout.addWidget(self.cam_flash_delay_slider)
+        if not self.mini:
+            self.first_tab_Layout.addWidget(self.cam_flash_mode_lbl)
+            self.first_tab_Layout.addWidget(self.cam_flash_mode_cbox)
+            self.first_tab_Layout.addWidget(self.cam_flash_duration_lbl)
+            self.first_tab_Layout.addWidget(self.cam_flash_duration_ledit)
+            self.first_tab_Layout.addWidget(self.cam_flash_duration_slider)
+            self.first_tab_Layout.addWidget(self.cam_flash_delay_lbl)
+            self.first_tab_Layout.addWidget(self.cam_flash_delay_ledit)
+            self.first_tab_Layout.addWidget(self.cam_flash_delay_slider)
         self.first_tab_Layout.addLayout(self.config_Hlay)
         self.first_tab_Layout.addWidget(self.cam_freerun_btn)
         self.first_tab_Layout.addWidget(self.cam_trigger_btn)
         self.first_tab_Layout.addWidget(self.cam_stop_btn)
-        self.first_tab_Layout.addWidget(QLabel("Experiment:"))
-        self.first_tab_Layout.addWidget(self.experiment_name)
-        self.first_tab_Layout.addWidget(QLabel("Save Directory:"))
-        self.first_tab_Layout.addLayout(self.save_dir_layout)
-        self.first_tab_Layout.addWidget(self.frames_tbox)
-        self.first_tab_Layout.addWidget(self.cam_save_temp)
+        if not self.mini:
+            self.first_tab_Layout.addWidget(QLabel("Experiment:"))
+            self.first_tab_Layout.addWidget(self.experiment_name)
+            self.first_tab_Layout.addWidget(QLabel("Save Directory:"))
+            self.first_tab_Layout.addLayout(self.save_dir_layout)
+            self.first_tab_Layout.addWidget(self.frames_tbox)
+            self.first_tab_Layout.addWidget(self.cam_save_temp)
         self.first_tab_Layout.addStretch()
 
-        self.second_tab_Layout.addWidget(self.preview_ch_box)
+        if not self.mini:
+            self.second_tab_Layout.addWidget(self.preview_ch_box)
         self.second_tab_Layout.addWidget(self.slow_lut_rbtn)
         self.second_tab_Layout.addWidget(self.fast_lut_rbtn)
-        self.second_tab_Layout.addLayout(self.zoom_layout)
+        if not self.mini:
+            self.second_tab_Layout.addLayout(self.zoom_layout)
 
         self.second_tab_Layout.addWidget(self.histogram_lbl)
         self.second_tab_Layout.addWidget(self.alpha)
@@ -424,6 +432,25 @@ class Thorlabs_Panel(QGroupBox):
             the thorlabs_camera to set as panel camera.
         '''
         self._cam = cam
+
+    @property
+    def buffer(self):
+        if self._frames is not None:
+            return self._frames
+        else:
+            return Queue()
+
+    @property
+    def isEmpty(self) -> bool:
+        return self.buffer.empty()
+
+    def get(self) -> np.ndarray:
+        if not self.isEmpty:
+            return self._frames.get()
+
+    @property
+    def isOpen(self) -> bool:
+        return self.cam.acquisition
 
     def set_AOI(self):
         '''Sets the AOI for the slected thorlabs_camera
@@ -758,11 +785,12 @@ class Thorlabs_Panel(QGroupBox):
             self._threadpool.start(self.d_worker)
 
         # Pass the save function to be executed
-        if self.s_worker is None or self.s_worker.done:
-            self.s_worker = thread_worker(
-                self._save, nRet, progress=False, z_stage=False)
-            # Execute
-            self._threadpool.start(self.s_worker)
+        if not self.mini:
+            if self.s_worker is None or self.s_worker.done:
+                self.s_worker = thread_worker(
+                    self._save, nRet, progress=False, z_stage=False)
+                # Execute
+                self._threadpool.start(self.s_worker)
 
         #  Pass the capture function to be executed
         if self.c_worker is None or self.c_worker.done:
@@ -794,11 +822,12 @@ class Thorlabs_Panel(QGroupBox):
             self._threadpool.start(self.d_worker)
 
         # Pass the save function to be executed
-        if self.s_worker is None or self.s_worker.done:
-            self.s_worker = thread_worker(
-                self._save, nRet, progress=False, z_stage=False)
-            # Execute
-            self._threadpool.start(self.s_worker)
+        if not self.mini:
+            if self.s_worker is None or self.s_worker.done:
+                self.s_worker = thread_worker(
+                    self._save, nRet, progress=False, z_stage=False)
+                # Execute
+                self._threadpool.start(self.s_worker)
 
     def _capture(self, nRet, cam: thorlabs_camera):
         '''Capture function executed by the capture worker.
@@ -831,7 +860,7 @@ class Thorlabs_Panel(QGroupBox):
                 if not cam.capture_video:
                     cam.uc480.is_FreezeVideo(cam.hCam, IS_DONT_WAIT)
 
-                nRet = cam.is_WaitForNextImage(500)
+                nRet = cam.is_WaitForNextImage(500, not self.mini)
                 if nRet == CMD.IS_SUCCESS:
                     cam.get_pitch()
                     data = cam.get_data()
@@ -842,11 +871,9 @@ class Thorlabs_Panel(QGroupBox):
                     self._temps.put(cam.get_temperature())
                     temp = data.copy()
                     self._counter = self._counter + 1
-                    print(self._counter)
-                    print(nFrames)
-                    if self._counter >= nFrames:
+                    if self._counter >= nFrames and not self.mini:
                         self._stop_thread = True
-                        print('Stop')
+                        logging.debug('Stop')
                     cam.unlock_buffer()
 
                 QThread.usleep(100)  # sleep 100us
@@ -896,7 +923,10 @@ class Thorlabs_Panel(QGroupBox):
 
                     # add to saving stack
                     if self.cam_save_temp.isChecked():
-                        self._frames.put((frame.image, self._temps.get()))
+                        if not self.mini:
+                            self._frames.put((frame.image, self._temps.get()))
+                        else:
+                            self._frames.put(frame.image)
 
                     if self.preview_ch_box.isChecked():
                         _range = None
@@ -935,7 +965,8 @@ class Thorlabs_Panel(QGroupBox):
         except Exception:
             traceback.print_exc()
         finally:
-            cv2.destroyWindow(cam.name)
+            if not self.mini:
+                cv2.destroyWindow(cam.name)
 
     def _save(self, nRet):
         '''Save function executed by the save worker.
