@@ -1,10 +1,12 @@
+import ctypes
+import os
+import sys
+import traceback
 from datetime import datetime
 from logging import exception
 from typing import Match
+
 import qdarkstyle
-import ctypes
-import sys
-import traceback
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtSerialPort import *
@@ -745,15 +747,24 @@ class reglo_digital_module(QMainWindow):
         font.setPointSize(12)
         app.setFont(font)
         # sets the app icon
+        dirname = os.path.dirname(__file__)
         app_icon = QIcon()
-        app_icon.addFile('icons/16.png', QSize(16, 16))
-        app_icon.addFile('icons/24.png', QSize(24, 24))
-        app_icon.addFile('icons/32.png', QSize(32, 32))
-        app_icon.addFile('icons/48.png', QSize(48, 48))
-        app_icon.addFile('icons/64.png', QSize(64, 64))
-        app_icon.addFile('icons/128.png', QSize(128, 128))
-        app_icon.addFile('icons/256.png', QSize(256, 256))
-        app_icon.addFile('icons/512.png', QSize(512, 512))
+        app_icon.addFile(
+            os.path.join(dirname, 'icons/16.png'), QSize(16, 16))
+        app_icon.addFile(
+            os.path.join(dirname, 'icons/24.png'), QSize(24, 24))
+        app_icon.addFile(
+            os.path.join(dirname, 'icons/32.png'), QSize(32, 32))
+        app_icon.addFile(
+            os.path.join(dirname, 'icons/48.png'), QSize(48, 48))
+        app_icon.addFile(
+            os.path.join(dirname, 'icons/64.png'), QSize(64, 64))
+        app_icon.addFile(
+            os.path.join(dirname, 'icons/128.png'), QSize(128, 128))
+        app_icon.addFile(
+            os.path.join(dirname, 'icons/256.png'), QSize(256, 256))
+        app_icon.addFile(
+            os.path.join(dirname, 'icons/512.png'), QSize(512, 512))
 
         app.setWindowIcon(app_icon)
 

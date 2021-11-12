@@ -1,20 +1,30 @@
-import sys
-import os
-from PyQt5.QtCore import *
-from PyQt5.QtWidgets import *
-from PyQt5.QtGui import QFont, QIcon
-import pyqtgraph as pg
-from pyqtgraph.colormap import ColorMap
-import qdarkstyle
 import ctypes
-import tifffile as tf
+import os
+import sys
+from enum import auto
+
 import cv2
 import numpy as np
+import ome_types.model as om
+import pyqtgraph as pg
+import qdarkstyle
+import tifffile as tf
+from ome_types.model.channel import Channel
+from ome_types.model.ome import OME
+from ome_types.model.simple_types import UnitsLength, UnitsTime
+from ome_types.model.tiff_data import TiffData
+from PyQt5.QtCore import *
+from PyQt5.QtGui import QFont, QIcon
+from PyQt5.QtWidgets import *
+from pyqtgraph.colormap import ColorMap
+
+from .uImage import uImage
+from .metadata import MetadataEditor
 
 
 class tiff_viewer(QWidget):
 
-    def __init__(self):
+    def __init__(self, path=os.path.dirname(os.path.abspath(__file__))):
         super().__init__()
         self.title = 'microEye tiff viewer'
         self.left = 0
@@ -22,16 +32,17 @@ class tiff_viewer(QWidget):
         self.width = 1024
         self.height = 600
         self._zoom = 1  # display resize
+        self._n_levels = 4096
 
         self.tiff = None
 
-        self.initialize()
+        self.initialize(path)
 
-    def initialize(self):
+    def initialize(self, path):
         self.setWindowTitle(self.title)
         self.setGeometry(self.left, self.top, self.width, self.height)
         self.center()
-        self.path = os.path.dirname(os.path.abspath(__file__))
+        self.path = path
         self.model = QFileSystemModel()
         self.model.setRootPath(self.path)
         self.model.setFilter(
@@ -78,16 +89,20 @@ class tiff_viewer(QWidget):
         self.pages_slider.setMaximum(0)
         self.pages_slider.valueChanged.connect(self.slider_changed)
 
+        self.min_label = QLabel('Min')
         self.min_slider = QSlider(Qt.Horizontal)
         self.min_slider.setMinimum(0)
-        self.min_slider.setMaximum(4096)
+        self.min_slider.setMaximum(self._n_levels - 1)
         self.min_slider.valueChanged.connect(self.slider_changed)
+        self.min_slider.valueChanged.emit(0)
 
+        self.max_label = QLabel('Max')
         self.max_slider = QSlider(Qt.Horizontal)
         self.max_slider.setMinimum(0)
-        self.max_slider.setMaximum(4096)
-        self.max_slider.setValue(4096)
+        self.max_slider.setMaximum(self._n_levels - 1)
+        self.max_slider.setValue(self._n_levels - 1)
         self.max_slider.valueChanged.connect(self.slider_changed)
+        self.max_slider.valueChanged.emit(self._n_levels - 1)
 
         self.autostretch = QCheckBox('Auto-Stretch')
         self.autostretch.setChecked(True)
@@ -114,9 +129,9 @@ class tiff_viewer(QWidget):
         self.controls_layout.addWidget(self.pages_label)
         self.controls_layout.addWidget(self.pages_slider)
         self.controls_layout.addWidget(self.autostretch)
-        self.controls_layout.addWidget(QLabel('Min'))
+        self.controls_layout.addWidget(self.min_label)
         self.controls_layout.addWidget(self.min_slider)
-        self.controls_layout.addWidget(QLabel('Max'))
+        self.controls_layout.addWidget(self.max_label)
         self.controls_layout.addWidget(self.max_slider)
         # self.controls_layout.addLayout(self.zoom_layout)
         self.controls_layout.addStretch()
@@ -125,11 +140,16 @@ class tiff_viewer(QWidget):
 
         # graphics layout
         # # A plot area (ViewBox + axes) for displaying the image
+        self.uImage = None
         self.image = pg.ImageItem(axisOrder='row-major')
         self.image_plot = pg.ImageView(imageItem=self.image)
+        self.image_plot.setLevels(0, 255)
         # self.image_plot.setColorMap(pg.colormap.getFromMatplotlib('jet'))
         self.g_layout_widget.addWidget(self.image_plot)
         # Item for displaying image data
+
+        self.metadataEditor = MetadataEditor()
+        self.main_layout.addWidget(self.metadataEditor)
 
         self.setLayout(self.main_layout)
 
@@ -152,8 +172,20 @@ class tiff_viewer(QWidget):
                 self.tiff.close()
             self.tiff = tf.TiffFile(self.path)
             self.pages_slider.setMaximum(len(self.tiff.pages) - 1)
+            self.pages_slider.valueChanged.emit(0)
 
-            self.update_display()
+            # self.update_display()
+            # self.genOME()
+
+    def genOME(self):
+        if self.tiff is not None:
+
+            frames = len(self.tiff.pages)
+            width = self.image.image.shape[1]
+            height = self.image.image.shape[0]
+            ome = self.metadataEditor.getOME_XML(frames, width, height)
+            tf.tiffcomment(self.tiff.filename, ome.to_xml())
+            # print(om.OME.from_tiff(self.tiff.filename))
 
     def zoom_in(self):
         """Increase image display size"""
@@ -171,43 +203,38 @@ class tiff_viewer(QWidget):
         if self.tiff is not None:
             self.update_display()
         if self.sender() is self.pages_slider:
-            self.pages_label.setText('Page: {:d}'.format(value))
+            self.pages_label.setText(
+                'Page: {:d}/{:d}'.format(
+                    value + 1,
+                    self.pages_slider.maximum() + 1))
+        elif self.sender() is self.min_slider:
+            self.min_label.setText(
+                'Min: {:d}/{:d}'.format(
+                    value,
+                    self.min_slider.maximum()))
+        elif self.sender() is self.max_slider:
+            self.max_label.setText(
+                'Max: {:d}/{:d}'.format(
+                    value,
+                    self.max_slider.maximum()))
 
     def update_display(self):
         image = self.tiff.pages[self.pages_slider.value()].asarray()
 
+        self.uImage = uImage(image)
+
+        min_max = None
+        if not self.autostretch.isChecked():
+            min_max = (self.min_slider.value(), self.max_slider.value())
+
+        self.uImage.equalizeLUT(min_max, True)
+
         if self.autostretch.isChecked():
-            # calculate image histogram
-            _hist = cv2.calcHist(
-                [image], [0], None,
-                [4096], [0, 4096]) / float(np.prod(image.shape))
-            # calculate the cdf
-            cdf = _hist[:, 0].cumsum()
-
-            p2 = np.where(cdf >= 0.00001)[0][0]
-            p98 = np.where(cdf >= 0.9999)[0][0]
-            self.min_slider.setValue(p2)
-            self.max_slider.setValue(p98)
-
-            c = 255.0 / (p98 - p2)
-            ac = p2 * c
-            image = np.subtract(
-                image.dot(c), ac).astype(np.uint8)
-        else:
-            p2 = self.min_slider.value()
-            p98 = self.max_slider.value()
-
-            c = 255.0 / (p98 - p2)
-            ac = p2 * c
-            image = np.subtract(
-                image.dot(c), ac).astype(np.uint8)
-
-        # resizing the image
-        image = cv2.resize(
-            image, (0, 0), fx=self._zoom, fy=self._zoom)
+            self.min_slider.setValue(self.uImage._min)
+            self.max_slider.setValue(self.uImage._max)
 
         # cv2.imshow(self.path, image)
-        self.image.setImage(image)
+        self.image.setImage(self.uImage._view, autoLevels=False)
 
         # # Detect blobs.
         # keypoints = self.blob_detector().detect(image)
@@ -253,7 +280,7 @@ class tiff_viewer(QWidget):
         else:
             return cv2.SimpleBlobDetector_create(params)
 
-    def StartGUI():
+    def StartGUI(path=None):
         '''Initializes a new QApplication and control_module.
 
         Use
@@ -275,22 +302,31 @@ class tiff_viewer(QWidget):
         font.setPointSize(10)
         app.setFont(font)
         # sets the app icon
+        dirname = os.path.dirname(__file__)
         app_icon = QIcon()
-        app_icon.addFile('icons/16.png', QSize(16, 16))
-        app_icon.addFile('icons/24.png', QSize(24, 24))
-        app_icon.addFile('icons/32.png', QSize(32, 32))
-        app_icon.addFile('icons/48.png', QSize(48, 48))
-        app_icon.addFile('icons/64.png', QSize(64, 64))
-        app_icon.addFile('icons/128.png', QSize(128, 128))
-        app_icon.addFile('icons/256.png', QSize(256, 256))
-        app_icon.addFile('icons/512.png', QSize(512, 512))
+        app_icon.addFile(
+            os.path.join(dirname, 'icons/16.png'), QSize(16, 16))
+        app_icon.addFile(
+            os.path.join(dirname, 'icons/24.png'), QSize(24, 24))
+        app_icon.addFile(
+            os.path.join(dirname, 'icons/32.png'), QSize(32, 32))
+        app_icon.addFile(
+            os.path.join(dirname, 'icons/48.png'), QSize(48, 48))
+        app_icon.addFile(
+            os.path.join(dirname, 'icons/64.png'), QSize(64, 64))
+        app_icon.addFile(
+            os.path.join(dirname, 'icons/128.png'), QSize(128, 128))
+        app_icon.addFile(
+            os.path.join(dirname, 'icons/256.png'), QSize(256, 256))
+        app_icon.addFile(
+            os.path.join(dirname, 'icons/512.png'), QSize(512, 512))
 
         app.setWindowIcon(app_icon)
 
         myappid = u'samhitech.mircoEye.tiff_viewer'  # appid
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
 
-        window = tiff_viewer()
+        window = tiff_viewer(path)
         return app, window
 
 

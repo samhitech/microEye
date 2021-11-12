@@ -11,6 +11,12 @@ class uImage():
         self._min = 0
         self._max = 4095 if image.dtype == np.uint16 else 255
         self._view = np.zeros(image.shape, dtype=np.uint8)
+        self._hist = None
+        self.n_bins = None
+        self._cdf = None
+        self._stats = {}
+        self._pixel_w = 1.0
+        self._pixel_h = 1.0
 
     @property
     def image(self):
@@ -87,6 +93,32 @@ class uImage():
             self._LUT[self._max:] = 255
 
             cv2.LUT(self._view, self._LUT, self._view)
+
+    def getStatistics(self):
+        if self._hist is None:
+            self.calcHist()
+
+        _sum = 0.0
+        _sum_of_sq = 0.0
+        _count = 0
+        for i, count in enumerate(self._hist):
+            _sum += float(i * count)
+            _sum_of_sq += (i**2)*count
+            _count += count
+
+        self._stats['Mean'] = _sum / _count
+        self._stats['Area'] = _count * self._pixel_w * self._pixel_h
+        self.calcStdDev(_count, _sum, _sum_of_sq)
+
+    def calcStdDev(self, n, sum, sum_of_sq):
+        if n > 0.0:
+            stdDev = sum_of_sq - (sum**2 / n)
+            if stdDev > 0:
+                self._stats['StdDev'] = np.sqrt(stdDev / (n - 1))
+            else:
+                self._stats['StdDev'] = 0.0
+        else:
+            self._stats['StdDev'] = 0.0
 
     def fromUINT8(buffer, height, width):
         res = np.ndarray(shape=(height, width), dtype='u1', buffer=buffer)

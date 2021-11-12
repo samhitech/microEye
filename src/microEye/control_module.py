@@ -318,11 +318,12 @@ class control_module(QMainWindow):
         self.remote_view = RemoteGraphicsView()
         self.remote_view.pg.setConfigOptions(
             antialias=True, imageAxisOrder='row-major')
-        self.remote_plt = self.remote_view.pg.ViewBox()
+        pyqtgraph.setConfigOption('imageAxisOrder', 'row-major')
+        self.remote_plt = self.remote_view.pg.ViewBox(invertY=True)
         self.remote_plt._setProxyOptions(deferGetattr=True)
         self.remote_view.setCentralItem(self.remote_plt)
         self.remote_plt.setAspectLocked()
-        self.remote_img = self.remote_view.pg.ImageItem()
+        self.remote_img = self.remote_view.pg.ImageItem(axisOrder='row-major')
         self.roi_handles = [None, None]
         self.roi = self.remote_view.pg.LineSegmentROI(
             [[10, 256], [138, 256]],
@@ -501,7 +502,8 @@ class control_module(QMainWindow):
                     if self.isImage():
                         self.remote_img.setImage(data, _callSync='off')
                         data, _ = self.roi.getArrayRegion(
-                            data, self.remote_img, returnMappedCoords=True)
+                            data, self.remote_img,
+                            axes=(1, 0), returnMappedCoords=True)
                     # self.ydata_temp = self.ydata
                     self.peak_fit(movez_callback, data.copy())
                     if(self.file is not None):
@@ -526,7 +528,7 @@ class control_module(QMainWindow):
             peaks = find_peaks(data, height=1)
             popt = None  # fit parameters
             nPeaks = len(peaks[0])  # number of peaks
-            maxPeakIdx = np.argmax(peaks[1])  # highest peak
+            maxPeakIdx = np.argmax(peaks[1]['peak_heights'])  # highest peak
             x0 = 64 if nPeaks == 0 else peaks[0][maxPeakIdx]
             a0 = 1 if nPeaks == 0 else peaks[1]['peak_heights'][maxPeakIdx]
 

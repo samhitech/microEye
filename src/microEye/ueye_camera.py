@@ -145,8 +145,8 @@ class IDS_Camera:
 
         self.pitch = ueye.INT()
         self.MemInfo = []
-        self.current_buffer = c_void_p()
-        self.current_id = c_int()
+        self.current_buffer = ueye.c_mem_p()
+        self.current_id = ueye.int()
         self.pcImageMemory = ueye.c_mem_p()
         self.MemID = ueye.int()
 
@@ -931,7 +931,7 @@ class IDS_Camera:
     def is_WaitForNextImage(self, wait=0, log=True):
         nret = ueye.is_WaitForNextImage(
             self.hCam, wait,
-            byref(self.current_buffer), byref(self.current_id))
+            self.current_buffer, self.current_id)
         if nret == ueye.IS_SUCCESS:
             if log:
                 logging.debug("is_WaitForNextImage, IS_SUCCESS: {}"
@@ -969,7 +969,7 @@ class IDS_Camera:
         # In order to display the image in an OpenCV window we need to...
         # ...extract the data of our image memory
         return ueye.get_data(
-            self.pcImageMemory,
+            self.current_buffer,
             self.width, self.height,
             self.bit_depth,
             self.pitch, copy=False)
