@@ -22,6 +22,7 @@ from .qlist_slider import *
 from .thread_worker import *
 from .thorlabs import *
 from .uImage import uImage
+from .metadata import MetadataEditor
 
 
 class Thorlabs_Panel(QGroupBox):
@@ -92,10 +93,20 @@ class Thorlabs_Panel(QGroupBox):
         self.first_tab = QWidget()
         self.second_tab = QWidget()
         self.third_tab = QWidget()
+
+        self.OME_tab = MetadataEditor()
+        self.OME_tab.channel_name.setText(self._cam.name)
+        self.OME_tab.det_manufacturer.setText('IDS uEye')
+        self.OME_tab.det_model.setText(
+            self._cam.sInfo.strSensorName.decode('utf-8'))
+        self.OME_tab.det_serial.setText(
+            self._cam.cInfo.SerNo.decode('utf-8'))
         # add tabs
         self.main_tab_view.addTab(self.first_tab, "Main")
         self.main_tab_view.addTab(self.second_tab, "Preview")
         self.main_tab_view.addTab(self.third_tab, "Area of Interest (AOI)")
+        if not self.mini:
+            self.main_tab_view.addTab(self.OME_tab, "OME-XML metadata")
 
         # first tab vertical layout
         self.first_tab_Layout = QVBoxLayout()
@@ -244,6 +255,8 @@ class Thorlabs_Panel(QGroupBox):
         )
 
         self.experiment_name = QLineEdit("Experiment_001")
+        self.experiment_name.textChanged.connect(
+            lambda x: self.OME_tab.experiment.setText(x))
 
         self.save_dir_layout = QHBoxLayout()
 
@@ -263,6 +276,8 @@ class Thorlabs_Panel(QGroupBox):
         # save to hard drive checkbox
         self.cam_save_temp = QCheckBox("Save to dir")
         self.cam_save_temp.setChecked(self.mini)
+        self.cam_save_meta = QCheckBox("Write OME-XML")
+        self.cam_save_meta.setChecked(self.mini)
 
         # preview checkbox
         self.preview_ch_box = QCheckBox("Preview")
@@ -376,6 +391,7 @@ class Thorlabs_Panel(QGroupBox):
             self.first_tab_Layout.addLayout(self.save_dir_layout)
             self.first_tab_Layout.addWidget(self.frames_tbox)
             self.first_tab_Layout.addWidget(self.cam_save_temp)
+            self.first_tab_Layout.addWidget(self.cam_save_meta)
         self.first_tab_Layout.addStretch()
 
         if not self.mini:
@@ -627,6 +643,7 @@ class Thorlabs_Panel(QGroupBox):
         self._cam.get_flash_range(False)
         self.cam_exposure_ledit.setText("{:.6f}".format(
             self._cam.exposure_current.value))
+        self.OME_tab.exposure.setText(self.cam_exposure_ledit.text())
         self.cam_flash_duration_slider.values = np.append([0], np.arange(
             self._cam.flash_min.u32Duration,
             self._cam.flash_max.u32Duration,
@@ -996,7 +1013,7 @@ class Thorlabs_Panel(QGroupBox):
 
                     # append frame to tiff
                     tf.imwrite(
-                        self._save_path + "\\image.tiff",
+                        self._save_path + "\\image.ome.tif",
                         data=frame[np.newaxis, :],
                         photometric='minisblack',
                         append=True,
@@ -1019,6 +1036,15 @@ class Thorlabs_Panel(QGroupBox):
                     break
         except Exception:
             traceback.print_exc()
+        finally:
+            if self.cam_save_meta.isChecked():
+                ome = self.OME_tab.gen_OME_XML(
+                    frames_saved,
+                    self._cam.width,
+                    self._cam.height)
+                tf.tiffcomment(
+                    self._save_path + "\\image.ome.tif",
+                    ome.to_xml())
 
     @staticmethod
     def find_nearest(array, value):

@@ -2,9 +2,11 @@ import ctypes
 import os
 import sys
 from enum import auto
+from IPython.core.display import update_display
 
 import cv2
 import numpy as np
+from numpy.ma.extras import average
 import ome_types.model as om
 import pyqtgraph as pg
 import qdarkstyle
@@ -67,17 +69,23 @@ class tiff_viewer(QWidget):
         self.tree.setWindowTitle("Dir View")
         self.tree.resize(640, 480)
 
+        self.metadataEditor = MetadataEditor()
+
         self.main_layout = QHBoxLayout()
-        self.right_layout = QVBoxLayout()
         self.g_layout_widget = QVBoxLayout()
 
-        self.main_layout.addWidget(self.tree, 1)
-        self.main_layout.addLayout(self.right_layout, 1)
+        self.tabView = QTabWidget()
+        self.tabView.addTab(self.tree, 'File system')
+        self.tabView.addTab(self.metadataEditor, 'OME-XML Metadata')
+
+        self.main_layout.addWidget(self.tabView, 2)
         self.main_layout.addLayout(self.g_layout_widget, 3)
 
-        self.controls_group = QGroupBox('Tiff Options')
+        self.controls_group = QWidget()
         self.controls_layout = QVBoxLayout()
         self.controls_group.setLayout(self.controls_layout)
+
+        self.tabView.addTab(self.controls_group, 'Tiff Options')
 
         self.series_slider = QSlider(Qt.Horizontal)
         self.series_slider.setMinimum(0)
@@ -123,6 +131,10 @@ class tiff_viewer(QWidget):
         self.zoom_layout.addWidget(self.zoom_out_btn, 1)
         self.zoom_layout.addWidget(self.zoom_in_btn, 1)
 
+        self.average_btn = QPushButton(
+            'Average stack',
+            clicked=lambda: self.average_stack())
+
         # self.controls_layout.addWidget(QLabel('Series'))
         # self.controls_layout.addWidget(self.series_slider)
 
@@ -133,10 +145,9 @@ class tiff_viewer(QWidget):
         self.controls_layout.addWidget(self.min_slider)
         self.controls_layout.addWidget(self.max_label)
         self.controls_layout.addWidget(self.max_slider)
+        # self.controls_layout.addWidget(self.average_btn)
         # self.controls_layout.addLayout(self.zoom_layout)
         self.controls_layout.addStretch()
-
-        self.right_layout.addWidget(self.controls_group)
 
         # graphics layout
         # # A plot area (ViewBox + axes) for displaying the image
@@ -147,9 +158,6 @@ class tiff_viewer(QWidget):
         # self.image_plot.setColorMap(pg.colormap.getFromMatplotlib('jet'))
         self.g_layout_widget.addWidget(self.image_plot)
         # Item for displaying image data
-
-        self.metadataEditor = MetadataEditor()
-        self.main_layout.addWidget(self.metadataEditor)
 
         self.setLayout(self.main_layout)
 
@@ -173,9 +181,18 @@ class tiff_viewer(QWidget):
             self.tiff = tf.TiffFile(self.path)
             self.pages_slider.setMaximum(len(self.tiff.pages) - 1)
             self.pages_slider.valueChanged.emit(0)
+            ome = OME.from_xml(self.tiff.ome_metadata)
+            self.metadataEditor.pop_OME_XML(ome)
 
             # self.update_display()
-            # self.genOME()
+            self.genOME()
+
+    def average_stack(self):
+        if self.tiff is not None:
+            sum = np.array([page.asarray() for page in self.tiff.pages])
+            avg = sum.mean(axis=0, dtype=np.float32)
+
+            self.image.setImage(avg, autoLevels=False)
 
     def genOME(self):
         if self.tiff is not None:
@@ -183,8 +200,10 @@ class tiff_viewer(QWidget):
             frames = len(self.tiff.pages)
             width = self.image.image.shape[1]
             height = self.image.image.shape[0]
-            ome = self.metadataEditor.getOME_XML(frames, width, height)
-            tf.tiffcomment(self.tiff.filename, ome.to_xml())
+            ome = self.metadataEditor.gen_OME_XML(frames, width, height)
+            # tf.tiffcomment(
+            #     self.path,
+            #     ome.to_xml())
             # print(om.OME.from_tiff(self.tiff.filename))
 
     def zoom_in(self):
@@ -218,8 +237,9 @@ class tiff_viewer(QWidget):
                     value,
                     self.max_slider.maximum()))
 
-    def update_display(self):
-        image = self.tiff.pages[self.pages_slider.value()].asarray()
+    def update_display(self, image=None):
+        if image is None:
+            image = self.tiff.pages[self.pages_slider.value()].asarray()
 
         self.uImage = uImage(image)
 
