@@ -2,11 +2,9 @@ import ctypes
 import os
 import sys
 from enum import auto
-from IPython.core.display import update_display
 
 import cv2
 import numpy as np
-from numpy.ma.extras import average
 import ome_types.model as om
 import pyqtgraph as pg
 import qdarkstyle
@@ -20,8 +18,8 @@ from PyQt5.QtGui import QFont, QIcon
 from PyQt5.QtWidgets import *
 from pyqtgraph.colormap import ColorMap
 
-from .uImage import uImage
 from .metadata import MetadataEditor
+from .uImage import uImage
 
 
 class tiff_viewer(QWidget):

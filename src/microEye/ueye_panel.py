@@ -1016,7 +1016,7 @@ class IDS_Panel(QGroupBox):
 
                     # append frame to tiff
                     tf.imwrite(
-                        self._save_path + "\\image.tiff",
+                        self._save_path + "\\image.ome.tif",
                         data=frame[np.newaxis, :],
                         photometric='minisblack',
                         append=True,
