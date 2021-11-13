@@ -17,6 +17,8 @@ This toolkit is compatible with the [hardware](#hardware) we are using in our mi
 - PyQt5
 - pyqtgraph
 - qdarkstyle
+- ome-types
+- lmfit
 
 ## How to Install [Package](https://pypi.org/project/microEye/)
 
@@ -28,12 +30,13 @@ This toolkit is compatible with the [hardware](#hardware) we are using in our mi
 
 ## Hardware 
 
-- IDS uEye industrial-grade CMOS cameras, specifically [UI-3060CP Rev. 2](https://en.ids-imaging.com/store/products/cameras/ui-3060cp-rev-2.html) 
-- Integrated Optics Multi-wavelength Laser Combiner [MatchBox](https://integratedoptics.com/products/wavelength-combiners)
-- Piezo Concept nanopositioner for microscope objectives [FOC](https://piezoconcept-store.squarespace.com/1-axis/p/foc)
-- Parallax Linescan Camera Module used for IR autofocus stabilization tracking [TSL1401-DB (#28317)](https://eu.mouser.com/ProductDetail/Parallax/28317?qs=%2Fha2pyFaduiCRhuOAXMuCmQIeG1Q3R01m6Y1EH%252BmN80%3D) acquisition done by an Arduino [LineScanner](https://github.com/samhitech/LineScanner)
+- IDS uEye industrial-grade CMOS cameras, specifically [UI-3060CP Rev. 2](https://en.ids-imaging.com/store/products/cameras/ui-3060cp-rev-2.html).
+- Thorlabs DCx cameras using the UC480 driver, specifically [DCC1545M](https://www.thorlabs.com/thorProduct.cfm?partNumber=DCC1545M).
+- Integrated Optics Multi-wavelength Laser Combiner [MatchBox](https://integratedoptics.com/products/wavelength-combiners).
+- Piezo Concept nanopositioner for microscope objectives [FOC](https://piezoconcept-store.squarespace.com/1-axis/p/foc).
+- Parallax Linescan Camera Module used for IR autofocus stabilization tracking [TSL1401-DB (#28317)](https://eu.mouser.com/ProductDetail/Parallax/28317?qs=%2Fha2pyFaduiCRhuOAXMuCmQIeG1Q3R01m6Y1EH%252BmN80%3D) acquisition done by an Arduino [LineScanner](https://github.com/samhitech/LineScanner).
 - [RelayBox](https://github.com/samhitech/RelayBox) arduino for laser control using the camera flash signal with different presets.
-- Parts list related to our iteration of [hohlbeinlab miCube](https://hohlbeinlab.github.io/miCube/index.html) (TBA)
+- Parts list related to our iteration of [hohlbeinlab miCube](https://hohlbeinlab.github.io/miCube/index.html) (TBA).
 
 ## Acquisition Module
 
