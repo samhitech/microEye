@@ -61,7 +61,7 @@ This toolkit is compatible with the [hardware](#hardware) we are using in our mi
 
 ## Control Module
 
-![control_module](https://user-images.githubusercontent.com/89871015/135764911-7a83217a-d1ab-480d-bb57-c82f9d4a6624.png)
+![control_module](https://user-images.githubusercontent.com/89871015/141841883-d37c4979-c8aa-4e1f-b1b9-84bdd819c828.png)
 
 ### How to use
 
