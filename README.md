@@ -19,7 +19,7 @@ This toolkit is compatible with the [hardware](#hardware) we are using in our mi
 - qdarkstyle
 - ome-types
 - lmfit
-- pyqode.python
+- pyqode.python ([Jedi Fix](https://github.com/pyQode/pyqode.python/blob/6cc30087dab69d334a48c716d8d19fc1546ff0c6/pyqode/python/backend/workers.py))
 
 ## How to Install [Package](https://pypi.org/project/microEye/)
 
