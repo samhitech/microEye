@@ -10,5 +10,6 @@ requires = [
     "QDarkStyle",
     "ome-types",
     "lmfit",
+    "pyqode.python"
 ]
 build-backend = "setuptools.build_meta"

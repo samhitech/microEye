@@ -256,6 +256,9 @@ class piezo_concept(stage):
             clicked=lambda: self.autoFocusTracking()
         )
 
+        self._inverted = QCheckBox('Inverted')
+        self._inverted.setChecked(False)
+
         fine_step = 25
         coarse_step = 1
         self.fine_steps_label = QLabel("Fine step " + str(fine_step) + " nm")
@@ -325,5 +328,6 @@ class piezo_concept(stage):
         layout.addLayout(self.move_buttons)
         layout.addWidget(self._tracking_conf_btn)
         layout.addWidget(self._tracking_btn)
+        layout.addWidget(self._inverted)
 
         return group

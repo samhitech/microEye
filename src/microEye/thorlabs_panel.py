@@ -132,7 +132,8 @@ class Thorlabs_Panel(QGroupBox):
             .connect(self.cam_pixel_cbox_changed)
 
         # framerate slider control
-        self.cam_framerate_lbl = QLabel("Framerate FPS")
+        self.cam_framerate_lbl = DragLabel(
+            "Framerate FPS", parent_name='cam_framerate_slider')
         self.cam_framerate_slider = qlist_slider(
             orientation=Qt.Orientation.Horizontal)
         self.cam_framerate_slider.values = np.arange(
@@ -151,7 +152,8 @@ class Thorlabs_Panel(QGroupBox):
             .connect(self.cam_framerate_return)
 
         # exposure slider control
-        self.cam_exposure_lbl = QLabel("Exposure ms")
+        self.cam_exposure_lbl = DragLabel(
+            "Exposure ms", parent_name='cam_exposure_slider')
         self.cam_exposure_slider = qlist_slider(
             orientation=Qt.Orientation.Horizontal)
         self.cam_exposure_slider.values = np.arange(
@@ -622,9 +624,7 @@ class Thorlabs_Panel(QGroupBox):
         """
         Sets the framerate slider with the entered text box value
         """
-        self.cam_framerate_slider.setValue(self.find_nearest(
-            self.cam_framerate_slider.values,
-            float(self.cam_framerate_ledit.text())))
+        self.cam_framerate_slider.setNearest(self.cam_framerate_ledit.text())
 
     @pyqtSlot(int, float)
     def cam_exposure_value_changed(self, index, value):
@@ -659,9 +659,7 @@ class Thorlabs_Panel(QGroupBox):
         """
         Sets the exposure slider with the entered text box value
         """
-        self.cam_exposure_slider.setValue(self.find_nearest(
-            self.cam_exposure_slider.values,
-            float(self.cam_exposure_ledit.text())))
+        self.cam_exposure_slider.setNearest(self.cam_exposure_ledit.text())
 
     @pyqtSlot(int, int)
     def cam_flash_duration_value_changed(self, index, value):
@@ -684,9 +682,8 @@ class Thorlabs_Panel(QGroupBox):
         """
         Sets the flash duration slider with the entered text box value
         """
-        self.cam_flash_duration_slider.setValue(self.find_nearest(
-            self.cam_flash_duration_slider.values,
-            float(self.cam_flash_duration_ledit.text())))
+        self.cam_flash_duration_slider.setNearest(
+            self.cam_flash_duration_ledit.text())
 
     @pyqtSlot(int, int)
     def cam_flash_delay_value_changed(self, index, value):
@@ -710,9 +707,8 @@ class Thorlabs_Panel(QGroupBox):
         """
         Sets the flash delay slider with the entered text box value
         """
-        self.cam_flash_delay_slider.setValue(self.find_nearest(
-            self.cam_flash_delay_slider.values,
-            float(self.cam_flash_delay_ledit.text())))
+        self.cam_flash_delay_slider.setNearest(
+            self.cam_flash_delay_ledit.text())
 
     def start_free_run(self, cam: thorlabs_camera):
         """
@@ -1017,7 +1013,8 @@ class Thorlabs_Panel(QGroupBox):
                         data=frame[np.newaxis, :],
                         photometric='minisblack',
                         append=True,
-                        bigtiff=True)
+                        bigtiff=True,
+                        ome=False)
 
                     # open csv file and append sensor temp and close
                     file = open(self._save_path + '\\temps.csv', 'ab')
@@ -1095,7 +1092,7 @@ class Thorlabs_Panel(QGroupBox):
 
     def load_config(self):
         filename, _ = QFileDialog.getOpenFileName(
-            self, "Save config", filter="JSON Files (*.json);;")
+            self, "Load config", filter="JSON Files (*.json);;")
 
         if len(filename) > 0:
             config: dict = None
@@ -1133,21 +1130,15 @@ class Thorlabs_Panel(QGroupBox):
                     self.cam_flash_mode_cbox.setCurrentText(
                         config['flash mode'])
 
-                    self.cam_framerate_slider.setValue(self.find_nearest(
-                        self.cam_framerate_slider.values,
-                        float(config['framerate'])))
+                    self.cam_framerate_slider.setNearest(config['framerate'])
 
-                    self.cam_exposure_slider.setValue(self.find_nearest(
-                        self.cam_exposure_slider.values,
-                        float(config['exposure'])))
+                    self.cam_exposure_slider.setNearest(config['exposure'])
 
-                    self.cam_flash_duration_slider.setValue(self.find_nearest(
-                        self.cam_flash_duration_slider.values,
-                        float(config['flash duration'])))
+                    self.cam_flash_duration_slider.setNearest(
+                        config['flash duration'])
 
-                    self.cam_flash_delay_slider.setValue(self.find_nearest(
-                        self.cam_flash_delay_slider.values,
-                        float(config['flash delay'])))
+                    self.cam_flash_delay_slider.setNearest(
+                        config['flash delay'])
 
                     self._zoom = float(config['Zoom'])
                     self.zoom_lbl.setText(

@@ -1,6 +1,7 @@
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
+import numpy as np
 
 
 class qlist_slider(QSlider):
@@ -63,3 +64,51 @@ class qlist_slider(QSlider):
         value = self.values[index]
         self.elementChanged[int, int].emit(index, value)
         self.elementChanged[int, float].emit(index, value)
+
+    def find_nearest(self, array, value):
+        """
+        find nearest value in array to the supplied one
+
+        Parameters
+        ----------
+        array : ndarray
+            numpy array searching in
+        value : type of ndarray.dtype
+            value to find nearest to in the array
+        """
+        array = np.asarray(array)
+        return (np.abs(array - value)).argmin()
+
+    def setNearest(self, value):
+        self.setValue(self.find_nearest(
+                        self.values,
+                        float(value)))
+
+
+class DragLabel(QLabel):
+    def __init__(self, parent=None, parent_name: str = ''):
+        super(QLabel, self).__init__(parent)
+        self.parent_name = parent_name
+        self.show()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.drag_start_position = event.pos()
+
+    def mouseMoveEvent(self, event):
+        if not (event.buttons() & Qt.LeftButton):
+            return
+        if (event.pos() - self.drag_start_position).manhattanLength() < \
+                QApplication.startDragDistance():
+            return
+        drag = QDrag(self)
+        mimedata = QMimeData()
+        mimedata.setText(self.parent_name)
+        drag.setMimeData(mimedata)
+        pixmap = QPixmap(self.size())
+        painter = QPainter(pixmap)
+        painter.drawPixmap(self.rect(), self.grab())
+        painter.end()
+        drag.setPixmap(pixmap)
+        drag.setHotSpot(event.pos())
+        drag.exec_(Qt.CopyAction | Qt.MoveAction)

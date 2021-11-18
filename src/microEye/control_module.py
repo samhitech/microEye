@@ -5,6 +5,7 @@ import sys
 import time
 import warnings
 import traceback
+import subprocess
 from queue import Queue
 
 from lmfit import Model
@@ -12,15 +13,21 @@ from lmfit import Model
 import numpy as np
 import pyqtgraph
 from pyqtgraph.graphicsItems.ROI import Handle
+from pyqtgraph.widgets.PlotWidget import PlotWidget
+from pyqtgraph.widgets.RemoteGraphicsView import RemoteGraphicsView
 import qdarkstyle
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtSerialPort import *
 from PyQt5.QtWidgets import *
-from pyqtgraph import *
+# from pyqtgraph import *
 from scipy.optimize import curve_fit
 from scipy.optimize.optimize import OptimizeWarning
 from scipy.signal import find_peaks
+
+from pyqode.python.widgets import PyCodeEdit
+from pyqode.python import panels as pypanels
+from pyqode.core import api, modes, panels
 
 from .io_matchbox import *
 from .IR_Cam import *
@@ -29,6 +36,8 @@ from .piezo_concept import *
 from .port_config import *
 from .thread_worker import *
 from .CameraListWidget import *
+from .qlist_slider import *
+from .pyscripting import *
 
 
 warnings.filterwarnings("ignore", category=OptimizeWarning)
@@ -244,7 +253,8 @@ class control_module(QMainWindow):
 
         Reg_Layout.addWidget(QLabel('IR Camera:'))
         Reg_Layout.addLayout(ir_cam_layout)
-        Reg_Layout.addWidget(QLabel('Stage:'))
+        Reg_Layout.addWidget(
+            DragLabel('Stage:', parent_name='self.stage_set_btn'))
         Reg_Layout.addLayout(stage_layout)
 
         Reg_Layout.addWidget(self.start_IR_btn)
@@ -342,6 +352,10 @@ class control_module(QMainWindow):
         self.Tab_Widget.addTab(self.camListWidget, 'Cameras List')
         self.Tab_Widget.addTab(graphs_tab, 'Graphs')
 
+        self.pyEditor = pyEditor()
+        self.pyEditor.exec_btn.clicked.connect(lambda: self.scriptTest())
+        self.Tab_Widget.addTab(self.pyEditor, 'PyScript')
+
         # Create a placeholder widget to hold the controls
         Hlayout.addLayout(self.VL_layout, 1)
         Hlayout.addWidget(self.Tab_Widget, 3)
@@ -350,6 +364,9 @@ class control_module(QMainWindow):
         AllWidgets.setLayout(Hlayout)
 
         self.setCentralWidget(AllWidgets)
+
+    def scriptTest(self):
+        exec(self.pyEditor.toPlainText())
 
     def add_camera(self, cam):
         if self.cam is not None:
@@ -570,9 +587,12 @@ class control_module(QMainWindow):
             pass
             # print('Failed Gauss. fit: ' + str(e))
 
-    def movez_stage(self, up: bool, step: int):
-        print(up, step)
-        if not up:
+    def movez_stage(self, dir: bool, step: int):
+        # print(up, step)
+        if self.stage._inverted.isChecked():
+            dir = not dir
+
+        if dir:
             self.stage.UP(step)
         else:
             self.stage.DOWN(step)

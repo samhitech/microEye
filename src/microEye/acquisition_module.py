@@ -15,6 +15,7 @@ from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 from pyueye import ueye
+from pyqode.python.widgets import PyCodeEdit
 
 from .thread_worker import *
 from .ueye_camera import IDS_Camera
@@ -22,6 +23,7 @@ from .thorlabs import *
 from .thorlabs_panel import Thorlabs_Panel
 from .ueye_panel import IDS_Panel
 from .CameraListWidget import CameraListWidget
+from .pyscripting import *
 
 
 class acquisition_module(QMainWindow):
@@ -87,8 +89,26 @@ class acquisition_module(QMainWindow):
         self.move(qtRectangle.topLeft())
 
     def LayoutInit(self):
+        # Main layout
         self.Hlayout = QHBoxLayout()
-        self.Vlayout = QVBoxLayout()
+
+        # Tablayout
+        self.tabView = QTabWidget()
+
+        self.first_tab = QWidget()
+        self.second_tab = QWidget()
+
+        # first tab vertical layout
+        self.first_tab_Layout = QVBoxLayout()
+        # set as first tab layout
+        self.first_tab.setLayout(self.first_tab_Layout)
+
+        # second tab vertical layout
+        self.pyEditor = pyEditor()
+        self.pyEditor.exec_btn.clicked.connect(lambda: self.exec_script())
+
+        self.tabView.addTab(self.first_tab, "Main")
+        self.tabView.addTab(self.pyEditor, "Scripting")
 
         # CAM Table
         self.camWidget = CameraListWidget()
@@ -144,23 +164,26 @@ class acquisition_module(QMainWindow):
                                           clicked=lambda:
                                           self.stack_to_stats_clicked())
 
-        self.Vlayout.addWidget(self.camWidget)
-        self.Vlayout.addLayout(self.acq_mode_radio)
-        self.Vlayout.addWidget(QLabel("Experiment:"))
-        self.Vlayout.addWidget(self.experiment_name)
-        self.Vlayout.addWidget(QLabel("Save Directory:"))
-        self.Vlayout.addLayout(self.save_dir_layout)
-        self.Vlayout.addWidget(QLabel("Number of frames:"))
-        self.Vlayout.addWidget(self.frames_tbox)
-        self.Vlayout.addWidget(self.stack_to_stats)
-        self.Vlayout.addStretch()
+        self.first_tab_Layout.addWidget(self.camWidget)
+        self.first_tab_Layout.addLayout(self.acq_mode_radio)
+        self.first_tab_Layout.addWidget(QLabel("Experiment:"))
+        self.first_tab_Layout.addWidget(self.experiment_name)
+        self.first_tab_Layout.addWidget(QLabel("Save Directory:"))
+        self.first_tab_Layout.addLayout(self.save_dir_layout)
+        self.first_tab_Layout.addWidget(QLabel("Number of frames:"))
+        self.first_tab_Layout.addWidget(self.frames_tbox)
+        self.first_tab_Layout.addWidget(self.stack_to_stats)
+        self.first_tab_Layout.addStretch()
 
-        self.Hlayout.addLayout(self.Vlayout, 1)
+        self.Hlayout.addWidget(self.tabView, 1)
 
         AllWidgets = QWidget()
         AllWidgets.setLayout(self.Hlayout)
 
         self.setCentralWidget(AllWidgets)
+
+    def exec_script(self):
+        exec(self.pyEditor.toPlainText())
 
     def stack_to_stats_clicked(self):
         filename, _ = QFileDialog.getOpenFileName(
