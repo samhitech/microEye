@@ -20,6 +20,7 @@ This toolkit is compatible with the [hardware](#hardware) we are using in our mi
 - ome-types
 - lmfit
 - pyqode.python ([Jedi Fix](https://github.com/pyQode/pyqode.python/blob/6cc30087dab69d334a48c716d8d19fc1546ff0c6/pyqode/python/backend/workers.py))
+- VimbaPython (Included in [Vimba SDK](https://www.alliedvision.com/en/products/vimba-sdk/) and installed manually)
 
 ## How to Install [Package](https://pypi.org/project/microEye/)
 
@@ -31,8 +32,10 @@ This toolkit is compatible with the [hardware](#hardware) we are using in our mi
 
 ## Hardware 
 
-- IDS uEye industrial-grade CMOS cameras, specifically [UI-3060CP Rev. 2](https://en.ids-imaging.com/store/products/cameras/ui-3060cp-rev-2.html).
-- Thorlabs DCx cameras using the UC480 driver, specifically [DCC1545M](https://www.thorlabs.com/thorProduct.cfm?partNumber=DCC1545M).
+- Supported Cameras:
+  - IDS uEye industrial-grade CMOS cameras, specifically [UI-3060CP Rev. 2](https://en.ids-imaging.com/store/products/cameras/ui-3060cp-rev-2.html).
+  - Thorlabs DCx cameras using the UC480 driver, specifically [DCC1545M](https://www.thorlabs.com/thorProduct.cfm?partNumber=DCC1545M).
+  - Allied Vision cameras using Vimba SDK, specifically [Alvium 1800 U-158m](https://www.alliedvision.com/en/products/alvium-configurator/alvium-1800-u/158/#_configurator).
 - Integrated Optics Multi-wavelength Laser Combiner [MatchBox](https://integratedoptics.com/products/wavelength-combiners).
 - Piezo Concept nanopositioner for microscope objectives [FOC](https://piezoconcept-store.squarespace.com/1-axis/p/foc).
 - Parallax Linescan Camera Module used for IR autofocus stabilization tracking [TSL1401-DB (#28317)](https://eu.mouser.com/ProductDetail/Parallax/28317?qs=%2Fha2pyFaduiCRhuOAXMuCmQIeG1Q3R01m6Y1EH%252BmN80%3D) acquisition done by an Arduino [LineScanner](https://github.com/samhitech/LineScanner).
@@ -59,6 +62,19 @@ This toolkit is compatible with the [hardware](#hardware) we are using in our mi
 
         # Destroys the OpenCv windows
         cv2.destroyAllWindows()
+        
+For Vimba SDK to work the script should be executed as administrator on Windows and wrapped in a with statement:
+
+     try:
+         import vimba as vb
+     except Exception:
+         vb = None
+
+     with vb.Vimba.get_instance() as vimba:
+         app, window = acquisition_module.StartGUI()
+
+         app.exec_()
+
 
 ## Control Module
 
