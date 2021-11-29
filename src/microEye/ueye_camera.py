@@ -1,8 +1,11 @@
 from ctypes import *
 import logging
-from pyueye import ueye
 import numpy as np
 
+try:
+    from pyueye import ueye
+except Exception:
+    ueye = None
 
 formats_ = {ueye.IS_CM_SENSOR_RAW8: 8,
             ueye.IS_CM_SENSOR_RAW10: 16,

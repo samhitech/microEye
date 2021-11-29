@@ -1,5 +1,7 @@
 import cv2
 import numpy as np
+from numpy.lib.function_base import meshgrid
+from scipy.fftpack import fft2, ifft2, fftshift, ifftshift
 
 
 class uImage():
@@ -9,7 +11,7 @@ class uImage():
         self._height = image.shape[0]
         self._width = image.shape[1]
         self._min = 0
-        self._max = 4095 if image.dtype == np.uint16 else 255
+        self._max = 2**16 if image.dtype == np.uint16 else 255
         self._view = np.zeros(image.shape, dtype=np.uint8)
         self._hist = None
         self.n_bins = None
@@ -40,7 +42,7 @@ class uImage():
         return self._height
 
     def calcHist(self):
-        self.n_bins = 4096 if self._image.dtype == np.uint16 else 256
+        self.n_bins = 2**16 if self._image.dtype == np.uint16 else 256
         # calculate image histogram
         self._hist = cv2.calcHist(
             [self.image], [0], None,
@@ -133,3 +135,46 @@ class uImage():
             return uImage.fromUINT8(buffer, height, width)
         else:
             return uImage.fromUINT16(buffer, height, width)
+
+
+def fft_bandpass(image: np.ndarray, center: int, width: int):
+    '''Applies a bandpass filter using fft of the 2D image.
+
+        Params
+        -------
+        image (np.ndarray)
+            the image to be filtered.
+        min (np.ndarray)
+            the inner radius of ring.
+        max (np.ndarray)
+            the outer radius of ring.
+    '''
+    ft = fftshift(fft2(image))
+
+    y_len = np.arange(-ft.shape[0]//2, ft.shape[0]//2)
+    x_len = np.arange(-ft.shape[1]//2, ft.shape[1]//2)
+    X, Y = np.meshgrid(x_len, y_len)
+    Rsq = (X**2 + Y**2)
+    R = np.sqrt(Rsq)
+    filter = np.exp(-((Rsq - center**2)/(R * width))**2)
+    # filter = 1 - (1 / (1+((R * width)/(Rsq - center**2))**10))
+    a, b = np.unravel_index(R.argmin(), R.shape)
+    filter[a, b] = 1
+
+    # cir_filter = np.zeros(ft.shape, dtype=np.float32)
+    # cir_center = (
+    #     int(ft.shape[1] / 2.0),
+    #     int(ft.shape[0] / 2.0))
+    # cir_filter = cv2.circle(
+    #     cir_filter, cir_center, max, 1, -1)
+    # cir_filter = cv2.circle(
+    #     cir_filter, cir_center, min, 0, -1)
+    # cir_filter = cv2.GaussianBlur(cir_filter, (0, 0), sigmaX=1, sigmaY=1)
+
+    cv2.imshow('test', (filter*255).astype(np.uint8))
+
+    img = np.zeros(image.shape, dtype=np.uint8)
+    ft *= filter
+    cv2.normalize(
+        np.abs(ifft2(ft)), img, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
+    return img

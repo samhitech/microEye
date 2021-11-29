@@ -18,8 +18,10 @@ from PyQt5.QtGui import QFont, QIcon
 from PyQt5.QtWidgets import *
 from pyqtgraph.colormap import ColorMap
 
+from scipy.fftpack import fft2, ifft2, fftshift, ifftshift
+
 from .metadata import MetadataEditor
-from .uImage import uImage
+from .uImage import uImage, fft_bandpass
 
 
 class tiff_viewer(QWidget):
@@ -133,9 +135,6 @@ class tiff_viewer(QWidget):
             'Average stack',
             clicked=lambda: self.average_stack())
 
-        # self.controls_layout.addWidget(QLabel('Series'))
-        # self.controls_layout.addWidget(self.series_slider)
-
         self.controls_layout.addWidget(self.pages_label)
         self.controls_layout.addWidget(self.pages_slider)
         self.controls_layout.addWidget(self.autostretch)
@@ -143,6 +142,103 @@ class tiff_viewer(QWidget):
         self.controls_layout.addWidget(self.min_slider)
         self.controls_layout.addWidget(self.max_label)
         self.controls_layout.addWidget(self.max_slider)
+
+        self.th_min_label = QLabel('Min')
+        self.th_min_slider = QSlider(Qt.Horizontal)
+        self.th_min_slider.setMinimum(0)
+        self.th_min_slider.setMaximum(255)
+        self.th_min_slider.valueChanged.connect(self.slider_changed)
+        self.th_min_slider.valueChanged.emit(0)
+
+        self.th_max_label = QLabel('Max')
+        self.th_max_slider = QSlider(Qt.Horizontal)
+        self.th_max_slider.setMinimum(0)
+        self.th_max_slider.setMaximum(255)
+        self.th_max_slider.setValue(255)
+        self.th_max_slider.valueChanged.connect(self.slider_changed)
+        self.th_max_slider.valueChanged.emit(255)
+
+        self.detection = QCheckBox('Blob Detection')
+        self.detection.setChecked(False)
+        self.detection.stateChanged.connect(self.slider_changed)
+
+        self.controls_layout.addWidget(self.detection)
+        self.controls_layout.addWidget(self.th_min_label)
+        self.controls_layout.addWidget(self.th_min_slider)
+        self.controls_layout.addWidget(self.th_max_label)
+        self.controls_layout.addWidget(self.th_max_slider)
+
+        self.fft_min_label = QLabel('Filter arg 1 (min | center)')
+        self.fft_min_slider = QDoubleSpinBox()
+        self.fft_min_slider.setMinimum(0)
+        self.fft_min_slider.setMaximum(1024)
+        self.fft_min_slider.setSingleStep(0.05)
+        self.fft_min_slider.valueChanged.connect(self.slider_changed)
+        self.fft_min_slider.valueChanged.emit(0)
+
+        self.fft_max_label = QLabel('Filter arg 2 (max | width)')
+        self.fft_max_slider = QDoubleSpinBox()
+        self.fft_max_slider.setMinimum(0)
+        self.fft_max_slider.setMaximum(1024)
+        self.fft_max_slider.setSingleStep(0.05)
+        self.fft_max_slider.setValue(1)
+        self.fft_max_slider.valueChanged.connect(self.slider_changed)
+        self.fft_max_slider.valueChanged.emit(255)
+
+        self.controls_layout.addWidget(self.fft_min_label)
+        self.controls_layout.addWidget(self.fft_min_slider)
+        self.controls_layout.addWidget(self.fft_max_label)
+        self.controls_layout.addWidget(self.fft_max_slider)
+
+        self.minArea = QDoubleSpinBox()
+        self.minArea.setMinimum(0)
+        self.minArea.setMaximum(1024)
+        self.minArea.setSingleStep(0.05)
+        self.minArea.setValue(0)
+        self.minArea.valueChanged.connect(self.slider_changed)
+
+        self.maxArea = QDoubleSpinBox()
+        self.maxArea.setMinimum(0)
+        self.maxArea.setMaximum(1024)
+        self.maxArea.setSingleStep(0.05)
+        self.maxArea.setValue(16)
+        self.maxArea.valueChanged.connect(self.slider_changed)
+
+        self.minCircularity = QDoubleSpinBox()
+        self.minCircularity.setMinimum(0)
+        self.minCircularity.setMaximum(1)
+        self.minCircularity.setSingleStep(0.05)
+        self.minCircularity.setValue(0)
+        self.minCircularity.valueChanged.connect(self.slider_changed)
+
+        self.minConvexity = QDoubleSpinBox()
+        self.minConvexity.setMinimum(0)
+        self.minConvexity.setMaximum(1)
+        self.minConvexity.setSingleStep(0.05)
+        self.minConvexity.setValue(0)
+        self.minConvexity.valueChanged.connect(self.slider_changed)
+
+        self.minInertiaRatio = QDoubleSpinBox()
+        self.minInertiaRatio.setMinimum(0)
+        self.minInertiaRatio.setMaximum(1)
+        self.minInertiaRatio.setSingleStep(0.05)
+        self.minInertiaRatio.setValue(0)
+        self.minInertiaRatio.valueChanged.connect(self.slider_changed)
+
+        self.controls_layout.addWidget(
+            QLabel('Min Area/Circularity/Convexity/InertiaRatio:'))
+        self.controls_layout.addWidget(self.minArea)
+        self.controls_layout.addWidget(self.maxArea)
+        self.controls_layout.addWidget(self.minCircularity)
+        self.controls_layout.addWidget(self.minConvexity)
+        self.controls_layout.addWidget(self.minInertiaRatio)
+
+        self.export_loc_btn = QPushButton(
+            'Export Localizations',
+            clicked=lambda: self.export_loc())
+
+        self.controls_layout.addWidget(self.export_loc_btn)
+
         # self.controls_layout.addWidget(self.average_btn)
         # self.controls_layout.addLayout(self.zoom_layout)
         self.controls_layout.addStretch()
@@ -179,11 +275,13 @@ class tiff_viewer(QWidget):
             self.tiff = tf.TiffFile(self.path)
             self.pages_slider.setMaximum(len(self.tiff.pages) - 1)
             self.pages_slider.valueChanged.emit(0)
-            ome = OME.from_xml(self.tiff.ome_metadata)
-            self.metadataEditor.pop_OME_XML(ome)
+
+            if self.tiff.ome_metadata is not None:
+                ome = OME.from_xml(self.tiff.ome_metadata)
+                self.metadataEditor.pop_OME_XML(ome)
 
             # self.update_display()
-            self.genOME()
+            # self.genOME()
 
     def average_stack(self):
         if self.tiff is not None:
@@ -234,6 +332,26 @@ class tiff_viewer(QWidget):
                 'Max: {:d}/{:d}'.format(
                     value,
                     self.max_slider.maximum()))
+        elif self.sender() is self.th_min_slider:
+            self.th_min_label.setText(
+                'Min det. threshold: {:d}/{:d}'.format(
+                    value,
+                    self.th_min_slider.maximum()))
+        elif self.sender() is self.th_max_slider:
+            self.th_max_label.setText(
+                'Max det. threshold: {:d}/{:d}'.format(
+                    value,
+                    self.th_max_slider.maximum()))
+        # elif self.sender() is self.fft_min_slider:
+        #     self.fft_min_label.setText(
+        #         'FFT Bandpasse min: {:d}/{:d}'.format(
+        #             value,
+        #             self.fft_min_slider.maximum()))
+        # elif self.sender() is self.fft_max_slider:
+        #     self.fft_max_label.setText(
+        #         'FFT Bandpasse max: {:d}/{:d}'.format(
+        #             value,
+        #             self.fft_max_slider.maximum()))
 
     def update_display(self, image=None):
         if image is None:
@@ -254,42 +372,96 @@ class tiff_viewer(QWidget):
         # cv2.imshow(self.path, image)
         self.image.setImage(self.uImage._view, autoLevels=False)
 
-        # # Detect blobs.
-        # keypoints = self.blob_detector().detect(image)
+        if self.detection.isChecked():
 
-        # Draw detected blobs as red circles.
-        # cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS ensures
-        # the size of the circle corresponds to the size of blob
-        # im_with_keypoints = cv2.drawKeypoints(
-        #     image, keypoints, np.array([]),
-        #     (0, 0, 255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+            # bandpass filter
+            img = fft_bandpass(
+                self.uImage._view,
+                self.fft_min_slider.value(),
+                self.fft_max_slider.value())
 
-        # # Show keypoints
-        # cv2.imshow("Keypoints", im_with_keypoints)
+            # Detect blobs.
+            keypoints = self.blob_detector().detect(img)
+
+            im_with_keypoints = cv2.drawKeypoints(
+                img, keypoints, np.array([]),
+                (0, 0, 255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+
+            # Show keypoints
+            cv2.imshow("Keypoints_CV", im_with_keypoints)
+
+            points = cv2.KeyPoint_convert(keypoints)
+
+            self.phasor_fit(self.uImage._image, points)
+
+            keypoints = [cv2.KeyPoint(*point, size=1.0) for point in points]
+
+            # Draw detected blobs as red circles.
+            # cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS ensures
+            # the size of the circle corresponds to the size of blob
+            im_with_keypoints = cv2.drawKeypoints(
+                self.uImage._view, keypoints, np.array([]),
+                (0, 0, 255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+
+            # Show keypoints
+            # cv2.imshow("Keypoints_PH", im_with_keypoints)
+
+            self.image.setImage(im_with_keypoints, autoLevels=False)
+
+            return np.array(points, copy=True)
+
+    def phasor_fit(self, image: np.ndarray, points, roi_size=7):
+        for x, y in points:
+            idx = int(x - roi_size//2)
+            idy = int(y - roi_size//2)
+            if idx < 0:
+                idx = 0
+            if idy < 0:
+                idy = 0
+            if idx + roi_size > image.shape[1]:
+                idx = image.shape[1] - roi_size
+            if idy + roi_size > image.shape[0]:
+                idy = image.shape[0] - roi_size
+            roi = image[idy:idy+roi_size, idx:idx+roi_size]
+            fft_roi = fft2(roi)
+            theta_x = np.angle(fft_roi[0, 1])
+            theta_y = np.angle(fft_roi[1, 0])
+            if theta_x > 0:
+                theta_x = theta_x - 2 * np.pi
+            if theta_y > 0:
+                theta_y = theta_y - 2 * np.pi
+            x = idx + np.abs(theta_x) / (2 * np.pi / roi_size)
+            y = idy + np.abs(theta_y) / (2 * np.pi / roi_size)
 
     def blob_detector(self) -> cv2.SimpleBlobDetector:
         # Setup SimpleBlobDetector parameters.
         params = cv2.SimpleBlobDetector_Params()
 
+        params.filterByColor = True
+        params.blobColor = 255
+
+        params.minDistBetweenBlobs = 3
+
         # Change thresholds
-        params.minThreshold = 100
-        params.maxThreshold = 4096
+        params.minThreshold = float(self.th_min_slider.value())
+        params.maxThreshold = float(self.th_max_slider.value())
 
         # Filter by Area.
         params.filterByArea = True
-        params.minArea = 20
+        params.minArea = self.minArea.value()
+        params.maxArea = self.maxArea.value()
 
         # Filter by Circularity
         params.filterByCircularity = True
-        params.minCircularity = 0.75
+        params.minCircularity = self.minCircularity.value()
 
         # Filter by Convexity
         params.filterByConvexity = True
-        params.minConvexity = 1
+        params.minConvexity = self.minConvexity.value()
 
         # Filter by Inertia
         params.filterByInertia = True
-        params.minInertiaRatio = 0.5
+        params.minInertiaRatio = self.minInertiaRatio.value()
 
         # Create a detector with the parameters
         ver = (cv2.__version__).split('.')
@@ -297,6 +469,44 @@ class tiff_viewer(QWidget):
             return cv2.SimpleBlobDetector(params)
         else:
             return cv2.SimpleBlobDetector_create(params)
+
+    def export_loc(self):
+        if self.tiff is None:
+            return
+
+        filename, _ = QFileDialog.getSaveFileName(
+            self, "Save localizations", filter="TSV Files (*.tsv);;")
+
+        if len(filename) > 0:
+            locX = []
+            locY = []
+            for i in range(len(self.tiff.pages)):
+
+                uImg = uImage(self.tiff.pages[i].asarray())
+
+                uImg.equalizeLUT(None, True)
+
+                img = fft_bandpass(
+                    self.uImage._view,
+                    self.fft_min_slider.value(),
+                    self.fft_max_slider.value())
+
+                # Detect blobs.
+                keypoints = self.blob_detector().detect(img)
+
+                points = cv2.KeyPoint_convert(keypoints)
+
+                self.phasor_fit(self.uImage._image, points)
+
+                locX.extend(points[:, 0])
+                locY.extend(points[:, 1])
+
+                print(
+                    'index: {:d}/{:d}'.format(i, len(self.tiff.pages)),
+                    end="\r")
+
+            loc = np.c_[np.array(locX), np.array(locY)]
+            np.savetxt(filename, loc, delimiter='\t', encoding='utf-8')
 
     def StartGUI(path=None):
         '''Initializes a new QApplication and control_module.

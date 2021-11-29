@@ -14,13 +14,23 @@ import tifffile as tf
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
-from pyueye import ueye
 
 from .thread_worker import *
 from .ueye_camera import IDS_Camera
 from .thorlabs import *
 from .thorlabs_panel import Thorlabs_Panel
 from .ueye_panel import IDS_Panel
+from .vimba_cam import get_camera_list
+
+try:
+    from pyueye import ueye
+except Exception:
+    ueye = None
+
+try:
+    import vimba as vb
+except Exception:
+    vb = None
 
 
 class CameraListWidget(QWidget):
@@ -100,8 +110,16 @@ class CameraListWidget(QWidget):
                 QMessageBox.StandardButton.Ok)
 
     def refresh_list(self):
-        self.cam_list = IDS_Camera.get_camera_list() + \
-            thorlabs_camera.get_camera_list()
+        self.cam_list = []
+
+        if ueye is not None:
+            self.cam_list += IDS_Camera.get_camera_list()
+
+        if os.path.exists(thorlabs_camera.uc480_file):
+            self.cam_list += thorlabs_camera.get_camera_list()
+
+        if vb is not None:
+            self.cam_list += get_camera_list()
 
         if self.cam_list is None:
             self.cam_list = []

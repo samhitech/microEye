@@ -11,19 +11,30 @@ import cv2
 import numpy as np
 import qdarkstyle
 import tifffile as tf
+from pyqode.python.widgets import PyCodeEdit
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
-from pyueye import ueye
-from pyqode.python.widgets import PyCodeEdit
 
-from .thread_worker import *
-from .ueye_camera import IDS_Camera
-from .thorlabs import *
-from .thorlabs_panel import Thorlabs_Panel
-from .ueye_panel import IDS_Panel
 from .CameraListWidget import CameraListWidget
 from .pyscripting import *
+from .thorlabs import *
+from .thorlabs_panel import Thorlabs_Panel
+from .thread_worker import *
+from .ueye_camera import IDS_Camera
+from .ueye_panel import IDS_Panel
+from .vimba_cam import *
+from .vimba_panel import *
+
+try:
+    from pyueye import ueye
+except Exception:
+    ueye = None
+
+try:
+    import vimba as vb
+except Exception:
+    vb = None
 
 
 class acquisition_module(QMainWindow):
@@ -49,10 +60,12 @@ class acquisition_module(QMainWindow):
         # Cameras
         self.ids_cams: list[IDS_Camera] = []
         self.thorlabs_cams: list[thorlabs_camera] = []
+        self.vimba_cams: list[vimba_cam] = []
 
         # Panels
         self.ids_panels: list[IDS_Panel] = []
         self.thor_panels: list[Thorlabs_Panel] = []
+        self.vimba_panels: list[Vimba_Panel] = []
 
         # Threading
         self.threadpool = QThreadPool()
@@ -338,6 +351,18 @@ class acquisition_module(QMainWindow):
                         self.master_exposure_changed)
                     self.thor_panels.append(thor_panel)
                     self.Hlayout.addWidget(thor_panel, 1)
+            if 'Vimba' in cam["Driver"]:
+                v_cam = vimba_cam(cam["camID"])
+                self.vimba_cams.append(v_cam)
+                v_panel = Vimba_Panel(
+                        self.threadpool,
+                        v_cam, cam["Model"] + " " + cam["Serial"])
+                v_panel._directory = self.save_directory
+                v_panel.master = False
+                v_panel.exposureChanged.connect(
+                    self.master_exposure_changed)
+                self.vimba_panels.append(v_panel)
+                self.Hlayout.addWidget(v_panel, 1)
         else:
             QMessageBox.warning(
                 self,
@@ -529,6 +554,23 @@ class acquisition_module(QMainWindow):
                 " Save {:d} | {:.2f} ms ".format(
                     panel._frames.qsize(), panel._save_time))
             exe = exe + " | CAM " + str(panel.cam.hCam.value) + \
+                panel.info_temp.text() + panel.info_cap.text() + \
+                panel.info_disp.text() + panel.info_save.text()
+
+        for panel in self.vimba_panels:
+            panel.info_temp.setText(
+                " T {:.2f} °C".format(panel.cam.temperature))
+            panel.info_cap.setText(
+                " Capture {:d} | {:.2f} ms ".format(
+                    panel._counter,
+                    panel._exec_time))
+            panel.info_disp.setText(
+                " Display {:d} | {:.2f} ms ".format(
+                    panel._buffer.qsize(), panel._dis_time))
+            panel.info_save.setText(
+                " Save {:d} | {:.2f} ms ".format(
+                    panel._frames.qsize(), panel._save_time))
+            exe = exe + " | CAM " + str(panel.cam.Cam_ID) + \
                 panel.info_temp.text() + panel.info_cap.text() + \
                 panel.info_disp.text() + panel.info_save.text()
 

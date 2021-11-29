@@ -16,7 +16,7 @@ from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 from pyqtgraph import PlotWidget, plot
 from pyqtgraph.metaarray.MetaArray import axis
-from pyueye import ueye
+
 from tifffile.tifffile import astype
 
 from .qlist_slider import *
@@ -24,6 +24,11 @@ from .thread_worker import *
 from .ueye_camera import IDS_Camera
 from .uImage import uImage
 from .metadata import MetadataEditor
+
+try:
+    from pyueye import ueye
+except Exception:
+    ueye = None
 
 
 class IDS_Panel(QGroupBox):
