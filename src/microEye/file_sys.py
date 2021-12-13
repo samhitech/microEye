@@ -21,7 +21,10 @@ from pyqtgraph.colormap import ColorMap
 from scipy.fftpack import fft2, ifft2, fftshift, ifftshift
 
 from .metadata import MetadataEditor
-from .uImage import uImage, fft_bandpass
+from .uImage import BandpassFilter, uImage, phasor_fit
+from .thread_worker import *
+
+import numba
 
 
 class tiff_viewer(QWidget):
@@ -37,6 +40,11 @@ class tiff_viewer(QWidget):
         self._n_levels = 4096
 
         self.tiff = None
+
+        # Threading
+        self._threadpool = QThreadPool()
+        print("Multithreading with maximum %d threads"
+              % self._threadpool.maxThreadCount())
 
         self.initialize(path)
 
@@ -173,6 +181,7 @@ class tiff_viewer(QWidget):
         self.fft_min_slider.setMinimum(0)
         self.fft_min_slider.setMaximum(1024)
         self.fft_min_slider.setSingleStep(0.05)
+        self.fft_min_slider.setValue(40.0)
         self.fft_min_slider.valueChanged.connect(self.slider_changed)
         self.fft_min_slider.valueChanged.emit(0)
 
@@ -181,20 +190,27 @@ class tiff_viewer(QWidget):
         self.fft_max_slider.setMinimum(0)
         self.fft_max_slider.setMaximum(1024)
         self.fft_max_slider.setSingleStep(0.05)
-        self.fft_max_slider.setValue(1)
+        self.fft_max_slider.setValue(90.0)
         self.fft_max_slider.valueChanged.connect(self.slider_changed)
         self.fft_max_slider.valueChanged.emit(255)
+
+        self.fft_type_label = QLabel('Filter arg 2 (max | width)')
+        self.fft_type_cbox = QComboBox()
+        self.fft_type_cbox.addItems(['gauss', 'butter', 'ideal'])
+        self.fft_type_cbox.setCurrentText('butter')
 
         self.controls_layout.addWidget(self.fft_min_label)
         self.controls_layout.addWidget(self.fft_min_slider)
         self.controls_layout.addWidget(self.fft_max_label)
         self.controls_layout.addWidget(self.fft_max_slider)
+        self.controls_layout.addWidget(self.fft_type_label)
+        self.controls_layout.addWidget(self.fft_type_cbox)
 
         self.minArea = QDoubleSpinBox()
         self.minArea.setMinimum(0)
         self.minArea.setMaximum(1024)
         self.minArea.setSingleStep(0.05)
-        self.minArea.setValue(0)
+        self.minArea.setValue(3.0)
         self.minArea.valueChanged.connect(self.slider_changed)
 
         self.maxArea = QDoubleSpinBox()
@@ -226,12 +242,12 @@ class tiff_viewer(QWidget):
         self.minInertiaRatio.valueChanged.connect(self.slider_changed)
 
         self.controls_layout.addWidget(
-            QLabel('Min Area/Circularity/Convexity/InertiaRatio:'))
+            QLabel('Min/Max Area:'))
         self.controls_layout.addWidget(self.minArea)
         self.controls_layout.addWidget(self.maxArea)
-        self.controls_layout.addWidget(self.minCircularity)
-        self.controls_layout.addWidget(self.minConvexity)
-        self.controls_layout.addWidget(self.minInertiaRatio)
+        # self.controls_layout.addWidget(self.minCircularity)
+        # self.controls_layout.addWidget(self.minConvexity)
+        # self.controls_layout.addWidget(self.minInertiaRatio)
 
         self.export_loc_btn = QPushButton(
             'Export Localizations',
@@ -359,6 +375,9 @@ class tiff_viewer(QWidget):
 
         self.uImage = uImage(image)
 
+        self.max_slider.setMaximum(self.uImage._max)
+        self.min_slider.setMaximum(self.uImage._max)
+
         min_max = None
         if not self.autostretch.isChecked():
             min_max = (self.min_slider.value(), self.max_slider.value())
@@ -373,13 +392,14 @@ class tiff_viewer(QWidget):
         self.image.setImage(self.uImage._view, autoLevels=False)
 
         if self.detection.isChecked():
-
+            filter = BandpassFilter()
             # bandpass filter
-            img = fft_bandpass(
+            img = filter.run(
                 self.uImage._view,
                 self.fft_min_slider.value(),
-                self.fft_max_slider.value())
-
+                self.fft_max_slider.value(),
+                type=self.fft_type_cbox.currentText())
+            # print(ex, end='\r')
             # Detect blobs.
             keypoints = self.blob_detector().detect(img)
 
@@ -392,7 +412,7 @@ class tiff_viewer(QWidget):
 
             points = cv2.KeyPoint_convert(keypoints)
 
-            self.phasor_fit(self.uImage._image, points)
+            phasor_fit(self.uImage._image, points)
 
             keypoints = [cv2.KeyPoint(*point, size=1.0) for point in points]
 
@@ -409,29 +429,6 @@ class tiff_viewer(QWidget):
             self.image.setImage(im_with_keypoints, autoLevels=False)
 
             return np.array(points, copy=True)
-
-    def phasor_fit(self, image: np.ndarray, points, roi_size=7):
-        for x, y in points:
-            idx = int(x - roi_size//2)
-            idy = int(y - roi_size//2)
-            if idx < 0:
-                idx = 0
-            if idy < 0:
-                idy = 0
-            if idx + roi_size > image.shape[1]:
-                idx = image.shape[1] - roi_size
-            if idy + roi_size > image.shape[0]:
-                idy = image.shape[0] - roi_size
-            roi = image[idy:idy+roi_size, idx:idx+roi_size]
-            fft_roi = fft2(roi)
-            theta_x = np.angle(fft_roi[0, 1])
-            theta_y = np.angle(fft_roi[1, 0])
-            if theta_x > 0:
-                theta_x = theta_x - 2 * np.pi
-            if theta_y > 0:
-                theta_y = theta_y - 2 * np.pi
-            x = idx + np.abs(theta_x) / (2 * np.pi / roi_size)
-            y = idy + np.abs(theta_y) / (2 * np.pi / roi_size)
 
     def blob_detector(self) -> cv2.SimpleBlobDetector:
         # Setup SimpleBlobDetector parameters.
@@ -452,15 +449,15 @@ class tiff_viewer(QWidget):
         params.maxArea = self.maxArea.value()
 
         # Filter by Circularity
-        params.filterByCircularity = True
+        params.filterByCircularity = False
         params.minCircularity = self.minCircularity.value()
 
         # Filter by Convexity
-        params.filterByConvexity = True
+        params.filterByConvexity = False
         params.minConvexity = self.minConvexity.value()
 
         # Filter by Inertia
-        params.filterByInertia = True
+        params.filterByInertia = False
         params.minInertiaRatio = self.minInertiaRatio.value()
 
         # Create a detector with the parameters
@@ -478,35 +475,133 @@ class tiff_viewer(QWidget):
             self, "Save localizations", filter="TSV Files (*.tsv);;")
 
         if len(filename) > 0:
-            locX = []
-            locY = []
-            for i in range(len(self.tiff.pages)):
+            # Any other args, kwargs are passed to the run function
+            self.worker = thread_worker(
+                self.proccess_loc, filename,
+                progress=True, z_stage=False)
+            self.worker.signals.progress.connect(self.update_loc)
+            # Execute
+            self._threadpool.start(self.worker)
 
-                uImg = uImage(self.tiff.pages[i].asarray())
+    def update_loc(self, data):
+        shape = data
+        H, _, _ = np.histogram2d(
+            np.array(self.locX).copy() * 11.5,
+            np.array(self.locY).copy() * 11.5,
+            np.array(shape).copy() * 12)
+        cv2.normalize(
+            H, H, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
+        cv2.imshow('localization', H)
+        cv2.waitKey(1)
 
-                uImg.equalizeLUT(None, True)
+    def update_lists(self, result: np.ndarray):
+        self.locX.extend(result[:, 0])
+        self.locY.extend(result[:, 1])
+        self.frame.extend(result[:, 2])
+        self.thread_done += 1
 
-                img = fft_bandpass(
-                    self.uImage._view,
-                    self.fft_min_slider.value(),
-                    self.fft_max_slider.value())
+    def proccess_loc(self, filename, progress_callback):
+        self.locX = []
+        self.locY = []
+        self.frame = []
+        self.thread_done = 0
+        time = QDateTime.currentDateTime()
+        filter = BandpassFilter()
+        blob_detector = self.blob_detector()
+        threads = self._threadpool.maxThreadCount() - 2
+        print('Threads', threads)
+        for i in range(
+                0, int(np.ceil(len(self.tiff.pages) / threads) * threads),
+                threads):
+            time = QDateTime.currentDateTime()
+            workers = []
+            self.thread_done = 0
+            for k in range(threads):
+                if i + k < len(self.tiff.pages):
+                    img = self.tiff.pages[i + k].asarray().copy()
+                    worker = thread_worker(
+                        self.localize_frame,
+                        img,
+                        (self.fft_min_slider.value(),
+                            self.fft_max_slider.value()),
+                        self.fft_type_cbox.currentText(),
+                        filter,
+                        i + k + 1,
+                        progress=False, z_stage=False)
+                    worker.signals.result.connect(self.update_lists)
+                    workers.append(worker)
+                    QThreadPool.globalInstance().start(worker)
 
-                # Detect blobs.
-                keypoints = self.blob_detector().detect(img)
+            exex = time.msecsTo(QDateTime.currentDateTime())
 
-                points = cv2.KeyPoint_convert(keypoints)
+            # uImg = uImage(self.tiff.pages[i].asarray())
 
-                self.phasor_fit(self.uImage._image, points)
+            # uImg.equalizeLUT(None, False)
 
-                locX.extend(points[:, 0])
-                locY.extend(points[:, 1])
+            # img = filter.run(
+            #     uImg._view,
+            #     self.fft_min_slider.value(),
+            #     self.fft_max_slider.value(),
+            #     type=self.fft_type_cbox.currentText(),
+            #     refresh=False,
+            #     show_filter=False)
 
-                print(
-                    'index: {:d}/{:d}'.format(i, len(self.tiff.pages)),
-                    end="\r")
+            # # Detect blobs.
 
-            loc = np.c_[np.array(locX), np.array(locY)]
-            np.savetxt(filename, loc, delimiter='\t', encoding='utf-8')
+            # keypoints = blob_detector.detect(img)
+
+            # points = cv2.KeyPoint_convert(keypoints)
+
+            # time = QDateTime.currentDateTime()
+            # phasor_fit(uImg._image, points)
+            # exex = time.msecsTo(QDateTime.currentDateTime())
+
+            # locX.extend(points[:, 0])
+            # locY.extend(points[:, 1])
+            # frame.extend([i] * len(points[:, 0]))
+
+            print(
+                'index: {:d}/{:d}, Time: {:d}  '.format(
+                    i + len(workers), len(self.tiff.pages), exex),
+                end="\r")
+            if (i // threads) % 10 == 0:
+                progress_callback.emit(self.uImage._image.shape)
+
+        loc = np.c_[np.array(self.locX), np.array(self.locY)]
+        np.savetxt(filename, loc, delimiter='\t', encoding='utf-8')
+
+    def localize_frame(
+            self, image: np.ndarray,
+            filter_range, filter_type,
+            filter: BandpassFilter,
+            index):
+        uImg = uImage(image)
+
+        uImg.equalizeLUT(None, False)
+
+        img = filter.run(
+            uImg._view,
+            filter_range[0],
+            filter_range[1],
+            type=filter_type,
+            refresh=False,
+            show_filter=False)
+
+        # Detect blobs.
+
+        keypoints = self.blob_detector().detect(img)
+
+        points: np.ndarray = cv2.KeyPoint_convert(keypoints)
+
+        time = QDateTime.currentDateTime()
+        phasor_fit(uImg._image, points)
+        exex = time.msecsTo(QDateTime.currentDateTime())
+
+        result = np.zeros((points.shape[0], 3), points.dtype)
+        result[:, :2] = points
+        result[:, 2] = [index] * points.shape[0]
+
+        return result
 
     def StartGUI(path=None):
         '''Initializes a new QApplication and control_module.
