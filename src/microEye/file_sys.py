@@ -4,11 +4,13 @@ import sys
 from enum import auto
 
 import cv2
+import numba
 import numpy as np
 import ome_types.model as om
 import pyqtgraph as pg
 import qdarkstyle
 import tifffile as tf
+from numpy.lib.type_check import imag
 from ome_types.model.channel import Channel
 from ome_types.model.ome import OME
 from ome_types.model.simple_types import UnitsLength, UnitsTime
@@ -17,14 +19,14 @@ from PyQt5.QtCore import *
 from PyQt5.QtGui import QFont, QIcon
 from PyQt5.QtWidgets import *
 from pyqtgraph.colormap import ColorMap
+from scipy.fftpack import fft2, fftshift, ifft2, ifftshift
 
-from scipy.fftpack import fft2, ifft2, fftshift, ifftshift
-
+from .Filters import *
+from .Fitting import *
 from .metadata import MetadataEditor
-from .uImage import BandpassFilter, uImage, phasor_fit
 from .thread_worker import *
-
-import numba
+from .uImage import uImage
+from .Rendering import gauss_hist_render
 
 
 class tiff_viewer(QWidget):
@@ -176,35 +178,14 @@ class tiff_viewer(QWidget):
         self.controls_layout.addWidget(self.th_max_label)
         self.controls_layout.addWidget(self.th_max_slider)
 
-        self.fft_min_label = QLabel('Filter arg 1 (min | center)')
-        self.fft_min_slider = QDoubleSpinBox()
-        self.fft_min_slider.setMinimum(0)
-        self.fft_min_slider.setMaximum(1024)
-        self.fft_min_slider.setSingleStep(0.05)
-        self.fft_min_slider.setValue(40.0)
-        self.fft_min_slider.valueChanged.connect(self.slider_changed)
-        self.fft_min_slider.valueChanged.emit(0)
+        self.tempMedianFilter = TemporalMedianFilterWidget()
+        self.tempMedianFilter.update.connect(lambda: self.update_display())
 
-        self.fft_max_label = QLabel('Filter arg 2 (max | width)')
-        self.fft_max_slider = QDoubleSpinBox()
-        self.fft_max_slider.setMinimum(0)
-        self.fft_max_slider.setMaximum(1024)
-        self.fft_max_slider.setSingleStep(0.05)
-        self.fft_max_slider.setValue(90.0)
-        self.fft_max_slider.valueChanged.connect(self.slider_changed)
-        self.fft_max_slider.valueChanged.emit(255)
+        self.bandpassFilter = BandpassFilterWidget()
+        self.bandpassFilter.update.connect(lambda: self.update_display())
 
-        self.fft_type_label = QLabel('Filter arg 2 (max | width)')
-        self.fft_type_cbox = QComboBox()
-        self.fft_type_cbox.addItems(['gauss', 'butter', 'ideal'])
-        self.fft_type_cbox.setCurrentText('butter')
-
-        self.controls_layout.addWidget(self.fft_min_label)
-        self.controls_layout.addWidget(self.fft_min_slider)
-        self.controls_layout.addWidget(self.fft_max_label)
-        self.controls_layout.addWidget(self.fft_max_slider)
-        self.controls_layout.addWidget(self.fft_type_label)
-        self.controls_layout.addWidget(self.fft_type_cbox)
+        self.controls_layout.addWidget(self.tempMedianFilter)
+        self.controls_layout.addWidget(self.bandpassFilter)
 
         self.minArea = QDoubleSpinBox()
         self.minArea.setMinimum(0)
@@ -358,20 +339,16 @@ class tiff_viewer(QWidget):
                 'Max det. threshold: {:d}/{:d}'.format(
                     value,
                     self.th_max_slider.maximum()))
-        # elif self.sender() is self.fft_min_slider:
-        #     self.fft_min_label.setText(
-        #         'FFT Bandpasse min: {:d}/{:d}'.format(
-        #             value,
-        #             self.fft_min_slider.maximum()))
-        # elif self.sender() is self.fft_max_slider:
-        #     self.fft_max_label.setText(
-        #         'FFT Bandpasse max: {:d}/{:d}'.format(
-        #             value,
-        #             self.fft_max_slider.maximum()))
 
     def update_display(self, image=None):
         if image is None:
             image = self.tiff.pages[self.pages_slider.value()].asarray()
+
+        if self.tempMedianFilter.enabled.isChecked():
+            self.tempMedianFilter.filter.getFrames(
+                self.pages_slider.value(), len(self.tiff.pages), self.path)
+
+            image = self.tempMedianFilter.filter.run(image)
 
         self.uImage = uImage(image)
 
@@ -392,16 +369,19 @@ class tiff_viewer(QWidget):
         self.image.setImage(self.uImage._view, autoLevels=False)
 
         if self.detection.isChecked():
-            filter = BandpassFilter()
             # bandpass filter
-            img = filter.run(
-                self.uImage._view,
-                self.fft_min_slider.value(),
-                self.fft_max_slider.value(),
-                type=self.fft_type_cbox.currentText())
+            img = self.bandpassFilter.filter.run(self.uImage._view)
+
+            _, th_img = cv2.threshold(
+                img,
+                self.th_min_slider.value(),
+                self.th_max_slider.value(),
+                cv2.THRESH_BINARY)
+
+            cv2.imshow("Keypoints_TH", th_img)
             # print(ex, end='\r')
             # Detect blobs.
-            keypoints = self.blob_detector().detect(img)
+            keypoints = self.blob_detector().detect(th_img)
 
             im_with_keypoints = cv2.drawKeypoints(
                 img, keypoints, np.array([]),
@@ -412,9 +392,10 @@ class tiff_viewer(QWidget):
 
             points = cv2.KeyPoint_convert(keypoints)
 
-            phasor_fit(self.uImage._image, points)
+            sub_fit = phasor_fit(self.uImage._image, points, False)
 
-            keypoints = [cv2.KeyPoint(*point, size=1.0) for point in points]
+            keypoints = [cv2.KeyPoint(*point, size=1.0) for point in
+                         sub_fit[:, :2]]
 
             # Draw detected blobs as red circles.
             # cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS ensures
@@ -428,7 +409,7 @@ class tiff_viewer(QWidget):
 
             self.image.setImage(im_with_keypoints, autoLevels=False)
 
-            return np.array(points, copy=True)
+            # return np.array(points, copy=True)
 
     def blob_detector(self) -> cv2.SimpleBlobDetector:
         # Setup SimpleBlobDetector parameters.
@@ -437,7 +418,7 @@ class tiff_viewer(QWidget):
         params.filterByColor = True
         params.blobColor = 255
 
-        params.minDistBetweenBlobs = 3
+        params.minDistBetweenBlobs = 0
 
         # Change thresholds
         params.minThreshold = float(self.th_min_slider.value())
@@ -485,28 +466,41 @@ class tiff_viewer(QWidget):
 
     def update_loc(self, data):
         shape = data
-        H, _, _ = np.histogram2d(
-            np.array(self.locX).copy() * 11.5,
-            np.array(self.locY).copy() * 11.5,
-            np.array(shape).copy() * 12)
-        cv2.normalize(
-            H, H, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
-        cv2.imshow('localization', H)
-        cv2.waitKey(1)
+        renderClass = gauss_hist_render()
+        img = renderClass.render(
+            np.array(self.locX).copy() *
+            float(self.metadataEditor.px_size.text()),
+            np.array(self.locY).copy() *
+            float(self.metadataEditor.py_size.text()),
+            np.array(self.intensity).copy()
+        )
+        # H, _, _ = np.histogram2d(
+        #     np.array(self.locX).copy() * 11.5,
+        #     np.array(self.locY).copy() * 11.5,
+        #     np.array(shape).copy() * 12)
+        img_norm = cv2.normalize(
+            img, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
+        self.image.setImage(img_norm, autoLevels=False)
+        # cv2.imshow('localization', H)
+        # cv2.waitKey(1)
+        return img
 
     def update_lists(self, result: np.ndarray):
         self.locX.extend(result[:, 0])
         self.locY.extend(result[:, 1])
-        self.frame.extend(result[:, 2])
+        self.intensity.extend(result[:, 2])
+        self.frame.extend(result[:, 3])
         self.thread_done += 1
 
-    def proccess_loc(self, filename, progress_callback):
+    def proccess_loc(self, filename: str, progress_callback):
         self.locX = []
         self.locY = []
         self.frame = []
+        self.intensity = []
         self.thread_done = 0
         time = QDateTime.currentDateTime()
-        filter = BandpassFilter()
+        filter = self.bandpassFilter.filter
+        tempEnabled = self.tempMedianFilter.enabled.isChecked()
         blob_detector = self.blob_detector()
         threads = self._threadpool.maxThreadCount() - 2
         print('Threads', threads)
@@ -519,14 +513,19 @@ class tiff_viewer(QWidget):
             for k in range(threads):
                 if i + k < len(self.tiff.pages):
                     img = self.tiff.pages[i + k].asarray().copy()
+
+                    temp = None
+                    if tempEnabled:
+                        temp = TemporalMedianFilter()
+                        temp._temporal_window = \
+                            self.tempMedianFilter.filter._temporal_window
+
                     worker = thread_worker(
                         self.localize_frame,
                         img,
-                        (self.fft_min_slider.value(),
-                            self.fft_max_slider.value()),
-                        self.fft_type_cbox.currentText(),
+                        temp,
                         filter,
-                        i + k + 1,
+                        i + k,
                         progress=False, z_stage=False)
                     worker.signals.result.connect(self.update_lists)
                     workers.append(worker)
@@ -564,28 +563,49 @@ class tiff_viewer(QWidget):
                 'index: {:d}/{:d}, Time: {:d}  '.format(
                     i + len(workers), len(self.tiff.pages), exex),
                 end="\r")
-            if (i // threads) % 10 == 0:
+            if (i // threads) % 40 == 0:
                 progress_callback.emit(self.uImage._image.shape)
+
+        sres_img = self.update_loc(None)
+        tf.imsave(
+            filename.replace('.tsv', '_super_res.tif'),
+            sres_img,
+            photometric='minisblack',
+            append=True,
+            bigtiff=True,
+            ome=False)
 
         loc = np.c_[np.array(self.locX), np.array(self.locY)]
         np.savetxt(filename, loc, delimiter='\t', encoding='utf-8')
 
+        loc = np.c_[
+            np.array(self.frame),
+            np.array(self.locX) * float(self.metadataEditor.px_size.text()),
+            np.array(self.locY) * float(self.metadataEditor.py_size.text()),
+            np.array(self.intensity)]
+        np.savetxt(
+            filename.replace('.tsv', '_full.tsv') + '.full',
+            loc, delimiter='\t', encoding='utf-8')
+
     def localize_frame(
             self, image: np.ndarray,
-            filter_range, filter_type,
-            filter: BandpassFilter,
+            temp: TemporalMedianFilter,
+            filter: AbstractFilter,
             index):
+
+        if temp is not None:
+            temp.getFrames(index, len(self.tiff.pages), self.path)
+            image = temp.run(image)
+
         uImg = uImage(image)
 
         uImg.equalizeLUT(None, False)
 
-        img = filter.run(
-            uImg._view,
-            filter_range[0],
-            filter_range[1],
-            type=filter_type,
-            refresh=False,
-            show_filter=False)
+        if filter is BandpassFilter:
+            filter._show_filter = False
+            filter._refresh = False
+
+        img = filter.run(uImg._view)
 
         # Detect blobs.
 
@@ -594,12 +614,10 @@ class tiff_viewer(QWidget):
         points: np.ndarray = cv2.KeyPoint_convert(keypoints)
 
         time = QDateTime.currentDateTime()
-        phasor_fit(uImg._image, points)
-        exex = time.msecsTo(QDateTime.currentDateTime())
+        result = phasor_fit(uImg._image, points)
+        result[:, 3] = [index + 1] * points.shape[0]
 
-        result = np.zeros((points.shape[0], 3), points.dtype)
-        result[:, :2] = points
-        result[:, 2] = [index] * points.shape[0]
+        exex = time.msecsTo(QDateTime.currentDateTime())
 
         return result
 
