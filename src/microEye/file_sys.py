@@ -4,6 +4,7 @@ import sys
 from enum import auto
 
 import cv2
+import pandas as pd
 import numba
 import numpy as np
 import ome_types.model as om
@@ -24,12 +25,12 @@ from scipy.fftpack import fft2, fftshift, ifft2, ifftshift
 from .Filters import *
 from .Fitting import *
 from .metadata import MetadataEditor
+from .Rendering import *
 from .thread_worker import *
 from .uImage import uImage
-from .Rendering import gauss_hist_render
 
 
-class tiff_viewer(QWidget):
+class tiff_viewer(QMainWindow):
 
     def __init__(self, path=os.path.dirname(os.path.abspath(__file__))):
         super().__init__()
@@ -41,6 +42,8 @@ class tiff_viewer(QWidget):
         self._zoom = 1  # display resize
         self._n_levels = 4096
 
+        self.fittingResults = None
+
         self.tiff = None
 
         # Threading
@@ -50,10 +53,25 @@ class tiff_viewer(QWidget):
 
         self.initialize(path)
 
+        self.status()
+
+        # Statues Bar Timer
+        self.timer = QTimer()
+        self.timer.setInterval(10)
+        self.timer.timeout.connect(self.status)
+        self.timer.start()
+
     def initialize(self, path):
+
         self.setWindowTitle(self.title)
         self.setGeometry(self.left, self.top, self.width, self.height)
         self.center()
+
+        self.main_widget = QWidget()
+        self.main_layout = QHBoxLayout()
+        self.main_widget.setLayout(self.main_layout)
+        self.setCentralWidget(self.main_widget)
+
         self.path = path
         self.model = QFileSystemModel()
         self.model.setRootPath(self.path)
@@ -81,21 +99,27 @@ class tiff_viewer(QWidget):
 
         self.metadataEditor = MetadataEditor()
 
-        self.main_layout = QHBoxLayout()
-        self.g_layout_widget = QVBoxLayout()
-
         self.tabView = QTabWidget()
         self.tabView.addTab(self.tree, 'File system')
         self.tabView.addTab(self.metadataEditor, 'OME-XML Metadata')
 
+        self.g_layout_widget = QVBoxLayout()
+
         self.main_layout.addWidget(self.tabView, 2)
         self.main_layout.addLayout(self.g_layout_widget, 3)
 
+        # Tiff Options tab layout
         self.controls_group = QWidget()
         self.controls_layout = QVBoxLayout()
         self.controls_group.setLayout(self.controls_layout)
 
+        # Localization / Render tab layout
+        self.loc_group = QWidget()
+        self.loc_layout = QVBoxLayout()
+        self.loc_group.setLayout(self.loc_layout)
+
         self.tabView.addTab(self.controls_group, 'Tiff Options')
+        self.tabView.addTab(self.loc_group, 'Localization / Render')
 
         self.series_slider = QSlider(Qt.Horizontal)
         self.series_slider.setMinimum(0)
@@ -230,15 +254,82 @@ class tiff_viewer(QWidget):
         # self.controls_layout.addWidget(self.minConvexity)
         # self.controls_layout.addWidget(self.minInertiaRatio)
 
-        self.export_loc_btn = QPushButton(
-            'Export Localizations',
-            clicked=lambda: self.export_loc())
-
-        self.controls_layout.addWidget(self.export_loc_btn)
-
         # self.controls_layout.addWidget(self.average_btn)
         # self.controls_layout.addLayout(self.zoom_layout)
         self.controls_layout.addStretch()
+
+        # Localization / Render layout
+        self.fitting_cbox = QComboBox()
+        self.fitting_cbox.addItem('2D Phasor-Fit')
+
+        self.render_cbox = QComboBox()
+        self.render_cbox.addItem('2D Gaussian Histogram')
+
+        self.frc_cbox = QComboBox()
+        self.frc_cbox.addItem('Check Pattern')
+        self.frc_cbox.addItem('Binomial')
+
+        self.export_frm = QCheckBox('Frame')
+        self.export_frm.setChecked(True)
+        self.export_loc_px = QCheckBox('Localizations (px)')
+        self.export_loc_px.setChecked(False)
+        self.export_loc_nm = QCheckBox('Localizations (nm)')
+        self.export_loc_nm.setChecked(True)
+        self.export_int = QCheckBox('Intensity')
+        self.export_int.setChecked(True)
+
+        self.export_precision = QLineEdit('%10.5f')
+
+        self.export_image = QCheckBox('Super-res Image')
+        self.export_image.setChecked(True)
+
+        self.super_px_size = QSpinBox()
+        self.super_px_size.setMinimum(0)
+        self.super_px_size.setValue(5)
+
+        self.loc_btn = QPushButton(
+            'Localize',
+            clicked=lambda: self.localize())
+        self.refresh_btn = QPushButton(
+            'Display / Refresh Super-res Image',
+            clicked=lambda: self.update_loc())
+        self.frc_res_btn = QPushButton(
+            'FRC Resolution',
+            clicked=lambda: self.FRC_estimate())
+        self.drift_cross_btn = QPushButton(
+            'Drift cross-correlation',
+            clicked=lambda: self.drift_cross())
+
+        self.export_loc_btn = QPushButton(
+            'Export Localizations',
+            clicked=lambda: self.export_loc())
+        self.import_loc_btn = QPushButton(
+            'Import Localizations',
+            clicked=lambda: self.import_loc())
+
+        self.loc_layout.addWidget(QLabel('Fitting:'))
+        self.loc_layout.addWidget(self.fitting_cbox)
+        self.loc_layout.addWidget(QLabel('Rendering Method:'))
+        self.loc_layout.addWidget(self.render_cbox)
+        self.loc_layout.addWidget(QLabel('FRC Method:'))
+        self.loc_layout.addWidget(self.frc_cbox)
+        self.loc_layout.addWidget(QLabel('Super resolution pixel [nm]:'))
+        self.loc_layout.addWidget(self.super_px_size)
+        self.loc_layout.addWidget(QLabel('Exported:'))
+        self.loc_layout.addWidget(self.export_frm)
+        self.loc_layout.addWidget(self.export_loc_px)
+        self.loc_layout.addWidget(self.export_loc_nm)
+        self.loc_layout.addWidget(self.export_int)
+        self.loc_layout.addWidget(self.export_image)
+        self.loc_layout.addWidget(QLabel('Format:'))
+        self.loc_layout.addWidget(self.export_precision)
+        self.loc_layout.addWidget(self.loc_btn)
+        self.loc_layout.addWidget(self.refresh_btn)
+        self.loc_layout.addWidget(self.frc_res_btn)
+        self.loc_layout.addWidget(self.drift_cross_btn)
+        self.loc_layout.addWidget(self.export_loc_btn)
+        self.loc_layout.addWidget(self.import_loc_btn)
+        self.loc_layout.addStretch()
 
         # graphics layout
         # # A plot area (ViewBox + axes) for displaying the image
@@ -250,8 +341,6 @@ class tiff_viewer(QWidget):
         self.g_layout_widget.addWidget(self.image_plot)
         # Item for displaying image data
 
-        self.setLayout(self.main_layout)
-
         self.show()
 
     def center(self):
@@ -261,6 +350,15 @@ class tiff_viewer(QWidget):
         centerPoint = QDesktopWidget().availableGeometry().center()
         qtRectangle.moveCenter(centerPoint)
         self.move(qtRectangle.topLeft())
+
+    def status(self):
+        # Statusbar time
+        self.statusBar().showMessage(
+            'Time: ' + QDateTime.currentDateTime().toString('hh:mm:ss,zzz') +
+            ' | Results: ' +
+            ('None' if self.fittingResults is None else str(
+                len(self.fittingResults)))
+            )
 
     def _open_file(self, i):
         if not self.model.isDir(i):
@@ -394,22 +492,24 @@ class tiff_viewer(QWidget):
 
             sub_fit = phasor_fit(self.uImage._image, points, False)
 
-            keypoints = [cv2.KeyPoint(*point, size=1.0) for point in
-                         sub_fit[:, :2]]
+            if sub_fit is not None:
 
-            # Draw detected blobs as red circles.
-            # cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS ensures
-            # the size of the circle corresponds to the size of blob
-            im_with_keypoints = cv2.drawKeypoints(
-                self.uImage._view, keypoints, np.array([]),
-                (0, 0, 255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+                keypoints = [cv2.KeyPoint(*point, size=1.0) for point in
+                             sub_fit[:, :2]]
 
-            # Show keypoints
-            # cv2.imshow("Keypoints_PH", im_with_keypoints)
+                # Draw detected blobs as red circles.
+                # cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS ensures
+                # the size of the circle corresponds to the size of blob
+                im_with_keypoints = cv2.drawKeypoints(
+                    self.uImage._view, keypoints, np.array([]),
+                    (0, 0, 255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
 
-            self.image.setImage(im_with_keypoints, autoLevels=False)
+                # Show keypoints
+                # cv2.imshow("Keypoints_PH", im_with_keypoints)
 
-            # return np.array(points, copy=True)
+                self.image.setImage(im_with_keypoints, autoLevels=False)
+
+                # return np.array(points, copy=True)
 
     def blob_detector(self) -> cv2.SimpleBlobDetector:
         # Setup SimpleBlobDetector parameters.
@@ -448,7 +548,94 @@ class tiff_viewer(QWidget):
         else:
             return cv2.SimpleBlobDetector_create(params)
 
-    def export_loc(self):
+    def FRC_estimate(self):
+        frc_method = self.frc_cbox.currentText()
+        if 'Check' in frc_method:
+            img = self.update_loc()
+
+            if img is not None:
+                FRC_resolution_check_pattern(
+                    img, self.super_px_size.value())
+        elif 'Binomial' in frc_method:
+            if self.fittingResults is None:
+                return
+            elif len(self.fittingResults) > 0:
+                data = self.fittingResults.toRender()
+                FRC_resolution_binomial(
+                    np.c_[data[0], data[1], data[2]],
+                    self.super_px_size.value()
+                )
+            else:
+                return
+
+    def drift_cross(self):
+        if self.fittingResults is None:
+            return
+        elif len(self.fittingResults) > 0:
+            results = self.fittingResults.drift_cross_correlation()
+            if results is not None:
+                img_norm = cv2.normalize(
+                    results[1], None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
+                self.image.setImage(img_norm, autoLevels=False)
+                self.fittingResults = results[0]
+        else:
+            return
+
+    def import_loc(self):
+        filename, _ = QFileDialog.getOpenFileName(
+            self, "Import localizations", filter="TSV Files (*.tsv);;")
+
+        if len(filename) > 0:
+
+            results = FittingResults.fromFile(
+                filename,
+                float(self.metadataEditor.px_size.text()))
+
+            if results is not None:
+                self.fittingResults = results
+                self.update_loc()
+                print('Done importing results.')
+            else:
+                print('Error importing results.')
+
+    def export_loc(self, filename=None):
+        if self.fittingResults is None:
+            return
+
+        if filename is None:
+            filename, _ = QFileDialog.getSaveFileName(
+                self, "Export localizations", filter="TSV Files (*.tsv);;")
+
+        if len(filename) > 0:
+            sres_img = self.update_loc()
+
+            if sres_img is not None:
+                tf.imsave(
+                    filename.replace('.tsv', '_super_res.tif'),
+                    sres_img,
+                    photometric='minisblack',
+                    append=True,
+                    bigtiff=True,
+                    ome=False)
+
+            exp_columns = [
+                self.export_frm.isChecked(),
+                self.export_loc_px.isChecked(),
+                self.export_loc_px.isChecked(),
+                self.export_loc_nm.isChecked(),
+                self.export_loc_nm.isChecked(),
+                self.export_int.isChecked(),
+            ]
+
+            dataFrame = self.fittingResults.dataFrame()
+            dataFrame.to_csv(
+                filename, index=False,
+                columns=FittingResults.columns[exp_columns],
+                float_format=self.export_precision.text(),
+                sep='\t',
+                encoding='utf-8')
+
+    def localize(self):
         if self.tiff is None:
             return
 
@@ -464,39 +651,30 @@ class tiff_viewer(QWidget):
             # Execute
             self._threadpool.start(self.worker)
 
-    def update_loc(self, data):
-        shape = data
-        renderClass = gauss_hist_render()
-        img = renderClass.render(
-            np.array(self.locX).copy() *
-            float(self.metadataEditor.px_size.text()),
-            np.array(self.locY).copy() *
-            float(self.metadataEditor.py_size.text()),
-            np.array(self.intensity).copy()
-        )
-        # H, _, _ = np.histogram2d(
-        #     np.array(self.locX).copy() * 11.5,
-        #     np.array(self.locY).copy() * 11.5,
-        #     np.array(shape).copy() * 12)
-        img_norm = cv2.normalize(
-            img, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
-        self.image.setImage(img_norm, autoLevels=False)
-        # cv2.imshow('localization', H)
-        # cv2.waitKey(1)
-        return img
+    def update_loc(self):
+        if self.fittingResults is None:
+            return None
+        elif len(self.fittingResults) > 0:
+            renderClass = gauss_hist_render(self.super_px_size.value())
+            img = renderClass.render(
+                *self.fittingResults.toRender())
+            img_norm = cv2.normalize(
+                img, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
+            self.image.setImage(img_norm, autoLevels=False)
+            return img
+        else:
+            return None
 
     def update_lists(self, result: np.ndarray):
-        self.locX.extend(result[:, 0])
-        self.locY.extend(result[:, 1])
-        self.intensity.extend(result[:, 2])
-        self.frame.extend(result[:, 3])
+        if result is not None:
+            self.fittingResults.extend(result)
         self.thread_done += 1
 
     def proccess_loc(self, filename: str, progress_callback):
-        self.locX = []
-        self.locY = []
-        self.frame = []
-        self.intensity = []
+        self.fittingResults = FittingResults(
+            ResultsUnits.Pixel,
+            float(self.metadataEditor.px_size.text())
+        )
         self.thread_done = 0
         time = QDateTime.currentDateTime()
         filter = self.bandpassFilter.filter
@@ -531,33 +709,10 @@ class tiff_viewer(QWidget):
                     workers.append(worker)
                     QThreadPool.globalInstance().start(worker)
 
+            while self.thread_done < len(workers):
+                QThread.msleep(10)
+
             exex = time.msecsTo(QDateTime.currentDateTime())
-
-            # uImg = uImage(self.tiff.pages[i].asarray())
-
-            # uImg.equalizeLUT(None, False)
-
-            # img = filter.run(
-            #     uImg._view,
-            #     self.fft_min_slider.value(),
-            #     self.fft_max_slider.value(),
-            #     type=self.fft_type_cbox.currentText(),
-            #     refresh=False,
-            #     show_filter=False)
-
-            # # Detect blobs.
-
-            # keypoints = blob_detector.detect(img)
-
-            # points = cv2.KeyPoint_convert(keypoints)
-
-            # time = QDateTime.currentDateTime()
-            # phasor_fit(uImg._image, points)
-            # exex = time.msecsTo(QDateTime.currentDateTime())
-
-            # locX.extend(points[:, 0])
-            # locY.extend(points[:, 1])
-            # frame.extend([i] * len(points[:, 0]))
 
             print(
                 'index: {:d}/{:d}, Time: {:d}  '.format(
@@ -566,26 +721,9 @@ class tiff_viewer(QWidget):
             if (i // threads) % 40 == 0:
                 progress_callback.emit(self.uImage._image.shape)
 
-        sres_img = self.update_loc(None)
-        tf.imsave(
-            filename.replace('.tsv', '_super_res.tif'),
-            sres_img,
-            photometric='minisblack',
-            append=True,
-            bigtiff=True,
-            ome=False)
+        QThread.msleep(5000)
 
-        loc = np.c_[np.array(self.locX), np.array(self.locY)]
-        np.savetxt(filename, loc, delimiter='\t', encoding='utf-8')
-
-        loc = np.c_[
-            np.array(self.frame),
-            np.array(self.locX) * float(self.metadataEditor.px_size.text()),
-            np.array(self.locY) * float(self.metadataEditor.py_size.text()),
-            np.array(self.intensity)]
-        np.savetxt(
-            filename.replace('.tsv', '_full.tsv') + '.full',
-            loc, delimiter='\t', encoding='utf-8')
+        self.export_loc(filename)
 
     def localize_frame(
             self, image: np.ndarray,
@@ -608,14 +746,22 @@ class tiff_viewer(QWidget):
         img = filter.run(uImg._view)
 
         # Detect blobs.
+        _, th_img = cv2.threshold(
+                img,
+                self.th_min_slider.value(),
+                self.th_max_slider.value(),
+                cv2.THRESH_BINARY)
 
-        keypoints = self.blob_detector().detect(img)
+        keypoints = self.blob_detector().detect(th_img)
 
         points: np.ndarray = cv2.KeyPoint_convert(keypoints)
 
         time = QDateTime.currentDateTime()
         result = phasor_fit(uImg._image, points)
-        result[:, 3] = [index + 1] * points.shape[0]
+
+        if result is not None:
+            result[:, 3] = [index + 1] * points.shape[0]
+            # print(index + 1, result[:, 3].shape)
 
         exex = time.msecsTo(QDateTime.currentDateTime())
 

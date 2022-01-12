@@ -11,6 +11,7 @@ This toolkit is compatible with the [hardware](#hardware) we are using in our mi
  
 - Numpy 
 - scipy
+- pandas
 - pyueye
 - cv2
 - tifffile

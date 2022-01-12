@@ -101,6 +101,8 @@ class BandpassFilter(AbstractFilter):
         '''
         if self._radial_cordinates is None:
             R, Rsq = self.radial_cordinate(shape)
+        elif self._radial_cordinates[0].shape != shape[:2]:
+            R, Rsq = self.radial_cordinate(shape)
         else:
             R, Rsq = self._radial_cordinates
 
@@ -132,6 +134,8 @@ class BandpassFilter(AbstractFilter):
                 the filter in fourier space
         '''
         if self._radial_cordinates is None:
+            R, Rsq = self.radial_cordinate(shape)
+        elif self._radial_cordinates[0].shape != shape[:2]:
             R, Rsq = self.radial_cordinate(shape)
         else:
             R, Rsq = self._radial_cordinates
@@ -165,10 +169,16 @@ class BandpassFilter(AbstractFilter):
 
         ft = fftshift(cv2.dft(np.float64(nimg), flags=cv2.DFT_COMPLEX_OUTPUT))
 
-        filter = np.ones(ft.shape)
+        filter = np.ones(ft.shape[:2])
 
-        if self._filter is None or self._refresh \
-                or self._filter.shape != image.shape:
+        refresh = self._refresh
+
+        if self._filter is None:
+            refresh = True
+        elif self._filter.shape != ft.shape[:2]:
+            refresh = True
+
+        if refresh:
             if 'gauss' in self._type:
                 filter = self.gauss_bandpass_filter(
                     ft.shape, self._center, self._width)
@@ -179,6 +189,8 @@ class BandpassFilter(AbstractFilter):
                 cutoff = int(max(0, self._center - self._width // 2))
                 cuton = int(self._center + self._width // 2)
                 filter = self.ideal_bandpass_filter(ft.shape, cutoff, cuton)
+
+            self._filter = filter
         else:
             filter = self._filter
 
