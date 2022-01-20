@@ -214,11 +214,17 @@ class acquisition_module(QMainWindow):
         for panel in self.thor_panels:
             panel.frames_tbox.setText(value)
 
+        for panel in self.vimba_panels:
+            panel.frames_tbox.setText(value)
+
     def experiment_name_changed(self, value):
         for panel in self.ids_panels:
             panel.experiment_name.setText(value)
 
         for panel in self.thor_panels:
+            panel.experiment_name.setText(value)
+
+        for panel in self.vimba_panels:
             panel.experiment_name.setText(value)
 
     def image_stats(self, filename):
@@ -272,6 +278,10 @@ class acquisition_module(QMainWindow):
             panel._directory = self.save_directory
             panel.save_dir_edit.setText(self.save_directory)
 
+        for panel in self.vimba_panels:
+            panel._directory = self.save_directory
+            panel.save_dir_edit.setText(self.save_directory)
+
     def remove_camera_clicked(self, cam):
         if not self._stop_mcam_thread:
             QMessageBox.warning(
@@ -284,16 +294,16 @@ class acquisition_module(QMainWindow):
             for pan in self.ids_panels:
                 if pan.cam.Cam_ID == cam["camID"]:
                     if not pan.cam.acquisition:
+                        pan.cam.free_memory()
                         pan.cam.dispose()
-                    # if not pan.master:
-                    #     self.ids_panels[0].slaves.remove(pan.cam)
-                    pan._dispose_cam = True
-                    pan._stop_thread = True
-                    self.ids_cams.remove(pan.cam)
-                    self.ids_panels.remove(pan)
-                    self.Hlayout.removeWidget(pan)
-                    pan.setParent(None)
-                    break
+
+                        pan._dispose_cam = True
+                        pan._stop_thread = True
+                        self.ids_cams.remove(pan.cam)
+                        self.ids_panels.remove(pan)
+                        self.Hlayout.removeWidget(pan)
+                        pan.setParent(None)
+                        break
         if 'UC480' in cam["Driver"]:
             for pan in self.thor_panels:
                 # if pan.cam.hCam.value == cam["camID"]:
@@ -302,13 +312,28 @@ class acquisition_module(QMainWindow):
                         pan.cam.free_memory()
                         pan.cam.dispose()
 
-                    pan._dispose_cam = True
-                    pan._stop_thread = True
-                    self.thorlabs_cams.remove(pan.cam)
-                    self.thor_panels.remove(pan)
-                    self.Hlayout.removeWidget(pan)
-                    pan.setParent(None)
-                    break
+                        pan._dispose_cam = True
+                        pan._stop_thread = True
+                        self.thorlabs_cams.remove(pan.cam)
+                        self.thor_panels.remove(pan)
+                        self.Hlayout.removeWidget(pan)
+                        pan.setParent(None)
+                        break
+        if 'Vimba' in cam["Driver"]:
+            for pan in self.vimba_panels:
+                with pan.cam.cam:
+                    if pan.cam.cam.get_serial() == cam["Serial"]:
+                        if not pan.cam.acquisition:
+                            pan.cam.free_memory()
+                            pan.cam.dispose()
+
+                            pan._dispose_cam = True
+                            pan._stop_thread = True
+                            self.thorlabs_cams.remove(pan.cam)
+                            self.thor_panels.remove(pan)
+                            self.Hlayout.removeWidget(pan)
+                            pan.setParent(None)
+                            break
 
     def add_camera_clicked(self, cam):
         if not self._stop_mcam_thread:
@@ -527,8 +552,10 @@ class acquisition_module(QMainWindow):
             panel.info_temp.setText(
                 " T {:.2f} °C".format(panel.cam.temperature))
             panel.info_cap.setText(
-                " Capture {:d} | {:.2f} ms ".format(
+                " Capture {:d}/{:d} {:.2%} | {:.2f} ms ".format(
                     panel._counter,
+                    panel._nFrames,
+                    panel._counter / panel._nFrames,
                     panel._exec_time))
             panel.info_disp.setText(
                 " Display {:d} | {:.2f} ms ".format(
@@ -544,8 +571,10 @@ class acquisition_module(QMainWindow):
             panel.info_temp.setText(
                 " T {:.2f} °C".format(panel.cam.temperature))
             panel.info_cap.setText(
-                " Capture {:d} | {:.2f} ms ".format(
+                " Capture {:d}/{:d} {:.2%} | {:.2f} ms ".format(
                     panel._counter,
+                    panel._nFrames,
+                    panel._counter / panel._nFrames,
                     panel._exec_time))
             panel.info_disp.setText(
                 " Display {:d} | {:.2f} ms ".format(
@@ -561,8 +590,10 @@ class acquisition_module(QMainWindow):
             panel.info_temp.setText(
                 " T {:.2f} °C".format(panel.cam.temperature))
             panel.info_cap.setText(
-                " Capture {:d} | {:.2f} ms ".format(
+                " Capture {:d}/{:d} {:.2%} | {:.2f} ms ".format(
                     panel._counter,
+                    panel._nFrames,
+                    panel._counter / panel._nFrames,
                     panel._exec_time))
             panel.info_disp.setText(
                 " Display {:d} | {:.2f} ms ".format(

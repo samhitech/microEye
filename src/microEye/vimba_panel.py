@@ -275,6 +275,8 @@ class Vimba_Panel(QGroupBox):
         # save to hard drive checkbox
         self.cam_save_temp = QCheckBox("Save to dir")
         self.cam_save_temp.setChecked(self.mini)
+        self.save_bigg_tiff = QCheckBox("BiggTiff Format")
+        self.save_bigg_tiff.setChecked(True)
         self.cam_save_meta = QCheckBox("Write OME-XML")
         self.cam_save_meta.setChecked(self.mini)
 
@@ -391,6 +393,7 @@ class Vimba_Panel(QGroupBox):
             self.first_tab_Layout.addLayout(self.save_dir_layout)
             self.first_tab_Layout.addWidget(self.frames_tbox)
             self.first_tab_Layout.addWidget(self.cam_save_temp)
+            self.first_tab_Layout.addWidget(self.save_bigg_tiff)
             self.first_tab_Layout.addWidget(self.cam_save_meta)
         self.first_tab_Layout.addStretch()
 
@@ -734,7 +737,7 @@ class Vimba_Panel(QGroupBox):
         # add sensor temperature to the stack
         self._temps.put(self.cam.get_temperature())
         self._counter = self._counter + 1
-        if self._counter > self.nFrames - 1 and not self.mini:
+        if self._counter > self._nFrames - 1 and not self.mini:
             self._stop_thread = True
             logging.debug('Stop')
 
@@ -756,7 +759,7 @@ class Vimba_Panel(QGroupBox):
                 self._frames.queue.clear()
                 self._counter = 0
                 self.time = QDateTime.currentDateTime()
-                self.nFrames = int(self.frames_tbox.text())
+                self._nFrames = int(self.frames_tbox.text())
                 # Continuous image capture
                 cam.cam.start_streaming(self._capture_handler)
                 while(True):
@@ -863,35 +866,67 @@ class Vimba_Panel(QGroupBox):
         '''
         try:
             frames_saved = 0
+            path = self._save_path
+            tiffWriter = None
+            tempFile = None
+            index = 0
+            biggTiff = self.save_bigg_tiff.isChecked()
+
+            def getFilename(index: int):
+                return path + \
+                       '\\image_{:05d}.ome.tif'.format(index)
+
             while(True):
                 # save in case frame stack is not empty
                 if not self._frames.empty():
                     # for save time estimations
                     time = QDateTime.currentDateTime()
 
+                    if tempFile is None:
+                        if not os.path.exists(path):
+                            os.makedirs(path)
+
+                        tempFile = open(path + '\\temp_log.csv', 'ab')
+
+                    if tiffWriter is None:
+                        tiffWriter = tf.TiffWriter(
+                            getFilename(index),
+                            append=False,
+                            bigtiff=biggTiff,
+                            ome=False)
+
                     # get frame and temp to save from bottom of stack
                     frame, temp = self._frames.get()
+                    frame = frame.copy()
 
                     # creates dir
-                    if not os.path.exists(self._save_path):
-                        os.makedirs(self._save_path)
 
                     # append frame to tiff
-                    tf.imwrite(
-                        self._save_path + "\\image.ome.tif",
-                        data=frame[np.newaxis, :],
-                        photometric='minisblack',
-                        append=True,
-                        bigtiff=True,
-                        ome=False)
+                    try:
+                        tiffWriter.write(
+                            data=frame[np.newaxis, :],
+                            photometric='minisblack')
+                    except ValueError as ve:
+                        if str(ve) == 'data too large for standard TIFF file':
+                            tiffWriter.close()
+                            index += 1
+                            tiffWriter = tf.TiffWriter(
+                                getFilename(index),
+                                append=False,
+                                bigtiff=biggTiff,
+                                ome=False)
+                            tiffWriter.write(
+                                data=frame[np.newaxis, :],
+                                photometric='minisblack')
+                        else:
+                            raise ve
 
                     # open csv file and append sensor temp and close
-                    file = open(self._save_path + '\\temps.csv', 'ab')
-                    np.savetxt(file, [temp], delimiter=";")
-                    file.close()
+                    np.savetxt(tempFile, [temp], delimiter=";")
 
                     # for save time estimations
-                    self._save_time = time.msecsTo(QDateTime.currentDateTime())
+                    self._save_time = time.msecsTo(
+                        QDateTime.currentDateTime())
 
                     frames_saved = frames_saved + 1
 
@@ -903,13 +938,18 @@ class Vimba_Panel(QGroupBox):
         except Exception:
             traceback.print_exc()
         finally:
+            if tempFile is not None:
+                tempFile.close()
+            if tiffWriter is not None:
+                tiffWriter.close()
+
             if self.cam_save_meta.isChecked():
                 ome = self.OME_tab.gen_OME_XML(
                     frames_saved,
                     self._cam.width,
                     self._cam.height)
                 tf.tiffcomment(
-                    self._save_path + "\\image.ome.tif",
+                    getFilename(0),
                     ome.to_xml())
 
     @staticmethod

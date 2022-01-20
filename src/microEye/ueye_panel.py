@@ -19,6 +19,8 @@ from pyqtgraph.metaarray.MetaArray import axis
 
 from tifffile.tifffile import astype
 
+from microEye.camera_calibration import dark_calibration
+
 from .qlist_slider import *
 from .thread_worker import *
 from .ueye_camera import IDS_Camera
@@ -287,6 +289,11 @@ class IDS_Panel(QGroupBox):
         # save to hard drive checkbox
         self.cam_save_temp = QCheckBox("Save to dir")
         self.cam_save_temp.setChecked(self.mini)
+        self.dark_cal = QCheckBox("Dark Calibration")
+        self.dark_cal.setToolTip('Generates mean and variance images')
+        self.dark_cal.setChecked(False)
+        self.save_bigg_tiff = QCheckBox("BiggTiff Format")
+        self.save_bigg_tiff.setChecked(True)
         self.cam_save_meta = QCheckBox("Write OME-XML")
         self.cam_save_meta.setChecked(self.mini)
 
@@ -402,6 +409,8 @@ class IDS_Panel(QGroupBox):
             self.first_tab_Layout.addLayout(self.save_dir_layout)
             self.first_tab_Layout.addWidget(self.frames_tbox)
             self.first_tab_Layout.addWidget(self.cam_save_temp)
+            self.first_tab_Layout.addWidget(self.dark_cal)
+            self.first_tab_Layout.addWidget(self.save_bigg_tiff)
             self.first_tab_Layout.addWidget(self.cam_save_meta)
         self.first_tab_Layout.addStretch()
 
@@ -876,7 +885,7 @@ class IDS_Panel(QGroupBox):
             temp = np.zeros(
                 (cam.height.value * cam.width.value * cam.bytes_per_pixel))
             time = QDateTime.currentDateTime()
-            nFrames = int(self.frames_tbox.text())
+            self._nFrames = int(self.frames_tbox.text())
             # Continuous image capture
             while(nRet == ueye.IS_SUCCESS):
                 self._exec_time = time.msecsTo(QDateTime.currentDateTime())
@@ -895,7 +904,7 @@ class IDS_Panel(QGroupBox):
                     self._temps.put(cam.get_temperature())
                     temp = data.copy()
                     self._counter = self._counter + 1
-                    if self._counter >= nFrames and not self.mini:
+                    if self._counter >= self._nFrames and not self.mini:
                         self._stop_thread = True
                         logging.debug('Stop')
                     cam.unlock_buffer()
@@ -1005,6 +1014,17 @@ class IDS_Panel(QGroupBox):
         '''
         try:
             frames_saved = 0
+            path = self._save_path
+            tiffWriter = None
+            tempFile = None
+            darkCal = None
+            index = 0
+            biggTiff = self.save_bigg_tiff.isChecked()
+
+            def getFilename(index: int):
+                return path + \
+                       '\\image_{:05d}.ome.tif'.format(index)
+
             while(nRet == ueye.IS_SUCCESS):
                 # save in case frame stack is not empty
                 if not self._frames.empty():
@@ -1013,27 +1033,55 @@ class IDS_Panel(QGroupBox):
 
                     # get frame and temp to save from bottom of stack
                     frame, temp = self._frames.get()
+                    frame = frame.copy()
 
                     # creates dir
-                    if not os.path.exists(self._save_path):
-                        os.makedirs(self._save_path)
+                    if tempFile is None:
+                        if not os.path.exists(path):
+                            os.makedirs(path)
+
+                        tempFile = open(path + '\\temp_log.csv', 'ab')
+
+                    if tiffWriter is None:
+                        tiffWriter = tf.TiffWriter(
+                            getFilename(index),
+                            append=False,
+                            bigtiff=biggTiff,
+                            ome=False)
+
+                    if self.dark_cal.isChecked():
+                        if darkCal is None:
+                            exp = self._cam.exposure_current.value
+                            darkCal = dark_calibration(frame.shape, exp)
+
+                        darkCal.addFrame(frame)
 
                     # append frame to tiff
-                    tf.imwrite(
-                        self._save_path + "\\image.ome.tif",
-                        data=frame[np.newaxis, :],
-                        photometric='minisblack',
-                        append=True,
-                        bigtiff=True,
-                        ome=False)
+                    try:
+                        tiffWriter.write(
+                            data=frame[np.newaxis, :],
+                            photometric='minisblack')
+                    except ValueError as ve:
+                        if str(ve) == 'data too large for standard TIFF file':
+                            tiffWriter.close()
+                            index += 1
+                            tiffWriter = tf.TiffWriter(
+                                getFilename(index),
+                                append=False,
+                                bigtiff=biggTiff,
+                                ome=False)
+                            tiffWriter.write(
+                                data=frame[np.newaxis, :],
+                                photometric='minisblack')
+                        else:
+                            raise ve
 
                     # open csv file and append sensor temp and close
-                    file = open(self._save_path + '\\temps.csv', 'ab')
-                    np.savetxt(file, [temp], delimiter=";")
-                    file.close()
+                    np.savetxt(tempFile, [temp], delimiter=";")
 
                     # for save time estimations
-                    self._save_time = time.msecsTo(QDateTime.currentDateTime())
+                    self._save_time = time.msecsTo(
+                        QDateTime.currentDateTime())
 
                     frames_saved = frames_saved + 1
 
@@ -1045,13 +1093,21 @@ class IDS_Panel(QGroupBox):
         except Exception:
             traceback.print_exc()
         finally:
+            if tempFile is not None:
+                tempFile.close()
+            if tiffWriter is not None:
+                tiffWriter.close()
+            if darkCal is not None:
+                if darkCal._counter > 1:
+                    darkCal.saveResults(path)
+
             if self.cam_save_meta.isChecked():
                 ome = self.OME_tab.gen_OME_XML(
                     frames_saved,
                     self._cam.width,
                     self._cam.height)
                 tf.tiffcomment(
-                    self._save_path + "\\image.ome.tif",
+                    getFilename(0),
                     ome.to_xml())
 
     @staticmethod

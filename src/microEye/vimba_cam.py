@@ -156,8 +156,11 @@ class vimba_cam:
         '''
         self.temperature = -127
         # with self.cam:
-        self.temperature = self.cam.get_feature_by_name(
-            'DeviceTemperature').get()
+        try:
+            self.temperature = self.cam.get_feature_by_name(
+                'DeviceTemperature').get()
+        except Exception as e:
+            pass
         return self.temperature
 
     # Get exposure
@@ -165,11 +168,18 @@ class vimba_cam:
         exp = -127
         try:
             # with self.cam:
-            exposure = self.cam.ExposureTime
-            self.exposure_current = exposure.get()
-            self.exposure_increment = exposure.get_increment()
-            self.exposure_unit = exposure.get_unit()
-            self.exposure_range = exposure.get_range()
+            try:
+                exposure = self.cam.ExposureTime
+                self.exposure_current = exposure.get()
+                self.exposure_increment = exposure.get_increment()
+                self.exposure_unit = exposure.get_unit()
+                self.exposure_range = exposure.get_range()
+            except Exception:
+                exposure = self.cam.ExposureTimeAbs
+                self.exposure_current = exposure.get()
+                self.exposure_increment = self.cam.ExposureTimeIncrement.get()
+                self.exposure_unit = exposure.get_unit()
+                self.exposure_range = exposure.get_range()
             if output:
                 print(
                     "Current Exposure ",
@@ -183,10 +193,16 @@ class vimba_cam:
     def set_exposure(self, value: float):
         try:
             # with self.cam:
-            exposure = self.cam.ExposureTime
-            self.exposure_increment = exposure.get_increment()
-            self.exposure_unit = exposure.get_unit()
-            self.exposure_range = exposure.get_range()
+            try:
+                exposure = self.cam.ExposureTime
+                self.exposure_increment = exposure.get_increment()
+                self.exposure_unit = exposure.get_unit()
+                self.exposure_range = exposure.get_range()
+            except Exception:
+                exposure = self.cam.ExposureTimeAbs
+                self.exposure_increment = self.cam.ExposureTimeIncrement.get()
+                self.exposure_unit = exposure.get_unit()
+                self.exposure_range = exposure.get_range()
             set_value = self.exposure_increment * (
                 (value - self.exposure_range[0])//self.exposure_increment)\
                 + self.exposure_range[0]
@@ -194,6 +210,7 @@ class vimba_cam:
                 min(set_value, self.exposure_range[1]),
                 self.exposure_range[0])
             exposure.set(set_value)
+            self.exposure_current = set_value
             return 1
         except Exception:
             print("Exposure Set ERROR")

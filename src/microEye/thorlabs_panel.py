@@ -96,7 +96,7 @@ class Thorlabs_Panel(QGroupBox):
 
         self.OME_tab = MetadataEditor()
         self.OME_tab.channel_name.setText(self._cam.name)
-        self.OME_tab.det_manufacturer.setText('IDS uEye')
+        self.OME_tab.det_manufacturer.setText('Thorlabs')
         self.OME_tab.det_model.setText(
             self._cam.sInfo.strSensorName.decode('utf-8'))
         self.OME_tab.det_serial.setText(
@@ -491,7 +491,7 @@ class Thorlabs_Panel(QGroupBox):
             str(self._cam.pixel_clock_list[-1]))
 
     def reset_AOI(self):
-        '''Resets the AOI for the slected IDS_Camera
+        '''Resets the AOI for the slected thorlabs_camera
         '''
         if self.cam.acquisition:
             QMessageBox.warning(
@@ -785,7 +785,7 @@ class Thorlabs_Panel(QGroupBox):
         Parameters
         ----------
         nRet : int
-            IDS Camera error/success code
+            thorlabs_camera error/success code
         """
 
         self._stop_thread = False  # set stop acquisition workers flag to false
@@ -823,7 +823,7 @@ class Thorlabs_Panel(QGroupBox):
         Parameters
         ----------
         nRet : int
-            IDS Camera error/success code
+            thorlabs_camera error/success code
         """
         self._stop_thread = False  # set stop acquisition workers flag to false
 
@@ -864,7 +864,7 @@ class Thorlabs_Panel(QGroupBox):
             temp = np.zeros(
                 (cam.height * cam.width * cam.bytes_per_pixel))
             time = QDateTime.currentDateTime()
-            nFrames = int(self.frames_tbox.text())
+            self._nFrames = int(self.frames_tbox.text())
             # Continuous image capture
             while(nRet == ueye.IS_SUCCESS):
                 self._exec_time = time.msecsTo(QDateTime.currentDateTime())
@@ -884,7 +884,7 @@ class Thorlabs_Panel(QGroupBox):
                     self._temps.put(cam.get_temperature())
                     temp = data.copy()
                     self._counter = self._counter + 1
-                    if self._counter >= nFrames and not self.mini:
+                    if self._counter >= self._nFrames and not self.mini:
                         self._stop_thread = True
                         logging.debug('Stop')
                     cam.unlock_buffer()
@@ -914,7 +914,7 @@ class Thorlabs_Panel(QGroupBox):
         ----------
         nRet : int
             return code from thorlabs_camera, ueye.IS_SUCCESS = 0 to run.
-        cam : IDS_Camera
+        cam : thorlabs_camera
             the thorlabs_camera used to acquire frames.
         '''
         try:
@@ -990,39 +990,71 @@ class Thorlabs_Panel(QGroupBox):
         Parameters
         ----------
         nRet : int
-            return code from IDS_Camera, ueye.IS_SUCCESS = 0 to run.
+            return code from thorlabs_camera, CMD.IS_SUCCESS = 0 to run.
         '''
         try:
             frames_saved = 0
-            while(nRet == ueye.IS_SUCCESS):
+            path = self._save_path
+            tiffWriter = None
+            tempFile = None
+            index = 0
+            biggTiff = self.save_bigg_tiff.isChecked()
+
+            def getFilename(index: int):
+                return path + \
+                       '\\image_{:05d}.ome.tif'.format(index)
+
+            while(nRet == CMD.IS_SUCCESS):
                 # save in case frame stack is not empty
                 if not self._frames.empty():
                     # for save time estimations
                     time = QDateTime.currentDateTime()
 
+                    if tempFile is None:
+                        if not os.path.exists(path):
+                            os.makedirs(path)
+
+                        tempFile = open(path + '\\temp_log.csv', 'ab')
+
+                    if tiffWriter is None:
+                        tiffWriter = tf.TiffWriter(
+                            getFilename(index),
+                            append=False,
+                            bigtiff=biggTiff,
+                            ome=False)
+
                     # get frame and temp to save from bottom of stack
                     frame, temp = self._frames.get()
+                    frame = frame.copy()
 
                     # creates dir
-                    if not os.path.exists(self._save_path):
-                        os.makedirs(self._save_path)
 
                     # append frame to tiff
-                    tf.imwrite(
-                        self._save_path + "\\image.ome.tif",
-                        data=frame[np.newaxis, :],
-                        photometric='minisblack',
-                        append=True,
-                        bigtiff=True,
-                        ome=False)
+                    try:
+                        tiffWriter.write(
+                            data=frame[np.newaxis, :],
+                            photometric='minisblack')
+                    except ValueError as ve:
+                        if str(ve) == 'data too large for standard TIFF file':
+                            tiffWriter.close()
+                            index += 1
+                            tiffWriter = tf.TiffWriter(
+                                getFilename(index),
+                                append=False,
+                                bigtiff=biggTiff,
+                                ome=False)
+                            tiffWriter.write(
+                                data=frame[np.newaxis, :],
+                                photometric='minisblack')
+                        else:
+                            raise ve
 
                     # open csv file and append sensor temp and close
-                    file = open(self._save_path + '\\temps.csv', 'ab')
-                    np.savetxt(file, [temp], delimiter=";")
-                    file.close()
+                    np.savetxt(tempFile, [temp], delimiter=";")
 
                     # for save time estimations
-                    self._save_time = time.msecsTo(QDateTime.currentDateTime())
+                    self._save_time = time.msecsTo(
+                        QDateTime.currentDateTime())
 
                     frames_saved = frames_saved + 1
 
@@ -1034,13 +1066,18 @@ class Thorlabs_Panel(QGroupBox):
         except Exception:
             traceback.print_exc()
         finally:
+            if tempFile is not None:
+                tempFile.close()
+            if tiffWriter is not None:
+                tiffWriter.close()
+
             if self.cam_save_meta.isChecked():
                 ome = self.OME_tab.gen_OME_XML(
                     frames_saved,
                     self._cam.width,
                     self._cam.height)
                 tf.tiffcomment(
-                    self._save_path + "\\image.ome.tif",
+                    getFilename(0),
                     ome.to_xml())
 
     @staticmethod
