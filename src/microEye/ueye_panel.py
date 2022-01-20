@@ -85,6 +85,9 @@ class IDS_Panel(QGroupBox):
         self._directory = ""  # save directory
         self._save_path = ""  # save path
 
+        self._counter = 0
+        self._nFrames = 1
+
         self.mini = mini
 
         # main layout
