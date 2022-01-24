@@ -10,6 +10,7 @@ import tifffile as tf
 
 from PyQt5.QtCore import *
 from PyQt5.QtWidgets import *
+from zarr.core import Array
 
 
 class AbstractFilter:
@@ -279,13 +280,14 @@ class TemporalMedianFilter(AbstractFilter):
         self._frames = None
         self._median = None
 
-    def getFrames(self, index, maximum, file: str):
+    def getFrames(self, index, dataZarr: Array):
         if self._temporal_window < 2:
             self._frames = None
             self._median = None
             self._start = None
             return
 
+        maximum = len(dataZarr)
         step = 0
         if self._temporal_window % 2:
             step = self._temporal_window // 2
@@ -299,12 +301,17 @@ class TemporalMedianFilter(AbstractFilter):
         # self._frames = np.array(
         #     [x.asarray() for x in
         #         file.pages[self._start:self._start + self._temporal_window]])
-        self._frames = tf.imread(
-            file,
-            key=slice(
+        # self._frames = tf.imread(
+        #     file,
+        #     key=slice(
+        #         self._start,
+        #         (self._start + self._temporal_window),
+        #         1))
+        data_slice = slice(
                 self._start,
                 (self._start + self._temporal_window),
-                1))
+                1)
+        self._frames = dataZarr[data_slice]
 
     def run(self, image: np.ndarray):
         if self._frames is not None:
@@ -340,7 +347,7 @@ class TemporalMedianFilterWidget(QGroupBox):
         self.window_size.valueChanged.emit(3)
 
         self.enabled = QCheckBox('Enable Filter')
-        self.enabled.setChecked(True)
+        self.enabled.setChecked(False)
         self.enabled.stateChanged.connect(self.value_changed)
 
         self._layout.addWidget(QLabel('Window Temporal Size:'))

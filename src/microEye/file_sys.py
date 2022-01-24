@@ -4,13 +4,14 @@ import sys
 from enum import auto
 
 import cv2
-import pandas as pd
 import numba
 import numpy as np
 import ome_types.model as om
+import pandas as pd
 import pyqtgraph as pg
 import qdarkstyle
 import tifffile as tf
+import zarr
 from numpy.lib.type_check import imag
 from ome_types.model.channel import Channel
 from ome_types.model.ome import OME
@@ -27,7 +28,7 @@ from .Fitting import *
 from .metadata import MetadataEditor
 from .Rendering import *
 from .thread_worker import *
-from .uImage import uImage
+from .uImage import *
 
 
 class tiff_viewer(QMainWindow):
@@ -46,6 +47,11 @@ class tiff_viewer(QMainWindow):
 
         self.tiff = None
 
+        self.tiffSequence = None
+        self.tiffSeq_Handler = None
+        # self.tiffStore = None
+        # self.tiffZar = None
+
         # Threading
         self._threadpool = QThreadPool()
         print("Multithreading with maximum %d threads"
@@ -62,16 +68,18 @@ class tiff_viewer(QMainWindow):
         self.timer.start()
 
     def initialize(self, path):
-
+        # Set Title / Dimensions / Center Window
         self.setWindowTitle(self.title)
         self.setGeometry(self.left, self.top, self.width, self.height)
         self.center()
 
+        # Define main window layout
         self.main_widget = QWidget()
         self.main_layout = QHBoxLayout()
         self.main_widget.setLayout(self.main_layout)
         self.setCentralWidget(self.main_widget)
 
+        # Initialize the file system model / tree
         self.path = path
         self.model = QFileSystemModel()
         self.model.setRootPath(self.path)
@@ -97,16 +105,23 @@ class tiff_viewer(QMainWindow):
         self.tree.setWindowTitle("Dir View")
         self.tree.resize(640, 480)
 
+        # Metadata Viewer / Editor
         self.metadataEditor = MetadataEditor()
 
+        # Side TabView
         self.tabView = QTabWidget()
-        self.tabView.addTab(self.tree, 'File system')
-        self.tabView.addTab(self.metadataEditor, 'OME-XML Metadata')
 
+        # Graphical layout
         self.g_layout_widget = QVBoxLayout()
 
+        # Add the two sub-main layouts
         self.main_layout.addWidget(self.tabView, 2)
         self.main_layout.addLayout(self.g_layout_widget, 3)
+
+        # Tiff File system tree viewer tab
+        self.file_tree = QWidget()
+        self.file_tree_layout = QVBoxLayout()
+        self.file_tree.setLayout(self.file_tree_layout)
 
         # Tiff Options tab layout
         self.controls_group = QWidget()
@@ -118,8 +133,18 @@ class tiff_viewer(QMainWindow):
         self.loc_layout = QVBoxLayout()
         self.loc_group.setLayout(self.loc_layout)
 
+        # Add Tabs
+        self.tabView.addTab(self.file_tree, 'File system')
+        self.tabView.addTab(self.metadataEditor, 'OME-XML Metadata')
         self.tabView.addTab(self.controls_group, 'Tiff Options')
         self.tabView.addTab(self.loc_group, 'Localization / Render')
+
+        # Add the File system tab contents
+        self.imsq_pattern = QLineEdit('/image_0*.ome.tif')
+
+        self.file_tree_layout.addWidget(QLabel('Image Sequence pattern:'))
+        self.file_tree_layout.addWidget(self.imsq_pattern)
+        self.file_tree_layout.addWidget(self.tree)
 
         self.series_slider = QSlider(Qt.Horizontal)
         self.series_slider.setMinimum(0)
@@ -287,6 +312,18 @@ class tiff_viewer(QMainWindow):
         self.super_px_size.setMinimum(0)
         self.super_px_size.setValue(5)
 
+        self.drift_cross_args = QHBoxLayout()
+        self.drift_cross_bins = QSpinBox()
+        self.drift_cross_bins.setValue(10)
+        self.drift_cross_px = QSpinBox()
+        self.drift_cross_px.setValue(10)
+        self.drift_cross_up = QSpinBox()
+        self.drift_cross_up.setMaximum(1000)
+        self.drift_cross_up.setValue(100)
+        self.drift_cross_args.addWidget(self.drift_cross_bins)
+        self.drift_cross_args.addWidget(self.drift_cross_px)
+        self.drift_cross_args.addWidget(self.drift_cross_up)
+
         self.loc_btn = QPushButton(
             'Localize',
             clicked=lambda: self.localize())
@@ -326,6 +363,9 @@ class tiff_viewer(QMainWindow):
         self.loc_layout.addWidget(self.loc_btn)
         self.loc_layout.addWidget(self.refresh_btn)
         self.loc_layout.addWidget(self.frc_res_btn)
+        self.loc_layout.addWidget(
+            QLabel('Drift X-Corr. (bins, pixelSize, upsampling):'))
+        self.loc_layout.addLayout(self.drift_cross_args)
         self.loc_layout.addWidget(self.drift_cross_btn)
         self.loc_layout.addWidget(self.export_loc_btn)
         self.loc_layout.addWidget(self.import_loc_btn)
@@ -365,30 +405,62 @@ class tiff_viewer(QMainWindow):
             cv2.destroyAllWindows()
             index = self.model.index(i.row(), 0, i.parent())
             self.path = self.model.filePath(index)
-            if self.tiff is not None:
-                self.tiff.close()
-            self.tiff = tf.TiffFile(self.path)
-            self.pages_slider.setMaximum(len(self.tiff.pages) - 1)
+            if self.tiffSeq_Handler is not None:
+                self.tiffSeq_Handler.close()
+            self.tiffSequence = tf.TiffSequence([self.path])
+            self.tiffSeq_Handler = TiffSeqHandler(self.tiffSequence)
+            self.tiffSeq_Handler.open()
+            # self.tiffStore = self.tiffSequence.aszarr(axestiled={0: 0})
+            # self.tiffZar = zarr.open(self.tiffStore, mode='r')
+
+            self.pages_slider.setMaximum(len(self.tiffSeq_Handler) - 1)
             self.pages_slider.valueChanged.emit(0)
 
-            if self.tiff.ome_metadata is not None:
-                ome = OME.from_xml(self.tiff.ome_metadata)
-                self.metadataEditor.pop_OME_XML(ome)
+            with tf.TiffFile(self.tiffSequence.files[0]) as fl:
+                if fl.is_ome:
+                    ome = OME.from_xml(fl.ome_metadata)
+                    self.metadataEditor.pop_OME_XML(ome)
 
             # self.update_display()
             # self.genOME()
+        else:
+            index = self.model.index(i.row(), 0, i.parent())
+            self.path = self.model.filePath(index)
+            if self.tiffSeq_Handler is not None:
+                self.tiffSeq_Handler.close()
+            try:
+                self.tiffSequence = tf.TiffSequence(
+                    self.path + '/' + self.imsq_pattern.text())
+            except ValueError:
+                self.tiffSequence = None
+
+            if self.tiffSequence is not None:
+                self.tiffSeq_Handler = TiffSeqHandler(self.tiffSequence)
+                self.tiffSeq_Handler.open()
+                # self.tiffStore = self.tiffSequence.aszarr(axestiled={0: 0})
+                # chunks = (1,) + self.tiffStore._chunks[1:]
+                # self.tiffZar = zarr.open(
+                #     self.tiffStore, mode='r', chunks=chunks)
+
+                self.pages_slider.setMaximum(
+                    self.tiffSeq_Handler.__len__() - 1)
+                self.pages_slider.valueChanged.emit(0)
+
+                with tf.TiffFile(self.tiffSequence.files[0]) as fl:
+                    if fl.is_ome:
+                        ome = OME.from_xml(fl.ome_metadata)
+                        self.metadataEditor.pop_OME_XML(ome)
 
     def average_stack(self):
-        if self.tiff is not None:
+        if self.tiffSeq_Handler is not None:
             sum = np.array([page.asarray() for page in self.tiff.pages])
             avg = sum.mean(axis=0, dtype=np.float32)
 
             self.image.setImage(avg, autoLevels=False)
 
     def genOME(self):
-        if self.tiff is not None:
-
-            frames = len(self.tiff.pages)
+        if self.tiffSeq_Handler is not None:
+            frames = len(self.tiffSeq_Handler)
             width = self.image.image.shape[1]
             height = self.image.image.shape[0]
             ome = self.metadataEditor.gen_OME_XML(frames, width, height)
@@ -410,7 +482,7 @@ class tiff_viewer(QMainWindow):
         self.update_display()
 
     def slider_changed(self, value):
-        if self.tiff is not None:
+        if self.tiffSeq_Handler is not None:
             self.update_display()
         if self.sender() is self.pages_slider:
             self.pages_label.setText(
@@ -440,11 +512,11 @@ class tiff_viewer(QMainWindow):
 
     def update_display(self, image=None):
         if image is None:
-            image = self.tiff.pages[self.pages_slider.value()].asarray()
+            image = self.tiffSeq_Handler[self.pages_slider.value()]
 
         if self.tempMedianFilter.enabled.isChecked():
             self.tempMedianFilter.filter.getFrames(
-                self.pages_slider.value(), len(self.tiff.pages), self.path)
+                self.pages_slider.value(), self.tiffSeq_Handler)
 
             image = self.tempMedianFilter.filter.run(image)
 
@@ -460,8 +532,12 @@ class tiff_viewer(QMainWindow):
         self.uImage.equalizeLUT(min_max, True)
 
         if self.autostretch.isChecked():
+            self.min_slider.valueChanged.disconnect(self.slider_changed)
+            self.max_slider.valueChanged.disconnect(self.slider_changed)
             self.min_slider.setValue(self.uImage._min)
             self.max_slider.setValue(self.uImage._max)
+            self.min_slider.valueChanged.connect(self.slider_changed)
+            self.max_slider.valueChanged.connect(self.slider_changed)
 
         # cv2.imshow(self.path, image)
         self.image.setImage(self.uImage._view, autoLevels=False)
@@ -572,12 +648,23 @@ class tiff_viewer(QMainWindow):
         if self.fittingResults is None:
             return
         elif len(self.fittingResults) > 0:
-            results = self.fittingResults.drift_cross_correlation()
-            if results is not None:
-                img_norm = cv2.normalize(
-                    results[1], None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
-                self.image.setImage(img_norm, autoLevels=False)
-                self.fittingResults = results[0]
+            def work_func():
+                results = self.fittingResults.drift_cross_correlation(
+                    self.drift_cross_bins.value(),
+                    self.drift_cross_px.value(),
+                    self.drift_cross_up.value(),
+                )
+                if results is not None:
+                    img_norm = cv2.normalize(
+                        results[1], None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
+                    self.image.setImage(img_norm, autoLevels=False)
+                    self.fittingResults = results[0]
+
+            self.worker = thread_worker(
+                work_func,
+                progress=False, z_stage=False)
+            # Execute
+            self._threadpool.start(self.worker)
         else:
             return
 
@@ -636,7 +723,7 @@ class tiff_viewer(QMainWindow):
                 encoding='utf-8')
 
     def localize(self):
-        if self.tiff is None:
+        if self.tiffSeq_Handler is None:
             return
 
         filename, _ = QFileDialog.getSaveFileName(
@@ -683,14 +770,14 @@ class tiff_viewer(QMainWindow):
         threads = self._threadpool.maxThreadCount() - 2
         print('Threads', threads)
         for i in range(
-                0, int(np.ceil(len(self.tiff.pages) / threads) * threads),
+                0, int(np.ceil(len(self.tiffSeq_Handler) / threads) * threads),
                 threads):
             time = QDateTime.currentDateTime()
             workers = []
             self.thread_done = 0
             for k in range(threads):
-                if i + k < len(self.tiff.pages):
-                    img = self.tiff.pages[i + k].asarray().copy()
+                if i + k < len(self.tiffSeq_Handler):
+                    img = self.tiffSeq_Handler[i + k].copy()
 
                     temp = None
                     if tempEnabled:
@@ -716,7 +803,7 @@ class tiff_viewer(QMainWindow):
 
             print(
                 'index: {:d}/{:d}, Time: {:d}  '.format(
-                    i + len(workers), len(self.tiff.pages), exex),
+                    i + len(workers), len(self.tiffSeq_Handler), exex),
                 end="\r")
             if (i // threads) % 40 == 0:
                 progress_callback.emit(self.uImage._image.shape)
@@ -732,7 +819,7 @@ class tiff_viewer(QMainWindow):
             index):
 
         if temp is not None:
-            temp.getFrames(index, len(self.tiff.pages), self.path)
+            temp.getFrames(index, self.tiffSeq_Handler)
             image = temp.run(image)
 
         uImg = uImage(image)

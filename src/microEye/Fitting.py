@@ -286,13 +286,22 @@ class FittingResults:
             frames.append(f * frames_per_bin + frames_per_bin/2)
             grouped_data.append(group)
             sub_images.append(image)
+            print(
+                'Bins: {:d}/{:d}'.format(f + 1, n_bins),
+                end="\r")
 
-        for img in sub_images:
+        for idx, img in enumerate(sub_images):
             shift = phase_cross_correlation(
                 img, sub_images[0], upsample_factor=upsampling)
             shifts.append(shift[0] * pixelSize)
+            print(
+                'Shift Est.: {:d}/{:d}'.format(idx + 1, len(sub_images)),
+                end="\r")
 
         shifts = np.c_[shifts, np.array(frames)]
+        print(
+            'Shift Correction ...',
+            end="\r")
 
         # An one-dimensional interpolation is applied
         # to drift traces in X and Y dimensions separately.
@@ -318,7 +327,17 @@ class FittingResults:
         drift_corrected.locY_nm = data[:, 4]
         drift_corrected.intensity = data[:, 5]
 
-        drift_corrected_image = renderEngine.fromArray(data[:, 3:6])
+        x_max = int((np.max(data[:, 3]) / renderEngine._pixel_size) +
+                    4 * renderEngine._gauss_len)
+        y_max = int((np.max(data[:, 4]) / renderEngine._pixel_size) +
+                    4 * renderEngine._gauss_len)
+
+        drift_corrected_image = renderEngine.fromArray(
+            data[:, 3:6], (y_max, x_max))
+
+        print(
+            'Shift Plot ...',
+            end="\r")
 
         # plot results
         plt = pg.plot()
@@ -348,6 +367,10 @@ class FittingResults:
             frames_new, interpy,
             pen='y', symbol=None,
             symbolBrush=0.2, name='y-drift')
+
+        print(
+            'Done ...',
+            end="\r")
 
         return drift_corrected, drift_corrected_image
 

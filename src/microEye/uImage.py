@@ -1,10 +1,14 @@
-import re
+from sys import flags
 import cv2
-import numpy as np
-from scipy.fftpack import fft2, ifft2, fftshift, ifftshift
 import numba
-
+import numpy as np
+from numpy.lib.arraysetops import isin
+from numpy.lib.function_base import select
+from pandas.core import frame
+import tifffile as tf
+import zarr
 from PyQt5.QtCore import *
+from scipy.fftpack import fft2, fftshift, ifft2, ifftshift
 
 
 class uImage():
@@ -14,7 +18,10 @@ class uImage():
         self._height = image.shape[0]
         self._width = image.shape[1]
         self._min = 0
-        self._max = 2**16 - 1 if image.dtype == np.uint16 else 255
+        self._max = 255 if image.dtype == np.uint8 else 2**16 - 1
+        self._isfloat = (image.dtype == np.float16
+                         or image.dtype == np.float32
+                         or image.dtype == np.float64)
         self._view = np.zeros(image.shape, dtype=np.uint8)
         self._hist = None
         self.n_bins = None
@@ -72,7 +79,7 @@ class uImage():
         self._max = np.where(self._cdf >= 0.9999)[0][0]
 
     def equalizeLUT(self, range=None, nLUT=False):
-        if nLUT:
+        if nLUT and not self._isfloat:
             self.calcHist()
 
             if range is not None:
@@ -138,3 +145,71 @@ class uImage():
             return uImage.fromUINT8(buffer, height, width)
         else:
             return uImage.fromUINT16(buffer, height, width)
+
+
+class TiffSeqHandler:
+
+    def __init__(self, tiffSeq: tf.TiffSequence) -> None:
+        self._tiffSeq = tiffSeq
+        self._stores = [None] * len(tiffSeq.files)
+        self._zarr = [None] * len(tiffSeq.files)
+        self._frames = [None] * len(tiffSeq.files)
+        self._data = None
+        self._shape = None
+        self._dtype = None
+
+    def open(self):
+        for idx, file in enumerate(self._tiffSeq.files):
+            self._stores[idx] = tf.imread(file, aszarr=True)
+            self._zarr[idx] = zarr.open(self._stores[idx], mode='r')
+            self._zarr[idx][0]
+            self._frames[idx] = self._zarr[idx].shape[0]
+
+        self._shape = (sum(self._frames),) + self._zarr[0].shape[1:]
+        self._dtype = self._zarr[0].dtype
+        self._cum_frames = np.cumsum(self._frames)
+
+    def close(self):
+        for store in self._stores:
+            store.close()
+        self._tiffSeq.close()
+
+    def __getitem__(self, i):
+        if not isinstance(i, slice):
+            file_idx = 0
+            for idx, cum_frames in enumerate(self._cum_frames):
+                if i <= cum_frames - 1:
+                    file_idx = idx
+                    i -= (cum_frames - self._frames[idx])
+                    break
+
+            return self._zarr[file_idx][i]
+        else:
+            start = i.start
+            stop = i.stop
+            if stop <= self._cum_frames[0]:
+                return self._zarr[0][i]
+            else:
+                indices = np.arange(start, stop)
+                result = np.empty(
+                    shape=(0,) + self._zarr[0].shape[1:], dtype=self._dtype)
+                for idx, cum_frames in enumerate(self._cum_frames):
+                    mask = np.logical_and(
+                        cum_frames - self._frames[idx] <= indices,
+                        indices < cum_frames)
+                    if np.sum(mask) > 0:
+                        r = indices[mask] - (cum_frames - self._frames[idx])
+                        result = np.concatenate((
+                            result,
+                            self._zarr[idx][np.min(r):np.max(r)+1]), axis=0)
+
+            return result
+
+    def __len__(self):
+        return sum(self._frames)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
