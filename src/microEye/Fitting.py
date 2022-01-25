@@ -290,13 +290,17 @@ class FittingResults:
                 'Bins: {:d}/{:d}'.format(f + 1, n_bins),
                 end="\r")
 
-        for idx, img in enumerate(sub_images):
-            shift = phase_cross_correlation(
-                img, sub_images[0], upsample_factor=upsampling)
-            shifts.append(shift[0] * pixelSize)
-            print(
-                'Shift Est.: {:d}/{:d}'.format(idx + 1, len(sub_images)),
-                end="\r")
+        print(
+            'Shift Estimation ...',
+            end="\r")
+        shifts = shift_estimation(np.array(sub_images), pixelSize, upsampling)
+        # for idx, img in enumerate(sub_images):
+        #     shift = phase_cross_correlation(
+        #         img, sub_images[0], upsample_factor=upsampling)
+        #     shifts.append(shift[0] * pixelSize)
+        #     print(
+        #         'Shift Est.: {:d}/{:d}'.format(idx + 1, len(sub_images)),
+        #         end="\r")
 
         shifts = np.c_[shifts, np.array(frames)]
         print(
@@ -316,9 +320,10 @@ class FittingResults:
         interpx = interpx(frames_new)
         interpy = interpy(frames_new)
 
-        for i, (shift_x, shift_y) in enumerate(zip(interpx, interpy)):
-            data[data[:, 0] == i, 3] -= shift_x
-            data[data[:, 0] == i, 4] -= shift_y
+        shift_correction(interpx, interpy, data)
+        # for i, (shift_x, shift_y) in enumerate(zip(interpx, interpy)):
+        #     data[data[:, 0] == i, 3] -= shift_x
+        #     data[data[:, 0] == i, 4] -= shift_y
 
         drift_corrected = FittingResults(
             ResultsUnits.Nanometer, self.pixelSize)
@@ -327,53 +332,70 @@ class FittingResults:
         drift_corrected.locY_nm = data[:, 4]
         drift_corrected.intensity = data[:, 5]
 
-        x_max = int((np.max(data[:, 3]) / renderEngine._pixel_size) +
-                    4 * renderEngine._gauss_len)
-        y_max = int((np.max(data[:, 4]) / renderEngine._pixel_size) +
-                    4 * renderEngine._gauss_len)
-
         drift_corrected_image = renderEngine.fromArray(
-            data[:, 3:6], (y_max, x_max))
+            data[:, 3:6])
 
-        print(
-            'Shift Plot ...',
-            end="\r")
+        return drift_corrected, drift_corrected_image, \
+            (frames_new, interpx, interpy, unique_frames)
 
-        # plot results
-        plt = pg.plot()
 
-        plt.showGrid(x=True, y=True)
-        plt.addLegend()
+@numba.njit(parallel=True)
+def shift_estimation(sub_images, pixelSize, upsampling):
+    shifts = np.zeros((len(sub_images), 2))
+    for idx in numba.prange(0, len(sub_images)):
+        with numba.objmode(shift='float64[:]'):
+            shift = phase_cross_correlation(
+                sub_images[idx], sub_images[0], upsample_factor=upsampling)[0]
+        shifts[idx, :] = shift * pixelSize
+    return shifts
 
-        # set properties of the label for y axis
-        plt.setLabel('left', 'drift', units='nm')
 
-        # set properties of the label for x axis
-        plt.setLabel('bottom', 'frame', units='')
+@numba.jit(nopython=True, parallel=True)
+def shift_correction(interpx, interpy, data):
+    for idx in numba.prange(0, len(interpx)):
+        shift_x = interpx[idx]
+        shift_y = interpy[idx]
+        data[data[:, 0] == idx, 3] -= shift_x
+        data[data[:, 0] == idx, 4] -= shift_y
 
-        plt.setWindowTitle('Drift Cross-Correlation')
 
-        # setting horizontal range
-        plt.setXRange(0, np.max(unique_frames))
+def plotDriftXCorr(frames_new, interpx, interpy, unique_frames):
+    print(
+        'Shift Plot ...',
+        end="\r")
 
-        # setting vertical range
-        plt.setYRange(0, 1)
+    # plot results
+    plt = pg.plot()
 
-        line1 = plt.plot(
-            frames_new, interpx,
-            pen='r', symbol=None,
-            symbolBrush=0.2, name='x-drift')
-        line1 = plt.plot(
-            frames_new, interpy,
-            pen='y', symbol=None,
-            symbolBrush=0.2, name='y-drift')
+    plt.showGrid(x=True, y=True)
+    plt.addLegend()
 
-        print(
-            'Done ...',
-            end="\r")
+    # set properties of the label for y axis
+    plt.setLabel('left', 'drift', units='nm')
 
-        return drift_corrected, drift_corrected_image
+    # set properties of the label for x axis
+    plt.setLabel('bottom', 'frame', units='')
 
+    plt.setWindowTitle('Drift Cross-Correlation')
+
+    # setting horizontal range
+    plt.setXRange(0, np.max(unique_frames))
+
+    # setting vertical range
+    plt.setYRange(0, 1)
+
+    line1 = plt.plot(
+        frames_new, interpx,
+        pen='r', symbol=None,
+        symbolBrush=0.2, name='x-drift')
+    line1 = plt.plot(
+        frames_new, interpy,
+        pen='y', symbol=None,
+        symbolBrush=0.2, name='y-drift')
+
+    print(
+        'Done ...',
+        end="\r")
 
 # @numba.jit(nopython=True)
 # def phasor_fit_numba(image: np.ndarray, points: np.ndarray, roi_size=7):

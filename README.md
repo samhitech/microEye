@@ -9,9 +9,11 @@ This toolkit is compatible with the [hardware](#hardware) we are using in our mi
 
 ## Uses Packages
  
-- Numpy 
+- Numpy
 - scipy
 - pandas
+- Zarr
+- dask
 - pyueye
 - cv2
 - tifffile

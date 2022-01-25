@@ -89,10 +89,14 @@ class MetadataEditor(QWidget):
         self.pixel_type.addItems(PixelType._member_names_)
         self.pixel_type.setCurrentText(PixelType.UINT16.name)
 
-        self.px_size = QLineEdit('120')
-        self.px_size.setValidator(self.dValid)
-        self.py_size = QLineEdit('120')
-        self.py_size.setValidator(self.dValid)
+        self.px_size = QDoubleSpinBox()
+        self.px_size.setMinimum(0)
+        self.px_size.setMaximum(10000)
+        self.px_size.setValue(130.0)
+        self.py_size = QDoubleSpinBox()
+        self.py_size.setMinimum(0)
+        self.py_size.setMaximum(10000)
+        self.py_size.setValue(130.0)
         self.p_unit = QComboBox()
         self.p_unit.addItems(UnitsLength._member_names_)
         self.p_unit.setCurrentText(UnitsLength.NANOMETER.name)
@@ -114,8 +118,10 @@ class MetadataEditor(QWidget):
         self.image_lay.addWidget(QLabel('Fluorophore:'))
         self.image_lay.addWidget(self.fluor_name)
 
-        self.exposure = QLineEdit('100.0')
-        self.exposure.setValidator(self.dValid)
+        self.exposure = QDoubleSpinBox()
+        self.exposure.setMinimum(0)
+        self.exposure.setMaximum(10000)
+        self.exposure.setValue(100.0)
         self.exposure_unit = QComboBox()
         self.exposure_unit.addItems(UnitsTime._member_names_)
         self.exposure_unit.setCurrentText(UnitsTime.MILLISECOND.name)
@@ -145,10 +151,14 @@ class MetadataEditor(QWidget):
         self.image_lay.addWidget(QLabel('Contrast method:'))
         self.image_lay.addWidget(self.contrast)
 
-        self.emission = QLineEdit('670')
-        self.emission.setValidator(self.dValid)
-        self.excitation = QLineEdit('638')
-        self.excitation.setValidator(self.dValid)
+        self.emission = QDoubleSpinBox()
+        self.emission.setMinimum(0)
+        self.emission.setMaximum(10000)
+        self.emission.setValue(670)
+        self.excitation = QDoubleSpinBox()
+        self.excitation.setMinimum(0)
+        self.excitation.setMaximum(10000)
+        self.excitation.setValue(638)
         self.wave_unit = QComboBox()
         self.wave_unit.addItems(UnitsLength._member_names_)
         self.wave_unit.setCurrentText(UnitsLength.NANOMETER.name)
@@ -165,10 +175,14 @@ class MetadataEditor(QWidget):
 
         self.obj_manufacturer = QLineEdit('Nikon')
         self.obj_model = QLineEdit('CFI Apochromat TIRF 60XC Oil')
-        self.obj_lens_na = QLineEdit('1.49')
-        self.obj_lens_na.setValidator(self.dValid)
-        self.obj_nom_mag = QLineEdit('60')
-        self.obj_nom_mag.setValidator(self.dValid)
+        self.obj_lens_na = QDoubleSpinBox()
+        self.obj_lens_na.setMinimum(0)
+        self.obj_lens_na.setMaximum(2)
+        self.obj_lens_na.setValue(1.49)
+        self.obj_nom_mag = QDoubleSpinBox()
+        self.obj_nom_mag.setMinimum(0)
+        self.obj_nom_mag.setMaximum(1000)
+        self.obj_nom_mag.setValue(60)
         self.obj_immersion = QComboBox()
         self.obj_immersion.addItems(Immersion._member_names_)
         self.obj_immersion.setCurrentText(Immersion.OIL.name)
@@ -271,8 +285,8 @@ class MetadataEditor(QWidget):
         objective = Objective()
         objective.manufacturer = self.obj_manufacturer.text()
         objective.model = self.obj_model.text()
-        objective.lens_na = float(self.obj_lens_na.text())
-        objective.nominal_magnification = float(self.obj_nom_mag.text())
+        objective.lens_na = self.obj_lens_na.value()
+        objective.nominal_magnification = self.obj_nom_mag.value()
         objective.immersion = Immersion._member_map_[
             self.obj_immersion.currentText()]
         objective.correction = Correction._member_map_[
@@ -308,7 +322,7 @@ class MetadataEditor(QWidget):
             the_c=0,
             the_t=i,
             the_z=0,
-            exposure_time=float(self.exposure.text()),
+            exposure_time=self.exposure.value(),
             exposure_time_unit=UnitsTime.MILLISECOND
         ) for i in range(frames)]
 
@@ -321,8 +335,8 @@ class MetadataEditor(QWidget):
             self.ill_type.currentText()]
         channel.contrast_method = ContrastMethod._member_map_[
             self.contrast.currentText()]
-        channel.excitation_wavelength = float(self.excitation.text())
-        channel.emission_wavelength = float(self.emission.text())
+        channel.excitation_wavelength = self.excitation.value()
+        channel.emission_wavelength = self.emission.value()
         channel.excitation_wavelength_unit = UnitsLength._member_map_[
             self.wave_unit.currentText()]
         channel.emission_wavelength_unit = UnitsLength._member_map_[
@@ -337,13 +351,13 @@ class MetadataEditor(QWidget):
                 self.pixel_type.currentText()],
             dimension_order='XYZCT',
             # metadata_only=True,
-            physical_size_x=float(self.px_size.text()),
+            physical_size_x=self.px_size.value(),
             physical_size_x_unit=UnitsLength._member_map_[
                 self.p_unit.currentText()],
-            physical_size_y=float(self.py_size.text()),
+            physical_size_y=self.py_size.value(),
             physical_size_y_unit=UnitsLength._member_map_[
                 self.p_unit.currentText()],
-            time_increment=float(self.exposure.text()),
+            time_increment=self.exposure.value(),
             time_increment_unit=UnitsTime._member_map_[
                 self.exposure_unit.currentText()],
         )
@@ -371,10 +385,10 @@ class MetadataEditor(QWidget):
             self.exp_desc.setText(img.description)
             if img.pixels is not None:
                 pixels = img.pixels
-                self.px_size.setText(pixels.physical_size_x.__str__())
-                self.py_size.setText(pixels.physical_size_y.__str__())
+                self.px_size.setValue(float(pixels.physical_size_x))
+                self.py_size.setValue(float(pixels.physical_size_y))
                 self.p_unit.setCurrentText(pixels.physical_size_x_unit.name)
-                self.exposure.setText(pixels.time_increment.__str__())
+                self.exposure.setValue(pixels.time_increment)
                 self.exposure_unit.setCurrentText(
                     pixels.time_increment_unit.name)
                 self.pixel_type.setCurrentText(pixels.type.name)
@@ -386,10 +400,10 @@ class MetadataEditor(QWidget):
                     self.ill_type.setCurrentText(
                         channel.illumination_type.name)
                     self.contrast.setCurrentText(channel.contrast_method.name)
-                    self.excitation.setText(
-                        channel.excitation_wavelength.__str__())
-                    self.emission.setText(
-                        channel.emission_wavelength.__str__())
+                    self.excitation.setValue(
+                        float(channel.excitation_wavelength))
+                    self.emission.setValue(
+                        float(channel.emission_wavelength))
                     self.wave_unit.setCurrentText(
                         channel.excitation_wavelength_unit.name)
                     self.wave_unit.setCurrentText(
@@ -410,9 +424,9 @@ class MetadataEditor(QWidget):
                     objective = inst.objectives[0]
                     self.obj_manufacturer.setText(objective.manufacturer)
                     self.obj_model.setText(objective.model)
-                    self.obj_lens_na.setText(objective.lens_na.__str__())
-                    self.obj_nom_mag.setText(
-                        objective.nominal_magnification.__str__())
+                    self.obj_lens_na.setValue(objective.lens_na)
+                    self.obj_nom_mag.setValue(
+                        objective.nominal_magnification)
                     self.obj_immersion.setCurrentText(objective.immersion.name)
                     self.obj_corr.setCurrentText(objective.correction.name)
                 if inst.detectors.__len__() > 0:

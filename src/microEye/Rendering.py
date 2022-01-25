@@ -1,16 +1,17 @@
-from os import name
 import re
+from os import name
 
 import cv2
 import numba
 import numpy as np
 import pandas as pd
-from pandas.core.window.rolling import Window
 import pyqtgraph as pg
+import tifffile
 from numpy.lib.type_check import imag
+from pandas.core.window.rolling import Window
 from PyQt5.QtCore import *
 from scipy.fftpack import fft2, fftshift, ifft2, ifftshift
-import tifffile
+from scipy.interpolate import interp1d
 
 
 def explicit2dGauss(mu, sigma, corr, flux, offset, shape):
@@ -113,6 +114,14 @@ class gauss_hist_render:
         if not len(X_loc) == len(Y_loc) == len(Intensity):
             raise Exception('The supplied arguments are of different lengths.')
 
+        x_min = np.min(X_loc)
+        y_min = np.min(Y_loc)
+
+        if x_min < 0:
+            X_loc -= x_min
+        if y_min < 0:
+            Y_loc -= y_min
+
         if shape is None:
             x_max = int((np.max(X_loc) / self._pixel_size) +
                         4 * self._gauss_len)
@@ -127,12 +136,20 @@ class gauss_hist_render:
 
         self._image = np.zeros([n_max, n_max])
 
-        for idx in range(len(X_loc)):
-            x = round(X_loc[idx] / self._pixel_size) + 4 * step
-            y = round(Y_loc[idx] / self._pixel_size) + 4 * step
+        X = np.round(X_loc / self._pixel_size) + 4 * step
+        Y = np.round(Y_loc / self._pixel_size) + 4 * step
 
-            self._image[y - step:y + step + 1, x - step:x + step + 1] += \
-                Intensity[idx] * self._gauss_2d
+        render_compute(
+            np.c_[X, Y, Intensity],
+            step, self._gauss_2d,
+            self._image)
+
+        # for idx in range(len(X_loc)):
+        #     x = round(X_loc[idx] / self._pixel_size) + 4 * step
+        #     y = round(Y_loc[idx] / self._pixel_size) + 4 * step
+
+        #     self._image[y - step:y + step + 1, x - step:x + step + 1] += \
+        #         Intensity[idx] * self._gauss_2d
 
         return self._image
 
@@ -155,6 +172,13 @@ class gauss_hist_render:
         return self.render(data[:, 0], data[:, 1], data[:, 2], shape)
 
 
+@numba.jit(nopython=True)
+def render_compute(data, step, gauss_2d, out_img):
+    for x, y, Intensity in data:
+        out_img[y - step:y + step + 1, x - step:x + step + 1] += \
+            Intensity * gauss_2d
+
+
 def FRC_resolution_binomial(data: np.ndarray, pixelSize=10):
     '''Fourier Ring Correlation based on
     https://www.frontiersin.org/articles/10.3389/fbinf.2021.817254/
@@ -166,6 +190,10 @@ def FRC_resolution_binomial(data: np.ndarray, pixelSize=10):
     pixelSize : int, optional
         super resolution image pixel size in nanometers, by default 10
     '''
+    print(
+        'Initialization ...               ',
+        end="\r")
+
     n_points = data.shape[0]
 
     coin = np.random.binomial(1, 0.5, (n_points, 1))
@@ -189,6 +217,9 @@ def FRC_resolution_binomial(data: np.ndarray, pixelSize=10):
     image_1 *= window
     image_2 *= window
 
+    print(
+        'FFT ...               ',
+        end="\r")
     fft_1 = np.fft.fft2(image_1)
     fft_2 = np.fft.fft2(image_2)
     fft_12 = np.fft.fftshift(
@@ -210,25 +241,66 @@ def FRC_resolution_binomial(data: np.ndarray, pixelSize=10):
 
     FRC_res = np.zeros((R_max, 5))
 
-    for r in range(1, R_max + 1):
-        ring = (R == r)
-        FRC_res[r-1, 0] = np.sum(fft_12[ring])
-        FRC_res[r-1, 1] = np.sum(fft_11[ring])
-        FRC_res[r-1, 2] = np.sum(fft_22[ring])
-        FRC_res[r-1, 3] = (FRC_res[r-1, 0] / np.sqrt(
-            FRC_res[r-1, 1] * FRC_res[r-1, 2]))
-        # FRC_res[r-1, 4] =
+    print(
+        'FRC ...               ',
+        end="\r")
+    FRC_compute(fft_12, fft_11, fft_22, FRC_res, R, R_max)
+
+    # for idx in range(1, R_max + 1):
+    #     rMask = (R == idx)
+    #     FRC_res[idx-1, 0] = np.sum(fft_12[rMask])
+    #     FRC_res[idx-1, 1] = np.sum(fft_11[rMask])
+    #     FRC_res[idx-1, 2] = np.sum(fft_22[rMask])
+    #     FRC_res[idx-1, 3] = (FRC_res[idx-1, 0] / np.sqrt(
+    #         FRC_res[idx-1, 1] * FRC_res[idx-1, 2]))
+    #     print(
+    #         'FRC {:.2%} ...               '.format(idx / R_max),
+    #         end="\r")
 
     # frequencies = np.linspace(0, 1/(2*pixelSize), R_max)
 
-    FRC = pd.DataFrame(FRC_res[:, 3])
-    FRC.interpolate(
-        method='linear', inplace=True
-    )
+    print(
+        'Interpolation ...               ',
+        end="\r")
+    interpy = interp1d(
+            frequencies, FRC_res[:, 3],
+            kind='quadratic', fill_value='extrapolate')
+    FRC = interpy(frequencies)
 
     idx = np.where(FRC <= (1/7))[0].min()
     FRC_res = 1 / frequencies[idx]
 
+    print(
+        'Done ...               ',
+        end="\r")
+
+    return frequencies, FRC, FRC_res
+
+
+@numba.jit(nopython=True, parallel=True)
+def FRC_compute(fft_12, fft_11, fft_22, FRC_res, R, R_max):
+    for idx in numba.prange(1, R_max + 1):
+        rMask = (R == idx)
+        rMask = np.where(rMask.flatten())[0]
+        FRC_res[idx-1, 0] = np.sum(fft_12.flatten()[rMask])
+        FRC_res[idx-1, 1] = np.sum(fft_11.flatten()[rMask])
+        FRC_res[idx-1, 2] = np.sum(fft_22.flatten()[rMask])
+        FRC_res[idx-1, 3] = (FRC_res[idx-1, 0] / np.sqrt(
+            FRC_res[idx-1, 1] * FRC_res[idx-1, 2]))
+
+
+@numba.jit(nopython=True, parallel=True)
+def masked_sum(array: np.ndarray, mask: np.ndarray):
+    a = array.flatten()
+    m = np.where(mask.flatten())[0]
+    return np.sum(a[m])
+
+
+def plotFRC(frequencies, FRC, FRC_res):
+
+    print(
+        'Plot ...               ',
+        end="\r")
     # plot results
     plt = pg.plot()
 
@@ -253,7 +325,7 @@ def FRC_resolution_binomial(data: np.ndarray, pixelSize=10):
     plt.setYRange(0, 1)
 
     line1 = plt.plot(
-        frequencies, FRC.to_numpy()[:, 0],
+        frequencies, FRC,
         pen='r', symbol='x', symbolPen='r',
         symbolBrush=0.2, name='FRC')
     line2 = plt.plotItem.addLine(y=1/7, pen='y')

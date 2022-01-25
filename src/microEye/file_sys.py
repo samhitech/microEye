@@ -291,8 +291,8 @@ class tiff_viewer(QMainWindow):
         self.render_cbox.addItem('2D Gaussian Histogram')
 
         self.frc_cbox = QComboBox()
-        self.frc_cbox.addItem('Check Pattern')
         self.frc_cbox.addItem('Binomial')
+        self.frc_cbox.addItem('Check Pattern')
 
         self.export_frm = QCheckBox('Frame')
         self.export_frm.setChecked(True)
@@ -308,9 +308,14 @@ class tiff_viewer(QMainWindow):
         self.export_image = QCheckBox('Super-res Image')
         self.export_image.setChecked(True)
 
+        self.px_size = QDoubleSpinBox()
+        self.px_size.setMinimum(0)
+        self.px_size.setMaximum(10000)
+        self.px_size.setValue(130.0)
+
         self.super_px_size = QSpinBox()
         self.super_px_size.setMinimum(0)
-        self.super_px_size.setValue(5)
+        self.super_px_size.setValue(10)
 
         self.drift_cross_args = QHBoxLayout()
         self.drift_cross_bins = QSpinBox()
@@ -350,7 +355,9 @@ class tiff_viewer(QMainWindow):
         self.loc_layout.addWidget(self.render_cbox)
         self.loc_layout.addWidget(QLabel('FRC Method:'))
         self.loc_layout.addWidget(self.frc_cbox)
-        self.loc_layout.addWidget(QLabel('Super resolution pixel [nm]:'))
+        self.loc_layout.addWidget(QLabel('Pixel-size [nm]:'))
+        self.loc_layout.addWidget(self.px_size)
+        self.loc_layout.addWidget(QLabel('Super resolution pixel-size [nm]:'))
         self.loc_layout.addWidget(self.super_px_size)
         self.loc_layout.addWidget(QLabel('Exported:'))
         self.loc_layout.addWidget(self.export_frm)
@@ -420,6 +427,8 @@ class tiff_viewer(QMainWindow):
                 if fl.is_ome:
                     ome = OME.from_xml(fl.ome_metadata)
                     self.metadataEditor.pop_OME_XML(ome)
+                    self.px_size.setValue(
+                        self.metadataEditor.px_size.value())
 
             # self.update_display()
             # self.genOME()
@@ -450,6 +459,8 @@ class tiff_viewer(QMainWindow):
                     if fl.is_ome:
                         ome = OME.from_xml(fl.ome_metadata)
                         self.metadataEditor.pop_OME_XML(ome)
+                        self.px_size.setValue(
+                            self.metadataEditor.px_size.value())
 
     def average_stack(self):
         if self.tiffSeq_Handler is not None:
@@ -630,39 +641,57 @@ class tiff_viewer(QMainWindow):
             img = self.update_loc()
 
             if img is not None:
-                FRC_resolution_check_pattern(
-                    img, self.super_px_size.value())
+                def work_func():
+                    FRC_resolution_check_pattern(
+                        img, self.super_px_size.value())
+            else:
+                return
         elif 'Binomial' in frc_method:
             if self.fittingResults is None:
                 return
             elif len(self.fittingResults) > 0:
                 data = self.fittingResults.toRender()
-                FRC_resolution_binomial(
-                    np.c_[data[0], data[1], data[2]],
-                    self.super_px_size.value()
-                )
+
+                def work_func():
+                    return FRC_resolution_binomial(
+                        np.c_[data[0], data[1], data[2]],
+                        self.super_px_size.value()
+                    )
             else:
                 return
+        else:
+            return
+
+        self.worker = thread_worker(
+            work_func,
+            progress=False, z_stage=False)
+        self.worker.signals.result.connect(lambda x: plotFRC(*x))
+        # Execute
+        self._threadpool.start(self.worker)
 
     def drift_cross(self):
         if self.fittingResults is None:
             return
         elif len(self.fittingResults) > 0:
             def work_func():
-                results = self.fittingResults.drift_cross_correlation(
+                return self.fittingResults.drift_cross_correlation(
                     self.drift_cross_bins.value(),
                     self.drift_cross_px.value(),
                     self.drift_cross_up.value(),
                 )
+
+            def done(results):
                 if results is not None:
                     img_norm = cv2.normalize(
                         results[1], None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
                     self.image.setImage(img_norm, autoLevels=False)
                     self.fittingResults = results[0]
+                    plotDriftXCorr(*results[2])
 
             self.worker = thread_worker(
                 work_func,
                 progress=False, z_stage=False)
+            self.worker.signals.result.connect(done)
             # Execute
             self._threadpool.start(self.worker)
         else:
@@ -676,7 +705,7 @@ class tiff_viewer(QMainWindow):
 
             results = FittingResults.fromFile(
                 filename,
-                float(self.metadataEditor.px_size.text()))
+                self.px_size.value())
 
             if results is not None:
                 self.fittingResults = results
@@ -760,7 +789,7 @@ class tiff_viewer(QMainWindow):
     def proccess_loc(self, filename: str, progress_callback):
         self.fittingResults = FittingResults(
             ResultsUnits.Pixel,
-            float(self.metadataEditor.px_size.text())
+            self.px_size.value()
         )
         self.thread_done = 0
         time = QDateTime.currentDateTime()

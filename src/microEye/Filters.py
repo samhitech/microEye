@@ -11,6 +11,7 @@ import tifffile as tf
 from PyQt5.QtCore import *
 from PyQt5.QtWidgets import *
 from zarr.core import Array
+import dask.array
 
 
 class AbstractFilter:
@@ -311,11 +312,12 @@ class TemporalMedianFilter(AbstractFilter):
                 self._start,
                 (self._start + self._temporal_window),
                 1)
-        self._frames = dataZarr[data_slice]
+        self._frames = dask.array.from_array(dataZarr[data_slice])
 
     def run(self, image: np.ndarray):
         if self._frames is not None:
-            self._median = np.median(self._frames, axis=0)
+            self._median = np.array(
+                dask.array.median(self._frames, axis=0))
 
             img = image - self._median
             img[img < 0] = 0
