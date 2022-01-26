@@ -1,6 +1,6 @@
 import json
+import logging
 import os
-import queue
 import time
 import traceback
 from queue import Queue
@@ -9,57 +9,64 @@ import cv2
 import numpy as np
 import pyqtgraph as pg
 import tifffile as tf
-from numpy import random
+from numpy import random, true_divide
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 from pyqtgraph import PlotWidget, plot
 from pyqtgraph.metaarray.MetaArray import axis
-from pyueye import ueye
 from tifffile.tifffile import astype
 
-from .qlist_slider import *
-from .thread_worker import *
-from .thorlabs import *
-from .uImage import uImage
-from .metadata import MetadataEditor
+from ..metadata import MetadataEditor
+from ..qlist_slider import *
+from ..thread_worker import *
+from .vimba_cam import vimba_cam
+from ..uImage import uImage
+
+try:
+    import vimba as vb
+except Exception:
+    vb = None
 
 
-class Thorlabs_Panel(QGroupBox):
+class Vimba_Panel(QGroupBox):
     """
-    A Qt Widget for controlling a Thorlabs Camera | Inherits QGroupBox
+    A Qt Widget for controlling an Allied Vision Camera through Vimba
+     | Inherits QGroupBox
     """
 
     exposureChanged = pyqtSignal()
 
-    def __init__(self, threadpool, cam: thorlabs_camera,
-                 *args, mini: bool = False, **kwargs):
+    def __init__(self, threadpool, cam: vimba_cam,
+                 *args, mini=False, **kwargs):
         """
-        Initializes a new Thorlabs_Panel Qt widget
+        Initializes a new Vimba_Panel Qt widget
         | Inherits QGroupBox
 
         Parameters
         ----------
         threadpool : QThreadPool
             The threadpool for multithreading
-        cam : thorlabs_camera
-            Thorlabs Camera python adapter
+        cam : vimba_cam
+            Vimba Camera python adapter
         """
         super().__init__(*args, **kwargs)
-        self._cam = cam  # Thorlabs Camera
+        self._cam = cam  # Vimba Camera
         # flag true if master (always the first added camera is master)
         self.master = False
-        # list of slave camera for exposure sync
-        self.slaves = []
+
         self.c_worker = None  # worker for capturing
         self.d_worker = None  # worker for display
         self.s_worker = None  # worker for saving
+
         # number of bins for the histogram (4096 is set for 12bit mono-camera)
-        self._nBins = 2**cam.bit_depth
+        self._nBins = 2**12
         self._hist = np.arange(0, self._nBins) * 0  # arrays for the Hist plot
         self._bins = np.arange(0, self._nBins)      # arrays for the Hist plot
+
         self._threadpool = threadpool  # the threadpool for workers
         self._stop_thread = False  # flag true to stop capture/display threads
+
         # flag true to close camera adapter and dispose it
         self._dispose_cam = False
         self._counter = 0  # a frame counter for acquisition
@@ -73,7 +80,7 @@ class Thorlabs_Panel(QGroupBox):
         self._save_time = 0
         # reserved for testing/displaying execution time
         self._dis_time = 0
-        self._zoom = 0.25  # display resize
+        self._zoom = 0.50  # display resize
         self._directory = ""  # save directory
         self._save_path = ""  # save path
 
@@ -99,11 +106,11 @@ class Thorlabs_Panel(QGroupBox):
 
         self.OME_tab = MetadataEditor()
         self.OME_tab.channel_name.setText(self._cam.name)
-        self.OME_tab.det_manufacturer.setText('Thorlabs')
+        self.OME_tab.det_manufacturer.setText('Allied Vision')
         self.OME_tab.det_model.setText(
-            self._cam.sInfo.strSensorName.decode('utf-8'))
+            self._cam.cam.get_model())
         self.OME_tab.det_serial.setText(
-            self._cam.cInfo.SerNo.decode('utf-8'))
+            self._cam.cam.get_serial())
         # add tabs
         self.main_tab_view.addTab(self.first_tab, "Main")
         self.main_tab_view.addTab(self.second_tab, "Preview")
@@ -126,107 +133,97 @@ class Thorlabs_Panel(QGroupBox):
         # set as third tab layout
         self.third_tab.setLayout(self.third_tab_Layout)
 
-        # pixel clock label and combobox
-        self.cam_pixel_clock_lbl = QLabel("Pixel Clock MHz")
-        self.cam_pixel_clock_cbox = QComboBox()
-        self.cam_pixel_clock_cbox.addItems(
-            map(str, self._cam.pixel_clock_list[:]))
-        self.cam_pixel_clock_cbox.currentIndexChanged[str] \
-            .connect(self.cam_pixel_cbox_changed)
-
-        # framerate slider control
-        self.cam_framerate_lbl = DragLabel(
-            "Framerate FPS", parent_name='cam_framerate_slider')
-        self.cam_framerate_slider = qlist_slider(
-            orientation=Qt.Orientation.Horizontal)
-        self.cam_framerate_slider.values = np.arange(
-            self._cam.minFrameRate.value, self._cam.maxFrameRate.value,
-            self._cam.incFrameRate.value * 100)
-        self.cam_framerate_slider.elementChanged[int, float] \
-            .connect(self.cam_framerate_value_changed)
-
-        # framerate text box control
-        self.cam_framerate_ledit = QLineEdit("{:.6f}".format(
-            self._cam.currentFrameRate.value))
-        self.cam_framerate_ledit.setCompleter(
-            QCompleter(map("{:.6f}".format, self.cam_framerate_slider.values)))
-        self.cam_framerate_ledit.setValidator(QDoubleValidator())
-        self.cam_framerate_ledit.returnPressed \
-            .connect(self.cam_framerate_return)
-
         # exposure slider control
         self.cam_exposure_lbl = DragLabel(
-            "Exposure ms", parent_name='cam_exposure_slider')
+            "Exposure " + self.cam.exposure_unit,
+            parent_name='cam_exposure_slider')
         self.cam_exposure_slider = qlist_slider(
             orientation=Qt.Orientation.Horizontal)
         self.cam_exposure_slider.values = np.arange(
             self._cam.exposure_range[0],
-            self._cam.exposure_range[1],
-            self._cam.exposure_range[2])
+            min(self._cam.exposure_range[1], 2e+6),
+            self._cam.exposure_increment)
         self.cam_exposure_slider.elementChanged[int, float] \
             .connect(self.cam_exposure_value_changed)
 
         # exposure text box control
-        self.cam_exposure_ledit = QLineEdit("{:.6f}".format(
-            self._cam.exposure_current.value))
-        self.cam_exposure_ledit.setCompleter(
-            QCompleter(map("{:.6f}".format, self.cam_exposure_slider.values)))
-        self.cam_exposure_ledit.setValidator(QDoubleValidator())
-        self.cam_exposure_ledit.returnPressed.connect(self.cam_exposure_return)
+        self.cam_exposure_qs = QDoubleSpinBox()
+        self.cam_exposure_qs.setMinimum(self._cam.exposure_range[0])
+        self.cam_exposure_qs.setMaximum(self._cam.exposure_range[1])
+        self.cam_exposure_qs.setSingleStep(self._cam.exposure_increment)
+        self.cam_exposure_qs.setValue(self._cam.exposure_current)
+        self.cam_exposure_qs.setSuffix(self._cam.exposure_unit)
+        self.cam_exposure_qs.valueChanged.connect(self.exposure_spin_changed)
+
+        # exposure mode combobox
+        self.cam_exposure_mode_lbl = QLabel("Exposure Mode")
+        self.cam_exposure_mode_cbox = QComboBox()
+        self.cam_exposure_mode_cbox.addItems(self._cam.exposure_modes[0])
+        for x in range(len(self._cam.exposure_modes[2])):
+            self.cam_exposure_mode_cbox.setItemData(
+                x, self._cam.exposure_modes[2][x], Qt.ToolTipRole)
+        self.cam_exposure_mode_cbox.currentIndexChanged[str] \
+            .connect(self.cam_cbox_changed)
+
+        # exposure auto mode combobox
+        self.cam_exposure_auto_lbl = QLabel("Exposure Auto Mode")
+        self.cam_exposure_auto_cbox = QComboBox()
+        self.cam_exposure_auto_cbox.addItems(
+            self._cam.exposure_auto_entries[0])
+        for x in range(len(self._cam.exposure_auto_entries[2])):
+            self.cam_exposure_auto_cbox.setItemData(
+                x, self._cam.exposure_auto_entries[2][x], Qt.ToolTipRole)
+        self.cam_exposure_auto_cbox.currentIndexChanged[str] \
+            .connect(self.cam_cbox_changed)
 
         # trigger mode combobox
         self.cam_trigger_mode_lbl = QLabel("Trigger Mode")
         self.cam_trigger_mode_cbox = QComboBox()
-        self.cam_trigger_mode_cbox.addItems(TRIGGER.TRIGGER_MODES.keys())
+        self.cam_trigger_mode_cbox.addItems(self._cam.trigger_modes[0])
+        for x in range(len(self._cam.trigger_modes[2])):
+            self.cam_trigger_mode_cbox.setItemData(
+                x, self._cam.trigger_modes[2][x], Qt.ToolTipRole)
         self.cam_trigger_mode_cbox.currentIndexChanged[str] \
-            .connect(self.cam_trigger_cbox_changed)
+            .connect(self.cam_cbox_changed)
 
-        # flash mode combobox
-        self.cam_flash_mode_lbl = QLabel("Flash Mode")
-        self.cam_flash_mode_cbox = QComboBox()
-        self.cam_flash_mode_cbox.addItems(FLASH_MODE.FLASH_MODES.keys())
-        self.cam_flash_mode_cbox.currentIndexChanged[str] \
-            .connect(self.cam_flash_cbox_changed)
+        # trigger source combobox
+        self.cam_trigger_source_lbl = QLabel("Trigger Source")
+        self.cam_trigger_source_cbox = QComboBox()
+        self.cam_trigger_source_cbox.addItems(self._cam.trigger_sources[0])
+        for x in range(len(self._cam.trigger_sources[2])):
+            self.cam_trigger_source_cbox.setItemData(
+                x, self._cam.trigger_sources[2][x], Qt.ToolTipRole)
+        self.cam_trigger_source_cbox.currentIndexChanged[str] \
+            .connect(self.cam_cbox_changed)
 
-        # flash duration slider
-        self.cam_flash_duration_lbl = QLabel("Flash Duration us")
-        self.cam_flash_duration_slider = qlist_slider(
-            orientation=Qt.Orientation.Horizontal)
-        self.cam_flash_duration_slider.values = \
-            np.append([0], np.arange(self._cam.flash_min.u32Duration,
-                      self._cam.flash_max.u32Duration,
-                      self._cam.flash_inc.u32Duration))
-        self.cam_flash_duration_slider.elementChanged[int, int] \
-            .connect(self.cam_flash_duration_value_changed)
+        # trigger selector combobox
+        self.cam_trigger_selector_lbl = QLabel("Trigger Selector")
+        self.cam_trigger_selector_cbox = QComboBox()
+        self.cam_trigger_selector_cbox.addItems(self._cam.trigger_selectors[0])
+        for x in range(len(self._cam.trigger_selectors[2])):
+            self.cam_trigger_selector_cbox.setItemData(
+                x, self._cam.trigger_selectors[2][x], Qt.ToolTipRole)
+        self.cam_trigger_selector_cbox.currentIndexChanged[str] \
+            .connect(self.cam_cbox_changed)
 
-        # flash duration text box
-        self.cam_flash_duration_ledit = QLineEdit("{:d}".format(
-            self._cam.flash_cur.u32Duration))
-        self.cam_flash_duration_ledit.setValidator(QIntValidator())
-        self.cam_flash_duration_ledit.returnPressed \
-            .connect(self.cam_flash_duration_return)
+        # trigger activation combobox
+        self.cam_trigger_activation_lbl = QLabel("Trigger Activation")
+        self.cam_trigger_activation_cbox = QComboBox()
+        self.cam_trigger_activation_cbox.addItems(
+            self._cam.trigger_activations[0])
+        for x in range(len(self._cam.trigger_activations[2])):
+            self.cam_trigger_activation_cbox.setItemData(
+                x, self._cam.trigger_activations[2][x], Qt.ToolTipRole)
+        self.cam_trigger_activation_cbox.currentIndexChanged[str] \
+            .connect(self.cam_cbox_changed)
 
-        # flash delay slider
-        self.cam_flash_delay_lbl = QLabel("Flash Delay us")
-        self.cam_flash_delay_slider = qlist_slider(
-            orientation=Qt.Orientation.Horizontal)
-        self.cam_flash_delay_slider.values = np.append([0], np.arange(
-            self._cam.flash_min.s32Delay,
-            self._cam.flash_max.s32Delay,
-            self._cam.flash_inc.s32Delay))
-        self.cam_flash_delay_slider.elementChanged[int, int] \
-            .connect(self.cam_flash_delay_value_changed)
-
-        # flash delay text box
-        self.cam_flash_delay_ledit = QLineEdit("{:d}".format(
-            self._cam.flash_cur.s32Delay))
-        self.cam_flash_delay_ledit.setValidator(QIntValidator())
-        self.cam_flash_delay_ledit.returnPressed \
-            .connect(self.cam_flash_delay_return)
-
-        # setting the highest pixel clock as default
-        self.cam_pixel_clock_cbox.setCurrentText(
-            str(self._cam.pixel_clock_list[-1]))
+        # pixel formats combobox
+        self.cam_pixel_format_lbl = QLabel("Pixel Format")
+        self.cam_pixel_format_cbox = QComboBox()
+        self.cam_pixel_format_cbox.addItems(
+            self._cam.pixel_formats)
+        self.cam_pixel_format_cbox.currentIndexChanged[str] \
+            .connect(self.cam_cbox_changed)
 
         # start freerun mode button
         self.cam_freerun_btn = QPushButton(
@@ -281,6 +278,8 @@ class Thorlabs_Panel(QGroupBox):
         # save to hard drive checkbox
         self.cam_save_temp = QCheckBox("Save to dir")
         self.cam_save_temp.setChecked(self.mini)
+        self.save_bigg_tiff = QCheckBox("BiggTiff Format")
+        self.save_bigg_tiff.setChecked(True)
         self.cam_save_meta = QCheckBox("Write OME-XML")
         self.cam_save_meta.setChecked(self.mini)
 
@@ -337,7 +336,9 @@ class Thorlabs_Panel(QGroupBox):
             self._buffer.qsize(), self._dis_time))
         self.info_save = QLabel("Save {:d} | {:.2f} ms ".format(
             self._frames.qsize(), self._save_time))
-        self.info_temp = QLabel(" T {:.2f} °C".format(self.cam.temperature))
+        with self._cam.cam:
+            self.info_temp = QLabel(
+                " T {:.2f} °C".format(self._cam.get_temperature()))
 
         # AOI controls
         self.AOI_x_tbox = QLineEdit("0")
@@ -345,13 +346,13 @@ class Thorlabs_Panel(QGroupBox):
         self.AOI_width_tbox = QLineEdit("0")
         self.AOI_height_tbox = QLineEdit("0")
         self.AOI_x_tbox.setValidator(
-            QIntValidator(0, self.cam.width))
+            QIntValidator(0, self.cam.width_range[1]))
         self.AOI_y_tbox.setValidator(
-            QIntValidator(0, self.cam.height))
+            QIntValidator(0, self.cam.height_range[1]))
         self.AOI_width_tbox.setValidator(
-            QIntValidator(self.cam.minAOI.s32Width, self.cam.width))
+            QIntValidator(self.cam.width_range[0], self.cam.width_range[1]))
         self.AOI_height_tbox.setValidator(
-            QIntValidator(self.cam.minAOI.s32Height, self.cam.height))
+            QIntValidator(self.cam.height_range[0], self.cam.height_range[1]))
         self.AOI_set_btn = QPushButton(
             "Set AOI",
             clicked=lambda: self.set_AOI()
@@ -366,25 +367,24 @@ class Thorlabs_Panel(QGroupBox):
         )
 
         # adding widgets to the main layout
-        self.first_tab_Layout.addWidget(self.cam_pixel_clock_lbl)
-        self.first_tab_Layout.addWidget(self.cam_pixel_clock_cbox)
         self.first_tab_Layout.addWidget(self.cam_trigger_mode_lbl)
         self.first_tab_Layout.addWidget(self.cam_trigger_mode_cbox)
-        self.first_tab_Layout.addWidget(self.cam_framerate_lbl)
-        self.first_tab_Layout.addWidget(self.cam_framerate_ledit)
-        self.first_tab_Layout.addWidget(self.cam_framerate_slider)
+        self.first_tab_Layout.addWidget(self.cam_trigger_source_lbl)
+        self.first_tab_Layout.addWidget(self.cam_trigger_source_cbox)
+        self.first_tab_Layout.addWidget(self.cam_trigger_selector_lbl)
+        self.first_tab_Layout.addWidget(self.cam_trigger_selector_cbox)
+        self.first_tab_Layout.addWidget(self.cam_trigger_activation_lbl)
+        self.first_tab_Layout.addWidget(self.cam_trigger_activation_cbox)
+
         self.first_tab_Layout.addWidget(self.cam_exposure_lbl)
-        self.first_tab_Layout.addWidget(self.cam_exposure_ledit)
+        self.first_tab_Layout.addWidget(self.cam_exposure_qs)
         self.first_tab_Layout.addWidget(self.cam_exposure_slider)
-        if not self.mini:
-            self.first_tab_Layout.addWidget(self.cam_flash_mode_lbl)
-            self.first_tab_Layout.addWidget(self.cam_flash_mode_cbox)
-            self.first_tab_Layout.addWidget(self.cam_flash_duration_lbl)
-            self.first_tab_Layout.addWidget(self.cam_flash_duration_ledit)
-            self.first_tab_Layout.addWidget(self.cam_flash_duration_slider)
-            self.first_tab_Layout.addWidget(self.cam_flash_delay_lbl)
-            self.first_tab_Layout.addWidget(self.cam_flash_delay_ledit)
-            self.first_tab_Layout.addWidget(self.cam_flash_delay_slider)
+        self.first_tab_Layout.addWidget(self.cam_exposure_mode_lbl)
+        self.first_tab_Layout.addWidget(self.cam_exposure_mode_cbox)
+        self.first_tab_Layout.addWidget(self.cam_exposure_auto_lbl)
+        self.first_tab_Layout.addWidget(self.cam_exposure_auto_cbox)
+        self.first_tab_Layout.addWidget(self.cam_pixel_format_lbl)
+        self.first_tab_Layout.addWidget(self.cam_pixel_format_cbox)
         self.first_tab_Layout.addLayout(self.config_Hlay)
         self.first_tab_Layout.addWidget(self.cam_freerun_btn)
         self.first_tab_Layout.addWidget(self.cam_trigger_btn)
@@ -396,6 +396,7 @@ class Thorlabs_Panel(QGroupBox):
             self.first_tab_Layout.addLayout(self.save_dir_layout)
             self.first_tab_Layout.addWidget(self.frames_tbox)
             self.first_tab_Layout.addWidget(self.cam_save_temp)
+            self.first_tab_Layout.addWidget(self.save_bigg_tiff)
             self.first_tab_Layout.addWidget(self.cam_save_meta)
         self.first_tab_Layout.addStretch()
 
@@ -434,23 +435,23 @@ class Thorlabs_Panel(QGroupBox):
 
     @property
     def cam(self):
-        '''The thorlabs_camera property.
+        '''The IDS_Camera property.
 
         Returns
         -------
-        thorlabs_camera
+        IDS_Camera
             the cam property value
         '''
         return self._cam
 
     @cam.setter
-    def cam(self, cam: thorlabs_camera):
-        '''The thorlabs_camera property.
+    def cam(self, cam: vimba_cam):
+        '''The vimba_cam property.
 
         Parameters
         ----------
-        cam : thorlabs_camera
-            the thorlabs_camera to set as panel camera.
+        cam : vimba_cam
+            the vimba_cam to set as panel camera.
         '''
         self._cam = cam
 
@@ -474,57 +475,57 @@ class Thorlabs_Panel(QGroupBox):
         return self.cam.acquisition
 
     def set_AOI(self):
-        '''Sets the AOI for the slected thorlabs_camera
+        '''Sets the AOI for the slected vimba_cam
         '''
         if self.cam.acquisition:
             QMessageBox.warning(
                 self, "Warning", "Cannot set AOI while acquiring images!")
             return  # if acquisition is already going on
 
-        self.cam.set_AOI(
-            int(self.AOI_x_tbox.text()),
-            int(self.AOI_y_tbox.text()),
-            int(self.AOI_width_tbox.text()),
-            int(self.AOI_height_tbox.text()))
+        with self._cam.cam:
+            self.cam.set_roi(
+                int(self.AOI_width_tbox.text()),
+                int(self.AOI_height_tbox.text()),
+                int(self.AOI_x_tbox.text()),
+                int(self.AOI_y_tbox.text()))
 
-        # setting the highest pixel clock as default
-        self.cam_pixel_clock_cbox.setCurrentText(
-            str(self._cam.pixel_clock_list[0]))
-        self.cam_pixel_clock_cbox.setCurrentText(
-            str(self._cam.pixel_clock_list[-1]))
+        self.AOI_x_tbox.setText(str(self.cam.offsetX))
+        self.AOI_y_tbox.setText(str(self.cam.offsetY))
+        self.AOI_width_tbox.setText(str(self.cam.width))
+        self.AOI_height_tbox.setText(str(self.cam.height))
 
     def reset_AOI(self):
-        '''Resets the AOI for the slected thorlabs_camera
+        '''Resets the AOI for the slected IDS_Camera
         '''
         if self.cam.acquisition:
             QMessageBox.warning(
                 self, "Warning", "Cannot reset AOI while acquiring images!")
             return  # if acquisition is already going on
 
-        self.cam.reset_AOI()
+        with self._cam.cam:
+            self.cam.set_roi(self.cam.width_max, self.cam.height_max)
         self.AOI_x_tbox.setText("0")
         self.AOI_y_tbox.setText("0")
         self.AOI_width_tbox.setText(str(self.cam.width))
         self.AOI_height_tbox.setText(str(self.cam.height))
 
-        # setting the highest pixel clock as default
-        self.cam_pixel_clock_cbox.setCurrentText(
-            str(self._cam.pixel_clock_list[0]))
-        self.cam_pixel_clock_cbox.setCurrentText(
-            str(self._cam.pixel_clock_list[-1]))
-
     def center_AOI(self):
-        '''Calculates the x, y values for a centered AOI'''
-        self.AOI_x_tbox.setText(
-            str(
-                int(
-                    (self.cam.rectAOI.s32Width -
-                     int(self.AOI_width_tbox.text()))/2)))
-        self.AOI_y_tbox.setText(
-            str(
-                int(
-                    (self.cam.rectAOI.s32Height -
-                     int(self.AOI_height_tbox.text()))/2)))
+        '''Sets the AOI for the slected vimba_cam
+        '''
+        if self.cam.acquisition:
+            QMessageBox.warning(
+                self, "Warning", "Cannot set AOI while acquiring images!")
+            return  # if acquisition is already going on
+
+        with self._cam.cam:
+            self.cam.set_roi(
+                int(self.AOI_width_tbox.text()),
+                int(self.AOI_height_tbox.text()))
+
+        self.AOI_x_tbox.setText(str(self.cam.offsetX))
+        self.AOI_y_tbox.setText(str(self.cam.offsetY))
+        self.AOI_width_tbox.setText(str(self.cam.width))
+        self.AOI_height_tbox.setText(str(self.cam.height))
 
     def zoom_in(self):
         """Increase image display size"""
@@ -548,86 +549,36 @@ class Thorlabs_Panel(QGroupBox):
         self.save_dir_edit.setText(self._directory)
 
     @pyqtSlot(str)
-    def cam_trigger_cbox_changed(self, value):
+    def cam_cbox_changed(self, value):
         """
-        Slot for changed trigger mode
+        Slot for changed combobox values
 
         Parameters
         ----------
-        Value : int
-            index of selected trigger mode from _TRIGGER.TRIGGER_MODES
+        Value : str
+            selected enum value
         """
-        self._cam.set_trigger_mode(TRIGGER.TRIGGER_MODES[value])
-        self._cam.get_trigger_mode()
-
-    @pyqtSlot(str)
-    def cam_flash_cbox_changed(self, value):
-        """
-        Slot for changed flash mode
-
-        Parameters
-        ----------
-        Value : int
-            index of selected flash mode from _TRIGGER.FLASH_MODES
-        """
-        self._cam.set_flash_mode(FLASH_MODE.FLASH_MODES[value])
-        self._cam.get_flash_mode(output=True)
-
-    @pyqtSlot(str)
-    def cam_pixel_cbox_changed(self, value):
-        """
-        Slot for changed pixel clock
-
-        Parameters
-        ----------
-        Value : int
-            selected pixel clock in MHz
-            (note that only certain values are allowed by camera)
-        """
-        self._cam.set_pixel_clock(int(value))
-        self._cam.get_pixel_clock_info(False)
-        self._cam.get_framerate_range(False)
-        self.cam_framerate_slider.elementChanged[int, float].disconnect()
-        self.cam_framerate_slider.values = np.arange(
-            self._cam.minFrameRate.value,
-            self._cam.maxFrameRate.value,
-            self._cam.incFrameRate.value * 100)
-        self.cam_framerate_slider.elementChanged[int, float] \
-            .connect(self.cam_framerate_value_changed)
-        self.cam_framerate_slider.setValue(
-            len(self.cam_framerate_slider.values) - 1)
-
-    @pyqtSlot(int, float)
-    def cam_framerate_value_changed(self, index, value):
-        """
-        Slot for changed framerate
-
-        Parameters
-        ----------
-        Index : ont
-            selected frames per second index in the slider values list
-        Value : double
-            selected frames per second
-        """
-        self._cam.set_framerate(value)
-        self._cam.get_exposure_range(False)
-        self.cam_framerate_ledit.setText("{:.6f}".format(
-            self._cam.currentFrameRate.value))
-        self.cam_exposure_slider.elementChanged[int, float].disconnect()
-        self.cam_exposure_slider.values = np.arange(
-            self._cam.exposure_range[0],
-            self._cam.exposure_range[1],
-            self._cam.exposure_range[2])
-        self.cam_exposure_slider.elementChanged[int, float] \
-            .connect(self.cam_exposure_value_changed)
-        self.cam_exposure_slider.setValue(
-            len(self.cam_exposure_slider.values) - 1)
-
-    def cam_framerate_return(self):
-        """
-        Sets the framerate slider with the entered text box value
-        """
-        self.cam_framerate_slider.setNearest(self.cam_framerate_ledit.text())
+        with self._cam.cam:
+            if self.sender() is self.cam_trigger_mode_cbox:
+                self._cam.set_trigger_mode(value)
+                self._cam.get_trigger_mode()
+            elif self.sender() is self.cam_trigger_source_cbox:
+                self._cam.set_trigger_source(value)
+                self._cam.get_trigger_source()
+            elif self.sender() is self.cam_trigger_selector_cbox:
+                self._cam.set_trigger_selector(value)
+                self._cam.get_trigger_selector()
+            elif self.sender() is self.cam_trigger_activation_cbox:
+                self._cam.set_trigger_activation(value)
+                self._cam.get_trigger_activation()
+            elif self.sender() is self.cam_exposure_mode_cbox:
+                self._cam.set_exposure_mode(value)
+                self._cam.get_exposure_mode()
+            elif self.sender() is self.cam_exposure_auto_cbox:
+                self._cam.set_exposure_auto(value)
+                self._cam.get_exposure_auto()
+            elif self.sender() is self.cam_pixel_format_cbox:
+                self._cam.set_pixel_format(value)
 
     @pyqtSlot(int, float)
     def cam_exposure_value_changed(self, index, value):
@@ -639,156 +590,99 @@ class Thorlabs_Panel(QGroupBox):
         Index : ont
             selected exposure index in the slider values list
         Value : double
-            selected exposure in milli-seconds
+            selected exposure in micro-seconds
         """
-        self._cam.set_exposure(value)
-        self._cam.get_exposure(False)
-        self._cam.get_flash_range(False)
-        self.cam_exposure_ledit.setText("{:.6f}".format(
-            self._cam.exposure_current.value))
-        self.OME_tab.exposure.setText(self.cam_exposure_ledit.text())
-        self.cam_flash_duration_slider.values = np.append([0], np.arange(
-            self._cam.flash_min.u32Duration,
-            self._cam.flash_max.u32Duration,
-            self._cam.flash_inc.u32Duration))
-        self.cam_flash_delay_slider.values = np.append([0], np.arange(
-            self._cam.flash_min.s32Delay,
-            self._cam.flash_max.s32Delay,
-            self._cam.flash_inc.s32Delay))
+        with self._cam.cam:
+            self._cam.set_exposure(value)
+            self._cam.get_exposure(False)
+
+        self.cam_exposure_qs.valueChanged.disconnect(
+            self.exposure_spin_changed)
+        self.cam_exposure_qs.setValue(self._cam.exposure_current)
+        self.cam_exposure_qs.valueChanged.connect(
+            self.exposure_spin_changed)
+
+        self.OME_tab.exposure.setText(str(self._cam.exposure_current / 1000))
         if self.master:
             self.exposureChanged.emit()
 
-    def cam_exposure_return(self):
+    @pyqtSlot(float)
+    def exposure_spin_changed(self, value: float):
         """
-        Sets the exposure slider with the entered text box value
-        """
-        self.cam_exposure_slider.setNearest(self.cam_exposure_ledit.text())
-
-    @pyqtSlot(int, int)
-    def cam_flash_duration_value_changed(self, index, value):
-        """
-        Slot for changed flash duration
+        Slot for changed exposure
 
         Parameters
         ----------
-        Index : ont
-            selected flash duration index in the slider values list
         Value : double
-            selected flash duration in micro-seconds
+            selected exposure in micro-seconds
         """
-        self._cam.set_flash_params(self._cam.flash_cur.s32Delay, value)
-        self._cam.get_flash_params()
-        self.cam_flash_duration_ledit.setText("{:d}".format(
-            self._cam.flash_cur.u32Duration))
+        with self._cam.cam:
+            self._cam.set_exposure(value)
+            self._cam.get_exposure(False)
 
-    def cam_flash_duration_return(self):
-        """
-        Sets the flash duration slider with the entered text box value
-        """
-        self.cam_flash_duration_slider.setNearest(
-            self.cam_flash_duration_ledit.text())
+        self.cam_exposure_slider.elementChanged[int, float] \
+            .connect(self.cam_exposure_value_changed)
+        self.cam_exposure_slider.setNearest(self._cam.exposure_current)
+        self.cam_exposure_slider.elementChanged[int, float] \
+            .disconnect(self.cam_exposure_value_changed)
 
-    @pyqtSlot(int, int)
-    def cam_flash_delay_value_changed(self, index, value):
-        """
-        Slot for changed flash delay
+        self.OME_tab.exposure.setText(str(self._cam.exposure_current / 1000))
+        if self.master:
+            self.exposureChanged.emit()
 
-        Parameters
-        ----------
-        Index : ont
-            selected flash delay index in the slider values list
-        Value : double
-            selected flash delay in micro-seconds
-        """
-        self._cam.set_flash_params(
-            value, self._cam.flash_cur.u32Duration)
-        self._cam.get_flash_params()
-        self.cam_flash_delay_ledit.setText("{:d}".format(
-            self._cam.flash_cur.s32Delay))
-
-    def cam_flash_delay_return(self):
-        """
-        Sets the flash delay slider with the entered text box value
-        """
-        self.cam_flash_delay_slider.setNearest(
-            self.cam_flash_delay_ledit.text())
-
-    def start_free_run(self, cam: thorlabs_camera):
+    def start_free_run(self, cam: vimba_cam):
         """
         Starts free run acquisition mode
 
         Parameters
         ----------
-        cam : thorlabs_camera
-            Thorlabs Camera python adapter
+        cam : vimba_cam
+            Vimba Camera python adapter
         """
         nRet = 0
         if cam.acquisition:
             return  # if acquisition is already going on
-
-        if not cam.memory_allocated:
-            cam.allocate_memory()  # allocate memory
-
-        if not cam.capture_video:
-            cam.start_live_capture()  # start live capture (freerun mode)
-
-        cam.refresh_info()  # refresh adapter info
 
         self._save_path = (self._directory + "\\"
                            + self.experiment_name.text()
                            + "\\" + self.cam.name
                            + time.strftime("_%Y_%m_%d_%H%M%S"))
 
-        # if not os.path.exists(self._save_path):
-        #     os.makedirs(self._save_path)
-
         cam.acquisition = True  # set acquisition flag to true
 
         # start both capture and display workers
-        self.start_all_workers(nRet)
+        self.start_all_workers()
 
-    def start_software_triggered(self, cam: thorlabs_camera):
+    def start_software_triggered(self, cam: vimba_cam):
         """
         Starts trigger acquisition mode
 
         Parameters
         ----------
-        cam : thorlabs_camera
-            Thorlabs Camera python adapter
+        cam : vimba_cam
+            Vimba Camera python adapter
         """
+
         nRet = 0
         if cam.acquisition:
             return  # if acquisition is already going on
-
-        if not cam.memory_allocated:
-            cam.allocate_memory()  # allocate memory
-
-        cam.refresh_info()  # refresh adapter info
 
         self._save_path = (self._directory + "\\"
                            + self.experiment_name.text() + "\\"
                            + self.cam.name
                            + time.strftime("_%Y_%m_%d_%H%M%S"))
 
-        # if not os.path.exists(self._save_path):
-        #     os.makedirs(self._save_path)
-
         cam.acquisition = True  # set acquisition flag to true
 
         # start both capture and display workers
-        self.start_all_workers(nRet)
+        self.start_all_workers()
 
     def stop(self):
         self._stop_thread = True  # set stop acquisition workers flag to true
 
-    def start_all_workers(self, nRet):
+    def start_all_workers(self):
         """
         Starts all workers
-
-        Parameters
-        ----------
-        nRet : int
-            thorlabs_camera error/success code
         """
 
         self._stop_thread = False  # set stop acquisition workers flag to false
@@ -796,7 +690,7 @@ class Thorlabs_Panel(QGroupBox):
         # Pass the display function to be executed
         if self.d_worker is None or self.d_worker.done:
             self.d_worker = thread_worker(
-                self._display, nRet, self.cam, progress=False, z_stage=False)
+                self._display, self.cam, progress=False, z_stage=False)
             # Execute
             self._threadpool.start(self.d_worker)
 
@@ -804,7 +698,7 @@ class Thorlabs_Panel(QGroupBox):
         if not self.mini:
             if self.s_worker is None or self.s_worker.done:
                 self.s_worker = thread_worker(
-                    self._save, nRet, progress=False, z_stage=False)
+                    self._save, progress=False, z_stage=False)
                 # Execute
                 self._threadpool.start(self.s_worker)
 
@@ -812,28 +706,23 @@ class Thorlabs_Panel(QGroupBox):
         if self.c_worker is None or self.c_worker.done:
             # Any other args, kwargs are passed to the run function
             self.c_worker = thread_worker(
-                self._capture, nRet, self.cam, progress=False, z_stage=False)
+                self._capture, self.cam, progress=False, z_stage=False)
             # Execute
             self._threadpool.start(self.c_worker)
 
         # Giving the capture thread a head start over the display one
         QThread.msleep(500)
 
-    def start_dis_save_workers(self, nRet):
+    def start_dis_save_workers(self):
         """
         Starts both the display and save workers only
-
-        Parameters
-        ----------
-        nRet : int
-            thorlabs_camera error/success code
         """
         self._stop_thread = False  # set stop acquisition workers flag to false
 
         # Pass the display function to be executed
         if self.d_worker is None or self.d_worker.done:
             self.d_worker = thread_worker(
-                self._display, nRet, self.cam, progress=False, z_stage=False)
+                self._display, self.cam, progress=False, z_stage=False)
             # Execute
             self._threadpool.start(self.d_worker)
 
@@ -841,11 +730,21 @@ class Thorlabs_Panel(QGroupBox):
         if not self.mini:
             if self.s_worker is None or self.s_worker.done:
                 self.s_worker = thread_worker(
-                    self._save, nRet, progress=False, z_stage=False)
+                    self._save, progress=False, z_stage=False)
                 # Execute
                 self._threadpool.start(self.s_worker)
 
-    def _capture(self, nRet, cam: thorlabs_camera):
+    def _capture_handler(self, cam: vb.Camera, frame):
+        self._buffer.put(frame.as_numpy_ndarray())
+        cam.queue_frame(frame)
+        # add sensor temperature to the stack
+        self._temps.put(self.cam.get_temperature())
+        self._counter = self._counter + 1
+        if self._counter > self._nFrames - 1 and not self.mini:
+            self._stop_thread = True
+            logging.debug('Stop')
+
+    def _capture(self, cam: vimba_cam):
         '''Capture function executed by the capture worker.
 
         Sends software trigger signals and transfers the
@@ -853,61 +752,34 @@ class Thorlabs_Panel(QGroupBox):
 
         Parameters
         ----------
-        nRet : int
-            return code from thorlabs_camera, ueye.IS_SUCCESS = 0 to run.
-        cam : thorlabs_camera
-            the thorlabs_camera used to acquire frames.
+        cam : vimba_cam
+            the vimba_cam used to acquire frames.
         '''
-        try:
-            self._buffer.queue.clear()
-            self._temps.queue.clear()
-            self._frames.queue.clear()
-            self._counter = 0
+        with self._cam.cam:
+            try:
+                self._buffer.queue.clear()
+                self._temps.queue.clear()
+                self._frames.queue.clear()
+                self._counter = 0
+                self.time = QDateTime.currentDateTime()
+                self._nFrames = int(self.frames_tbox.text())
+                # Continuous image capture
+                cam.cam.start_streaming(self._capture_handler)
+                while(True):
+                    QThread.usleep(500)
 
-            temp = np.zeros(
-                (cam.height * cam.width * cam.bytes_per_pixel))
-            time = QDateTime.currentDateTime()
-            self._nFrames = int(self.frames_tbox.text())
-            # Continuous image capture
-            while(nRet == ueye.IS_SUCCESS):
-                self._exec_time = time.msecsTo(QDateTime.currentDateTime())
-                time = QDateTime.currentDateTime()
+                    if self._stop_thread:
+                        cam.cam.stop_streaming()
+                        break  # in case stop threads is initiated
+                self._exec_time = self.time.msecsTo(
+                    QDateTime.currentDateTime()) / self._counter
+            except Exception:
+                traceback.print_exc()
+            finally:
+                # reset flags and release resources
+                cam.acquisition = False
 
-                if not cam.capture_video:
-                    cam.uc480.is_FreezeVideo(cam.hCam, IS_DONT_WAIT)
-
-                nRet = cam.is_WaitForNextImage(500, not self.mini)
-                if nRet == CMD.IS_SUCCESS:
-                    cam.get_pitch()
-                    data = cam.get_data()
-
-                    # if not np.array_equal(temp, data):
-                    self._buffer.put(data.copy())
-                    # add sensor temperature to the stack
-                    self._temps.put(cam.get_temperature())
-                    temp = data.copy()
-                    self._counter = self._counter + 1
-                    if self._counter >= self._nFrames and not self.mini:
-                        self._stop_thread = True
-                        logging.debug('Stop')
-                    cam.unlock_buffer()
-
-                QThread.usleep(100)  # sleep 100us
-
-                if self._stop_thread:
-                    break  # in case stop threads is initiated
-        except Exception:
-            traceback.print_exc()
-        finally:
-            # reset flags and release resources
-            cam.acquisition = False
-            if cam.capture_video:
-                cam.stop_live_capture()
-            cam.free_memory()
-            if self._dispose_cam:
-                cam.dispose()
-
-    def _display(self, nRet, cam: thorlabs_camera):
+    def _display(self, cam: vimba_cam):
         '''Display function executed by the display worker.
 
         Processes the acquired frame, displays it, and sends it to the save
@@ -915,15 +787,13 @@ class Thorlabs_Panel(QGroupBox):
 
         Parameters
         ----------
-        nRet : int
-            return code from thorlabs_camera, ueye.IS_SUCCESS = 0 to run.
-        cam : thorlabs_camera
-            the thorlabs_camera used to acquire frames.
+        cam : vimba_cam
+            the vimba_cam used to acquire frames.
         '''
         try:
             time = QDateTime.currentDateTime()
             # Continuous image display
-            while(nRet == ueye.IS_SUCCESS):
+            while(True):
                 # for display time estimations
 
                 # proceed only if the buffer is not empty
@@ -933,9 +803,11 @@ class Thorlabs_Panel(QGroupBox):
 
                     # reshape image into proper shape
                     # (height, width, bytes per pixel)
-                    frame = uImage.fromBuffer(
-                        self._buffer.get(),
-                        cam.height, cam.width, cam.bytes_per_pixel)
+                    frame = uImage(self._buffer.get()) \
+                        if self.cam.bytes_per_pixel > 1\
+                        else uImage.fromUINT8(
+                            self._buffer.get(),
+                            self.cam.height, self.cam.width)
 
                     # add to saving stack
                     if self.cam_save_temp.isChecked():
@@ -984,7 +856,7 @@ class Thorlabs_Panel(QGroupBox):
             if not self.mini:
                 cv2.destroyWindow(cam.name)
 
-    def _save(self, nRet):
+    def _save(self):
         '''Save function executed by the save worker.
 
         Saves the acquired frames in bigtiff format associated
@@ -993,7 +865,7 @@ class Thorlabs_Panel(QGroupBox):
         Parameters
         ----------
         nRet : int
-            return code from thorlabs_camera, CMD.IS_SUCCESS = 0 to run.
+            return code from IDS_Camera, ueye.IS_SUCCESS = 0 to run.
         '''
         try:
             frames_saved = 0
@@ -1007,7 +879,7 @@ class Thorlabs_Panel(QGroupBox):
                 return path + \
                        '\\image_{:05d}.ome.tif'.format(index)
 
-            while(nRet == CMD.IS_SUCCESS):
+            while(True):
                 # save in case frame stack is not empty
                 if not self._frames.empty():
                     # for save time estimations
@@ -1100,29 +972,12 @@ class Thorlabs_Panel(QGroupBox):
 
     def save_config(self):
         filename, _ = QFileDialog.getSaveFileName(
-            self, "Save config", filter="JSON Files (*.json);;")
+            self, "Save config", filter="XML Files (*.xml);;")
 
         if len(filename) > 0:
 
-            config = {
-                'model': self.cam.sInfo.strSensorName.decode('utf-8'),
-                'serial': self.cam.cInfo.SerNo.decode('utf-8'),
-                'clock speed': self.cam.pixel_clock.value,
-                'trigger': self.cam_trigger_mode_cbox.currentText(),
-                'flash mode': self.cam_flash_mode_cbox.currentText(),
-                'framerate': self.cam.currentFrameRate.value,
-                'exposure': self.cam.exposure_current.value,
-                'flash duration': self.cam.flash_cur.u32Duration,
-                'flash delay': self.cam.flash_cur.s32Delay,
-                'AOI w': self.cam.set_rectAOI.s32Width,
-                'AOI h': self.cam.set_rectAOI.s32Height,
-                'AOI x': self.cam.set_rectAOI.s32X,
-                'AOI y': self.cam.set_rectAOI.s32Y,
-                'Zoom': self._zoom,
-            }
-
-            with open(filename, 'w') as file:
-                json.dump(config, file)
+            with self.cam.cam:
+                self.cam.cam.save_settings(filename, vb.PersistType.All)
 
             QMessageBox.information(
                 self, "Info", "Config saved.")
@@ -1132,63 +987,26 @@ class Thorlabs_Panel(QGroupBox):
 
     def load_config(self):
         filename, _ = QFileDialog.getOpenFileName(
-            self, "Load config", filter="JSON Files (*.json);;")
+            self, "Load config", filter="XML Files (*.xml);;")
 
         if len(filename) > 0:
-            config: dict = None
-            keys = [
-                'model',
-                'serial',
-                'clock speed',
-                'trigger',
-                'flash mode',
-                'framerate',
-                'exposure',
-                'flash duration',
-                'flash delay',
-                'AOI w',
-                'AOI h',
-                'AOI x',
-                'AOI y',
-                'Zoom',
-            ]
-            with open(filename, 'r') as file:
-                config = json.load(file)
-            if all(key in config for key in keys):
-                if self.cam.sInfo.strSensorName.decode('utf-8') == \
-                        config['model']:
-                    self.AOI_x_tbox.setText(str(config['AOI x']))
-                    self.AOI_y_tbox.setText(str(config['AOI y']))
-                    self.AOI_width_tbox.setText(str(config['AOI w']))
-                    self.AOI_height_tbox.setText(str(config['AOI h']))
-                    self.set_AOI()
+            with self.cam.cam:
+                self.cam.default()
 
-                    self.cam_pixel_clock_cbox.setCurrentText(
-                        str(config['clock speed']))
-                    self.cam_trigger_mode_cbox.setCurrentText(
-                        config['trigger'])
-                    self.cam_flash_mode_cbox.setCurrentText(
-                        config['flash mode'])
+                # Load camera settings from file.
+                self.cam.cam.load_settings(filename, vb.PersistType.All)
 
-                    self.cam_framerate_slider.setNearest(config['framerate'])
+                w, h, x, y = self.cam.get_roi()
 
-                    self.cam_exposure_slider.setNearest(config['exposure'])
+                self.AOI_x_tbox.setText(str(x))
+                self.AOI_y_tbox.setText(str(y))
+                self.AOI_width_tbox.setText(str(w))
+                self.AOI_height_tbox.setText(str(h))
 
-                    self.cam_flash_duration_slider.setNearest(
-                        config['flash duration'])
+                self.cam_trigger_mode_cbox.setCurrentText(
+                    self.cam.get_trigger_mode())
 
-                    self.cam_flash_delay_slider.setNearest(
-                        config['flash delay'])
-
-                    self._zoom = float(config['Zoom'])
-                    self.zoom_lbl.setText(
-                        "Resize " + "{:.0f}%".format(self._zoom*100))
-                else:
-                    QMessageBox.warning(
-                        self, "Warning", "Camera model is different.")
-            else:
-                QMessageBox.warning(
-                    self, "Warning", "Wrong or corrupted config file.")
+                self.cam_exposure_ledit.setValue(self.cam.get_exposure())
         else:
             QMessageBox.warning(
                 self, "Warning", "No file selected.")

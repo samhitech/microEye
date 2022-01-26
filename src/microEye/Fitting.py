@@ -1,15 +1,17 @@
 import re
+from typing import final
+
 import cv2
+import numba
 import numpy as np
+import pandas as pd
 import pyqtgraph as pg
 from numpy.ma import count
-from scipy.fftpack import fft2, ifft2, fftshift, ifftshift
+from PyQt5.QtCore import *
+from scipy.fftpack import fft2, fftshift, ifft2, ifftshift
 from scipy.interpolate import interp1d
 from skimage.registration import phase_cross_correlation
-import numba
-import pandas as pd
-
-from PyQt5.QtCore import *
+from sklearn.neighbors import NearestNeighbors
 
 from .Rendering import *
 
@@ -91,7 +93,8 @@ class ResultsUnits:
 class FittingResults:
 
     columns = np.array([
-        'frame', 'x [pixel]', 'y [pixel]', 'x [nm]', 'y [nm]', 'intensity'
+        'frame', 'x [pixel]', 'y [pixel]', 'x [nm]', 'y [nm]', 'intensity',
+        'trackID', 'neighbour_dist [nm]', 'n_merged'
     ])
 
     def __init__(self, unit=ResultsUnits.Pixel, pixelSize=130.0):
@@ -112,6 +115,9 @@ class FittingResults:
         self.locY_nm = []
         self.frame = []
         self.intensity = []
+        self.trackID = []
+        self.neighbour_dist = []
+        self.n_merged = []
 
     def extend(self, data: np.ndarray):
         '''Extend results by contents of data array
@@ -146,7 +152,10 @@ class FittingResults:
                     np.array(self.locY),
                     np.array(self.locX) * self.pixelSize,
                     np.array(self.locY) * self.pixelSize,
-                    np.array(self.intensity)]
+                    np.array(self.intensity),
+                    np.array(self.trackID),
+                    np.array(self.neighbour_dist),
+                    np.array(self.n_merged)]
         else:
             loc = np.c_[
                     np.array(self.frame),
@@ -154,7 +163,10 @@ class FittingResults:
                     np.array(self.locY_nm) / self.pixelSize,
                     np.array(self.locX_nm),
                     np.array(self.locY_nm),
-                    np.array(self.intensity)]
+                    np.array(self.intensity),
+                    np.array(self.trackID),
+                    np.array(self.neighbour_dist),
+                    np.array(self.n_merged)]
 
         return pd.DataFrame(loc, columns=FittingResults.columns)
 
@@ -201,6 +213,9 @@ class FittingResults:
                 sep='\t',
                 engine='python')
 
+        return FittingResults.fromDataFrame(dataFrame, pixelSize)
+
+    def fromDataFrame(dataFrame: pd.DataFrame, pixelSize: float):
         fittingResults = None
 
         if FittingResults.columns[3] in dataFrame and \
@@ -233,6 +248,22 @@ class FittingResults:
             fittingResults.intensity = dataFrame[FittingResults.columns[5]]
         else:
             fittingResults.intensity = np.ones(len(fittingResults))
+
+        if FittingResults.columns[6] in dataFrame:
+            fittingResults.trackID = dataFrame[FittingResults.columns[6]]
+        else:
+            fittingResults.trackID = np.zeros(len(fittingResults))
+
+        if FittingResults.columns[7] in dataFrame:
+            fittingResults.neighbour_dist = \
+                dataFrame[FittingResults.columns[7]]
+        else:
+            fittingResults.neighbour_dist = np.zeros(len(fittingResults))
+
+        if FittingResults.columns[8] in dataFrame:
+            fittingResults.n_merged = dataFrame[FittingResults.columns[8]]
+        else:
+            fittingResults.n_merged = np.zeros(len(fittingResults))
 
         return fittingResults
 
@@ -325,18 +356,100 @@ class FittingResults:
         #     data[data[:, 0] == i, 3] -= shift_x
         #     data[data[:, 0] == i, 4] -= shift_y
 
-        drift_corrected = FittingResults(
-            ResultsUnits.Nanometer, self.pixelSize)
-        drift_corrected.frame = data[:, 0]
-        drift_corrected.locX_nm = data[:, 3]
-        drift_corrected.locY_nm = data[:, 4]
-        drift_corrected.intensity = data[:, 5]
+        df = pd.DataFrame(
+            data,
+            columns=FittingResults.columns)
+
+        drift_corrected = FittingResults.fromDataFrame(df, self.pixelSize)
 
         drift_corrected_image = renderEngine.fromArray(
             data[:, 3:6])
 
         return drift_corrected, drift_corrected_image, \
             (frames_new, interpx, interpy, unique_frames)
+
+    def nearest_neighbour_merging(
+            self, maxDistance=30, maxOff=1, maxLength=500, neighbors=1):
+        data = self.dataFrame().to_numpy()
+        data[:, 6] = 0
+        counter = 1
+        max_frame = np.max(self.frame)
+
+        for frameID in np.arange(0, max_frame + 1):
+            for offset in np.arange(0, maxOff + 1):
+                currentFrame = data[data[:, 0] == frameID, :]
+                nextFrame = data[data[:, 0] == frameID + offset + 1, :]
+
+                if len(currentFrame) > 0 and len(nextFrame) > 0:
+                    nNeighbors = NearestNeighbors(n_neighbors=neighbors)
+                    nNeighbors.fit(nextFrame[:, 3:5])
+                    foundnn = nNeighbors.kneighbors(currentFrame[:, 3:5])
+                    foundnn = np.asarray(foundnn)
+
+                    currentIDs = np.where(foundnn[0] < maxDistance)[0]
+                    neighbourIDs = foundnn[
+                        :, foundnn[0] < maxDistance][1].astype(int)
+
+                    for currentID, neighbourID in zip(
+                            currentIDs, neighbourIDs):
+                        if nextFrame[neighbourID, 6] == 0:
+                            if currentFrame[currentID, 6] == 0:
+                                currentFrame[currentID, 6] = counter
+                                nextFrame[neighbourID, 6] = counter
+                                counter += 1
+                            else:
+                                nextFrame[neighbourID, 6] = \
+                                    currentFrame[currentID, 6]
+
+                        currentFrame[currentID, 7] = foundnn[0][currentID][0]
+
+                    data[data[:, 0] == frameID, :] = currentFrame
+                    data[data[:, 0] == frameID + offset + 1, :] = nextFrame
+            print(
+                'NN {:.2%} ...               '.format(frameID / max_frame),
+                end="\r")
+
+        finalData = merge_localizations(data, counter, maxLength)
+
+        df = pd.DataFrame(
+            finalData,
+            columns=FittingResults.columns).sort_values(
+                by=FittingResults.columns[0])
+
+        print('Done ...                         ')
+
+        return FittingResults.fromDataFrame(df, self.pixelSize)
+
+
+@numba.njit
+def merge_localizations(data: np.ndarray, counter, maxLength):
+    mergedData = np.empty((0,) + data.shape[1:], dtype=np.float64)
+    for trackID in np.arange(counter):
+        trackGroup = data[data[:, 6] == trackID, :]
+
+        if len(trackGroup) < maxLength:
+            row = np.zeros((1,) + data.shape[1:])
+            row[:, 0] = np.min(trackGroup[:, 0])
+            weights = trackGroup[:, 5]
+            row[:, 5] = np.sum(weights)
+            if row[:, 5] <= 0:
+                weights = np.ones(weights.shape)
+            row[:, 3] = np.sum(
+                trackGroup[:, 3] * weights) / np.sum(weights)
+            row[:, 4] = np.sum(
+                trackGroup[:, 4] * weights) / np.sum(weights)
+            row[:, 8] = len(trackGroup)
+
+            mergedData = np.append(mergedData, row, axis=0)
+        else:
+            data[data[:, 6] == trackID, 6] = 0
+
+        print(
+            'Merging ', (trackID + 1), ' / ', counter, "\r")
+
+    leftData = data[data[:, 6] == 0, :]
+
+    return np.append(mergedData, leftData, axis=0)
 
 
 @numba.njit(parallel=True)

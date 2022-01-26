@@ -5,6 +5,8 @@ The *Acquisition Module* allows multi-cam image acquisition within one graphical
 
 The *Control Module* allows setting the laser excitation presets, manual focus and automatic focus stabilization by monitoring the peak position of a totally internally reflected IR beam and moving the piezo stage accordingly. 
 
+The *Tiff Viewer Module* allows accessing tiff images (single file and sequecnces) of order TYX (2D SMLM), also allows for visualizing the filtering-localization process *WYSIWYG*.  
+
 This toolkit is compatible with the [hardware](#hardware) we are using in our microscope. For further details check our microscope's github (TBA)
 
 ## Uses Packages
@@ -51,7 +53,7 @@ This toolkit is compatible with the [hardware](#hardware) we are using in our mi
 
 ### How to use
 
-    from microEye.acquisition_module import acquisition_module
+    from microEye.hardware import acquisition_module
     
     try:
         app, window = acquisition_module.StartGUI()
@@ -68,6 +70,8 @@ This toolkit is compatible with the [hardware](#hardware) we are using in our mi
         
 For Vimba SDK to work the script should be executed as administrator on Windows and wrapped in a with statement:
 
+     from microEye.hardware import acquisition_module
+     
      try:
          import vimba as vb
      except Exception:
@@ -85,10 +89,26 @@ For Vimba SDK to work the script should be executed as administrator on Windows 
 
 ### How to use
 
-    from microEye.control_module import control_module
+    from microEye.hardware import control_module
     
     app, window = control_module.StartGUI()
     app.exec_()
+
+
+## Data Viewer / Processor
+
+![Capture_viewer](https://user-images.githubusercontent.com/89871015/150964047-ba4521fa-1ffa-4f76-9e4e-6759fbdc3b8f.PNG) 
+![Capture_viewer_2](https://user-images.githubusercontent.com/89871015/150964062-9560b228-5052-40cb-86fc-5617f760a1b1.PNG) 
+![Capture_viewer_3](https://user-images.githubusercontent.com/89871015/150964073-1d7f2a83-4582-43ac-abc6-d38314460b00.PNG)
+
+### How to use
+
+    from microEye import tiff_viewer
+
+    app, window = tiff_viewer.StartGUI('D:/')
+
+    app.exec_()
+
 
 ## Authors
 

@@ -15,7 +15,7 @@ from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 
-from .thread_worker import *
+from ..thread_worker import *
 from .ueye_camera import IDS_Camera
 from .thorlabs import *
 from .thorlabs_panel import Thorlabs_Panel

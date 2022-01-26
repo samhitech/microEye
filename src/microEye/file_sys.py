@@ -10,6 +10,7 @@ import ome_types.model as om
 import pandas as pd
 import pyqtgraph as pg
 import qdarkstyle
+from sympy import true
 import tifffile as tf
 import zarr
 from numpy.lib.type_check import imag
@@ -329,6 +330,22 @@ class tiff_viewer(QMainWindow):
         self.drift_cross_args.addWidget(self.drift_cross_px)
         self.drift_cross_args.addWidget(self.drift_cross_up)
 
+        self.nneigh_merge_args = QHBoxLayout()
+        self.nn_neighbors = QSpinBox()
+        self.nn_neighbors.setValue(1)
+        self.nn_max_distance = QDoubleSpinBox()
+        self.nn_max_distance.setMaximum(10000)
+        self.nn_max_distance.setValue(30)
+        self.nn_max_off = QSpinBox()
+        self.nn_max_off.setValue(1)
+        self.nn_max_length = QSpinBox()
+        self.nn_max_length.setMaximum(10000)
+        self.nn_max_length.setValue(500)
+        self.nneigh_merge_args.addWidget(self.nn_neighbors)
+        self.nneigh_merge_args.addWidget(self.nn_max_distance)
+        self.nneigh_merge_args.addWidget(self.nn_max_off)
+        self.nneigh_merge_args.addWidget(self.nn_max_length)
+
         self.loc_btn = QPushButton(
             'Localize',
             clicked=lambda: self.localize())
@@ -341,6 +358,9 @@ class tiff_viewer(QMainWindow):
         self.drift_cross_btn = QPushButton(
             'Drift cross-correlation',
             clicked=lambda: self.drift_cross())
+        self.nneigh_merge_btn = QPushButton(
+            'Nearest-neighbour Merging',
+            clicked=lambda: self.nneigh_merge())
 
         self.export_loc_btn = QPushButton(
             'Export Localizations',
@@ -374,6 +394,10 @@ class tiff_viewer(QMainWindow):
             QLabel('Drift X-Corr. (bins, pixelSize, upsampling):'))
         self.loc_layout.addLayout(self.drift_cross_args)
         self.loc_layout.addWidget(self.drift_cross_btn)
+        self.loc_layout.addWidget(
+            QLabel('NN (n-neighbor, max-distance, max-off, max-len):'))
+        self.loc_layout.addLayout(self.nneigh_merge_args)
+        self.loc_layout.addWidget(self.nneigh_merge_btn)
         self.loc_layout.addWidget(self.export_loc_btn)
         self.loc_layout.addWidget(self.import_loc_btn)
         self.loc_layout.addStretch()
@@ -697,6 +721,20 @@ class tiff_viewer(QMainWindow):
         else:
             return
 
+    def nneigh_merge(self):
+        if self.fittingResults is None:
+            return
+        elif len(self.fittingResults) > 0:
+            self.fittingResults = \
+                self.fittingResults.nearest_neighbour_merging(
+                    self.nn_max_distance.value(),
+                    self.nn_max_off.value(),
+                    self.nn_max_length.value(),
+                    self.nn_neighbors.value()
+                )
+        else:
+            return
+
     def import_loc(self):
         filename, _ = QFileDialog.getOpenFileName(
             self, "Import localizations", filter="TSV Files (*.tsv);;")
@@ -741,6 +779,9 @@ class tiff_viewer(QMainWindow):
                 self.export_loc_nm.isChecked(),
                 self.export_loc_nm.isChecked(),
                 self.export_int.isChecked(),
+                True,
+                True,
+                True
             ]
 
             dataFrame = self.fittingResults.dataFrame()
@@ -905,24 +946,24 @@ class tiff_viewer(QMainWindow):
         font.setPointSize(10)
         app.setFont(font)
         # sets the app icon
-        dirname = os.path.dirname(__file__)
+        dirname = os.path.dirname(os.path.abspath(__package__))
         app_icon = QIcon()
         app_icon.addFile(
-            os.path.join(dirname, 'icons/16.png'), QSize(16, 16))
+            os.path.join(dirname, 'microEye/icons/16.png'), QSize(16, 16))
         app_icon.addFile(
-            os.path.join(dirname, 'icons/24.png'), QSize(24, 24))
+            os.path.join(dirname, 'microEye/icons/24.png'), QSize(24, 24))
         app_icon.addFile(
-            os.path.join(dirname, 'icons/32.png'), QSize(32, 32))
+            os.path.join(dirname, 'microEye/icons/32.png'), QSize(32, 32))
         app_icon.addFile(
-            os.path.join(dirname, 'icons/48.png'), QSize(48, 48))
+            os.path.join(dirname, 'microEye/icons/48.png'), QSize(48, 48))
         app_icon.addFile(
-            os.path.join(dirname, 'icons/64.png'), QSize(64, 64))
+            os.path.join(dirname, 'microEye/icons/64.png'), QSize(64, 64))
         app_icon.addFile(
-            os.path.join(dirname, 'icons/128.png'), QSize(128, 128))
+            os.path.join(dirname, 'microEye/icons/128.png'), QSize(128, 128))
         app_icon.addFile(
-            os.path.join(dirname, 'icons/256.png'), QSize(256, 256))
+            os.path.join(dirname, 'microEye/icons/256.png'), QSize(256, 256))
         app_icon.addFile(
-            os.path.join(dirname, 'icons/512.png'), QSize(512, 512))
+            os.path.join(dirname, 'microEye/icons/512.png'), QSize(512, 512))
 
         app.setWindowIcon(app_icon)
 
