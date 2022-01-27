@@ -99,7 +99,8 @@ For Vimba SDK to work the script should be executed as administrator on Windows 
 
 ![Capture_viewer](https://user-images.githubusercontent.com/89871015/150964047-ba4521fa-1ffa-4f76-9e4e-6759fbdc3b8f.PNG) 
 ![Capture_viewer_2](https://user-images.githubusercontent.com/89871015/150964062-9560b228-5052-40cb-86fc-5617f760a1b1.PNG) 
-![Capture_viewer_3](https://user-images.githubusercontent.com/89871015/150964073-1d7f2a83-4582-43ac-abc6-d38314460b00.PNG)
+![Capture_viewer_3](https://user-images.githubusercontent.com/89871015/151448086-0799926d-a4a4-420b-ad12-177145a90c78.png)
+
 
 ### How to use
 
