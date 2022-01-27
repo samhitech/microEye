@@ -1,4 +1,3 @@
-import ctypes
 import os
 import struct
 import sys
@@ -63,9 +62,6 @@ class control_module(QMainWindow):
 
         # setting geometry
         self.setGeometry(0, 0, 1200, 600)
-
-        # centered
-        self.center()
 
         # Statusbar time
         self.statusBar().showMessage(
@@ -140,6 +136,9 @@ class control_module(QMainWindow):
         self._threadpool.start(self.worker)
 
         self.show()
+
+        # centered
+        self.center()
 
     def center(self):
         '''Centers the window within the screen.
@@ -898,29 +897,32 @@ class control_module(QMainWindow):
         # set darkmode from *qdarkstyle* (not compatible with pyqt6)
         app.setStyleSheet(qdarkstyle.load_stylesheet(qt_api='pyqt5'))
         # sets the app icon
-        dirname = os.path.dirname(os.path.abspath(__package__))
+        dirname = os.path.dirname(os.path.abspath(__file__))
         app_icon = QIcon()
         app_icon.addFile(
-            os.path.join(dirname, 'microEye/icons/16.png'), QSize(16, 16))
+            os.path.join(dirname, '../icons/16.png'), QSize(16, 16))
         app_icon.addFile(
-            os.path.join(dirname, 'microEye/icons/24.png'), QSize(24, 24))
+            os.path.join(dirname, '../icons/24.png'), QSize(24, 24))
         app_icon.addFile(
-            os.path.join(dirname, 'microEye/icons/32.png'), QSize(32, 32))
+            os.path.join(dirname, '../icons/32.png'), QSize(32, 32))
         app_icon.addFile(
-            os.path.join(dirname, 'microEye/icons/48.png'), QSize(48, 48))
+            os.path.join(dirname, '../icons/48.png'), QSize(48, 48))
         app_icon.addFile(
-            os.path.join(dirname, 'microEye/icons/64.png'), QSize(64, 64))
+            os.path.join(dirname, '../icons/64.png'), QSize(64, 64))
         app_icon.addFile(
-            os.path.join(dirname, 'microEye/icons/128.png'), QSize(128, 128))
+            os.path.join(dirname, '../icons/128.png'), QSize(128, 128))
         app_icon.addFile(
-            os.path.join(dirname, 'microEye/icons/256.png'), QSize(256, 256))
+            os.path.join(dirname, '../icons/256.png'), QSize(256, 256))
         app_icon.addFile(
-            os.path.join(dirname, 'microEye/icons/512.png'), QSize(512, 512))
+            os.path.join(dirname, '../icons/512.png'), QSize(512, 512))
 
         app.setWindowIcon(app_icon)
 
-        myappid = u'samhitech.mircoEye.control_module'  # appid
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+        if sys.platform.startswith('win'):
+            import ctypes
+            myappid = u'samhitech.mircoEye.control_module'  # appid
+            ctypes.windll.shell32.\
+                SetCurrentProcessExplicitAppUserModelID(myappid)
 
         window = control_module()
         return app, window

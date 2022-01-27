@@ -265,7 +265,7 @@ class Thorlabs_Panel(QGroupBox):
 
         self.save_dir_layout = QHBoxLayout()
 
-        self._directory = os.path.dirname(os.path.realpath(__file__))
+        self._directory = os.path.dirname(os.path.realpath(__package__))
         self.save_dir_edit = QLineEdit(self._directory)
         self.save_dir_edit.setReadOnly(True)
 
@@ -646,7 +646,8 @@ class Thorlabs_Panel(QGroupBox):
         self._cam.get_flash_range(False)
         self.cam_exposure_ledit.setText("{:.6f}".format(
             self._cam.exposure_current.value))
-        self.OME_tab.exposure.setText(self.cam_exposure_ledit.text())
+        self.OME_tab.exposure.setValue(
+            float(self.cam_exposure_ledit.text()))
         self.cam_flash_duration_slider.values = np.append([0], np.arange(
             self._cam.flash_min.u32Duration,
             self._cam.flash_max.u32Duration,

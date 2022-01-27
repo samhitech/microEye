@@ -15,5 +15,4 @@ scikit_image>=0.18.3
 scipy>=1.7.1
 setuptools>=49.2.1
 tifffile==2021.11.2
-VimbaPython>=1.1.0
 zarr==2.10.3

@@ -262,7 +262,7 @@ class Vimba_Panel(QGroupBox):
 
         self.save_dir_layout = QHBoxLayout()
 
-        self._directory = os.path.dirname(os.path.realpath(__file__))
+        self._directory = os.path.dirname(os.path.realpath(__package__))
         self.save_dir_edit = QLineEdit(self._directory)
         self.save_dir_edit.setReadOnly(True)
 
@@ -602,7 +602,7 @@ class Vimba_Panel(QGroupBox):
         self.cam_exposure_qs.valueChanged.connect(
             self.exposure_spin_changed)
 
-        self.OME_tab.exposure.setText(str(self._cam.exposure_current / 1000))
+        self.OME_tab.exposure.setValue(self._cam.exposure_current / 1000)
         if self.master:
             self.exposureChanged.emit()
 

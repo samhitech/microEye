@@ -1,5 +1,6 @@
-import re
-from typing import final
+
+from distutils.log import debug
+from typing import Iterable
 
 import cv2
 import numba
@@ -137,6 +138,10 @@ class FittingResults:
         self.intensity.extend(data[:, 2])
         self.frame.extend(data[:, 3])
 
+        self.trackID.append([0] * data.shape[0])
+        self.neighbour_dist.append([0] * data.shape[0])
+        self.n_merged.append([0] * data.shape[0])
+
     def dataFrame(self):
         '''Return fitting results as Pandas DataFrame
 
@@ -168,7 +173,9 @@ class FittingResults:
                     np.array(self.neighbour_dist),
                     np.array(self.n_merged)]
 
-        return pd.DataFrame(loc, columns=FittingResults.columns)
+        return pd.DataFrame(
+            loc, columns=FittingResults.columns).sort_values(
+            by=FittingResults.columns[0])
 
     def toRender(self):
         '''Returns columns for rendering
@@ -366,50 +373,40 @@ class FittingResults:
             data[:, 3:6])
 
         return drift_corrected, drift_corrected_image, \
-            (frames_new, interpx, interpy, unique_frames)
+            (frames_new, interpx, interpy)
 
-    def nearest_neighbour_merging(
-            self, maxDistance=30, maxOff=1, maxLength=500, neighbors=1):
+    def nn_trajectories(
+            self, maxDistance=30, maxOff=1, neighbors=1):
         data = self.dataFrame().to_numpy()
         data[:, 6] = 0
-        counter = 1
+        counter = 0
         max_frame = np.max(self.frame)
 
         for frameID in np.arange(0, max_frame + 1):
             for offset in np.arange(0, maxOff + 1):
-                currentFrame = data[data[:, 0] == frameID, :]
-                nextFrame = data[data[:, 0] == frameID + offset + 1, :]
-
-                if len(currentFrame) > 0 and len(nextFrame) > 0:
-                    nNeighbors = NearestNeighbors(n_neighbors=neighbors)
-                    nNeighbors.fit(nextFrame[:, 3:5])
-                    foundnn = nNeighbors.kneighbors(currentFrame[:, 3:5])
-                    foundnn = np.asarray(foundnn)
-
-                    currentIDs = np.where(foundnn[0] < maxDistance)[0]
-                    neighbourIDs = foundnn[
-                        :, foundnn[0] < maxDistance][1].astype(int)
-
-                    for currentID, neighbourID in zip(
-                            currentIDs, neighbourIDs):
-                        if nextFrame[neighbourID, 6] == 0:
-                            if currentFrame[currentID, 6] == 0:
-                                currentFrame[currentID, 6] = counter
-                                nextFrame[neighbourID, 6] = counter
-                                counter += 1
-                            else:
-                                nextFrame[neighbourID, 6] = \
-                                    currentFrame[currentID, 6]
-
-                        currentFrame[currentID, 7] = foundnn[0][currentID][0]
-
-                    data[data[:, 0] == frameID, :] = currentFrame
-                    data[data[:, 0] == frameID + offset + 1, :] = nextFrame
+                counter = nn_trajectories(
+                    data,
+                    frameID=frameID, nextID=frameID + offset + 1,
+                    counter=counter, maxDistance=maxDistance,
+                    neighbors=neighbors)
             print(
                 'NN {:.2%} ...               '.format(frameID / max_frame),
                 end="\r")
 
-        finalData = merge_localizations(data, counter, maxLength)
+        df = pd.DataFrame(
+            data,
+            columns=FittingResults.columns).sort_values(
+                by=FittingResults.columns[0])
+
+        print('Done ...                         ')
+
+        return FittingResults.fromDataFrame(df, self.pixelSize)
+
+    def merge_tracks(self, maxLength=500):
+        data = self.dataFrame().to_numpy()
+
+        print('Merging ...                         ')
+        finalData = merge_localizations(data, maxLength)
 
         df = pd.DataFrame(
             finalData,
@@ -420,34 +417,174 @@ class FittingResults:
 
         return FittingResults.fromDataFrame(df, self.pixelSize)
 
+    def nearest_neighbour_merging(
+            self, maxDistance=30, maxOff=1, maxLength=500, neighbors=1):
+        data = self.dataFrame().to_numpy()
+        data[:, 6] = 0
+        counter = 0
+        max_frame = np.max(self.frame)
 
-@numba.njit
-def merge_localizations(data: np.ndarray, counter, maxLength):
-    mergedData = np.empty((0,) + data.shape[1:], dtype=np.float64)
-    for trackID in np.arange(counter):
-        trackGroup = data[data[:, 6] == trackID, :]
+        for frameID in np.arange(0, max_frame + 1):
+            for offset in np.arange(0, maxOff + 1):
+                counter = nn_trajectories(
+                    data,
+                    frameID=frameID, nextID=frameID + offset + 1,
+                    counter=counter, maxDistance=maxDistance,
+                    neighbors=neighbors)
+            print(
+                'NN {:.2%} ...               '.format(frameID / max_frame),
+                end="\r")
 
-        if len(trackGroup) < maxLength:
-            row = np.zeros((1,) + data.shape[1:])
-            row[:, 0] = np.min(trackGroup[:, 0])
-            weights = trackGroup[:, 5]
-            row[:, 5] = np.sum(weights)
-            if row[:, 5] <= 0:
-                weights = np.ones(weights.shape)
-            row[:, 3] = np.sum(
-                trackGroup[:, 3] * weights) / np.sum(weights)
-            row[:, 4] = np.sum(
-                trackGroup[:, 4] * weights) / np.sum(weights)
-            row[:, 8] = len(trackGroup)
+        print('Merging ...                         ')
+        finalData = merge_localizations(data, maxLength)
 
-            mergedData = np.append(mergedData, row, axis=0)
+        df = pd.DataFrame(
+            finalData,
+            columns=FittingResults.columns).sort_values(
+                by=FittingResults.columns[0])
+
+        print('Done ...                         ')
+
+        return FittingResults.fromDataFrame(df, self.pixelSize)
+
+    def drift_fiducial_marker(self):
+        data = self.dataFrame().to_numpy()
+
+        unique_frames, frame_counts = \
+            np.unique(data[:, 0], return_counts=True)
+        if len(unique_frames) < 2:
+            print('Drift correction failed: no frame info.')
+            return
+
+        if np.max(data[:, 6]) < 1:
+            print('Drift correction failed: please perform NN, no trackIDs.')
+            return
+
+        unique_tracks, track_counts = \
+            np.unique(data[:, 6], return_counts=True)
+        fiducial_tracks_mask = np.logical_and(
+            unique_tracks > 0,
+            track_counts == len(unique_frames)
+        )
+
+        fiducial_trackIDs = unique_tracks[fiducial_tracks_mask]
+
+        if len(fiducial_trackIDs) < 1:
+            print(
+                'Drift correction failed: no ' +
+                'fiducial markers tracks detected.')
+            return
         else:
-            data[data[:, 6] == trackID, 6] = 0
+            print('{:d} tracks detected.'.format(
+                len(fiducial_trackIDs)), end='\r')
+
+        fiducial_markers = np.array((
+            len(fiducial_trackIDs),
+            len(unique_frames),
+            data.shape[-1]))
 
         print(
-            'Merging ', (trackID + 1), ' / ', counter, "\r")
+            'Fiducial markers ...                 ', end='\r')
+        for idx in np.arange(fiducial_markers.shape[0]):
+            fiducial_markers[idx] = \
+                data[data[:, 6] == fiducial_trackIDs[idx]]
 
-    leftData = data[data[:, 6] == 0, :]
+            fiducial_markers[idx, :, 3] -= fiducial_markers[idx, 0, 3]
+            fiducial_markers[idx, :, 4] -= fiducial_markers[idx, 0, 4]
+
+        print(
+            'Drift estimate ...                 ', end='\r')
+        drift_x = np.mean(fiducial_markers[:, :, 3], axis=0)
+        drift_y = np.mean(fiducial_markers[:, :, 4], axis=0)
+
+        print(
+            'Drift correction ...                 ', end='\r')
+        for idx in np.arange(len(unique_frames)):
+            frame = unique_frames[idx]
+            data[data[:, 0] == frame, 3] -= drift_x[idx]
+            data[data[:, 0] == frame, 4] -= drift_y[idx]
+
+        df = pd.DataFrame(
+            data,
+            columns=FittingResults.columns)
+
+        drift_corrected = FittingResults.fromDataFrame(df, self.pixelSize)
+
+        return drift_corrected, \
+            (unique_frames, drift_x, drift_y)
+
+
+@numba.njit(parallel=True)
+def nn_trajectories(
+        data: np.ndarray, frameID: int, nextID: int, counter: int = 0,
+        maxDistance=30, neighbors=1):
+    currentFrame = data[data[:, 0] == frameID, :]
+    nextFrame = data[data[:, 0] == nextID, :]
+
+    if len(currentFrame) > 0 and len(nextFrame) > 0:
+        with numba.objmode(
+                currentIDs='int64[:]', neighbourIDs='int64[:]',
+                distance='float64[:]'):
+            nNeighbors = NearestNeighbors(n_neighbors=neighbors)
+            nNeighbors.fit(nextFrame[:, 3:5])
+            foundnn = nNeighbors.kneighbors(currentFrame[:, 3:5])
+            foundnn = np.asarray(foundnn)
+
+            currentIDs = np.where(foundnn[0] < maxDistance)[0]
+            neighbourIDs = foundnn[
+                :, foundnn[0] < maxDistance][1].astype(np.int64)
+            distance = foundnn[0]
+
+        for idx in numba.prange(len(currentIDs)):
+            if nextFrame[neighbourIDs[idx], 6] == 0:
+                if currentFrame[currentIDs[idx], 6] == 0:
+                    currentFrame[currentIDs[idx], 6] = counter + idx + 1
+                    nextFrame[neighbourIDs[idx], 6] = counter + idx + 1
+                else:
+                    nextFrame[neighbourIDs[idx], 6] = \
+                        currentFrame[currentIDs[idx], 6]
+
+            currentFrame[currentIDs[idx], 7] = distance[currentIDs[idx]]
+
+        data[data[:, 0] == frameID, :] = currentFrame
+        data[data[:, 0] == nextID, :] = nextFrame
+
+    return counter + len(currentIDs)
+
+
+@numba.njit(parallel=True)
+def merge_localizations(data: np.ndarray, maxLength):
+
+    with numba.objmode(
+            trackIDs='float64[:]'):
+        trackIDs, inverse, trackCounts = np.unique(
+            data[:, 6], return_counts=True, return_inverse=True)
+        mask = np.logical_and(trackIDs > 0, trackCounts <= maxLength)
+        trackIDs[np.logical_not(mask)] = 0
+        data[:, 6] = trackIDs[inverse]
+        trackIDs, trackCounts = trackIDs[mask], trackCounts[mask]
+
+    mergedData = np.empty((len(trackIDs),) + data.shape[1:], dtype=np.float64)
+
+    for idx in numba.prange(len(trackIDs)):
+        trackGroup = data[data[:, 6] == trackIDs[idx], :]
+
+        mergedData[idx, 0] = np.min(trackGroup[:, 0])
+        weights = trackGroup[:, 5]
+        mergedData[idx, 5] = np.sum(weights)
+        if mergedData[idx, 5] <= 0:
+            weights = np.ones(weights.shape)
+        mergedData[idx, 3] = np.sum(
+            trackGroup[:, 3] * weights) / np.sum(weights)
+        mergedData[idx, 4] = np.sum(
+            trackGroup[:, 4] * weights) / np.sum(weights)
+        mergedData[idx, 8] = len(trackGroup)
+
+        # print(
+        #     'Merging ', (idx + 1), ' / ', len(trackIDs))
+
+    leftIndices = np.where(data[:, 6] == 0)[0]
+    leftData = data[leftIndices, :]
 
     return np.append(mergedData, leftData, axis=0)
 
@@ -472,7 +609,9 @@ def shift_correction(interpx, interpy, data):
         data[data[:, 0] == idx, 4] -= shift_y
 
 
-def plotDriftXCorr(frames_new, interpx, interpy, unique_frames):
+def plot_drift(
+        frames_new, interpx, interpy,
+        title='Drift Cross-Correlation'):
     print(
         'Shift Plot ...',
         end="\r")
@@ -489,10 +628,10 @@ def plotDriftXCorr(frames_new, interpx, interpy, unique_frames):
     # set properties of the label for x axis
     plt.setLabel('bottom', 'frame', units='')
 
-    plt.setWindowTitle('Drift Cross-Correlation')
+    plt.setWindowTitle(title)
 
     # setting horizontal range
-    plt.setXRange(0, np.max(unique_frames))
+    plt.setXRange(0, np.max(frames_new))
 
     # setting vertical range
     plt.setYRange(0, 1)

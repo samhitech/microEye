@@ -343,6 +343,9 @@ def FRC_resolution_check_pattern(image, pixelSize=10):
     pixelSize : int, optional
         super resolution image pixel size in nanometers, by default 10
     '''
+    print(
+        'Initialization ...               ',
+        end="\r")
     odd, even, oddeven, evenodd = checker_pairs(image)
 
     window = hamming_2Dwindow(odd.shape[0])
@@ -357,6 +360,9 @@ def FRC_resolution_check_pattern(image, pixelSize=10):
     oddeven /= np.sum(oddeven)
     evenodd /= np.sum(evenodd)
 
+    print(
+        'FFT ...               ',
+        end="\r")
     odd_fft, even_fft, oddeven_fft, evenodd_fft = \
         np.fft.fft2(odd), np.fft.fft2(even), \
         np.fft.fft2(oddeven), np.fft.fft2(evenodd)
@@ -387,36 +393,49 @@ def FRC_resolution_check_pattern(image, pixelSize=10):
     FRC_res_1 = np.zeros((R_max, 4))
     FRC_res_2 = np.zeros((R_max, 4))
 
-    for r in range(1, R_max + 1):
-        ring = (R == r)
-        FRC_res_1[r-1, 0] = np.sum(odd_even[ring])
-        FRC_res_1[r-1, 1] = np.sum(odd_sq[ring])
-        FRC_res_1[r-1, 2] = np.sum(even_sq[ring])
-        FRC_res_1[r-1, 3] = (FRC_res_1[r-1, 0] / np.sqrt(
-            FRC_res_1[r-1, 1]*FRC_res_1[r-1, 2]))
+    print(
+        'FRC ...               ',
+        end="\r")
+    FRC_compute(
+        odd_even, odd_sq, even_sq, FRC_res_1, R, R_max)
+    FRC_compute(
+        odd_even2_odd, oddeven_sq, evenodd_sq, FRC_res_2, R, R_max)
 
-        FRC_res_2[r-1, 0] = np.sum(odd_even2_odd[ring])
-        FRC_res_2[r-1, 1] = np.sum(oddeven_sq[ring])
-        FRC_res_2[r-1, 2] = np.sum(evenodd_sq[ring])
-        FRC_res_2[r-1, 3] = (FRC_res_2[r-1, 0] / np.sqrt(
-            FRC_res_2[r-1, 1]*FRC_res_2[r-1, 2]))
+    FRC_avg = 0.5*(FRC_res_1[:, 3] + FRC_res_2[:, 3])
+
+    # for r in range(1, R_max + 1):
+    #     ring = (R == r)
+    #     FRC_res_1[r-1, 0] = np.sum(odd_even[ring])
+    #     FRC_res_1[r-1, 1] = np.sum(odd_sq[ring])
+    #     FRC_res_1[r-1, 2] = np.sum(even_sq[ring])
+    #     FRC_res_1[r-1, 3] = (FRC_res_1[r-1, 0] / np.sqrt(
+    #         FRC_res_1[r-1, 1]*FRC_res_1[r-1, 2]))
+
+    #     FRC_res_2[r-1, 0] = np.sum(odd_even2_odd[ring])
+    #     FRC_res_2[r-1, 1] = np.sum(oddeven_sq[ring])
+    #     FRC_res_2[r-1, 2] = np.sum(evenodd_sq[ring])
+    #     FRC_res_2[r-1, 3] = (FRC_res_2[r-1, 0] / np.sqrt(
+    #         FRC_res_2[r-1, 1]*FRC_res_2[r-1, 2]))
 
     # frequencies = np.linspace(0, 1, freq_nyq) / (2 * pixelSize)
 
-    FRC_1 = pd.DataFrame(FRC_res_1[:, 3])
-    FRC_1.interpolate(
-        method='linear', inplace=True
-    )
+    print(
+        'Interpolation ...               ',
+        end="\r")
+    interpy = interp1d(
+            frequencies, FRC_res_1[:, 3],
+            kind='quadratic', fill_value='extrapolate')
+    FRC_1 = interpy(frequencies)
 
-    FRC_2 = pd.DataFrame(FRC_res_2[:, 3])
-    FRC_2.interpolate(
-        method='linear', inplace=True
-    )
+    interpy = interp1d(
+            frequencies, FRC_res_2[:, 3],
+            kind='quadratic', fill_value='extrapolate')
+    FRC_2 = interpy(frequencies)
 
-    FRC_avg = pd.DataFrame(0.5*(FRC_res_1[:, 3] + FRC_res_2[:, 3]))
-    FRC_avg.interpolate(
-        method='linear', inplace=True
-    )
+    interpy = interp1d(
+            frequencies, FRC_avg,
+            kind='quadratic', fill_value='extrapolate')
+    FRC_avg = interpy(frequencies)
 
     idxmax_1 = np.where(FRC_1 <= (1/7))[0].min()
     idxmax_2 = np.where(FRC_2 <= (1/7))[0].min()
@@ -436,6 +455,10 @@ def FRC_resolution_check_pattern(image, pixelSize=10):
 
     FRC_res /= cut_off_corrections
 
+    return frequencies, [FRC_1, FRC_2, FRC_avg], FRC_res, cut_off_corrections
+
+
+def plotFRC_(frequencies, FRC, FRC_res, cut_off_corrections):
     # plot results
     plt = pg.plot()
 
@@ -460,15 +483,15 @@ def FRC_resolution_check_pattern(image, pixelSize=10):
     plt.setYRange(0, 1)
 
     line1 = plt.plot(
-        frequencies * cut_off_corrections[0], FRC_1.to_numpy()[:, 0],
+        frequencies * cut_off_corrections[0], FRC[0],
         pen='g', symbol='x', symbolPen='g',
         symbolBrush=0.2, name='1st Set')
     line2 = plt.plot(
-        frequencies * cut_off_corrections[1], FRC_2.to_numpy()[:, 0],
+        frequencies * cut_off_corrections[1], FRC[1],
         pen='b', symbol='o', symbolPen='b',
         symbolBrush=0.2, name='2nd Set')
     line3 = plt.plot(
-        frequencies * cut_off_corrections[2], FRC_avg.to_numpy()[:, 0],
+        frequencies * cut_off_corrections[2], FRC[2],
         pen='r', symbol='+', symbolPen='r',
         symbolBrush=0.2, name='Average')
     line4 = plt.plotItem.addLine(y=1/7, pen='y')

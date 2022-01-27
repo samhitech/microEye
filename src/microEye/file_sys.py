@@ -1,4 +1,3 @@
-import ctypes
 import os
 import sys
 from enum import auto
@@ -10,7 +9,6 @@ import ome_types.model as om
 import pandas as pd
 import pyqtgraph as pg
 import qdarkstyle
-from sympy import true
 import tifffile as tf
 import zarr
 from numpy.lib.type_check import imag
@@ -30,17 +28,18 @@ from .metadata import MetadataEditor
 from .Rendering import *
 from .thread_worker import *
 from .uImage import *
+from .checklist_dialog import Checklist
 
 
 class tiff_viewer(QMainWindow):
 
-    def __init__(self, path=os.path.dirname(os.path.abspath(__file__))):
+    def __init__(self, path=os.path.dirname(os.path.abspath(__package__))):
         super().__init__()
         self.title = 'microEye tiff viewer'
         self.left = 0
         self.top = 0
         self.width = 1024
-        self.height = 600
+        self.height = 512
         self._zoom = 1  # display resize
         self._n_levels = 4096
 
@@ -72,7 +71,6 @@ class tiff_viewer(QMainWindow):
         # Set Title / Dimensions / Center Window
         self.setWindowTitle(self.title)
         self.setGeometry(self.left, self.top, self.width, self.height)
-        self.center()
 
         # Define main window layout
         self.main_widget = QWidget()
@@ -104,13 +102,15 @@ class tiff_viewer(QMainWindow):
         self.tree.hideColumn(3)
 
         self.tree.setWindowTitle("Dir View")
-        self.tree.resize(640, 480)
+        self.tree.resize(512, 256)
 
         # Metadata Viewer / Editor
         self.metadataEditor = MetadataEditor()
 
         # Side TabView
         self.tabView = QTabWidget()
+        self.tabView.setMinimumWidth(350)
+        self.tabView.setMaximumWidth(400)
 
         # Graphical layout
         self.g_layout_widget = QVBoxLayout()
@@ -136,9 +136,9 @@ class tiff_viewer(QMainWindow):
 
         # Add Tabs
         self.tabView.addTab(self.file_tree, 'File system')
-        self.tabView.addTab(self.metadataEditor, 'OME-XML Metadata')
         self.tabView.addTab(self.controls_group, 'Tiff Options')
         self.tabView.addTab(self.loc_group, 'Localization / Render')
+        self.tabView.addTab(self.metadataEditor, 'OME-XML Metadata')
 
         # Add the File system tab contents
         self.imsq_pattern = QLineEdit('/image_0*.ome.tif')
@@ -295,19 +295,15 @@ class tiff_viewer(QMainWindow):
         self.frc_cbox.addItem('Binomial')
         self.frc_cbox.addItem('Check Pattern')
 
-        self.export_frm = QCheckBox('Frame')
-        self.export_frm.setChecked(True)
-        self.export_loc_px = QCheckBox('Localizations (px)')
-        self.export_loc_px.setChecked(False)
-        self.export_loc_nm = QCheckBox('Localizations (nm)')
-        self.export_loc_nm.setChecked(True)
-        self.export_int = QCheckBox('Intensity')
-        self.export_int.setChecked(True)
+        self.export_options = Checklist(
+                'Exported Columns',
+                ['Frame', 'Coordinates [Pixel]', 'Coordinates [nm]',
+                 'Intensity', 'Super-res image', 'Track ID',
+                 'Next NN Distance', 'Number of Merged NNs'], checked=True)
 
         self.export_precision = QLineEdit('%10.5f')
 
-        self.export_image = QCheckBox('Super-res Image')
-        self.export_image.setChecked(True)
+        self.px_sz_layout = QHBoxLayout()
 
         self.px_size = QDoubleSpinBox()
         self.px_size.setMinimum(0)
@@ -317,6 +313,9 @@ class tiff_viewer(QMainWindow):
         self.super_px_size = QSpinBox()
         self.super_px_size.setMinimum(0)
         self.super_px_size.setValue(10)
+
+        self.px_sz_layout.addWidget(self.px_size)
+        self.px_sz_layout.addWidget(self.super_px_size)
 
         self.drift_cross_args = QHBoxLayout()
         self.drift_cross_bins = QSpinBox()
@@ -358,10 +357,27 @@ class tiff_viewer(QMainWindow):
         self.drift_cross_btn = QPushButton(
             'Drift cross-correlation',
             clicked=lambda: self.drift_cross())
+
+        self.nn_layout = QHBoxLayout()
+        self.nneigh_btn = QPushButton(
+            'Nearest-neighbour',
+            clicked=lambda: self.nneigh())
+        self.merge_btn = QPushButton(
+            'Merge Tracks',
+            clicked=lambda: self.merge())
         self.nneigh_merge_btn = QPushButton(
-            'Nearest-neighbour Merging',
+            'NM + Merging',
             clicked=lambda: self.nneigh_merge())
 
+        self.drift_fdm_btn = QPushButton(
+            'Fiducial marker drift correction',
+            clicked=lambda: self.drift_fdm())
+
+        self.nn_layout.addWidget(self.nneigh_btn)
+        self.nn_layout.addWidget(self.merge_btn)
+        self.nn_layout.addWidget(self.nneigh_merge_btn)
+
+        self.im_exp_layout = QHBoxLayout()
         self.export_loc_btn = QPushButton(
             'Export Localizations',
             clicked=lambda: self.export_loc())
@@ -369,26 +385,20 @@ class tiff_viewer(QMainWindow):
             'Import Localizations',
             clicked=lambda: self.import_loc())
 
+        self.im_exp_layout.addWidget(self.import_loc_btn)
+        self.im_exp_layout.addWidget(self.export_loc_btn)
+
         self.loc_layout.addWidget(QLabel('Fitting:'))
         self.loc_layout.addWidget(self.fitting_cbox)
         self.loc_layout.addWidget(QLabel('Rendering Method:'))
         self.loc_layout.addWidget(self.render_cbox)
-        self.loc_layout.addWidget(QLabel('FRC Method:'))
-        self.loc_layout.addWidget(self.frc_cbox)
-        self.loc_layout.addWidget(QLabel('Pixel-size [nm]:'))
-        self.loc_layout.addWidget(self.px_size)
-        self.loc_layout.addWidget(QLabel('Super resolution pixel-size [nm]:'))
-        self.loc_layout.addWidget(self.super_px_size)
-        self.loc_layout.addWidget(QLabel('Exported:'))
-        self.loc_layout.addWidget(self.export_frm)
-        self.loc_layout.addWidget(self.export_loc_px)
-        self.loc_layout.addWidget(self.export_loc_nm)
-        self.loc_layout.addWidget(self.export_int)
-        self.loc_layout.addWidget(self.export_image)
-        self.loc_layout.addWidget(QLabel('Format:'))
-        self.loc_layout.addWidget(self.export_precision)
+        self.loc_layout.addWidget(QLabel(
+            'Pixel-size [nm] | Super resolution pixel-size [nm]:'))
+        self.loc_layout.addLayout(self.px_sz_layout)
         self.loc_layout.addWidget(self.loc_btn)
         self.loc_layout.addWidget(self.refresh_btn)
+        self.loc_layout.addWidget(QLabel('FRC Method:'))
+        self.loc_layout.addWidget(self.frc_cbox)
         self.loc_layout.addWidget(self.frc_res_btn)
         self.loc_layout.addWidget(
             QLabel('Drift X-Corr. (bins, pixelSize, upsampling):'))
@@ -397,9 +407,12 @@ class tiff_viewer(QMainWindow):
         self.loc_layout.addWidget(
             QLabel('NN (n-neighbor, max-distance, max-off, max-len):'))
         self.loc_layout.addLayout(self.nneigh_merge_args)
-        self.loc_layout.addWidget(self.nneigh_merge_btn)
-        self.loc_layout.addWidget(self.export_loc_btn)
-        self.loc_layout.addWidget(self.import_loc_btn)
+        self.loc_layout.addLayout(self.nn_layout)
+        self.loc_layout.addWidget(self.drift_fdm_btn)
+        self.loc_layout.addWidget(self.export_options)
+        self.loc_layout.addWidget(QLabel('Format:'))
+        self.loc_layout.addWidget(self.export_precision)
+        self.loc_layout.addLayout(self.im_exp_layout)
         self.loc_layout.addStretch()
 
         # graphics layout
@@ -408,11 +421,13 @@ class tiff_viewer(QMainWindow):
         self.image = pg.ImageItem(axisOrder='row-major')
         self.image_plot = pg.ImageView(imageItem=self.image)
         self.image_plot.setLevels(0, 255)
+        self.image_plot.setMinimumWidth(600)
         # self.image_plot.setColorMap(pg.colormap.getFromMatplotlib('jet'))
         self.g_layout_widget.addWidget(self.image_plot)
         # Item for displaying image data
 
         self.show()
+        self.center()
 
     def center(self):
         '''Centers the window within the screen.
@@ -519,30 +534,31 @@ class tiff_viewer(QMainWindow):
     def slider_changed(self, value):
         if self.tiffSeq_Handler is not None:
             self.update_display()
-        if self.sender() is self.pages_slider:
+
+        if self.pages_slider is not None:
             self.pages_label.setText(
                 'Page: {:d}/{:d}'.format(
-                    value + 1,
+                    self.pages_slider.value() + 1,
                     self.pages_slider.maximum() + 1))
-        elif self.sender() is self.min_slider:
+        elif self.min_slider is not None:
             self.min_label.setText(
                 'Min: {:d}/{:d}'.format(
-                    value,
+                    self.min_slider.value(),
                     self.min_slider.maximum()))
-        elif self.sender() is self.max_slider:
+        elif self.max_slider is not None:
             self.max_label.setText(
                 'Max: {:d}/{:d}'.format(
-                    value,
+                    self.max_slider.value(),
                     self.max_slider.maximum()))
-        elif self.sender() is self.th_min_slider:
+        elif self.th_min_slider is not None:
             self.th_min_label.setText(
                 'Min det. threshold: {:d}/{:d}'.format(
-                    value,
+                    self.th_min_slider.value(),
                     self.th_min_slider.maximum()))
-        elif self.sender() is self.th_max_slider:
+        elif self.th_max_slider is not None:
             self.th_max_label.setText(
                 'Max det. threshold: {:d}/{:d}'.format(
-                    value,
+                    self.th_max_slider.value(),
                     self.th_max_slider.maximum()))
 
     def update_display(self, image=None):
@@ -666,8 +682,15 @@ class tiff_viewer(QMainWindow):
 
             if img is not None:
                 def work_func():
-                    FRC_resolution_check_pattern(
-                        img, self.super_px_size.value())
+                    try:
+                        return FRC_resolution_check_pattern(
+                            img, self.super_px_size.value())
+                    except Exception:
+                        traceback.print_exc()
+                        return None
+
+                def done(results):
+                    plotFRC_(*results)
             else:
                 return
         elif 'Binomial' in frc_method:
@@ -677,10 +700,17 @@ class tiff_viewer(QMainWindow):
                 data = self.fittingResults.toRender()
 
                 def work_func():
-                    return FRC_resolution_binomial(
-                        np.c_[data[0], data[1], data[2]],
-                        self.super_px_size.value()
-                    )
+                    try:
+                        return FRC_resolution_binomial(
+                            np.c_[data[0], data[1], data[2]],
+                            self.super_px_size.value()
+                        )
+                    except Exception:
+                        traceback.print_exc()
+                        return None
+
+                def done(results):
+                    plotFRC(*results)
             else:
                 return
         else:
@@ -689,7 +719,7 @@ class tiff_viewer(QMainWindow):
         self.worker = thread_worker(
             work_func,
             progress=False, z_stage=False)
-        self.worker.signals.result.connect(lambda x: plotFRC(*x))
+        self.worker.signals.result.connect(done)
         # Execute
         self._threadpool.start(self.worker)
 
@@ -698,11 +728,15 @@ class tiff_viewer(QMainWindow):
             return
         elif len(self.fittingResults) > 0:
             def work_func():
-                return self.fittingResults.drift_cross_correlation(
-                    self.drift_cross_bins.value(),
-                    self.drift_cross_px.value(),
-                    self.drift_cross_up.value(),
-                )
+                try:
+                    return self.fittingResults.drift_cross_correlation(
+                        self.drift_cross_bins.value(),
+                        self.drift_cross_px.value(),
+                        self.drift_cross_up.value(),
+                    )
+                except Exception:
+                    traceback.print_exc()
+                    return None
 
             def done(results):
                 if results is not None:
@@ -710,7 +744,33 @@ class tiff_viewer(QMainWindow):
                         results[1], None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
                     self.image.setImage(img_norm, autoLevels=False)
                     self.fittingResults = results[0]
-                    plotDriftXCorr(*results[2])
+                    plot_drift(*results[2])
+
+            self.worker = thread_worker(
+                work_func,
+                progress=False, z_stage=False)
+            self.worker.signals.result.connect(done)
+            # Execute
+            self._threadpool.start(self.worker)
+        else:
+            return
+
+    def drift_fdm(self):
+        if self.fittingResults is None:
+            return
+        elif len(self.fittingResults) > 0:
+            def work_func():
+                try:
+                    return self.fittingResults.drift_fiducial_marker()
+                except Exception:
+                    traceback.print_exc()
+                    return None
+
+            def done(results):
+                if results is not None:
+                    self.fittingResults = results[0]
+                    plot_drift(*results[1])
+                    self.update_loc()
 
             self.worker = thread_worker(
                 work_func,
@@ -725,13 +785,79 @@ class tiff_viewer(QMainWindow):
         if self.fittingResults is None:
             return
         elif len(self.fittingResults) > 0:
-            self.fittingResults = \
-                self.fittingResults.nearest_neighbour_merging(
-                    self.nn_max_distance.value(),
-                    self.nn_max_off.value(),
-                    self.nn_max_length.value(),
-                    self.nn_neighbors.value()
-                )
+            def work_func():
+                try:
+                    return self.fittingResults.nearest_neighbour_merging(
+                        self.nn_max_distance.value(),
+                        self.nn_max_off.value(),
+                        self.nn_max_length.value(),
+                        self.nn_neighbors.value()
+                    )
+                except Exception:
+                    traceback.print_exc()
+                    return None
+
+            def done(results):
+                self.fittingResults = results
+
+            self.worker = thread_worker(
+                work_func,
+                progress=False, z_stage=False)
+            self.worker.signals.result.connect(done)
+            # Execute
+            self._threadpool.start(self.worker)
+        else:
+            return
+
+    def nneigh(self):
+        if self.fittingResults is None:
+            return
+        elif len(self.fittingResults) > 0:
+            def work_func():
+                try:
+                    return self.fittingResults.nn_trajectories(
+                        self.nn_max_distance.value(),
+                        self.nn_max_off.value(),
+                        self.nn_neighbors.value()
+                    )
+                except Exception:
+                    traceback.print_exc()
+                    return None
+
+            def done(results):
+                self.fittingResults = results
+
+            self.worker = thread_worker(
+                work_func,
+                progress=False, z_stage=False)
+            self.worker.signals.result.connect(done)
+            # Execute
+            self._threadpool.start(self.worker)
+        else:
+            return
+
+    def merge(self):
+        if self.fittingResults is None:
+            return
+        elif len(self.fittingResults) > 0:
+            def work_func():
+                try:
+                    return self.fittingResults.merge_tracks(
+                        self.nn_max_length.value()
+                    )
+                except Exception:
+                    traceback.print_exc()
+                    return None
+
+            def done(results):
+                self.fittingResults = results
+
+            self.worker = thread_worker(
+                work_func,
+                progress=False, z_stage=False)
+            self.worker.signals.result.connect(done)
+            # Execute
+            self._threadpool.start(self.worker)
         else:
             return
 
@@ -761,27 +887,18 @@ class tiff_viewer(QMainWindow):
                 self, "Export localizations", filter="TSV Files (*.tsv);;")
 
         if len(filename) > 0:
-            sres_img = self.update_loc()
-
-            if sres_img is not None:
-                tf.imsave(
-                    filename.replace('.tsv', '_super_res.tif'),
-                    sres_img,
-                    photometric='minisblack',
-                    append=True,
-                    bigtiff=True,
-                    ome=False)
+            options = self.export_options.toList()
 
             exp_columns = [
-                self.export_frm.isChecked(),
-                self.export_loc_px.isChecked(),
-                self.export_loc_px.isChecked(),
-                self.export_loc_nm.isChecked(),
-                self.export_loc_nm.isChecked(),
-                self.export_int.isChecked(),
-                True,
-                True,
-                True
+                'Frame' in options,
+                'Coordinates [Pixel]' in options,
+                'Coordinates [Pixel]' in options,
+                'Coordinates [nm]' in options,
+                'Coordinates [nm]' in options,
+                'Intensity' in options,
+                'Track ID' in options,
+                'Next NN Distance' in options,
+                'Number of Merged NNs' in options
             ]
 
             dataFrame = self.fittingResults.dataFrame()
@@ -791,6 +908,16 @@ class tiff_viewer(QMainWindow):
                 float_format=self.export_precision.text(),
                 sep='\t',
                 encoding='utf-8')
+
+            if 'Super-res image' in options:
+                sres_img = self.update_loc()
+                tf.imsave(
+                    filename.replace('.tsv', '_super_res.tif'),
+                    sres_img,
+                    photometric='minisblack',
+                    append=True,
+                    bigtiff=True,
+                    ome=False)
 
     def localize(self):
         if self.tiffSeq_Handler is None:
@@ -946,29 +1073,32 @@ class tiff_viewer(QMainWindow):
         font.setPointSize(10)
         app.setFont(font)
         # sets the app icon
-        dirname = os.path.dirname(os.path.abspath(__package__))
+        dirname = os.path.dirname(os.path.abspath(__file__))
         app_icon = QIcon()
         app_icon.addFile(
-            os.path.join(dirname, 'microEye/icons/16.png'), QSize(16, 16))
+            os.path.join(dirname, 'icons/16.png'), QSize(16, 16))
         app_icon.addFile(
-            os.path.join(dirname, 'microEye/icons/24.png'), QSize(24, 24))
+            os.path.join(dirname, 'icons/24.png'), QSize(24, 24))
         app_icon.addFile(
-            os.path.join(dirname, 'microEye/icons/32.png'), QSize(32, 32))
+            os.path.join(dirname, 'icons/32.png'), QSize(32, 32))
         app_icon.addFile(
-            os.path.join(dirname, 'microEye/icons/48.png'), QSize(48, 48))
+            os.path.join(dirname, 'icons/48.png'), QSize(48, 48))
         app_icon.addFile(
-            os.path.join(dirname, 'microEye/icons/64.png'), QSize(64, 64))
+            os.path.join(dirname, 'icons/64.png'), QSize(64, 64))
         app_icon.addFile(
-            os.path.join(dirname, 'microEye/icons/128.png'), QSize(128, 128))
+            os.path.join(dirname, 'icons/128.png'), QSize(128, 128))
         app_icon.addFile(
-            os.path.join(dirname, 'microEye/icons/256.png'), QSize(256, 256))
+            os.path.join(dirname, 'icons/256.png'), QSize(256, 256))
         app_icon.addFile(
-            os.path.join(dirname, 'microEye/icons/512.png'), QSize(512, 512))
+            os.path.join(dirname, 'icons/512.png'), QSize(512, 512))
 
         app.setWindowIcon(app_icon)
 
-        myappid = u'samhitech.mircoEye.tiff_viewer'  # appid
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+        if sys.platform.startswith('win'):
+            import ctypes
+            myappid = u'samhitech.mircoEye.tiff_viewer'  # appid
+            ctypes.windll.shell32.\
+                SetCurrentProcessExplicitAppUserModelID(myappid)
 
         window = tiff_viewer(path)
         return app, window
