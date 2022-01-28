@@ -378,6 +378,70 @@ class MetadataEditor(QWidget):
 
         return ome_obj
 
+    def gen_OME_XML_short(self, frames: int, width: int, height: int):
+        ome_obj = om.OME(creator='microEye Python Package')
+
+        experimenter = om.Experimenter()
+        experimenter.first_name = self.exp_fName.text()
+        experimenter.last_name = self.exp_lName.text()
+        experimenter.email = self.exp_email.text()
+        experimenter.institution = self.exp_institute.text()
+        ome_obj.experimenters.append(experimenter)
+
+        detector = Detector()
+        detector.manufacturer = self.det_manufacturer.text()
+        detector.model = self.det_model.text()
+        detector.serial_number = self.det_serial.text()
+        detector.type = Type._member_map_[
+            self.det_type.currentText()]
+
+        instrument = Instrument()
+        instrument.detectors.append(detector)
+
+        ome_obj.instruments.append(instrument)
+
+        planes = [om.Plane(
+            the_c=0,
+            the_t=i,
+            the_z=0,
+            exposure_time=self.exposure.value(),
+            exposure_time_unit=UnitsTime.MILLISECOND
+        ) for i in range(frames)]
+
+        channel = om.Channel()
+
+        pixels = om.Pixels(
+            size_c=1, size_t=frames,
+            size_x=width,
+            size_y=height, size_z=1,
+            type=PixelType._member_map_[
+                self.pixel_type.currentText()],
+            dimension_order='XYZCT',
+            # metadata_only=True,
+            physical_size_x=self.px_size.value(),
+            physical_size_x_unit=UnitsLength._member_map_[
+                self.p_unit.currentText()],
+            physical_size_y=self.py_size.value(),
+            physical_size_y_unit=UnitsLength._member_map_[
+                self.p_unit.currentText()],
+            time_increment=self.exposure.value(),
+            time_increment_unit=UnitsTime._member_map_[
+                self.exposure_unit.currentText()],
+        )
+        pixels.tiff_data_blocks.append(om.TiffData())
+        pixels.channels.append(channel)
+        pixels.planes.extend(planes)
+        img = om.Image(
+            id='Image:1',
+            name=self.experiment.text(),
+            pixels=pixels,
+            description=self.exp_desc.toPlainText()
+        )
+        ome_obj.images.append(img)
+        ome_obj = OME.validate(ome_obj)
+
+        return ome_obj
+
     def pop_OME_XML(self, ome_obj: OME):
         if ome_obj.images.__len__() > 0:
             img = ome_obj.images[0]
@@ -385,29 +449,42 @@ class MetadataEditor(QWidget):
             self.exp_desc.setText(img.description)
             if img.pixels is not None:
                 pixels = img.pixels
-                self.px_size.setValue(float(pixels.physical_size_x))
-                self.py_size.setValue(float(pixels.physical_size_y))
-                self.p_unit.setCurrentText(pixels.physical_size_x_unit.name)
-                self.exposure.setValue(pixels.time_increment)
-                self.exposure_unit.setCurrentText(
-                    pixels.time_increment_unit.name)
+                if pixels.physical_size_x is not None:
+                    self.px_size.setValue(
+                        float(pixels.physical_size_x))
+                    self.p_unit.setCurrentText(
+                        pixels.physical_size_x_unit.name)
+                if pixels.physical_size_y is not None:
+                    self.py_size.setValue(
+                        float(pixels.physical_size_y))
+                if pixels.time_increment is not None:
+                    self.exposure.setValue(pixels.time_increment)
+                    self.exposure_unit.setCurrentText(
+                        pixels.time_increment_unit.name)
                 self.pixel_type.setCurrentText(pixels.type.name)
                 if pixels.channels.__len__() > 0:
                     channel = pixels.channels[0]
                     self.channel_name.setText(channel.name)
                     self.fluor_name.setText(channel.fluor)
-                    self.acq_mode.setCurrentText(channel.acquisition_mode.name)
-                    self.ill_type.setCurrentText(
-                        channel.illumination_type.name)
-                    self.contrast.setCurrentText(channel.contrast_method.name)
-                    self.excitation.setValue(
-                        float(channel.excitation_wavelength))
-                    self.emission.setValue(
-                        float(channel.emission_wavelength))
-                    self.wave_unit.setCurrentText(
-                        channel.excitation_wavelength_unit.name)
-                    self.wave_unit.setCurrentText(
-                        channel.emission_wavelength_unit.name)
+                    if channel.acquisition_mode:
+                        self.acq_mode.setCurrentText(
+                            channel.acquisition_mode.name)
+                    if channel.illumination_type:
+                        self.ill_type.setCurrentText(
+                            channel.illumination_type.name)
+                    if channel.contrast_method:
+                        self.contrast.setCurrentText(
+                            channel.contrast_method.name)
+                    if channel.excitation_wavelength:
+                        self.excitation.setValue(
+                            float(channel.excitation_wavelength))
+                        self.wave_unit.setCurrentText(
+                            channel.excitation_wavelength_unit.name)
+                    if channel.emission_wavelength:
+                        self.emission.setValue(
+                            float(channel.emission_wavelength))
+                        self.wave_unit.setCurrentText(
+                            channel.emission_wavelength_unit.name)
             if ome_obj.experimenters.__len__() > 0:
                 exper = ome_obj.experimenters[0]
                 self.exp_fName.setText(exper.first_name)

@@ -155,13 +155,11 @@ class tiff_viewer(QMainWindow):
         self.pages_slider = QSlider(Qt.Horizontal)
         self.pages_slider.setMinimum(0)
         self.pages_slider.setMaximum(0)
-        self.pages_slider.valueChanged.connect(self.slider_changed)
 
         self.min_label = QLabel('Min')
         self.min_slider = QSlider(Qt.Horizontal)
         self.min_slider.setMinimum(0)
         self.min_slider.setMaximum(self._n_levels - 1)
-        self.min_slider.valueChanged.connect(self.slider_changed)
         self.min_slider.valueChanged.emit(0)
 
         self.max_label = QLabel('Max')
@@ -169,12 +167,10 @@ class tiff_viewer(QMainWindow):
         self.max_slider.setMinimum(0)
         self.max_slider.setMaximum(self._n_levels - 1)
         self.max_slider.setValue(self._n_levels - 1)
-        self.max_slider.valueChanged.connect(self.slider_changed)
         self.max_slider.valueChanged.emit(self._n_levels - 1)
 
         self.autostretch = QCheckBox('Auto-Stretch')
         self.autostretch.setChecked(True)
-        self.autostretch.stateChanged.connect(self.slider_changed)
 
         # display size
         self.zoom_layout = QHBoxLayout()
@@ -207,7 +203,6 @@ class tiff_viewer(QMainWindow):
         self.th_min_slider = QSlider(Qt.Horizontal)
         self.th_min_slider.setMinimum(0)
         self.th_min_slider.setMaximum(255)
-        self.th_min_slider.valueChanged.connect(self.slider_changed)
         self.th_min_slider.valueChanged.emit(0)
 
         self.th_max_label = QLabel('Max')
@@ -215,11 +210,17 @@ class tiff_viewer(QMainWindow):
         self.th_max_slider.setMinimum(0)
         self.th_max_slider.setMaximum(255)
         self.th_max_slider.setValue(255)
-        self.th_max_slider.valueChanged.connect(self.slider_changed)
         self.th_max_slider.valueChanged.emit(255)
 
         self.detection = QCheckBox('Blob Detection')
         self.detection.setChecked(False)
+
+        self.pages_slider.valueChanged.connect(self.slider_changed)
+        self.min_slider.valueChanged.connect(self.slider_changed)
+        self.max_slider.valueChanged.connect(self.slider_changed)
+        self.autostretch.stateChanged.connect(self.slider_changed)
+        self.th_min_slider.valueChanged.connect(self.slider_changed)
+        self.th_max_slider.valueChanged.connect(self.slider_changed)
         self.detection.stateChanged.connect(self.slider_changed)
 
         self.controls_layout.addWidget(self.detection)
@@ -540,22 +541,22 @@ class tiff_viewer(QMainWindow):
                 'Page: {:d}/{:d}'.format(
                     self.pages_slider.value() + 1,
                     self.pages_slider.maximum() + 1))
-        elif self.min_slider is not None:
+        if self.min_slider is not None:
             self.min_label.setText(
                 'Min: {:d}/{:d}'.format(
                     self.min_slider.value(),
                     self.min_slider.maximum()))
-        elif self.max_slider is not None:
+        if self.max_slider is not None:
             self.max_label.setText(
                 'Max: {:d}/{:d}'.format(
                     self.max_slider.value(),
                     self.max_slider.maximum()))
-        elif self.th_min_slider is not None:
+        if self.th_min_slider is not None:
             self.th_min_label.setText(
                 'Min det. threshold: {:d}/{:d}'.format(
                     self.th_min_slider.value(),
                     self.th_min_slider.maximum()))
-        elif self.th_max_slider is not None:
+        if self.th_max_slider is not None:
             self.th_max_label.setText(
                 'Max det. threshold: {:d}/{:d}'.format(
                     self.th_max_slider.value(),

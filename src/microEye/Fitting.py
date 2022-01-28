@@ -138,9 +138,9 @@ class FittingResults:
         self.intensity.extend(data[:, 2])
         self.frame.extend(data[:, 3])
 
-        self.trackID.append([0] * data.shape[0])
-        self.neighbour_dist.append([0] * data.shape[0])
-        self.n_merged.append([0] * data.shape[0])
+        self.trackID.extend([0] * data.shape[0])
+        self.neighbour_dist.extend([0] * data.shape[0])
+        self.n_merged.extend([0] * data.shape[0])
 
     def dataFrame(self):
         '''Return fitting results as Pandas DataFrame

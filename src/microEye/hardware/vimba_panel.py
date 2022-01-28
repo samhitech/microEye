@@ -280,7 +280,7 @@ class Vimba_Panel(QGroupBox):
         self.cam_save_temp.setChecked(self.mini)
         self.save_bigg_tiff = QCheckBox("BiggTiff Format")
         self.save_bigg_tiff.setChecked(True)
-        self.cam_save_meta = QCheckBox("Write OME-XML")
+        self.cam_save_meta = QCheckBox("Write full OME-XML")
         self.cam_save_meta.setChecked(self.mini)
 
         # preview checkbox
@@ -879,6 +879,24 @@ class Vimba_Panel(QGroupBox):
                 return path + \
                        '\\image_{:05d}.ome.tif'.format(index)
 
+            def saveMetadata(index: int):
+                if self.cam_save_meta.isChecked():
+                    ome = self.OME_tab.gen_OME_XML(
+                        frames_saved,
+                        self._cam.width,
+                        self._cam.height)
+                    tf.tiffcomment(
+                        getFilename(index),
+                        ome.to_xml())
+                else:
+                    ome = self.OME_tab.gen_OME_XML_short(
+                        frames_saved,
+                        self._cam.width,
+                        self._cam.height)
+                    tf.tiffcomment(
+                        getFilename(index),
+                        ome.to_xml())
+
             while(True):
                 # save in case frame stack is not empty
                 if not self._frames.empty():
@@ -912,6 +930,8 @@ class Vimba_Panel(QGroupBox):
                     except ValueError as ve:
                         if str(ve) == 'data too large for standard TIFF file':
                             tiffWriter.close()
+                            saveMetadata(index, frames_saved)
+                            frames_saved = 0
                             index += 1
                             tiffWriter = tf.TiffWriter(
                                 getFilename(index),
@@ -946,14 +966,7 @@ class Vimba_Panel(QGroupBox):
             if tiffWriter is not None:
                 tiffWriter.close()
 
-            if self.cam_save_meta.isChecked():
-                ome = self.OME_tab.gen_OME_XML(
-                    frames_saved,
-                    self._cam.width,
-                    self._cam.height)
-                tf.tiffcomment(
-                    getFilename(0),
-                    ome.to_xml())
+            saveMetadata(index, frames_saved)
 
     @staticmethod
     def find_nearest(array, value):
