@@ -197,7 +197,8 @@ class BandpassFilter(AbstractFilter):
             filter = self._filter
 
         if self._show_filter:
-            cv2.imshow('test', (filter*255).astype(np.uint8))
+            cv2.namedWindow("BandpassFilter", cv2.WINDOW_NORMAL)
+            cv2.imshow('BandpassFilter', (filter*255).astype(np.uint8))
 
         img = np.zeros(nimg.shape, dtype=np.uint8)
         ft[:, :, 0] *= filter
@@ -221,7 +222,7 @@ class BandpassFilterWidget(QGroupBox):
 
         self.filter = BandpassFilter()
 
-        self._layout = QVBoxLayout()
+        self._layout = QFormLayout()
 
         self.arg_1 = QComboBox()
         self.arg_1.addItems(['gauss', 'butter', 'ideal'])
@@ -249,12 +250,15 @@ class BandpassFilterWidget(QGroupBox):
         self.arg_4.setChecked(True)
         self.arg_4.stateChanged.connect(self.value_changed)
 
-        self._layout.addWidget(QLabel('Filter arg 1 (type)'))
-        self._layout.addWidget(self.arg_1)
-        self._layout.addWidget(QLabel('Filter arg 2 (center)'))
-        self._layout.addWidget(self.arg_2)
-        self._layout.addWidget(QLabel('Filter arg 3 (width)'))
-        self._layout.addWidget(self.arg_3)
+        self._layout.addRow(
+            QLabel('Filter type:'),
+            self.arg_1)
+        self._layout.addRow(
+            QLabel('Center:'),
+            self.arg_2)
+        self._layout.addRow(
+            QLabel('Width:'),
+            self.arg_3)
         self._layout.addWidget(self.arg_4)
 
         self.setLayout(self._layout)
@@ -312,14 +316,30 @@ class TemporalMedianFilter(AbstractFilter):
                 self._start,
                 (self._start + self._temporal_window),
                 1)
-        self._frames = dask.array.from_array(dataZarr[data_slice])
+        return dask.array.from_array(dataZarr[data_slice])
 
-    def run(self, image: np.ndarray):
-        if self._frames is not None:
-            self._median = np.array(
-                dask.array.median(self._frames, axis=0))
+    def run(self, image: np.ndarray, frames: np.ndarray, roiInfo=None):
+        if frames is not None:
+            if roiInfo is None:
+                median = np.array(
+                    dask.array.median(frames, axis=0))
 
-            img = image - self._median
+                img = image - median
+            else:
+                origin = roiInfo[0]  # ROI (x,y)
+                dim = roiInfo[1]  # ROI (w,h)
+                median = np.array(
+                    dask.array.median(frames[
+                        :,
+                        int(origin[1]):int(origin[1] + dim[1]),
+                        int(origin[0]):int(origin[0] + dim[0])
+                    ], axis=0))
+
+                img = image.astype(np.float64)
+                img[
+                    int(origin[1]):int(origin[1] + dim[1]),
+                    int(origin[0]):int(origin[0] + dim[0])] -= median
+
             img[img < 0] = 0
             # max_val = np.iinfo(image.dtype).max
             # img *= 10  # 0.9 * max_val / img.max()
@@ -338,7 +358,7 @@ class TemporalMedianFilterWidget(QGroupBox):
 
         self.filter = TemporalMedianFilter()
 
-        self._layout = QVBoxLayout()
+        self._layout = QFormLayout()
 
         self.window_size = QSpinBox()
         self.window_size.setMinimum(1)
@@ -352,8 +372,9 @@ class TemporalMedianFilterWidget(QGroupBox):
         self.enabled.setChecked(False)
         self.enabled.stateChanged.connect(self.value_changed)
 
-        self._layout.addWidget(QLabel('Window Temporal Size:'))
-        self._layout.addWidget(self.window_size)
+        self._layout.addRow(
+            QLabel('Temporal Window Size:'),
+            self.window_size)
         self._layout.addWidget(self.enabled)
 
         self.setLayout(self._layout)

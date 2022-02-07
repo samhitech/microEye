@@ -111,7 +111,7 @@ class acquisition_module(QMainWindow):
         self.second_tab = QWidget()
 
         # first tab vertical layout
-        self.first_tab_Layout = QVBoxLayout()
+        self.first_tab_Layout = QFormLayout()
         # set as first tab layout
         self.first_tab.setLayout(self.first_tab_Layout)
 
@@ -176,16 +176,18 @@ class acquisition_module(QMainWindow):
                                           clicked=lambda:
                                           self.stack_to_stats_clicked())
 
-        self.first_tab_Layout.addWidget(self.camWidget)
-        self.first_tab_Layout.addLayout(self.acq_mode_radio)
-        self.first_tab_Layout.addWidget(QLabel("Experiment:"))
-        self.first_tab_Layout.addWidget(self.experiment_name)
-        self.first_tab_Layout.addWidget(QLabel("Save Directory:"))
-        self.first_tab_Layout.addLayout(self.save_dir_layout)
-        self.first_tab_Layout.addWidget(QLabel("Number of frames:"))
-        self.first_tab_Layout.addWidget(self.frames_tbox)
-        self.first_tab_Layout.addWidget(self.stack_to_stats)
-        self.first_tab_Layout.addStretch()
+        self.first_tab_Layout.addRow(self.camWidget)
+        self.first_tab_Layout.addRow(self.acq_mode_radio)
+        self.first_tab_Layout.addRow(
+            QLabel("Experiment:"),
+            self.experiment_name)
+        self.first_tab_Layout.addRow(
+            QLabel("Save Directory:"),
+            self.save_dir_layout)
+        self.first_tab_Layout.addRow(
+            QLabel("Number of frames:"),
+            self.frames_tbox)
+        # self.first_tab_Layout.addWidget(self.stack_to_stats)
 
         self.Hlayout.addWidget(self.tabView, 1)
 

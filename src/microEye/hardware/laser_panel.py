@@ -32,29 +32,29 @@ class laser_panel(QGroupBox):
         self.match_box = mbox
 
         # main vertical layout
-        L_Layout = QVBoxLayout()
+        L_Layout = QFormLayout()
         self.setLayout(L_Layout)
 
         # on with cam 1 flash
         self.CAM1 = QRadioButton("CAM 1 Flash")
         self.CAM1.state = "L{:d}F1".format(wavelength)
-        L_Layout.addWidget(self.CAM1)
+        L_Layout.addRow(self.CAM1)
 
         # on with cam 2 flash
         self.CAM2 = QRadioButton("CAM 2 Flash")
         self.CAM2.state = "L{:d}F2".format(wavelength)
-        L_Layout.addWidget(self.CAM2)
+        L_Layout.addRow(self.CAM2)
 
         # off regardless
         self.OFF = QRadioButton("OFF")
         self.OFF.state = "L{:d}OFF".format(wavelength)
         self.OFF.setChecked(True)
-        L_Layout.addWidget(self.OFF)
+        L_Layout.addRow(self.OFF)
 
         # on regardless
         self.ON = QRadioButton("ON")
         self.ON.state = "L{:d}ON".format(wavelength)
-        L_Layout.addWidget(self.ON)
+        L_Layout.addRow(self.ON)
 
         # Laser diode set current label + slider
         self.L_set_cur_label = QLabel("Set Current 0 mA")
@@ -65,13 +65,12 @@ class laser_panel(QGroupBox):
         self.L_cur_slider.setValue(0)
         self.L_cur_slider.valueChanged.connect(self.current_valuechange)
 
-        L_Layout.addWidget(self.L_set_cur_label)
-        L_Layout.addWidget(self.L_cur_slider)
+        L_Layout.addRow(
+            self.L_set_cur_label,
+            self.L_cur_slider)
 
         # Laser diode current reading label
         self.L_cur_label = QLabel("Current 0 mA")
-
-        L_Layout.addWidget(self.L_cur_label)
 
         # Laser diode current set button
         self.L_set_curr_btn = QPushButton(
@@ -82,9 +81,9 @@ class laser_panel(QGroupBox):
                 .encode("utf-8"))
         )
 
-        L_Layout.addWidget(self.L_set_curr_btn)
-
-        L_Layout.addStretch()
+        L_Layout.addRow(
+            self.L_cur_label,
+            self.L_set_curr_btn)
 
         # Create a button group for radio buttons
         self.L_button_group = QButtonGroup()

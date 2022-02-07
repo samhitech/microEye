@@ -163,7 +163,12 @@ class TiffSeqHandler:
             self._stores[idx] = tf.imread(file, aszarr=True)
             self._zarr[idx] = zarr.open(self._stores[idx], mode='r')
             self._zarr[idx][0]
-            self._frames[idx] = self._zarr[idx].shape[0]
+            n_dim = len(self._zarr[idx].shape)
+            if n_dim > 2:
+                self._frames[idx] = self._zarr[idx].shape[0]
+            else:
+                self._zarr[idx] = self._zarr[idx][:, :][np.newaxis, ...]
+                self._frames[idx] = 1
 
         self._shape = (sum(self._frames),) + self._zarr[0].shape[1:]
         self._dtype = self._zarr[0].dtype

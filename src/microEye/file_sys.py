@@ -1,6 +1,7 @@
 import os
 import sys
 from enum import auto
+from unittest import result
 
 import cv2
 import numba
@@ -9,6 +10,7 @@ import ome_types.model as om
 import pandas as pd
 import pyqtgraph as pg
 import qdarkstyle
+from sympy import zeros
 import tifffile as tf
 import zarr
 from numpy.lib.type_check import imag
@@ -131,8 +133,8 @@ class tiff_viewer(QMainWindow):
 
         # Localization / Render tab layout
         self.loc_group = QWidget()
-        self.loc_layout = QVBoxLayout()
-        self.loc_group.setLayout(self.loc_layout)
+        self.loc_form = QFormLayout()
+        self.loc_group.setLayout(self.loc_form)
 
         # Add Tabs
         self.tabView.addTab(self.file_tree, 'File system')
@@ -147,22 +149,20 @@ class tiff_viewer(QMainWindow):
         self.file_tree_layout.addWidget(self.imsq_pattern)
         self.file_tree_layout.addWidget(self.tree)
 
-        self.series_slider = QSlider(Qt.Horizontal)
-        self.series_slider.setMinimum(0)
-        self.series_slider.setMaximum(0)
+        self.image_control_layout = QFormLayout()
 
         self.pages_label = QLabel('Pages')
         self.pages_slider = QSlider(Qt.Horizontal)
         self.pages_slider.setMinimum(0)
         self.pages_slider.setMaximum(0)
 
-        self.min_label = QLabel('Min')
+        self.min_label = QLabel('Min level:')
         self.min_slider = QSlider(Qt.Horizontal)
         self.min_slider.setMinimum(0)
         self.min_slider.setMaximum(self._n_levels - 1)
         self.min_slider.valueChanged.emit(0)
 
-        self.max_label = QLabel('Max')
+        self.max_label = QLabel('Max level:')
         self.max_slider = QSlider(Qt.Horizontal)
         self.max_slider.setMinimum(0)
         self.max_slider.setMaximum(self._n_levels - 1)
@@ -172,84 +172,61 @@ class tiff_viewer(QMainWindow):
         self.autostretch = QCheckBox('Auto-Stretch')
         self.autostretch.setChecked(True)
 
-        # display size
-        self.zoom_layout = QHBoxLayout()
-        self.zoom_lbl = QLabel("Scale " + "{:.0f}%".format(self._zoom * 100))
-        self.zoom_in_btn = QPushButton(
-            "+",
-            clicked=lambda: self.zoom_in()
-        )
-        self.zoom_out_btn = QPushButton(
-            "-",
-            clicked=lambda: self.zoom_out()
-        )
-        self.zoom_layout.addWidget(self.zoom_lbl, 4)
-        self.zoom_layout.addWidget(self.zoom_out_btn, 1)
-        self.zoom_layout.addWidget(self.zoom_in_btn, 1)
+        self.enableROI = QCheckBox('Enable ROI')
+        self.enableROI.setChecked(False)
+        self.enableROI.stateChanged.connect(self.enableROI_changed)
 
-        self.average_btn = QPushButton(
-            'Average stack',
-            clicked=lambda: self.average_stack())
+        self.image_control_layout.addRow(
+            self.pages_label,
+            self.pages_slider)
+        self.image_control_layout.addRow(
+            self.min_label,
+            self.min_slider)
+        self.image_control_layout.addRow(
+            self.max_label,
+            self.max_slider)
+        self.image_control_layout.addWidget(self.autostretch)
+        self.image_control_layout.addWidget(self.enableROI)
 
-        self.controls_layout.addWidget(self.pages_label)
-        self.controls_layout.addWidget(self.pages_slider)
-        self.controls_layout.addWidget(self.autostretch)
-        self.controls_layout.addWidget(self.min_label)
-        self.controls_layout.addWidget(self.min_slider)
-        self.controls_layout.addWidget(self.max_label)
-        self.controls_layout.addWidget(self.max_slider)
-
-        self.th_min_label = QLabel('Min')
-        self.th_min_slider = QSlider(Qt.Horizontal)
-        self.th_min_slider.setMinimum(0)
-        self.th_min_slider.setMaximum(255)
-        self.th_min_slider.valueChanged.emit(0)
-
-        self.th_max_label = QLabel('Max')
-        self.th_max_slider = QSlider(Qt.Horizontal)
-        self.th_max_slider.setMinimum(0)
-        self.th_max_slider.setMaximum(255)
-        self.th_max_slider.setValue(255)
-        self.th_max_slider.valueChanged.emit(255)
-
-        self.detection = QCheckBox('Blob Detection')
-        self.detection.setChecked(False)
-
-        self.pages_slider.valueChanged.connect(self.slider_changed)
-        self.min_slider.valueChanged.connect(self.slider_changed)
-        self.max_slider.valueChanged.connect(self.slider_changed)
-        self.autostretch.stateChanged.connect(self.slider_changed)
-        self.th_min_slider.valueChanged.connect(self.slider_changed)
-        self.th_max_slider.valueChanged.connect(self.slider_changed)
-        self.detection.stateChanged.connect(self.slider_changed)
-
-        self.controls_layout.addWidget(self.detection)
-        self.controls_layout.addWidget(self.th_min_label)
-        self.controls_layout.addWidget(self.th_min_slider)
-        self.controls_layout.addWidget(self.th_max_label)
-        self.controls_layout.addWidget(self.th_max_slider)
+        self.controls_layout.addLayout(
+            self.image_control_layout)
 
         self.tempMedianFilter = TemporalMedianFilterWidget()
         self.tempMedianFilter.update.connect(lambda: self.update_display())
-
-        self.bandpassFilter = BandpassFilterWidget()
-        self.bandpassFilter.update.connect(lambda: self.update_display())
-
         self.controls_layout.addWidget(self.tempMedianFilter)
-        self.controls_layout.addWidget(self.bandpassFilter)
+
+        self.detection_layout = QFormLayout()
+        self.detection_group = QGroupBox('Blob Detection / Fitting')
+        self.detection_group.setLayout(self.detection_layout)
+
+        self.detection = QCheckBox('Enabled')
+        self.detection.setChecked(False)
+
+        self.th_min_label = QLabel('Detection threshold:')
+        self.th_min_slider = QSpinBox()
+        self.th_min_slider.setMinimum(0)
+        self.th_min_slider.setMaximum(255)
+        self.th_min_slider.setValue(127)
+
+        self.detection_layout.addWidget(self.detection)
+        self.detection_layout.addRow(
+            self.th_min_label,
+            self.th_min_slider)
+
+        self.controls_layout.addWidget(self.detection_group)
 
         self.minArea = QDoubleSpinBox()
         self.minArea.setMinimum(0)
         self.minArea.setMaximum(1024)
         self.minArea.setSingleStep(0.05)
-        self.minArea.setValue(3.0)
+        self.minArea.setValue(1.5)
         self.minArea.valueChanged.connect(self.slider_changed)
 
         self.maxArea = QDoubleSpinBox()
         self.maxArea.setMinimum(0)
         self.maxArea.setMaximum(1024)
         self.maxArea.setSingleStep(0.05)
-        self.maxArea.setValue(16)
+        self.maxArea.setValue(80.0)
         self.maxArea.valueChanged.connect(self.slider_changed)
 
         self.minCircularity = QDoubleSpinBox()
@@ -273,16 +250,27 @@ class tiff_viewer(QMainWindow):
         self.minInertiaRatio.setValue(0)
         self.minInertiaRatio.valueChanged.connect(self.slider_changed)
 
-        self.controls_layout.addWidget(
-            QLabel('Min/Max Area:'))
-        self.controls_layout.addWidget(self.minArea)
-        self.controls_layout.addWidget(self.maxArea)
+        self.detection_layout.addRow(
+            QLabel('Min area:'),
+            self.minArea)
+        self.detection_layout.addRow(
+            QLabel('Max area:'),
+            self.maxArea)
         # self.controls_layout.addWidget(self.minCircularity)
         # self.controls_layout.addWidget(self.minConvexity)
         # self.controls_layout.addWidget(self.minInertiaRatio)
 
-        # self.controls_layout.addWidget(self.average_btn)
-        # self.controls_layout.addLayout(self.zoom_layout)
+        self.bandpassFilter = BandpassFilterWidget()
+        self.bandpassFilter.update.connect(lambda: self.update_display())
+        self.controls_layout.addWidget(self.bandpassFilter)
+
+        self.pages_slider.valueChanged.connect(self.slider_changed)
+        self.min_slider.valueChanged.connect(self.slider_changed)
+        self.max_slider.valueChanged.connect(self.slider_changed)
+        self.autostretch.stateChanged.connect(self.slider_changed)
+        self.th_min_slider.valueChanged.connect(self.slider_changed)
+        self.detection.stateChanged.connect(self.slider_changed)
+
         self.controls_layout.addStretch()
 
         # Localization / Render layout
@@ -304,19 +292,14 @@ class tiff_viewer(QMainWindow):
 
         self.export_precision = QLineEdit('%10.5f')
 
-        self.px_sz_layout = QHBoxLayout()
-
         self.px_size = QDoubleSpinBox()
         self.px_size.setMinimum(0)
         self.px_size.setMaximum(10000)
-        self.px_size.setValue(130.0)
+        self.px_size.setValue(117.5)
 
         self.super_px_size = QSpinBox()
         self.super_px_size.setMinimum(0)
         self.super_px_size.setValue(10)
-
-        self.px_sz_layout.addWidget(self.px_size)
-        self.px_sz_layout.addWidget(self.super_px_size)
 
         self.drift_cross_args = QHBoxLayout()
         self.drift_cross_bins = QSpinBox()
@@ -389,40 +372,64 @@ class tiff_viewer(QMainWindow):
         self.im_exp_layout.addWidget(self.import_loc_btn)
         self.im_exp_layout.addWidget(self.export_loc_btn)
 
-        self.loc_layout.addWidget(QLabel('Fitting:'))
-        self.loc_layout.addWidget(self.fitting_cbox)
-        self.loc_layout.addWidget(QLabel('Rendering Method:'))
-        self.loc_layout.addWidget(self.render_cbox)
-        self.loc_layout.addWidget(QLabel(
-            'Pixel-size [nm] | Super resolution pixel-size [nm]:'))
-        self.loc_layout.addLayout(self.px_sz_layout)
-        self.loc_layout.addWidget(self.loc_btn)
-        self.loc_layout.addWidget(self.refresh_btn)
-        self.loc_layout.addWidget(QLabel('FRC Method:'))
-        self.loc_layout.addWidget(self.frc_cbox)
-        self.loc_layout.addWidget(self.frc_res_btn)
-        self.loc_layout.addWidget(
+        self.loc_form.addRow(
+            QLabel('Fitting:'),
+            self.fitting_cbox
+        )
+        self.loc_form.addRow(
+            QLabel('Rendering Method:'),
+            self.render_cbox
+        )
+        self.loc_form.addRow(
+            QLabel('Pixel-size [nm]:'),
+            self.px_size
+        )
+        self.loc_form.addRow(
+            QLabel('S-res pixel-size [nm]:'),
+            self.super_px_size
+        )
+        self.loc_form.addRow(self.loc_btn)
+        self.loc_form.addRow(self.refresh_btn)
+        self.loc_form.addRow(
+            QLabel('FRC Method:'),
+            self.frc_cbox
+        )
+        self.loc_form.addRow(self.frc_res_btn)
+
+        self.loc_form.addRow(
             QLabel('Drift X-Corr. (bins, pixelSize, upsampling):'))
-        self.loc_layout.addLayout(self.drift_cross_args)
-        self.loc_layout.addWidget(self.drift_cross_btn)
-        self.loc_layout.addWidget(
+        self.loc_form.addRow(self.drift_cross_args)
+        self.loc_form.addRow(self.drift_cross_btn)
+        self.loc_form.addRow(
             QLabel('NN (n-neighbor, max-distance, max-off, max-len):'))
-        self.loc_layout.addLayout(self.nneigh_merge_args)
-        self.loc_layout.addLayout(self.nn_layout)
-        self.loc_layout.addWidget(self.drift_fdm_btn)
-        self.loc_layout.addWidget(self.export_options)
-        self.loc_layout.addWidget(QLabel('Format:'))
-        self.loc_layout.addWidget(self.export_precision)
-        self.loc_layout.addLayout(self.im_exp_layout)
-        self.loc_layout.addStretch()
+        self.loc_form.addRow(self.nneigh_merge_args)
+        self.loc_form.addRow(self.nn_layout)
+        self.loc_form.addRow(self.drift_fdm_btn)
+        self.loc_form.addRow(self.export_options)
+        self.loc_form.addRow(
+            QLabel('Format:'),
+            self.export_precision)
+        self.loc_form.addRow(self.im_exp_layout)
 
         # graphics layout
         # # A plot area (ViewBox + axes) for displaying the image
         self.uImage = None
-        self.image = pg.ImageItem(axisOrder='row-major')
+        self.image = pg.ImageItem(np.zeros((256, 256)), axisOrder='row-major')
         self.image_plot = pg.ImageView(imageItem=self.image)
         self.image_plot.setLevels(0, 255)
         self.image_plot.setMinimumWidth(600)
+        self.image_plot.ui.roiBtn.deleteLater()
+        self.image_plot.ui.menuBtn.deleteLater()
+        self.roi = pg.RectROI(
+            [-8, 14], [6, 5],
+            scaleSnap=True, translateSnap=True,
+            movable=False)
+        self.roi.addTranslateHandle([0, 0], [0.5, 0.5])
+        self.image_plot.addItem(self.roi)
+        self.roi.setZValue(100)
+        self.roi.sigRegionChangeFinished.connect(self.slider_changed)
+        self.roi.setVisible(False)
+
         # self.image_plot.setColorMap(pg.colormap.getFromMatplotlib('jet'))
         self.g_layout_widget.addWidget(self.image_plot)
         # Item for displaying image data
@@ -438,10 +445,43 @@ class tiff_viewer(QMainWindow):
         qtRectangle.moveCenter(centerPoint)
         self.move(qtRectangle.topLeft())
 
+    def centerROI(self):
+        '''Centers the ROI and fits it to the image.
+        '''
+        image = self.tiffSeq_Handler[self.pages_slider.value()]
+
+        self.roi.setSize(image.shape[-2:])
+        self.roi.setPos([0, 0])
+        self.roi.maxBounds = QRectF(0, 0, image.shape[1], image.shape[0])
+
+    def enableROI_changed(self, state):
+        if self.enableROI.isChecked():
+            self.roi.setVisible(True)
+        else:
+            self.roi.setVisible(False)
+
+    def get_roi_txt(self):
+        if self.enableROI.isChecked():
+            return (' | ROI Pos. (' + '{:.0f}, {:.0f}), ' +
+                    'Size ({:.0f}, {:.0f})/({:.3f} um, {:.3f} um)').format(
+                    *self.roi.pos(), *self.roi.size(),
+                    *(self.roi.size()*self.px_size.value() / 1000))
+
+        return ''
+
+    def get_roi_info(self):
+        if self.enableROI.isChecked():
+            origin = self.roi.pos()  # ROI (x,y)
+            dim = self.roi.size()  # ROI (w,h)
+            return origin, dim
+        else:
+            return None
+
     def status(self):
         # Statusbar time
         self.statusBar().showMessage(
             'Time: ' + QDateTime.currentDateTime().toString('hh:mm:ss,zzz') +
+            self.get_roi_txt() +
             ' | Results: ' +
             ('None' if self.fittingResults is None else str(
                 len(self.fittingResults)))
@@ -469,6 +509,8 @@ class tiff_viewer(QMainWindow):
                     self.metadataEditor.pop_OME_XML(ome)
                     self.px_size.setValue(
                         self.metadataEditor.px_size.value())
+
+            self.centerROI()
 
             # self.update_display()
             # self.genOME()
@@ -551,26 +593,22 @@ class tiff_viewer(QMainWindow):
                 'Max: {:d}/{:d}'.format(
                     self.max_slider.value(),
                     self.max_slider.maximum()))
-        if self.th_min_slider is not None:
-            self.th_min_label.setText(
-                'Min det. threshold: {:d}/{:d}'.format(
-                    self.th_min_slider.value(),
-                    self.th_min_slider.maximum()))
-        if self.th_max_slider is not None:
-            self.th_max_label.setText(
-                'Max det. threshold: {:d}/{:d}'.format(
-                    self.th_max_slider.value(),
-                    self.th_max_slider.maximum()))
 
     def update_display(self, image=None):
         if image is None:
             image = self.tiffSeq_Handler[self.pages_slider.value()]
 
+        roiInfo = self.get_roi_info()
+        if roiInfo is not None:
+            origin, dim = roiInfo
+        else:
+            origin, dim = None, None
+
         if self.tempMedianFilter.enabled.isChecked():
-            self.tempMedianFilter.filter.getFrames(
+            frames = self.tempMedianFilter.filter.getFrames(
                 self.pages_slider.value(), self.tiffSeq_Handler)
 
-            image = self.tempMedianFilter.filter.run(image)
+            image = self.tempMedianFilter.filter.run(image, frames, roiInfo)
 
         self.uImage = uImage(image)
 
@@ -595,35 +633,54 @@ class tiff_viewer(QMainWindow):
         self.image.setImage(self.uImage._view, autoLevels=False)
 
         if self.detection.isChecked():
+
+            if roiInfo is not None:
+                origin = self.roi.pos()  # ROI (x,y)
+                dim = self.roi.size()  # ROI (w,h)
+                img = self.uImage._view[
+                    int(origin[1]):int(origin[1] + dim[1]),
+                    int(origin[0]):int(origin[0] + dim[0])]
+            else:
+                origin = None
+                dim = None
+                img = self.uImage._view
+
             # bandpass filter
-            img = self.bandpassFilter.filter.run(self.uImage._view)
+            img = self.bandpassFilter.filter.run(img)
 
             _, th_img = cv2.threshold(
                 img,
                 self.th_min_slider.value(),
-                self.th_max_slider.value(),
+                255,
                 cv2.THRESH_BINARY)
 
+            cv2.namedWindow("Keypoints_TH", cv2.WINDOW_NORMAL)
             cv2.imshow("Keypoints_TH", th_img)
             # print(ex, end='\r')
             # Detect blobs.
-            keypoints = self.blob_detector().detect(th_img)
+
+            keypoints = self.get_blob_detector()[0].detect(th_img)
 
             im_with_keypoints = cv2.drawKeypoints(
                 img, keypoints, np.array([]),
                 (0, 0, 255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
 
             # Show keypoints
+            cv2.namedWindow("Keypoints_CV", cv2.WINDOW_NORMAL)
             cv2.imshow("Keypoints_CV", im_with_keypoints)
 
             points = cv2.KeyPoint_convert(keypoints)
+
+            if len(points) > 0 and origin is not None:
+                points[:, 0] += origin[0]
+                points[:, 1] += origin[1]
 
             sub_fit = phasor_fit(self.uImage._image, points, False)
 
             if sub_fit is not None:
 
-                keypoints = [cv2.KeyPoint(*point, size=1.0) for point in
-                             sub_fit[:, :2]]
+                keypoints = [cv2.KeyPoint(*point, size=1.0) for
+                             point in sub_fit[:, :2]]
 
                 # Draw detected blobs as red circles.
                 # cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS ensures
@@ -639,7 +696,7 @@ class tiff_viewer(QMainWindow):
 
                 # return np.array(points, copy=True)
 
-    def blob_detector(self) -> cv2.SimpleBlobDetector:
+    def get_blob_detector_params(self) -> cv2.SimpleBlobDetector_Params:
         # Setup SimpleBlobDetector parameters.
         params = cv2.SimpleBlobDetector_Params()
 
@@ -650,7 +707,7 @@ class tiff_viewer(QMainWindow):
 
         # Change thresholds
         params.minThreshold = float(self.th_min_slider.value())
-        params.maxThreshold = float(self.th_max_slider.value())
+        params.maxThreshold = 255
 
         # Filter by Area.
         params.filterByArea = True
@@ -670,11 +727,12 @@ class tiff_viewer(QMainWindow):
         params.minInertiaRatio = self.minInertiaRatio.value()
 
         # Create a detector with the parameters
-        ver = (cv2.__version__).split('.')
-        if int(ver[0]) < 3:
-            return cv2.SimpleBlobDetector(params)
-        else:
-            return cv2.SimpleBlobDetector_create(params)
+        return params
+
+    def get_blob_detector(self) \
+            -> tuple[cv2.SimpleBlobDetector, cv2.SimpleBlobDetector_Params]:
+        params = self.get_blob_detector_params()
+        return get_blob_detector(params), params
 
     def FRC_estimate(self):
         frc_method = self.frc_cbox.currentText()
@@ -863,6 +921,8 @@ class tiff_viewer(QMainWindow):
             return
 
     def import_loc(self):
+        '''Imports fitting results from a (*.tsv) file.
+        '''
         filename, _ = QFileDialog.getOpenFileName(
             self, "Import localizations", filter="TSV Files (*.tsv);;")
 
@@ -880,6 +940,13 @@ class tiff_viewer(QMainWindow):
                 print('Error importing results.')
 
     def export_loc(self, filename=None):
+        '''Exports the fitting results into a (*.tsv) file.
+
+        Parameters
+        ----------
+        filename : str, optional
+            file path if None a save file dialog is shown, by default None
+        '''
         if self.fittingResults is None:
             return
 
@@ -921,6 +988,8 @@ class tiff_viewer(QMainWindow):
                     ome=False)
 
     def localize(self):
+        '''Initiates the localization main thread worker.
+        '''
         if self.tiffSeq_Handler is None:
             return
 
@@ -937,6 +1006,13 @@ class tiff_viewer(QMainWindow):
             self._threadpool.start(self.worker)
 
     def update_loc(self):
+        '''Updates the rendered super-res image
+
+        Returns
+        -------
+        ndarray | None
+            rendered super-res image
+        '''
         if self.fittingResults is None:
             return None
         elif len(self.fittingResults) > 0:
@@ -951,20 +1027,49 @@ class tiff_viewer(QMainWindow):
             return None
 
     def update_lists(self, result: np.ndarray):
+        '''Extends the fitting results by results emitted
+        by a thread worker.
+
+        Parameters
+        ----------
+        result : np.ndarray
+            [description]
+        '''
         if result is not None:
             self.fittingResults.extend(result)
         self.thread_done += 1
 
     def proccess_loc(self, filename: str, progress_callback):
+        '''Localization main thread worker function.
+
+        Parameters
+        ----------
+        filename : str
+            filename where the fitting results would be saved.
+        progress_callback : func
+            a progress callback emitted at a certain interval.
+        '''
+
+        # new instance of FittingResults
         self.fittingResults = FittingResults(
-            ResultsUnits.Pixel,
-            self.px_size.value()
+            ResultsUnits.Pixel,  # unit is pixels
+            self.px_size.value()  # pixel projected size
         )
-        self.thread_done = 0
-        time = QDateTime.currentDateTime()
+
+        self.thread_done = 0  # number of threads done
+        time = QDateTime.currentDateTime()  # timer
+
+        # Filters + Blob detector params
         filter = self.bandpassFilter.filter
+        self.bandpassFilter.arg_4.setChecked(False)
         tempEnabled = self.tempMedianFilter.enabled.isChecked()
-        blob_detector = self.blob_detector()
+        params = self.get_blob_detector_params()
+
+        # ROI
+        roiInfo = self.get_roi_info()
+        self.enableROI.setChecked(False)
+
+        # uses only n_threads - 2
         threads = self._threadpool.maxThreadCount() - 2
         print('Threads', threads)
         for i in range(
@@ -985,10 +1090,12 @@ class tiff_viewer(QMainWindow):
 
                     worker = thread_worker(
                         self.localize_frame,
+                        i + k,
                         img,
                         temp,
                         filter,
-                        i + k,
+                        params,
+                        roiInfo,
                         progress=False, z_stage=False)
                     worker.signals.result.connect(self.update_lists)
                     workers.append(worker)
@@ -1004,53 +1111,45 @@ class tiff_viewer(QMainWindow):
                     i + len(workers), len(self.tiffSeq_Handler), exex),
                 end="\r")
             if (i // threads) % 40 == 0:
-                progress_callback.emit(self.uImage._image.shape)
+                progress_callback.emit(self)
 
         QThread.msleep(5000)
 
         self.export_loc(filename)
 
     def localize_frame(
-            self, image: np.ndarray,
+            self, index, image: np.ndarray,
             temp: TemporalMedianFilter,
             filter: AbstractFilter,
-            index):
+            params: cv2.SimpleBlobDetector_Params,
+            roiInfo):
 
+        # apply the median filter
         if temp is not None:
-            temp.getFrames(index, self.tiffSeq_Handler)
-            image = temp.run(image)
+            frames = temp.getFrames(index, self.tiffSeq_Handler)
+            image = temp.run(image, frames, roiInfo)
 
-        uImg = uImage(image)
+        # crop image to ROI
+        if roiInfo is not None:
+            origin = roiInfo[0]  # ROI (x,y)
+            dim = roiInfo[1]  # ROI (w,h)
+            image = image[
+                int(origin[1]):int(origin[1] + dim[1]),
+                int(origin[0]):int(origin[0] + dim[0])]
 
-        uImg.equalizeLUT(None, False)
+        results = localize_frame(
+            index=index,
+            image=image,
+            filter=filter,
+            params=params,
+            threshold=self.th_min_slider.value()
+        )
 
-        if filter is BandpassFilter:
-            filter._show_filter = False
-            filter._refresh = False
+        if len(results) > 0 and roiInfo is not None:
+            results[:, 0] += origin[0]
+            results[:, 1] += origin[1]
 
-        img = filter.run(uImg._view)
-
-        # Detect blobs.
-        _, th_img = cv2.threshold(
-                img,
-                self.th_min_slider.value(),
-                self.th_max_slider.value(),
-                cv2.THRESH_BINARY)
-
-        keypoints = self.blob_detector().detect(th_img)
-
-        points: np.ndarray = cv2.KeyPoint_convert(keypoints)
-
-        time = QDateTime.currentDateTime()
-        result = phasor_fit(uImg._image, points)
-
-        if result is not None:
-            result[:, 3] = [index + 1] * points.shape[0]
-            # print(index + 1, result[:, 3].shape)
-
-        exex = time.msecsTo(QDateTime.currentDateTime())
-
-        return result
+        return results
 
     def StartGUI(path=None):
         '''Initializes a new QApplication and control_module.

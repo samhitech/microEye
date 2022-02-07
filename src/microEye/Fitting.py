@@ -15,6 +15,8 @@ from skimage.registration import phase_cross_correlation
 from sklearn.neighbors import NearestNeighbors
 
 from .Rendering import *
+from .Filters import *
+from .uImage import uImage
 
 
 def phasor_fit(image: np.ndarray, points: np.ndarray,
@@ -649,31 +651,85 @@ def plot_drift(
         'Done ...',
         end="\r")
 
-# @numba.jit(nopython=True)
-# def phasor_fit_numba(image: np.ndarray, points: np.ndarray, roi_size=7):
-#     for r in range(points.shape[0]):
-#         x, y = points[r, :]
-#         idx = int(x - roi_size//2)
-#         idy = int(y - roi_size//2)
-#         if idx < 0:
-#             idx = 0
-#         if idy < 0:
-#             idy = 0
-#         if idx + roi_size > image.shape[1]:
-#             idx = image.shape[1] - roi_size
-#         if idy + roi_size > image.shape[0]:
-#             idy = image.shape[0] - roi_size
-#         roi = image[idy:idy+roi_size, idx:idx+roi_size]
-#         with numba.objmode(fft_roi='complex128[:,:]'):
-#             fft_roi = np.fft.fft2(roi)
-#         with numba.objmode(theta_x='float64'):
-#             theta_x = np.angle(fft_roi[0, 1])
-#         with numba.objmode(theta_y='float64'):
-#             theta_y = np.angle(fft_roi[1, 0])
-#         if theta_x > 0:
-#             theta_x = theta_x - 2 * np.pi
-#         if theta_y > 0:
-#             theta_y = theta_y - 2 * np.pi
-#         x = idx + np.abs(theta_x) / (2 * np.pi / roi_size)
-#         y = idy + np.abs(theta_y) / (2 * np.pi / roi_size)
-#         points[r, :] = [x, y]
+
+def get_blob_detector(
+        params: cv2.SimpleBlobDetector_Params = None) \
+        -> cv2.SimpleBlobDetector:
+    if params is None:
+        # Setup SimpleBlobDetector parameters.
+        params = cv2.SimpleBlobDetector_Params()
+
+        params.filterByColor = True
+        params.blobColor = 255
+
+        params.minDistBetweenBlobs = 0
+
+        # Change thresholds
+        # params.minThreshold = 0
+        # params.maxThreshold = 255
+
+        # Filter by Area.
+        params.filterByArea = True
+        params.minArea = 2.0
+        params.maxArea = 80.0
+
+        # Filter by Circularity
+        params.filterByCircularity = False
+        # params.minCircularity = 1
+
+        # Filter by Convexity
+        params.filterByConvexity = False
+        # params.minConvexity = 1
+
+        # Filter by Inertia
+        params.filterByInertia = False
+        # params.minInertiaRatio = 1
+
+    # Create a detector with the parameters
+    ver = (cv2.__version__).split('.')
+    if int(ver[0]) < 3:
+        return cv2.SimpleBlobDetector(params)
+    else:
+        return cv2.SimpleBlobDetector_create(params)
+
+
+def localize_frame(
+            index,
+            image: np.ndarray,
+            filter: AbstractFilter,
+            params: cv2.SimpleBlobDetector_Params,
+            threshold=255):
+
+    # median fitler is removed
+    # if temp is not None:
+    #     temp.getFrames(index, self.tiffSeq_Handler)
+    #     image = temp.run(image)
+
+    uImg = uImage(image)
+
+    uImg.equalizeLUT(None, True)
+
+    if filter is BandpassFilter:
+        filter._show_filter = False
+        filter._refresh = False
+
+    img = filter.run(uImg._view)
+
+    # Detect blobs.
+    _, th_img = cv2.threshold(
+            img,
+            threshold,
+            255,
+            cv2.THRESH_BINARY)
+
+    keypoints = get_blob_detector(params).detect(th_img)
+
+    points: np.ndarray = cv2.KeyPoint_convert(keypoints)
+
+    time = QDateTime.currentDateTime()
+    result = phasor_fit(uImg._image, points)
+
+    if result is not None:
+        result[:, 3] = [index + 1] * points.shape[0]
+
+    return result

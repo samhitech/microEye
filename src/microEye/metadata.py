@@ -36,24 +36,24 @@ class MetadataEditor(QWidget):
     def InitLayout(self):
 
         self.main_layout = QVBoxLayout(self)
-        self.qscroll = QScrollArea()
-        self.main_layout.addWidget(self.qscroll)
+        # self.qscroll = QScrollArea()
 
-        self.qscroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
-        self.qscroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.qscroll.setWidgetResizable(True)
+        # self.qscroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        # self.qscroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        # self.qscroll.setWidgetResizable(True)
 
         self.TabView = QTabWidget()
-        self.qscroll.setWidget(self.TabView)
+        self.main_layout.addWidget(self.TabView)
+        # self.qscroll.setWidget(self.TabView)
 
         self.exp_tab = QWidget()
-        self.exp_lay = QVBoxLayout()
+        self.exp_lay = QFormLayout()
         self.exp_tab.setLayout(self.exp_lay)
         self.image_tab = QWidget()
-        self.image_lay = QVBoxLayout()
+        self.image_lay = QFormLayout()
         self.image_tab.setLayout(self.image_lay)
         self.instruments_tab = QWidget()
-        self.instruments_lay = QVBoxLayout()
+        self.instruments_lay = QFormLayout()
         self.instruments_tab.setLayout(self.instruments_lay)
 
         self.TabView.addTab(self.exp_tab, 'Experiment')
@@ -64,26 +64,32 @@ class MetadataEditor(QWidget):
         self.iValid = QIntValidator()
 
         self.experiment = QLineEdit('Experiment_001')
-        self.exp_lay.addWidget(QLabel('Experiment name:'))
-        self.exp_lay.addWidget(self.experiment)
+        self.exp_lay.addRow(
+            QLabel('Experiment name:'),
+            self.experiment)
 
         self.exp_desc = QTextEdit('')
-        self.exp_lay.addWidget(QLabel('Experiment description:'))
-        self.exp_lay.addWidget(self.exp_desc)
+        self.exp_lay.addRow(
+            QLabel('Experiment description:'))
+        self.exp_lay.addRow(self.exp_desc)
 
         self.exp_email = QLineEdit()
         self.exp_fName = QLineEdit()
         self.exp_lName = QLineEdit()
         self.exp_institute = QLineEdit()
 
-        self.exp_lay.addWidget(QLabel('Experimenter First name:'))
-        self.exp_lay.addWidget(self.exp_fName)
-        self.exp_lay.addWidget(QLabel('Experimenter Last name:'))
-        self.exp_lay.addWidget(self.exp_lName)
-        self.exp_lay.addWidget(QLabel('Experimenter e-mail:'))
-        self.exp_lay.addWidget(self.exp_email)
-        self.exp_lay.addWidget(QLabel('Experimenter Institute:'))
-        self.exp_lay.addWidget(self.exp_institute)
+        self.exp_lay.addRow(
+            QLabel('Experimenter First name:'),
+            self.exp_fName)
+        self.exp_lay.addRow(
+            QLabel('Experimenter Last name:'),
+            self.exp_lName)
+        self.exp_lay.addRow(
+            QLabel('Experimenter e-mail:'),
+            self.exp_email)
+        self.exp_lay.addRow(
+            QLabel('Experimenter Institute:'),
+            self.exp_institute)
 
         self.pixel_type = QComboBox()
         self.pixel_type.addItems(PixelType._member_names_)
@@ -92,31 +98,37 @@ class MetadataEditor(QWidget):
         self.px_size = QDoubleSpinBox()
         self.px_size.setMinimum(0)
         self.px_size.setMaximum(10000)
-        self.px_size.setValue(130.0)
+        self.px_size.setValue(117.5)
         self.py_size = QDoubleSpinBox()
         self.py_size.setMinimum(0)
         self.py_size.setMaximum(10000)
-        self.py_size.setValue(130.0)
+        self.py_size.setValue(117.5)
         self.p_unit = QComboBox()
         self.p_unit.addItems(UnitsLength._member_names_)
         self.p_unit.setCurrentText(UnitsLength.NANOMETER.name)
 
-        self.image_lay.addWidget(QLabel('Pixel type:'))
-        self.image_lay.addWidget(self.pixel_type)
-        self.image_lay.addWidget(QLabel('Pixel x-size:'))
-        self.image_lay.addWidget(self.px_size)
-        self.image_lay.addWidget(QLabel('Pixel y-size:'))
-        self.image_lay.addWidget(self.py_size)
-        self.image_lay.addWidget(QLabel('Unit:'))
-        self.image_lay.addWidget(self.p_unit)
+        self.image_lay.addRow(
+            QLabel('Pixel type:'),
+            self.pixel_type)
+        self.image_lay.addRow(
+            QLabel('Pixel x-size:'),
+            self.px_size)
+        self.image_lay.addRow(
+            QLabel('Pixel y-size:'),
+            self.py_size)
+        self.image_lay.addRow(
+            QLabel('Unit:'),
+            self.p_unit)
 
         self.channel_name = QLineEdit('CAM_1')
         self.fluor_name = QLineEdit()
 
-        self.image_lay.addWidget(QLabel('Channel name:'))
-        self.image_lay.addWidget(self.channel_name)
-        self.image_lay.addWidget(QLabel('Fluorophore:'))
-        self.image_lay.addWidget(self.fluor_name)
+        self.image_lay.addRow(
+            QLabel('Channel name:'),
+            self.channel_name)
+        self.image_lay.addRow(
+            QLabel('Fluorophore:'),
+            self.fluor_name)
 
         self.exposure = QDoubleSpinBox()
         self.exposure.setMinimum(0)
@@ -125,31 +137,36 @@ class MetadataEditor(QWidget):
         self.exposure_unit = QComboBox()
         self.exposure_unit.addItems(UnitsTime._member_names_)
         self.exposure_unit.setCurrentText(UnitsTime.MILLISECOND.name)
-        self.image_lay.addWidget(QLabel('Exposure time:'))
-        self.image_lay.addWidget(self.exposure)
-        self.image_lay.addWidget(QLabel('Exposure time unit:'))
-        self.image_lay.addWidget(self.exposure_unit)
+        self.image_lay.addRow(
+            QLabel('Exposure time:'),
+            self.exposure)
+        self.image_lay.addRow(
+            QLabel('Exposure time unit:'),
+            self.exposure_unit)
 
         self.acq_mode = QComboBox()
         self.acq_mode.addItems(AcquisitionMode._member_names_)
         self.acq_mode.setCurrentText(AcquisitionMode.TIRF.name)
 
-        self.image_lay.addWidget(QLabel('Acquisition mode:'))
-        self.image_lay.addWidget(self.acq_mode)
+        self.image_lay.addRow(
+            QLabel('Acquisition mode:'),
+            self.acq_mode)
 
         self.ill_type = QComboBox()
         self.ill_type.addItems(IlluminationType._member_names_)
         self.ill_type.setCurrentText(IlluminationType.OTHER.name)
 
-        self.image_lay.addWidget(QLabel('Illumination type:'))
-        self.image_lay.addWidget(self.ill_type)
+        self.image_lay.addRow(
+            QLabel('Illumination type:'),
+            self.ill_type)
 
         self.contrast = QComboBox()
         self.contrast.addItems(ContrastMethod._member_names_)
         self.contrast.setCurrentText(ContrastMethod.FLUORESCENCE.name)
 
-        self.image_lay.addWidget(QLabel('Contrast method:'))
-        self.image_lay.addWidget(self.contrast)
+        self.image_lay.addRow(
+            QLabel('Contrast method:'),
+            self.contrast)
 
         self.emission = QDoubleSpinBox()
         self.emission.setMinimum(0)
@@ -163,12 +180,15 @@ class MetadataEditor(QWidget):
         self.wave_unit.addItems(UnitsLength._member_names_)
         self.wave_unit.setCurrentText(UnitsLength.NANOMETER.name)
 
-        self.image_lay.addWidget(QLabel('Excitation wavelength:'))
-        self.image_lay.addWidget(self.excitation)
-        self.image_lay.addWidget(QLabel('Emission wavelength:'))
-        self.image_lay.addWidget(self.emission)
-        self.image_lay.addWidget(QLabel('Wavelength unit:'))
-        self.image_lay.addWidget(self.wave_unit)
+        self.image_lay.addRow(
+            QLabel('Excitation wavelength:'),
+            self.excitation)
+        self.image_lay.addRow(
+            QLabel('Emission wavelength:'),
+            self.emission)
+        self.image_lay.addRow(
+            QLabel('Wavelength unit:'),
+            self.wave_unit)
 
         self.micro_manufacturer = QLineEdit('VU/FTMC')
         self.micro_model = QLineEdit('Main scope')
@@ -190,22 +210,30 @@ class MetadataEditor(QWidget):
         self.obj_corr.addItems(Correction._member_names_)
         self.obj_corr.setCurrentText(Correction.APO.name)
 
-        self.instruments_lay.addWidget(QLabel('Microscope manufacturer:'))
-        self.instruments_lay.addWidget(self.micro_manufacturer)
-        self.instruments_lay.addWidget(QLabel('Microscope model:'))
-        self.instruments_lay.addWidget(self.micro_model)
-        self.instruments_lay.addWidget(QLabel('Objective manufacturer:'))
-        self.instruments_lay.addWidget(self.obj_manufacturer)
-        self.instruments_lay.addWidget(QLabel('Objective model:'))
-        self.instruments_lay.addWidget(self.obj_model)
-        self.instruments_lay.addWidget(QLabel('Objective NA:'))
-        self.instruments_lay.addWidget(self.obj_lens_na)
-        self.instruments_lay.addWidget(QLabel('Objective nominal Mag.:'))
-        self.instruments_lay.addWidget(self.obj_nom_mag)
-        self.instruments_lay.addWidget(QLabel('Objective immersion:'))
-        self.instruments_lay.addWidget(self.obj_immersion)
-        self.instruments_lay.addWidget(QLabel('Objective correction:'))
-        self.instruments_lay.addWidget(self.obj_corr)
+        self.instruments_lay.addRow(
+            QLabel('Microscope manufacturer:'),
+            self.micro_manufacturer)
+        self.instruments_lay.addRow(
+            QLabel('Microscope model:'),
+            self.micro_model)
+        self.instruments_lay.addRow(
+            QLabel('Objective manufacturer:'),
+            self.obj_manufacturer)
+        self.instruments_lay.addRow(
+            QLabel('Objective model:'),
+            self.obj_model)
+        self.instruments_lay.addRow(
+            QLabel('Objective NA:'),
+            self.obj_lens_na)
+        self.instruments_lay.addRow(
+            QLabel('Objective nominal Mag.:'),
+            self.obj_nom_mag)
+        self.instruments_lay.addRow(
+            QLabel('Objective immersion:'),
+            self.obj_immersion)
+        self.instruments_lay.addRow(
+            QLabel('Objective correction:'),
+            self.obj_corr)
 
         self.det_manufacturer = QLineEdit('IDS')
         self.det_model = QLineEdit('ui-3060cp-rev-2')
@@ -214,30 +242,38 @@ class MetadataEditor(QWidget):
         self.det_type.addItems(Type._member_names_)
         self.det_type.setCurrentText(Type.CMOS.name)
 
-        self.instruments_lay.addWidget(QLabel('Detector manufacturer:'))
-        self.instruments_lay.addWidget(self.det_manufacturer)
-        self.instruments_lay.addWidget(QLabel('Detector model:'))
-        self.instruments_lay.addWidget(self.det_model)
-        self.instruments_lay.addWidget(QLabel('Detector serial number:'))
-        self.instruments_lay.addWidget(self.det_serial)
-        self.instruments_lay.addWidget(QLabel('Detector type:'))
-        self.instruments_lay.addWidget(self.det_type)
+        self.instruments_lay.addRow(
+            QLabel('Detector manufacturer:'),
+            self.det_manufacturer)
+        self.instruments_lay.addRow(
+            QLabel('Detector model:'),
+            self.det_model)
+        self.instruments_lay.addRow(
+            QLabel('Detector serial number:'),
+            self.det_serial)
+        self.instruments_lay.addRow(
+            QLabel('Detector type:'),
+            self.det_type)
 
         self.dichroic_manufacturer = QLineEdit('')
         self.dichroic_model = QLineEdit('')
 
-        self.instruments_lay.addWidget(QLabel('Dichroic manufacturer:'))
-        self.instruments_lay.addWidget(self.dichroic_manufacturer)
-        self.instruments_lay.addWidget(QLabel('Dichroic model:'))
-        self.instruments_lay.addWidget(self.dichroic_model)
+        self.instruments_lay.addRow(
+            QLabel('Dichroic manufacturer:'),
+            self.dichroic_manufacturer)
+        self.instruments_lay.addRow(
+            QLabel('Dichroic model:'),
+            self.dichroic_model)
 
         self.exfilter_model = QLineEdit('')
         self.emfilter_model = QLineEdit('')
 
-        self.instruments_lay.addWidget(QLabel('Excitation Filters:'))
-        self.instruments_lay.addWidget(self.exfilter_model)
-        self.instruments_lay.addWidget(QLabel('Emission Filters:'))
-        self.instruments_lay.addWidget(self.emfilter_model)
+        self.instruments_lay.addRow(
+            QLabel('Excitation Filters:'),
+            self.exfilter_model)
+        self.instruments_lay.addRow(
+            QLabel('Emission Filters:'),
+            self.emfilter_model)
 
         self.main_layout.addWidget(QPushButton(
             'Save as',
