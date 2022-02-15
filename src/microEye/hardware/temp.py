@@ -70,6 +70,11 @@ class temperature_monitor(QMainWindow):
         self.settings_group.setLayout(self.settings_layout)
         self.settings_group.setMinimumWidth(250)
 
+        self.setT = QDoubleSpinBox()
+        self.setT.setMinimum(-2000)
+        self.setT.setMaximum(10000)
+        self.setT.setValue(10)
+
         self.kP = QDoubleSpinBox()
         self.kP.setMinimum(-2000)
         self.kP.setMaximum(10000)
@@ -90,6 +95,10 @@ class temperature_monitor(QMainWindow):
         self.settings_layout.addRow(self.connect_btn)
         self.settings_layout.addRow(self.disconnect_btn)
         self.settings_layout.addRow(self.config_btn)
+        self.settings_layout.addRow(
+            'Set T [C]:',
+            self.setT
+        )
         self.settings_layout.addRow(
             'kP:',
             self.kP
@@ -178,12 +187,12 @@ class temperature_monitor(QMainWindow):
 
     def SendCommand(self):
         if self.serial.isOpen():
-            command = \
-                "{\"P\":{:.3f},\"I\":{:.3f},\"D\":{:.3f}}\r".format(
-                    self.kP.value(),
-                    self.kI.value(),
-                    self.kD.value(),
-                )
+            data = dict()
+            data['P'] = self.kP.value()
+            data['I'] = self.kI.value()
+            data['D'] = self.kD.value()
+            data['T'] = self.setT.value()
+            command = str(data) + '\r'
             self.serial.write(command.encode('utf-8'))
 
     def StartGUI():

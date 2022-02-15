@@ -626,7 +626,7 @@ class Vimba_Panel(QGroupBox):
         self.cam_exposure_slider.elementChanged[int, float] \
             .disconnect(self.cam_exposure_value_changed)
 
-        self.OME_tab.exposure.setText(str(self._cam.exposure_current / 1000))
+        self.OME_tab.exposure.setValue(self._cam.exposure_current / 1000)
         if self.master:
             self.exposureChanged.emit()
 
@@ -966,7 +966,7 @@ class Vimba_Panel(QGroupBox):
             if tiffWriter is not None:
                 tiffWriter.close()
 
-            saveMetadata(index, frames_saved)
+            saveMetadata(index)
 
     @staticmethod
     def find_nearest(array, value):

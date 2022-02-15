@@ -1125,7 +1125,7 @@ class IDS_Panel(QGroupBox):
                 if darkCal._counter > 1:
                     darkCal.saveResults(path)
 
-            saveMetadata(index, frames_saved)
+            saveMetadata(index)
 
     @staticmethod
     def find_nearest(array, value):

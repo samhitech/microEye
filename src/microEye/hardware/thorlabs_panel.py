@@ -1095,7 +1095,7 @@ class Thorlabs_Panel(QGroupBox):
             if tiffWriter is not None:
                 tiffWriter.close()
 
-            saveMetadata(index, frames_saved)
+            saveMetadata(index)
 
     @staticmethod
     def find_nearest(array, value):

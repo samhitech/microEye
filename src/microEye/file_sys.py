@@ -1,36 +1,31 @@
 import os
 import sys
-from enum import auto
-from unittest import result
 
 import cv2
 import numba
 import numpy as np
-import ome_types.model as om
 import pandas as pd
 import pyqtgraph as pg
 import qdarkstyle
-from sympy import zeros
 import tifffile as tf
 import zarr
-from numpy.lib.type_check import imag
-from ome_types.model.channel import Channel
 from ome_types.model.ome import OME
-from ome_types.model.simple_types import UnitsLength, UnitsTime
-from ome_types.model.tiff_data import TiffData
 from PyQt5.QtCore import *
 from PyQt5.QtGui import QFont, QIcon
 from PyQt5.QtWidgets import *
-from pyqtgraph.colormap import ColorMap
-from scipy.fftpack import fft2, fftshift, ifft2, ifftshift
+from sympy import zeros
 
+from microEye.fitting.gaussian_fit import gaussian_2D_fit
+
+from .fitting.results import *
+from .fitting.fit import *
+
+from .checklist_dialog import Checklist
 from .Filters import *
-from .Fitting import *
 from .metadata import MetadataEditor
 from .Rendering import *
 from .thread_worker import *
 from .uImage import *
-from .checklist_dialog import Checklist
 
 
 class tiff_viewer(QMainWindow):
@@ -275,7 +270,10 @@ class tiff_viewer(QMainWindow):
 
         # Localization / Render layout
         self.fitting_cbox = QComboBox()
-        self.fitting_cbox.addItem('2D Phasor-Fit')
+        self.fitting_cbox.addItem(
+            '2D Phasor-Fit (CPU)', FittingMethod._2D_Phasor_CPU)
+        self.fitting_cbox.addItem(
+            '2D MLE Gauss-Fit (CPU)', FittingMethod._2D_Gauss_MLE_CPU)
 
         self.render_cbox = QComboBox()
         self.render_cbox.addItem('2D Gaussian Histogram')
@@ -448,7 +446,7 @@ class tiff_viewer(QMainWindow):
     def centerROI(self):
         '''Centers the ROI and fits it to the image.
         '''
-        image = self.tiffSeq_Handler[self.pages_slider.value()]
+        image = self.tiffSeq_Handler.getSlice(self.pages_slider.value(), 0, 0)
 
         self.roi.setSize(image.shape[-2:])
         self.roi.setPos([0, 0])
@@ -517,32 +515,39 @@ class tiff_viewer(QMainWindow):
         else:
             index = self.model.index(i.row(), 0, i.parent())
             self.path = self.model.filePath(index)
+
             if self.tiffSeq_Handler is not None:
                 self.tiffSeq_Handler.close()
-            try:
-                self.tiffSequence = tf.TiffSequence(
-                    self.path + '/' + self.imsq_pattern.text())
-            except ValueError:
-                self.tiffSequence = None
+                self.tiffSeq_Handler = None
 
-            if self.tiffSequence is not None:
-                self.tiffSeq_Handler = TiffSeqHandler(self.tiffSequence)
+            if self.path.endswith('.zarr'):
+                self.tiffSeq_Handler = ZarrImageSequence(self.path)
                 self.tiffSeq_Handler.open()
-                # self.tiffStore = self.tiffSequence.aszarr(axestiled={0: 0})
-                # chunks = (1,) + self.tiffStore._chunks[1:]
-                # self.tiffZar = zarr.open(
-                #     self.tiffStore, mode='r', chunks=chunks)
 
                 self.pages_slider.setMaximum(
-                    self.tiffSeq_Handler.__len__() - 1)
+                        self.tiffSeq_Handler.shape[0] - 1)
                 self.pages_slider.valueChanged.emit(0)
+            else:
+                try:
+                    self.tiffSequence = tf.TiffSequence(
+                        self.path + '/' + self.imsq_pattern.text())
+                except ValueError:
+                    self.tiffSequence = None
 
-                with tf.TiffFile(self.tiffSequence.files[0]) as fl:
-                    if fl.is_ome:
-                        ome = OME.from_xml(fl.ome_metadata)
-                        self.metadataEditor.pop_OME_XML(ome)
-                        self.px_size.setValue(
-                            self.metadataEditor.px_size.value())
+                if self.tiffSequence is not None:
+                    self.tiffSeq_Handler = TiffSeqHandler(self.tiffSequence)
+                    self.tiffSeq_Handler.open()
+
+                    self.pages_slider.setMaximum(
+                        self.tiffSeq_Handler.__len__() - 1)
+                    self.pages_slider.valueChanged.emit(0)
+
+                    with tf.TiffFile(self.tiffSequence.files[0]) as fl:
+                        if fl.is_ome:
+                            ome = OME.from_xml(fl.ome_metadata)
+                            self.metadataEditor.pop_OME_XML(ome)
+                            self.px_size.setValue(
+                                self.metadataEditor.px_size.value())
 
     def average_stack(self):
         if self.tiffSeq_Handler is not None:
@@ -553,7 +558,7 @@ class tiff_viewer(QMainWindow):
 
     def genOME(self):
         if self.tiffSeq_Handler is not None:
-            frames = len(self.tiffSeq_Handler)
+            frames = self.tiffSeq_Handler.shape[0]
             width = self.image.image.shape[1]
             height = self.image.image.shape[0]
             ome = self.metadataEditor.gen_OME_XML(frames, width, height)
@@ -596,7 +601,8 @@ class tiff_viewer(QMainWindow):
 
     def update_display(self, image=None):
         if image is None:
-            image = self.tiffSeq_Handler[self.pages_slider.value()]
+            image = self.tiffSeq_Handler.getSlice(
+                self.pages_slider.value(), 0, 0)
 
         roiInfo = self.get_roi_info()
         if roiInfo is not None:
@@ -675,7 +681,13 @@ class tiff_viewer(QMainWindow):
                 points[:, 0] += origin[0]
                 points[:, 1] += origin[1]
 
-            sub_fit = phasor_fit(self.uImage._image, points, False)
+            # method
+            method = self.fitting_cbox.currentData()
+
+            if method == FittingMethod._2D_Phasor_CPU:
+                sub_fit = phasor_fit(image, points, False)
+            elif method == FittingMethod._2D_Gauss_MLE_CPU:
+                sub_fit = gaussian_2D_fit(image, points)
 
             if sub_fit is not None:
 
@@ -963,6 +975,7 @@ class tiff_viewer(QMainWindow):
                 'Coordinates [Pixel]' in options,
                 'Coordinates [nm]' in options,
                 'Coordinates [nm]' in options,
+                'Coordinates [nm]' in options,
                 'Intensity' in options,
                 'Track ID' in options,
                 'Next NN Distance' in options,
@@ -1057,13 +1070,17 @@ class tiff_viewer(QMainWindow):
         )
 
         self.thread_done = 0  # number of threads done
-        time = QDateTime.currentDateTime()  # timer
+        start = QDateTime.currentDateTime()  # timer
+        time = start
 
         # Filters + Blob detector params
         filter = self.bandpassFilter.filter
         self.bandpassFilter.arg_4.setChecked(False)
         tempEnabled = self.tempMedianFilter.enabled.isChecked()
         params = self.get_blob_detector_params()
+
+        # method
+        method = self.fitting_cbox.currentData()
 
         # ROI
         roiInfo = self.get_roi_info()
@@ -1073,14 +1090,19 @@ class tiff_viewer(QMainWindow):
         threads = self._threadpool.maxThreadCount() - 2
         print('Threads', threads)
         for i in range(
-                0, int(np.ceil(len(self.tiffSeq_Handler) / threads) * threads),
+                0, int(
+                    np.ceil(
+                        self.tiffSeq_Handler.shape[0] / threads
+                        ) * threads
+                        ),
                 threads):
             time = QDateTime.currentDateTime()
             workers = []
             self.thread_done = 0
             for k in range(threads):
                 if i + k < len(self.tiffSeq_Handler):
-                    img = self.tiffSeq_Handler[i + k].copy()
+                    img = self.tiffSeq_Handler.getSlice(
+                        i + k, 0, 0)
 
                     temp = None
                     if tempEnabled:
@@ -1096,6 +1118,7 @@ class tiff_viewer(QMainWindow):
                         filter,
                         params,
                         roiInfo,
+                        method,
                         progress=False, z_stage=False)
                     worker.signals.result.connect(self.update_lists)
                     workers.append(worker)
@@ -1105,10 +1128,11 @@ class tiff_viewer(QMainWindow):
                 QThread.msleep(10)
 
             exex = time.msecsTo(QDateTime.currentDateTime())
+            duration = start.msecsTo(QDateTime.currentDateTime())
 
             print(
                 'index: {:d}/{:d}, Time: {:d}  '.format(
-                    i + len(workers), len(self.tiffSeq_Handler), exex),
+                    i + len(workers), self.tiffSeq_Handler.shape[0], exex),
                 end="\r")
             if (i // threads) % 40 == 0:
                 progress_callback.emit(self)
@@ -1122,12 +1146,17 @@ class tiff_viewer(QMainWindow):
             temp: TemporalMedianFilter,
             filter: AbstractFilter,
             params: cv2.SimpleBlobDetector_Params,
-            roiInfo):
+            roiInfo,
+            method=FittingMethod._2D_Phasor_CPU):
+
+        filtered = image.copy()
 
         # apply the median filter
         if temp is not None:
             frames = temp.getFrames(index, self.tiffSeq_Handler)
-            image = temp.run(image, frames, roiInfo)
+            filtered = temp.run(image, frames, roiInfo)
+        # else:
+        #     filtered_img = None
 
         # crop image to ROI
         if roiInfo is not None:
@@ -1136,13 +1165,23 @@ class tiff_viewer(QMainWindow):
             image = image[
                 int(origin[1]):int(origin[1] + dim[1]),
                 int(origin[0]):int(origin[0] + dim[0])]
+            filtered = filtered[
+                int(origin[1]):int(origin[1] + dim[1]),
+                int(origin[0]):int(origin[0] + dim[0])]
+
+            # if filtered_img is not None:
+            #     filtered_img = filtered_img[
+            #         int(origin[1]):int(origin[1] + dim[1]),
+            #         int(origin[0]):int(origin[0] + dim[0])]
 
         results = localize_frame(
             index=index,
             image=image,
+            filtered=filtered,
             filter=filter,
             params=params,
-            threshold=self.th_min_slider.value()
+            threshold=self.th_min_slider.value(),
+            method=method
         )
 
         if len(results) > 0 and roiInfo is not None:

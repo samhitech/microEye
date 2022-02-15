@@ -1,3 +1,4 @@
+from ast import Slice
 from sys import flags
 import cv2
 import numba
@@ -210,6 +211,17 @@ class TiffSeqHandler:
 
             return result
 
+    def getSlice(
+            self, timeSlice=slice(None), channelSlice=slice(None),
+            zSlice=slice(None), ySlice=slice(None), xSlice=slice(None)):
+
+        res = self[timeSlice]
+
+        if np.ndim(res) == 2:
+            return res[ySlice, xSlice]
+        else:
+            return res[:, ySlice, xSlice]
+
     def __len__(self):
         return sum(self._frames)
 
@@ -218,3 +230,48 @@ class TiffSeqHandler:
 
     def __exit__(self, exc_type, exc_value, traceback):
         self.close()
+
+    @property
+    def shape(self):
+        if self._zarr is None:
+            return None
+
+        return (sum(self._frames),) + self._zarr[0].shape[1:]
+
+
+class ZarrImageSequence:
+    def __init__(self, path: str) -> None:
+
+        self.path = path
+
+        self.data = None
+
+    def __getitem__(self, i):
+        if self.data is None:
+            return None
+
+        return zarr.open(self.path, 'r').__getitem__(i)
+
+    def getSlice(
+            self, timeSlice=slice(None), channelSlice=slice(None),
+            zSlice=slice(None), ySlice=slice(None), xSlice=slice(None)):
+
+        return zarr.open(
+            self.path, 'r')[timeSlice, channelSlice, zSlice, ySlice, xSlice]
+
+    def open(self):
+        self.data = zarr.open(self.path, 'r')
+
+    def close(self):
+        del self.data
+
+    def __len__(self):
+        if self.data is None:
+            return 0
+        return self.data.shape[0]
+
+    @property
+    def shape(self):
+        if self.data is None:
+            return None
+        return self.data.shape

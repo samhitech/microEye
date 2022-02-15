@@ -267,8 +267,12 @@ def FRC_resolution_binomial(data: np.ndarray, pixelSize=10):
             kind='quadratic', fill_value='extrapolate')
     FRC = interpy(frequencies)
 
-    idx = np.where(FRC <= (1/7))[0].min()
-    FRC_res = 1 / frequencies[idx]
+    idx = np.where(FRC <= (1/7))[0]
+    if idx is not None:
+        idx = idx.min()
+        FRC_res = 1 / frequencies[idx]
+    else:
+        FRC_res = np.nan
 
     print(
         'Done ...               ',

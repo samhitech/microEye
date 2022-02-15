@@ -13,6 +13,8 @@ from PyQt5.QtWidgets import *
 from zarr.core import Array
 import dask.array
 
+from microEye.uImage import ZarrImageSequence
+
 
 class AbstractFilter:
 
@@ -285,14 +287,14 @@ class TemporalMedianFilter(AbstractFilter):
         self._frames = None
         self._median = None
 
-    def getFrames(self, index, dataZarr: Array):
+    def getFrames(self, index, dataHandler: ZarrImageSequence):
         if self._temporal_window < 2:
             self._frames = None
             self._median = None
             self._start = None
             return
 
-        maximum = len(dataZarr)
+        maximum = dataHandler.shape[0]
         step = 0
         if self._temporal_window % 2:
             step = self._temporal_window // 2
@@ -303,20 +305,12 @@ class TemporalMedianFilter(AbstractFilter):
             max(index-step, 0),
             maximum - self._temporal_window)
 
-        # self._frames = np.array(
-        #     [x.asarray() for x in
-        #         file.pages[self._start:self._start + self._temporal_window]])
-        # self._frames = tf.imread(
-        #     file,
-        #     key=slice(
-        #         self._start,
-        #         (self._start + self._temporal_window),
-        #         1))
         data_slice = slice(
                 self._start,
                 (self._start + self._temporal_window),
                 1)
-        return dask.array.from_array(dataZarr[data_slice])
+        return dask.array.from_array(
+            dataHandler.getSlice(data_slice, 0, 0))
 
     def run(self, image: np.ndarray, frames: np.ndarray, roiInfo=None):
         if frames is not None:
