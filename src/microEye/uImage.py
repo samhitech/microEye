@@ -1,11 +1,8 @@
-from ast import Slice
-from sys import flags
+from tracemalloc import start
+from typing import Union
 import cv2
 import numba
 import numpy as np
-from numpy.lib.arraysetops import isin
-from numpy.lib.function_base import select
-from pandas.core import frame
 import tifffile as tf
 import zarr
 from PyQt5.QtCore import *
@@ -275,3 +272,48 @@ class ZarrImageSequence:
         if self.data is None:
             return None
         return self.data.shape
+
+
+def saveZarrImage(
+        path: str,
+        imgSeq: Union[ZarrImageSequence, TiffSeqHandler],
+        timeSlice: slice = slice(None),
+        channelSlice: slice = slice(None),
+        zSlice: slice = slice(None),
+        ySlice: slice = slice(None),
+        xSlice: slice = slice(None)):
+
+    def ifnone(a, b):
+        return b if a is None else a
+
+    shape = (
+        ifnone(
+            timeSlice.stop, imgSeq.shape[0]) - ifnone(timeSlice.start, 0),
+        ifnone(
+            channelSlice.stop, imgSeq.shape[1]
+            ) - ifnone(channelSlice.start, 0),
+        ifnone(zSlice.stop, imgSeq.shape[2]) - ifnone(zSlice.start, 0),
+        ifnone(ySlice.stop, imgSeq.shape[3]) - ifnone(ySlice.start, 0),
+        ifnone(xSlice.stop, imgSeq.shape[4]) - ifnone(xSlice.start, 0)
+    )
+    chunks = (
+        min(10, shape[0]),
+        min(10, shape[1]),
+        min(10, shape[2]),
+        shape[3],
+        shape[4],
+    )
+
+    if isinstance(imgSeq, TiffSeqHandler):
+        return False
+    elif isinstance(imgSeq, ZarrImageSequence):
+        zarrImg = zarr.open(
+            path, mode='w-',
+            shape=shape, chunks=chunks,
+            compressor=None, dtype=imgSeq.data.dtype)
+        zarrImg[:] = imgSeq.getSlice(
+            timeSlice, channelSlice, zSlice, ySlice, xSlice)
+
+        return True
+
+    return False

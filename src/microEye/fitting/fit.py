@@ -60,7 +60,7 @@ def localize_frame(
             filter: AbstractFilter,
             params: cv2.SimpleBlobDetector_Params,
             threshold=255,
-            method=FittingMethod._2D_Phasor_fit):
+            method=FittingMethod._2D_Phasor_CPU):
 
     uImg = uImage(filtered)
 

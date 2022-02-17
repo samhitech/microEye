@@ -1,5 +1,6 @@
 import os
 import sys
+from tkinter.filedialog import SaveFileDialog
 
 import cv2
 import numba
@@ -171,6 +172,10 @@ class tiff_viewer(QMainWindow):
         self.enableROI.setChecked(False)
         self.enableROI.stateChanged.connect(self.enableROI_changed)
 
+        self.saveCropped = QPushButton(
+            'Save Cropped Image',
+            clicked=lambda: self.save_cropped_img())
+
         self.image_control_layout.addRow(
             self.pages_label,
             self.pages_slider)
@@ -182,6 +187,7 @@ class tiff_viewer(QMainWindow):
             self.max_slider)
         self.image_control_layout.addWidget(self.autostretch)
         self.image_control_layout.addWidget(self.enableROI)
+        self.image_control_layout.addWidget(self.saveCropped)
 
         self.controls_layout.addLayout(
             self.image_control_layout)
@@ -527,6 +533,8 @@ class tiff_viewer(QMainWindow):
                 self.pages_slider.setMaximum(
                         self.tiffSeq_Handler.shape[0] - 1)
                 self.pages_slider.valueChanged.emit(0)
+
+                self.centerROI()
             else:
                 try:
                     self.tiffSequence = tf.TiffSequence(
@@ -548,6 +556,42 @@ class tiff_viewer(QMainWindow):
                             self.metadataEditor.pop_OME_XML(ome)
                             self.px_size.setValue(
                                 self.metadataEditor.px_size.value())
+
+                    self.centerROI()
+
+    def save_cropped_img(self):
+        if self.tiffSeq_Handler is None:
+            return
+
+        filename, _ = QFileDialog.getSaveFileName(
+            self, "Save Cropped Image",
+            directory=self.path,
+            filter="Zarr Files (*.zarr)")
+
+        # if os.path.isdir(filename):
+        #     QMessageBox.warning(
+        #         self,
+        #         "Warning",
+        #         'The file exists please choose a different file name.',
+        #         QMessageBox.StandardButton.Ok)
+        #     return
+        roiInfo = self.get_roi_info()
+        if roiInfo is not None:
+            origin, dim = roiInfo
+
+            ySlice = slice(int(origin[1]), int(origin[1] + dim[1]), 1)
+            xSlice = slice(int(origin[0]), int(origin[0] + dim[0]), 1)
+
+            saveZarrImage(
+                filename, self.tiffSeq_Handler,
+                ySlice=ySlice,
+                xSlice=xSlice
+               )
+        else:
+            origin, dim = None, None
+
+            saveZarrImage(
+                filename, self.tiffSeq_Handler)
 
     def average_stack(self):
         if self.tiffSeq_Handler is not None:
@@ -936,7 +980,7 @@ class tiff_viewer(QMainWindow):
         '''Imports fitting results from a (*.tsv) file.
         '''
         filename, _ = QFileDialog.getOpenFileName(
-            self, "Import localizations", filter="TSV Files (*.tsv);;")
+            self, "Import localizations", filter="TSV Files (*.tsv)")
 
         if len(filename) > 0:
 
@@ -964,7 +1008,7 @@ class tiff_viewer(QMainWindow):
 
         if filename is None:
             filename, _ = QFileDialog.getSaveFileName(
-                self, "Export localizations", filter="TSV Files (*.tsv);;")
+                self, "Export localizations", filter="TSV Files (*.tsv)")
 
         if len(filename) > 0:
             options = self.export_options.toList()
@@ -1007,7 +1051,7 @@ class tiff_viewer(QMainWindow):
             return
 
         filename, _ = QFileDialog.getSaveFileName(
-            self, "Save localizations", filter="TSV Files (*.tsv);;")
+            self, "Save localizations", filter="TSV Files (*.tsv)")
 
         if len(filename) > 0:
             # Any other args, kwargs are passed to the run function
