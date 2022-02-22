@@ -188,8 +188,8 @@ class TiffSeqHandler:
 
             return self._zarr[file_idx][i]
         else:
-            start = i.start
-            stop = i.stop
+            start = 0 if i.start is None else i.start
+            stop = sum(self._frames) if start is None else i.stop
             if stop <= self._cum_frames[0]:
                 return self._zarr[0][i]
             else:
@@ -286,27 +286,71 @@ def saveZarrImage(
     def ifnone(a, b):
         return b if a is None else a
 
-    shape = (
-        ifnone(
-            timeSlice.stop, imgSeq.shape[0]) - ifnone(timeSlice.start, 0),
-        ifnone(
-            channelSlice.stop, imgSeq.shape[1]
-            ) - ifnone(channelSlice.start, 0),
-        ifnone(zSlice.stop, imgSeq.shape[2]) - ifnone(zSlice.start, 0),
-        ifnone(ySlice.stop, imgSeq.shape[3]) - ifnone(ySlice.start, 0),
-        ifnone(xSlice.stop, imgSeq.shape[4]) - ifnone(xSlice.start, 0)
-    )
-    chunks = (
-        min(10, shape[0]),
-        min(10, shape[1]),
-        min(10, shape[2]),
-        shape[3],
-        shape[4],
-    )
-
     if isinstance(imgSeq, TiffSeqHandler):
-        return False
+        shape = (
+            ifnone(
+                timeSlice.stop, imgSeq.shape[0]) - ifnone(timeSlice.start, 0),
+            1,
+            1,
+            ifnone(ySlice.stop, imgSeq.shape[1]) - ifnone(ySlice.start, 0),
+            ifnone(xSlice.stop, imgSeq.shape[2]) - ifnone(xSlice.start, 0)
+        )
+        chunks = (
+            min(10, shape[0]),
+            min(10, shape[1]),
+            min(10, shape[2]),
+            shape[3],
+            shape[4],
+        )
+
+        zarrImg = zarr.open(
+            path, mode='w-',
+            shape=shape, chunks=chunks,
+            compressor=None, dtype=imgSeq._dtype)
+
+        timeSlice = slice(ifnone(timeSlice.start, 0), shape[0])
+
+        for idx in np.arange(len(imgSeq._zarr)):
+            offset = imgSeq._cum_frames[idx] - imgSeq._frames[idx]
+            zarrSlice = slice(
+                max(
+                    timeSlice.start,
+                    offset,
+                ),
+                min(
+                    timeSlice.stop,
+                    imgSeq._cum_frames[idx]
+                )
+            )
+            tiffSlice = slice(
+                zarrSlice.start - offset,
+                zarrSlice.stop - offset)
+            zarrImg[zarrSlice, 0, 0] = \
+                imgSeq._zarr[idx][tiffSlice, ySlice, xSlice]
+            print('Saving ...      ', end='\r')
+
+        print('Done ...      ', end='\r')
+        return True
     elif isinstance(imgSeq, ZarrImageSequence):
+
+        print('Saving ...      ', end='\r')
+        shape = (
+            ifnone(
+                timeSlice.stop, imgSeq.shape[0]) - ifnone(timeSlice.start, 0),
+            ifnone(
+                channelSlice.stop, imgSeq.shape[1]
+                ) - ifnone(channelSlice.start, 0),
+            ifnone(zSlice.stop, imgSeq.shape[2]) - ifnone(zSlice.start, 0),
+            ifnone(ySlice.stop, imgSeq.shape[3]) - ifnone(ySlice.start, 0),
+            ifnone(xSlice.stop, imgSeq.shape[4]) - ifnone(xSlice.start, 0)
+        )
+        chunks = (
+            min(10, shape[0]),
+            min(10, shape[1]),
+            min(10, shape[2]),
+            shape[3],
+            shape[4],
+        )
         zarrImg = zarr.open(
             path, mode='w-',
             shape=shape, chunks=chunks,
@@ -314,6 +358,8 @@ def saveZarrImage(
         zarrImg[:] = imgSeq.getSlice(
             timeSlice, channelSlice, zSlice, ySlice, xSlice)
 
+        print('Done ...      ', end='\r')
         return True
 
+    print('Failed ...      ', end='\r')
     return False

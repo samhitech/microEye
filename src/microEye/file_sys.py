@@ -1,6 +1,5 @@
 import os
 import sys
-from tkinter.filedialog import SaveFileDialog
 
 import cv2
 import numba
@@ -454,7 +453,7 @@ class tiff_viewer(QMainWindow):
         '''
         image = self.tiffSeq_Handler.getSlice(self.pages_slider.value(), 0, 0)
 
-        self.roi.setSize(image.shape[-2:])
+        self.roi.setSize([image.shape[1], image.shape[0]])
         self.roi.setPos([0, 0])
         self.roi.maxBounds = QRectF(0, 0, image.shape[1], image.shape[0])
 
@@ -568,30 +567,36 @@ class tiff_viewer(QMainWindow):
             directory=self.path,
             filter="Zarr Files (*.zarr)")
 
-        # if os.path.isdir(filename):
-        #     QMessageBox.warning(
-        #         self,
-        #         "Warning",
-        #         'The file exists please choose a different file name.',
-        #         QMessageBox.StandardButton.Ok)
-        #     return
         roiInfo = self.get_roi_info()
-        if roiInfo is not None:
-            origin, dim = roiInfo
 
-            ySlice = slice(int(origin[1]), int(origin[1] + dim[1]), 1)
-            xSlice = slice(int(origin[0]), int(origin[0] + dim[0]), 1)
+        def work_func():
+            if roiInfo is not None:
+                origin, dim = roiInfo
 
-            saveZarrImage(
-                filename, self.tiffSeq_Handler,
-                ySlice=ySlice,
-                xSlice=xSlice
-               )
-        else:
-            origin, dim = None, None
+                ySlice = slice(int(origin[1]), int(origin[1] + dim[1]), 1)
+                xSlice = slice(int(origin[0]), int(origin[0] + dim[0]), 1)
 
-            saveZarrImage(
-                filename, self.tiffSeq_Handler)
+                saveZarrImage(
+                    filename, self.tiffSeq_Handler,
+                    ySlice=ySlice,
+                    xSlice=xSlice
+                )
+            else:
+                origin, dim = None, None
+
+                saveZarrImage(
+                    filename, self.tiffSeq_Handler)
+
+        def done(results):
+            self.saveCropped.setDisabled(False)
+
+        self.worker = thread_worker(
+            work_func,
+            progress=False, z_stage=False)
+        self.worker.signals.result.connect(done)
+        # Execute
+        self.saveCropped.setDisabled(True)
+        self._threadpool.start(self.worker)
 
     def average_stack(self):
         if self.tiffSeq_Handler is not None:
@@ -806,6 +811,7 @@ class tiff_viewer(QMainWindow):
 
                 def done(results):
                     plotFRC_(*results)
+                    self.frc_res_btn.setDisabled(False)
             else:
                 return
         elif 'Binomial' in frc_method:
@@ -826,6 +832,7 @@ class tiff_viewer(QMainWindow):
 
                 def done(results):
                     plotFRC(*results)
+                    self.frc_res_btn.setDisabled(False)
             else:
                 return
         else:
@@ -836,6 +843,7 @@ class tiff_viewer(QMainWindow):
             progress=False, z_stage=False)
         self.worker.signals.result.connect(done)
         # Execute
+        self.frc_res_btn.setDisabled(True)
         self._threadpool.start(self.worker)
 
     def drift_cross(self):
@@ -860,12 +868,14 @@ class tiff_viewer(QMainWindow):
                     self.image.setImage(img_norm, autoLevels=False)
                     self.fittingResults = results[0]
                     plot_drift(*results[2])
+                self.drift_cross_btn.setDisabled(False)
 
             self.worker = thread_worker(
                 work_func,
                 progress=False, z_stage=False)
             self.worker.signals.result.connect(done)
             # Execute
+            self.drift_cross_btn.setDisabled(True)
             self._threadpool.start(self.worker)
         else:
             return
@@ -886,12 +896,14 @@ class tiff_viewer(QMainWindow):
                     self.fittingResults = results[0]
                     plot_drift(*results[1])
                     self.update_loc()
+                self.drift_fdm_btn.setDisabled(False)
 
             self.worker = thread_worker(
                 work_func,
                 progress=False, z_stage=False)
             self.worker.signals.result.connect(done)
             # Execute
+            self.drift_fdm_btn.setDisabled(True)
             self._threadpool.start(self.worker)
         else:
             return
@@ -914,12 +926,14 @@ class tiff_viewer(QMainWindow):
 
             def done(results):
                 self.fittingResults = results
+                self.nneigh_merge_btn.setDisabled(False)
 
             self.worker = thread_worker(
                 work_func,
                 progress=False, z_stage=False)
             self.worker.signals.result.connect(done)
             # Execute
+            self.nneigh_merge_btn.setDisabled(True)
             self._threadpool.start(self.worker)
         else:
             return
@@ -941,12 +955,14 @@ class tiff_viewer(QMainWindow):
 
             def done(results):
                 self.fittingResults = results
+                self.nneigh_btn.setDisabled(False)
 
             self.worker = thread_worker(
                 work_func,
                 progress=False, z_stage=False)
             self.worker.signals.result.connect(done)
             # Execute
+            self.nneigh_btn.setDisabled(True)
             self._threadpool.start(self.worker)
         else:
             return
@@ -966,12 +982,14 @@ class tiff_viewer(QMainWindow):
 
             def done(results):
                 self.fittingResults = results
+                self.merge_btn.setDisabled(False)
 
             self.worker = thread_worker(
                 work_func,
                 progress=False, z_stage=False)
             self.worker.signals.result.connect(done)
             # Execute
+            self.merge_btn.setDisabled(True)
             self._threadpool.start(self.worker)
         else:
             return
@@ -1054,12 +1072,16 @@ class tiff_viewer(QMainWindow):
             self, "Save localizations", filter="TSV Files (*.tsv)")
 
         if len(filename) > 0:
+            def done(res):
+                self.loc_btn.setDisabled(False)
             # Any other args, kwargs are passed to the run function
             self.worker = thread_worker(
                 self.proccess_loc, filename,
                 progress=True, z_stage=False)
             self.worker.signals.progress.connect(self.update_loc)
+            self.worker.signals.result.connect(done)
             # Execute
+            self.loc_btn.setDisabled(True)
             self._threadpool.start(self.worker)
 
     def update_loc(self):

@@ -305,8 +305,8 @@ class FittingResults:
 
         drift_corrected = FittingResults.fromDataFrame(df, self.pixelSize)
 
-        drift_corrected_image = renderEngine.fromArray(
-            data[:, 3:7])
+        drift_corrected_image = renderEngine.render(
+            *drift_corrected.toRender())
 
         return drift_corrected, drift_corrected_image, \
             (frames_new, interpx, interpy)
@@ -414,7 +414,7 @@ class FittingResults:
             print('{:d} tracks detected.'.format(
                 len(fiducial_trackIDs)), end='\r')
 
-        fiducial_markers = np.array((
+        fiducial_markers = np.zeros((
             len(fiducial_trackIDs),
             len(unique_frames),
             data.shape[-1]))
@@ -423,7 +423,7 @@ class FittingResults:
             'Fiducial markers ...                 ', end='\r')
         for idx in np.arange(fiducial_markers.shape[0]):
             fiducial_markers[idx] = \
-                data[data[:, 7] == fiducial_trackIDs[idx]]
+                data[data[:, 7] == fiducial_trackIDs[idx], ...]
 
             fiducial_markers[idx, :, 3] -= fiducial_markers[idx, 0, 3]
             fiducial_markers[idx, :, 4] -= fiducial_markers[idx, 0, 4]
