@@ -22,7 +22,7 @@ def gaussian_2D_fit(
         image, points, roi_size)
 
 
-@numba.njit(parallel=True)
+# @numba.njit(parallel=True)
 def gaussian_2D_fit_numba_worker(
         image: np.ndarray, points: np.ndarray, roi_size=7):
 
@@ -190,11 +190,11 @@ def gauss_2D_simple(
 
 
 def model(xc, yc, sigma_x, sigma_y, flux, offset, X, Y):
-    y_gauss = gauss_1d(Y, yc, sigma_y)
-    x_gauss = gauss_1d(X, xc, sigma_x)
+    y_gauss = gauss_1d(Y[:, 0], yc, sigma_y)
+    x_gauss = gauss_1d(X[0, :], xc, sigma_x)
 
     x, y = np.meshgrid(x_gauss, y_gauss)
-    return flux * x * y + offset
+    return flux * y * x + offset
 
 
 def gauss_1d(x: np.ndarray, mu: np.ndarray, sigma: np.ndarray):

@@ -46,6 +46,9 @@ def phasor_fit(image: np.ndarray, points: np.ndarray,
         y = idy + np.abs(theta_y) / (2 * np.pi / roi_size)
         sub_fit[r, :2] = [x, y]
 
+        magnitudeX = np.abs(fft_roi[0, 1])
+        magnitudeY = np.abs(fft_roi[1, 0])
+
         if intensity:
             sub_fit[r, 3] = intensity_estimate(roi, bg_mask, sig_mask)
 
