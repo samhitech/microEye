@@ -13,7 +13,7 @@ from PyQt5.QtWidgets import *
 from zarr.core import Array
 import dask.array
 
-from microEye.uImage import ZarrImageSequence
+from .uImage import ZarrImageSequence
 
 
 class AbstractFilter:

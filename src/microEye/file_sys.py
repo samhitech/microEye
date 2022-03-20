@@ -797,6 +797,7 @@ class tiff_viewer(QMainWindow):
 
     def FRC_estimate(self):
         frc_method = self.frc_cbox.currentText()
+        time = QDateTime.currentDateTime()
         if 'Check' in frc_method:
             img = self.update_loc()
 
@@ -1250,9 +1251,10 @@ class tiff_viewer(QMainWindow):
             method=method
         )
 
-        if len(results) > 0 and roiInfo is not None:
-            results[:, 0] += origin[0]
-            results[:, 1] += origin[1]
+        if results is not None:
+            if len(results) > 0 and roiInfo is not None:
+                results[:, 0] += origin[0]
+                results[:, 1] += origin[1]
 
         return results
 

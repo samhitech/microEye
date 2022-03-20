@@ -17,6 +17,8 @@ from pyqtgraph import PlotWidget, plot
 from pyqtgraph.metaarray.MetaArray import axis
 from tifffile.tifffile import astype
 
+from .camera_calibration import dark_calibration
+
 from ..metadata import MetadataEditor
 from ..qlist_slider import *
 from ..thread_worker import *
@@ -278,6 +280,9 @@ class Vimba_Panel(QGroupBox):
         # save to hard drive checkbox
         self.cam_save_temp = QCheckBox("Save to dir")
         self.cam_save_temp.setChecked(self.mini)
+        self.dark_cal = QCheckBox("Dark Calibration")
+        self.dark_cal.setToolTip('Generates mean and variance images')
+        self.dark_cal.setChecked(False)
         self.save_bigg_tiff = QCheckBox("BiggTiff Format")
         self.save_bigg_tiff.setChecked(True)
         self.cam_save_meta = QCheckBox("Write full OME-XML")
@@ -396,6 +401,7 @@ class Vimba_Panel(QGroupBox):
             self.first_tab_Layout.addLayout(self.save_dir_layout)
             self.first_tab_Layout.addWidget(self.frames_tbox)
             self.first_tab_Layout.addWidget(self.cam_save_temp)
+            self.first_tab_Layout.addWidget(self.dark_cal)
             self.first_tab_Layout.addWidget(self.save_bigg_tiff)
             self.first_tab_Layout.addWidget(self.cam_save_meta)
         self.first_tab_Layout.addStretch()
@@ -489,10 +495,10 @@ class Vimba_Panel(QGroupBox):
                 int(self.AOI_x_tbox.text()),
                 int(self.AOI_y_tbox.text()))
 
-        self.AOI_x_tbox.setText(str(self.cam.offsetX))
-        self.AOI_y_tbox.setText(str(self.cam.offsetY))
-        self.AOI_width_tbox.setText(str(self.cam.width))
-        self.AOI_height_tbox.setText(str(self.cam.height))
+        self.AOI_x_tbox.setText(str(int(self.cam.offsetX)))
+        self.AOI_y_tbox.setText(str(int(self.cam.offsetY)))
+        self.AOI_width_tbox.setText(str(int(self.cam.width)))
+        self.AOI_height_tbox.setText(str(int(self.cam.height)))
 
     def reset_AOI(self):
         '''Resets the AOI for the slected IDS_Camera
@@ -506,8 +512,8 @@ class Vimba_Panel(QGroupBox):
             self.cam.set_roi(self.cam.width_max, self.cam.height_max)
         self.AOI_x_tbox.setText("0")
         self.AOI_y_tbox.setText("0")
-        self.AOI_width_tbox.setText(str(self.cam.width))
-        self.AOI_height_tbox.setText(str(self.cam.height))
+        self.AOI_width_tbox.setText(str(int(self.cam.width)))
+        self.AOI_height_tbox.setText(str(int(self.cam.height)))
 
     def center_AOI(self):
         '''Sets the AOI for the slected vimba_cam
@@ -872,6 +878,7 @@ class Vimba_Panel(QGroupBox):
             path = self._save_path
             tiffWriter = None
             tempFile = None
+            darkCal = None
             index = 0
             biggTiff = self.save_bigg_tiff.isChecked()
 
@@ -903,6 +910,9 @@ class Vimba_Panel(QGroupBox):
                     # for save time estimations
                     time = QDateTime.currentDateTime()
 
+                    # get frame and temp to save from bottom of stack
+                    frame, temp = self._frames.get()
+
                     if tempFile is None:
                         if not os.path.exists(path):
                             os.makedirs(path)
@@ -916,11 +926,12 @@ class Vimba_Panel(QGroupBox):
                             bigtiff=biggTiff,
                             ome=False)
 
-                    # get frame and temp to save from bottom of stack
-                    frame, temp = self._frames.get()
-                    frame = frame.copy()
+                    if self.dark_cal.isChecked():
+                        if darkCal is None:
+                            exp = self._cam.exposure_current
+                            darkCal = dark_calibration(frame.shape, exp)
 
-                    # creates dir
+                        darkCal.addFrame(frame)
 
                     # append frame to tiff
                     try:
@@ -965,6 +976,9 @@ class Vimba_Panel(QGroupBox):
                 tempFile.close()
             if tiffWriter is not None:
                 tiffWriter.close()
+            if darkCal is not None:
+                if darkCal._counter > 1:
+                    darkCal.saveResults(path)
 
             saveMetadata(index)
 
@@ -1011,10 +1025,10 @@ class Vimba_Panel(QGroupBox):
 
                 w, h, x, y = self.cam.get_roi()
 
-                self.AOI_x_tbox.setText(str(x))
-                self.AOI_y_tbox.setText(str(y))
-                self.AOI_width_tbox.setText(str(w))
-                self.AOI_height_tbox.setText(str(h))
+                self.AOI_x_tbox.setText(str(int(x)))
+                self.AOI_y_tbox.setText(str(int(y)))
+                self.AOI_width_tbox.setText(str(int(w)))
+                self.AOI_height_tbox.setText(str(int(h)))
 
                 self.cam_trigger_mode_cbox.setCurrentText(
                     self.cam.get_trigger_mode())

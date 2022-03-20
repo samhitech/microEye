@@ -17,8 +17,6 @@ from PyQt5.QtWidgets import *
 from pyqtgraph import PlotWidget, plot
 from pyqtgraph.metaarray.MetaArray import axis
 
-from tifffile.tifffile import astype
-
 from .camera_calibration import dark_calibration
 
 from ..qlist_slider import *
@@ -1055,7 +1053,6 @@ class IDS_Panel(QGroupBox):
 
                     # get frame and temp to save from bottom of stack
                     frame, temp = self._frames.get()
-                    frame = frame.copy()
 
                     # creates dir
                     if tempFile is None:
