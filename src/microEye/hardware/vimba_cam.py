@@ -177,7 +177,8 @@ class vimba_cam:
             except Exception:
                 exposure = self.cam.ExposureTimeAbs
                 self.exposure_current = exposure.get()
-                self.exposure_increment = self.cam.ExposureTimeIncrement.get()
+                self.exposure_increment = 1
+                # self.cam.ExposureTimeIncrement.get()
                 self.exposure_unit = exposure.get_unit()
                 self.exposure_range = exposure.get_range()
             if output:
@@ -562,8 +563,21 @@ class vimba_cam:
             print("Pixel Format", self.pixel_size)
             return self.pixel_size
         except Exception:
-            print("Pixel Size Get ERROR")
-            return 'NA'
+            pFormat = str(self.cam.get_pixel_format())
+            if '8' in pFormat:
+                self.pixel_size = 8
+                self.bytes_per_pixel = 1
+                return self.pixel_size
+            elif '12p' in pFormat:
+                print("Pixel Format Not supported.")
+                return 'NA'
+            elif '12' in pFormat:
+                self.pixel_size = 16
+                self.bytes_per_pixel = 2
+                return self.pixel_size
+            else:
+                print("Pixel Format Not supported.")
+                return 'NA'
 
     def get_roi(self):
         try:

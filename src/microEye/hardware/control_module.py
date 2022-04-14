@@ -29,8 +29,8 @@ from pyqode.python import panels as pypanels
 from pyqode.core import api, modes, panels
 
 from .io_matchbox import *
+from .io_single_laser import *
 from .IR_Cam import *
-from .laser_panel import *
 from .piezo_concept import *
 from .port_config import *
 from ..thread_worker import *
@@ -69,12 +69,6 @@ class control_module(QMainWindow):
 
         # PiezoConcept
         self.stage = stage()
-
-        # MatchBox
-        self.match_box = io_matchbox(self)  # readyRead=self.rx_mbox)
-        self.match_box.DataReady.connect(self.rx_mbox)
-        self.match_box.setBaudRate(115200)
-        self.match_box.setPortName('COM3')
 
         # Serial Port IR CCD array
         self.IR_Cam = IR_Cam()
@@ -157,15 +151,14 @@ class control_module(QMainWindow):
         self.Tab_Widget = QTabWidget()
 
         # General settings groupbox
-        Reg_GBox = QGroupBox("Devices")
-        self.VL_layout.addWidget(Reg_GBox, 0, 0)
+        LPanel_GBox = QGroupBox("Devices")
+        self.VL_layout.addWidget(LPanel_GBox, 0, 0)
 
         # vertical layout
-        Reg_Layout = QVBoxLayout()
-        Reg_GBox.setLayout(Reg_Layout)
+        Left_Layout = QFormLayout()
+        LPanel_GBox.setLayout(Left_Layout)
 
         # IR Cam combobox
-        ir_cam_layout = QHBoxLayout()
         self.ir_cam_cbox = QComboBox()
         self.ir_cam_cbox.addItem('Parallax CCD (TSL1401)')
         self.ir_cam_set_btn = QPushButton(
@@ -176,9 +169,6 @@ class control_module(QMainWindow):
             "Reset",
             clicked=self.resetIRcam
         )
-        ir_cam_layout.addWidget(self.ir_cam_cbox, 3)
-        ir_cam_layout.addWidget(self.ir_cam_set_btn, 1)
-        ir_cam_layout.addWidget(self.ir_cam_reset_btn, 1)
         self.ir_widget = None
 
         # ALEX checkbox
@@ -198,26 +188,13 @@ class control_module(QMainWindow):
             clicked=self.stop_IR
         )
 
-        # IO MatchBox controls
-        self.mbox_connect_btn = QPushButton(
-            "Connect",
-            clicked=lambda: self.match_box.OpenCOM()
-        )
-        self.mbox_disconnect_btn = QPushButton(
-            "Disconnect",
-            clicked=lambda: self.match_box.CloseCOM()
-        )
-        self.mbox_config_btn = QPushButton(
-            "Config.",
-            clicked=lambda: self.open_dialog(self.match_box)
-        )
-        self.get_set_curr_btn = QPushButton(
-            "Get Set Current",
-            clicked=lambda: self.match_box.SendCommand(io_matchbox.CUR_SET)
-        )
-        self.get_curr_curr_btn = QPushButton(
-            "Get Current",
-            clicked=lambda: self.match_box.SendCommand(io_matchbox.CUR_CUR)
+        # Add Laser controls
+        self.lasers_cbox = QComboBox()
+        self.lasers_cbox.addItem('IO MatchBox Single Laser')
+        self.lasers_cbox.addItem('IO MatchBox Laser Combiner')
+        self.add_laser_btn = QPushButton(
+            "Add Laser",
+            clicked=lambda: self.add_laser_panel()
         )
 
         # Arduino RelayBox controls
@@ -239,36 +216,37 @@ class control_module(QMainWindow):
         )
 
         # Piezostage controls
-        stage_layout = QHBoxLayout()
         self.stage_cbox = QComboBox()
         self.stage_cbox.addItem('PiezoConcept FOC100')
         self.stage_set_btn = QPushButton(
             "Set",
             clicked=self.setStage
         )
-        stage_layout.addWidget(self.stage_cbox, 3)
-        stage_layout.addWidget(self.stage_set_btn, 1)
         self.stage_widget = None
 
-        Reg_Layout.addWidget(QLabel('IR Camera:'))
-        Reg_Layout.addLayout(ir_cam_layout)
-        Reg_Layout.addWidget(
-            DragLabel('Stage:', parent_name='self.stage_set_btn'))
-        Reg_Layout.addLayout(stage_layout)
+        Left_Layout.addRow(
+            QLabel('IR Camera:'), self.ir_cam_cbox)
 
-        Reg_Layout.addWidget(self.start_IR_btn)
-        Reg_Layout.addWidget(self.stop_IR_btn)
+        ir_cam_layout_0 = QHBoxLayout()
+        ir_cam_layout_0.addWidget(self.ir_cam_set_btn)
+        ir_cam_layout_0.addWidget(self.ir_cam_reset_btn)
+        Left_Layout.addRow(ir_cam_layout_0)
 
-        mbox_btns_0 = QHBoxLayout()
-        mbox_btns_1 = QHBoxLayout()
-        mbox_btns_0.addWidget(self.mbox_connect_btn)
-        mbox_btns_0.addWidget(self.mbox_disconnect_btn)
-        mbox_btns_0.addWidget(self.mbox_config_btn)
-        mbox_btns_1.addWidget(self.get_set_curr_btn)
-        mbox_btns_1.addWidget(self.get_curr_curr_btn)
-        Reg_Layout.addWidget(QLabel('IO MatchBox:'))
-        Reg_Layout.addLayout(mbox_btns_0)
-        Reg_Layout.addLayout(mbox_btns_1)
+        ir_cam_layout_1 = QHBoxLayout()
+        ir_cam_layout_1.addWidget(self.start_IR_btn)
+        ir_cam_layout_1.addWidget(self.stop_IR_btn)
+        Left_Layout.addRow(ir_cam_layout_1)
+
+        Left_Layout.addRow(
+            DragLabel('Stage:', parent_name='self.stage_set_btn'),
+            self.stage_cbox)
+        Left_Layout.addWidget(self.stage_set_btn)
+
+        Left_Layout.addRow(
+            QLabel('Lasers:'),
+            self.lasers_cbox)
+        Left_Layout.addWidget(
+            self.add_laser_btn)
 
         relay_btns_0 = QHBoxLayout()
         relay_btns_1 = QHBoxLayout()
@@ -277,36 +255,17 @@ class control_module(QMainWindow):
         relay_btns_0.addWidget(self.laser_relay_btn)
         relay_btns_1.addWidget(self.ALEX)
         relay_btns_1.addWidget(self.send_laser_relay_btn, 1)
-        Reg_Layout.addWidget(QLabel('Laser Relay:'))
-        Reg_Layout.addLayout(relay_btns_0)
-        Reg_Layout.addLayout(relay_btns_1)
-
-        Reg_Layout.addStretch()
+        Left_Layout.addRow(
+            QLabel('Laser Relay:'), relay_btns_0)
+        Left_Layout.addRow(relay_btns_1)
 
         # Lasers Tab
-        lasersLayout = QGridLayout()
-        lasers_tab = QWidget()
-        lasers_tab.setLayout(lasersLayout)
-        # Laser #1 405nm panel
-        self.L1_GBox = laser_panel(4, 405,
-                                   self.match_box, 280, "Laser #1 (405nm)")
+        self.lasersLayout = QHBoxLayout()
+        self.lasersLayout.addStretch()
+        self.lasers_tab = QWidget()
+        self.lasers_tab.setLayout(self.lasersLayout)
 
-        # Laser #2 488nm panel
-        self.L2_GBox = laser_panel(3, 488,
-                                   self.match_box, 105, "Laser #2 (488nm)")
-
-        # Laser #3 520nm panel
-        self.L3_GBox = laser_panel(2, 520,
-                                   self.match_box, 200, "Laser #3 (520nm)")
-
-        # Laser #4 638nm panel
-        self.L4_GBox = laser_panel(1, 638,
-                                   self.match_box, 280, "Laser #4 (638nm)")
-
-        lasersLayout.addWidget(self.L1_GBox, 0, 0)
-        lasersLayout.addWidget(self.L2_GBox, 1, 0)
-        lasersLayout.addWidget(self.L3_GBox, 0, 1)
-        lasersLayout.addWidget(self.L4_GBox, 1, 1)
+        self.laserPanels = []
 
         # cameras tab
         self.camListWidget = CameraListWidget()
@@ -347,7 +306,7 @@ class control_module(QMainWindow):
         app = QApplication.instance()
         app.aboutToQuit.connect(self.remote_view.close)
         # Tabs
-        self.Tab_Widget.addTab(lasers_tab, 'Lasers')
+        self.Tab_Widget.addTab(self.lasers_tab, 'Lasers')
         self.Tab_Widget.addTab(self.camListWidget, 'Cameras List')
         self.Tab_Widget.addTab(graphs_tab, 'Graphs')
 
@@ -465,11 +424,11 @@ class control_module(QMainWindow):
         str
             the RelayBox setting command.
         '''
-        return "" + self.L1_GBox.L_button_group.checkedButton().state \
-                  + self.L2_GBox.L_button_group.checkedButton().state \
-                  + self.L3_GBox.L_button_group.checkedButton().state \
-                  + self.L4_GBox.L_button_group.checkedButton().state \
-                  + ("ALEXON" if self.ALEX.isChecked() else "ALEXOFF") + "\r"
+        settings = ''
+        for panel in self.laserPanels:
+            settings += panel.GetRelayState()
+        return settings + \
+            ("ALEXON" if self.ALEX.isChecked() else "ALEXOFF") + "\r"
 
     def sendConfig(self, serial: QSerialPort):
         '''Sends the RelayBox setting command.
@@ -488,6 +447,18 @@ class control_module(QMainWindow):
             print(str(serial.readAll(), encoding="utf-8"))
         except Exception as e:
             print('Failed Laser Relay Send Config: ' + str(e))
+
+    def add_laser_panel(self):
+        selected = self.lasers_cbox.currentText()
+        if 'IO MatchBox' in selected:
+            if 'Combiner' in selected:
+                combiner = CombinerLaserWidget()
+                self.laserPanels.append(combiner)
+                self.lasersLayout.insertWidget(0, combiner)
+            elif 'Single' in selected:
+                laser = SingleLaserWidget()
+                self.laserPanels.append(laser)
+                self.lasersLayout.insertWidget(0, laser)
 
     def worker_function(self, progress_callback, movez_callback):
         '''A worker function running in the threadpool.
@@ -634,11 +605,6 @@ class control_module(QMainWindow):
         '''
         IR = ("    |  IR Cam " +
               ('connected' if self.IR_Cam.isOpen else 'disconnected'))
-        MBox = ("    |  MBox " +
-                ('connected' if self.match_box.isOpen() else 'disconnected'))
-        MBox_RESPONSE = ''
-        # if self.match_box.isOpen() and len(self.match_box.RESPONSE) > 0:
-        #     MBox_RESPONSE = "    | " + self.match_box.RESPONSE[-1]
 
         RelayBox = ("    |  Relay " + ('connected' if self.laserRelay.isOpen()
                     else 'disconnected'))
@@ -656,7 +622,7 @@ class control_module(QMainWindow):
             Worker += "    | Frames Buffer: {:d}".format(self.Buffer().qsize())
         self.statusBar().showMessage(
             "Time: " + QDateTime.currentDateTime().toString("hh:mm:ss,zzz")
-            + IR + MBox + MBox_RESPONSE + RelayBox
+            + IR + RelayBox
             + Piezo + Position + Frames + Worker)
 
         # update indicators
@@ -664,10 +630,6 @@ class control_module(QMainWindow):
             self.IR_Cam._connect_btn.setStyleSheet("background-color: green")
         else:
             self.IR_Cam._connect_btn.setStyleSheet("background-color: red")
-        if self.match_box.isOpen():
-            self.mbox_connect_btn.setStyleSheet("background-color: green")
-        else:
-            self.mbox_connect_btn.setStyleSheet("background-color: red")
         if self.stage.isOpen():
             self.stage._connect_btn.setStyleSheet("background-color: green")
         else:
@@ -717,73 +679,6 @@ class control_module(QMainWindow):
                 portname, baudrate = dialog.get_results()
                 serial.setPortName(portname)
                 serial.setBaudRate(baudrate)
-
-    @pyqtSlot(str, bytes)
-    def rx_mbox(self, res, cmd):
-        '''IO MatchBox laser combiner DataReady signal,
-        emitted after recieving a command's response.
-
-        Parameters
-        ----------
-        res : str
-            response from the combiner.
-        cmd : bytes
-            command sent to the combiner.
-        '''
-        print('Event ', res, cmd)
-
-        # sets the GUI controls to match the laser enabled/disabled status
-        if cmd == io_matchbox.STATUS:
-            res = res.strip("<").strip(">").split()
-            if len(res) >= 4:
-                if bool(int(res[0])):
-                    self.L4_GBox.ON.setChecked(True)
-                else:
-                    self.L4_GBox.ON.setChecked(False)
-                if bool(int(res[1])):
-                    self.L3_GBox.ON.setChecked(True)
-                else:
-                    self.L3_GBox.ON.setChecked(False)
-                if bool(int(res[2])):
-                    self.L2_GBox.ON.setChecked(True)
-                else:
-                    self.L2_GBox.ON.setChecked(False)
-                if bool(int(res[3])):
-                    self.L1_GBox.ON.setChecked(True)
-                else:
-                    self.L1_GBox.ON.setChecked(False)
-        # sets the GUI controls to match the laser set currents
-        elif cmd == io_matchbox.CUR_SET:
-            res = res.strip("<").strip(">").split()
-            if len(res) > 0:
-                if res[0] != 'ERR':
-                    self.match_box.Setting = res
-                    self.L1_GBox.L_cur_slider.setValue(
-                        int(self.match_box.Setting[3]))
-                    self.L2_GBox.L_cur_slider.setValue(
-                        int(self.match_box.Setting[2]))
-                    self.L3_GBox.L_cur_slider.setValue(
-                        int(self.match_box.Setting[1]))
-                    self.L4_GBox.L_cur_slider.setValue(
-                        int(self.match_box.Setting[0]))
-                else:
-                    self.match_box.SendCommand(io_matchbox.CUR_SET)
-        # updates the GUI to show the laser current readings
-        elif cmd == io_matchbox.CUR_CUR:
-            res = res.strip("<").strip(">").strip('mA').split()
-            if res[0] != 'ERR':
-                self.match_box.Current = res
-
-                self.L1_GBox.L_cur_label.setText(
-                    "Current " + str(self.match_box.Current[3]) + " mA")
-                self.L2_GBox.L_cur_label.setText(
-                    "Current " + str(self.match_box.Current[2]) + " mA")
-                self.L3_GBox.L_cur_label.setText(
-                    "Current " + str(self.match_box.Current[1]) + " mA")
-                self.L4_GBox.L_cur_label.setText(
-                    "Current " + str(self.match_box.Current[0]) + " mA")
-            else:
-                self.match_box.SendCommand(io_matchbox.CUR_CUR)
 
     @pyqtSlot(QSerialPort)
     def connectToPort(self, serial: QSerialPort):

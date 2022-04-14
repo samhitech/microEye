@@ -8,14 +8,14 @@ import sys
 import qdarkstyle
 
 
-class io_combiner(QSerialPort):
+class io_single_laser(QSerialPort):
     '''
     MatchBox Class | Inherits QSerialPort
     '''
     INFO = b'r i'
     '''Get MatchBox Info
     '''
-    ON = b'e 1'
+    ON_DIS = b'e 2'
     '''Enable the combiner
     '''
     OFF = b'e 0'
@@ -23,49 +23,24 @@ class io_combiner(QSerialPort):
     '''
     READ = b'r r'
     SETTINGS = b'r s'
-
-    ENABLE_1 = b'L1E'
+    ON_EN = b'e 1'
     '''Enable 1st Laser Diode
-    '''
-    ENABLE_2 = b'L2E'
-    '''Enable 2nd Laser Diode
-    '''
-    ENABLE_3 = b'L3E'
-    '''Enable 3rd Laser Diode
-    '''
-    ENABLE_4 = b'L4E'
-    '''Enable 4th Laser Diode
-    '''
-    DISABLE_1 = b'L1D'
-    '''Disable 1st Laser Diode
-    '''
-    DISABLE_2 = b'L2D'
-    '''Disable 2nd Laser Diode
-    '''
-    DISABLE_3 = b'L3D'
-    '''Disable 3rd Laser Diode
-    '''
-    DISABLE_4 = b'L4D'
-    '''Disable 4th Laser Diode
-    '''
-
-    GET_WAVELENGTHS = b'Ln?'
-    '''Get available wavelengths
     '''
 
     MAX_CUR = b'Lm?'
     '''Get maximum current
     '''
-    CUR_SET = b'Lc?'
-    '''Get the current set value
+    P_SET = b'c 4 '
+    '''Set the power value in mW
     '''
-    CUR_CUR = b'Lr'
-    '''Get the current reading
+    P_MAX = b'r 4'
+    '''Get the max power value
     '''
     STATUS = b'Le'
     '''Get the laser diodes enabled(1)/disabled(0) states
     '''
-    START = b'c u 2 35488'
+    # START = b'c u 2 35488'
+    START = b'c u 1 1234'
     '''TBA
     '''
 
@@ -110,11 +85,6 @@ class io_combiner(QSerialPort):
     Operation_Time = ''
     ON_Times = ''
 
-    Current = [0, 0, 0, 0]
-    Setting = [0, 0, 0, 0]
-    Max = [0, 0, 0, 0]
-    Wavelengths = [0, 0, 0, 0]
-
     def SendCommand(self, command, log_print: bool = True, delay: int = 1):
         '''Sends a specific command to the device and waits for
         the response then emits the DataReady signal.
@@ -133,7 +103,7 @@ class io_combiner(QSerialPort):
             while self.bytesAvailable() < 5:
                 self.waitForReadyRead(500)
 
-            response = str(self.readAll().replace(b'\xff', b''),
+            response = str(self.readAll(),
                            encoding='utf8').strip('\r\n').strip()
             if log_print:
                 print(response, command)
@@ -150,69 +120,33 @@ class io_combiner(QSerialPort):
             self.flush()
 
             if(self.isOpen()):
-                self.SendCommand(io_combiner.ON)
-                self.SendCommand(io_combiner.START)
+                self.SendCommand(io_single_laser.ON_DIS)
+                self.SendCommand(io_single_laser.START)
                 # self.SendCommand(io_single_laser.STATUS)
                 self.GetInfo()
-                self.GetWavelengths()
-                self.SetCurrent(1, 0)
-                self.SetCurrent(2, 0)
-                self.SetCurrent(3, 0)
-                self.SetCurrent(4, 0)
-                self.GetMaxCurrent()
+                self.SetPower(1)
+                self.GetMaxPower()
 
     def CloseCOM(self):
         '''Closes the serial port.
         '''
         if(self.isOpen()):
-            self.SendCommand(io_combiner.OFF)
+            self.SendCommand(io_single_laser.OFF)
             self.waitForBytesWritten(500)
 
             self.close()
 
-    def GetMaxCurrent(self):
+    def GetMaxPower(self):
         if(self.isOpen()):
-            res = self.SendCommand(io_combiner.MAX_CUR)
+            res = self.SendCommand(io_single_laser.P_MAX)
 
             if not ('<ERR>' in res or '<ACK>' in res):
-                values = res.strip('<').strip('>').split(' ')
-                if len(values) >= 4:
-                    self.Max = list(map(int, values))
-
-    def GetCurrent(self, log_print: bool = False):
-        if(self.isOpen()):
-            res = self.SendCommand(
-                io_combiner.CUR_CUR, log_print)
-
-            if not ('<ERR>' in res or '<ACK>' in res):
-                values = res.strip('<').strip(' mA>').split(' ')
-                if len(values) >= 4:
-                    self.Current = list(map(float, values))
-
-    def GetSetCurrent(self, log_print: bool = False):
-        if(self.isOpen()):
-            res = self.SendCommand(
-                io_combiner.CUR_SET, log_print)
-
-            if not ('<ERR>' in res or '<ACK>' in res):
-                values = res.strip('<').strip('>').split(' ')
-                if len(values) >= 4:
-                    self.Setting = list(map(int, values))
-
-    def GetWavelengths(self):
-        if(self.isOpen()):
-            res = self.SendCommand(io_combiner.GET_WAVELENGTHS)
-
-            if not ('<ERR>' in res or '<ACK>' in res):
-                values = res.strip('<').strip(
-                    ' >').replace('ÿÿÿÿÿ', '').strip().split(' ')
-                if len(values) >= 3:
-                    self.Wavelengths = list(map(int, values))
+                self.Max_Power = float(res)
 
     def GetReadings(self, log_print: bool = True):
         if(self.isOpen()):
             res = self.SendCommand(
-                io_combiner.READ,
+                io_single_laser.READ,
                 log_print)
 
             if not ('<ERR>' in res or '<ACK>' in res):
@@ -231,7 +165,7 @@ class io_combiner(QSerialPort):
     def GetSettings(self, log_print: bool = True):
         if(self.isOpen()):
             res = self.SendCommand(
-                io_combiner.SETTINGS,
+                io_single_laser.SETTINGS,
                 log_print)
 
             if not ('<ERR>' in res or '<ACK>' in res):
@@ -247,30 +181,11 @@ class io_combiner(QSerialPort):
                     self.S_Access_Level = int(readings[8])
                     self.S_Fan_Temp = float(readings[9]) / 100
 
-    def SetCurrent(self, index: int, value: int) -> bool:
+    def SetPower(self, value: float) -> bool:
         if(self.isOpen()):
             res = self.SendCommand(
-                'Lc{:.0f} {:.0f}'.format(index, value).encode('utf-8'))
-
-            if '<ACK>' in res:
-                return True
-            else:
-                return False
-
-    def SetDisabled(self, index: int) -> bool:
-        if(self.isOpen()):
-            res = self.SendCommand(
-                'L{:.0f}D'.format(index).encode('utf-8'))
-
-            if '<ACK>' in res:
-                return True
-            else:
-                return False
-
-    def SetEnabled(self, index: int) -> bool:
-        if(self.isOpen()):
-            res = self.SendCommand(
-                'L{:.0f}E'.format(index).encode('utf-8'))
+                io_single_laser.P_SET +
+                '{:.2f}'.format(value).encode('utf-8'))
 
             if '<ACK>' in res:
                 return True
@@ -280,7 +195,7 @@ class io_combiner(QSerialPort):
     def GetInfo(self):
         if(self.isOpen()):
             res = self.SendCommand(
-                io_combiner.INFO,
+                io_single_laser.INFO,
                 delay=50)
 
             if not ('<ERR>' in res or '<ACK>' in res):
@@ -293,91 +208,11 @@ class io_combiner(QSerialPort):
                 self.ON_Times = info[4]
 
 
-class LaserSwitches(QGroupBox):
-    def __init__(self, Laser: io_combiner, index=1, wavelength=638) -> None:
-        super().__init__()
-
-        self.Laser = Laser
-        self.index = index
-        self.wavelength = wavelength
-
-        self.setTitle(str(wavelength))
-
-        # main vertical layout
-        L_Layout = QVBoxLayout()
-
-        # on with cam 1 flash
-        self.CAM1 = QRadioButton("CAM 1 Flash")
-        self.CAM1.state = "L{:d}F1".format(wavelength)
-        L_Layout.addWidget(self.CAM1)
-
-        # on with cam 2 flash
-        self.CAM2 = QRadioButton("CAM 2 Flash")
-        self.CAM2.state = "L{:d}F2".format(wavelength)
-        L_Layout.addWidget(self.CAM2)
-
-        # off regardless
-        self.OFF = QRadioButton("OFF")
-        self.OFF.state = "L{:d}OFF".format(wavelength)
-        self.OFF.setChecked(True)
-        L_Layout.addWidget(self.OFF)
-
-        # on regardless
-        self.ON = QRadioButton("ON")
-        self.ON.state = "L{:d}ON".format(wavelength)
-        L_Layout.addWidget(self.ON)
-
-        # Create a button group for radio buttons
-        self.L_button_group = QButtonGroup()
-        self.L_button_group.addButton(self.CAM1, 1)
-        self.L_button_group.addButton(self.CAM2, 2)
-        self.L_button_group.addButton(self.OFF, 3)
-        self.L_button_group.addButton(self.ON, 4)
-
-        self.L_button_group.buttonPressed.connect(self.laser_radio_changed)
-
-        # Power control
-        self.L_current = QSpinBox()
-        self.L_current.setMinimum(0)
-        self.L_current.setMaximum(Laser.Max[index - 1])
-        self.L_current.setValue(0)
-        self.L_set_curr_btn = QPushButton(
-            "Set Current [mA]",
-            clicked=lambda:
-            self.Laser.SetCurrent(
-                self.index,
-                self.L_current.value()))
-
-        L_Layout.addWidget(self.L_current)
-        L_Layout.addWidget(self.L_set_curr_btn)
-
-        self.setLayout(L_Layout)
-
-    def laser_radio_changed(self, object):
-        '''Sends enable/disable signals to the
-        laser combiner according to selected setting
-
-        Parameters
-        ----------
-        object : [QRadioButton]
-            the radio button toggled
-        '''
-        if ("OFF" in object.state):
-            self.Laser.SetDisabled(self.index)
-        else:
-            self.Laser.SetEnabled(self.index)
-
-    def GetRelayState(self):
-        return self.L_button_group.checkedButton().state
-
-
-class CombinerLaserWidget(QGroupBox):
+class SingleLaserWidget(QGroupBox):
     def __init__(self) -> None:
         super().__init__()
 
-        self.Laser = io_combiner()
-
-        self._laserSwitches = []
+        self.Laser = io_single_laser()
 
         self.V_Layout = QFormLayout()
 
@@ -415,18 +250,65 @@ class CombinerLaserWidget(QGroupBox):
         self.V_Layout.addRow(self.mbox_connect_btn)
         self.V_Layout.addRow(self.mbox_disconnect_btn)
 
-        self.Switches_Layout = QHBoxLayout()
-        self.V_Layout.addRow(
-            self.Switches_Layout)
+        # main vertical layout
+        L_Layout = QVBoxLayout()
 
-        self.S_Current_Label = QLabel("NA")
-        self.R_Current_Label = QLabel("NA")
+        # on with cam 1 flash
+        self.CAM1 = QRadioButton("CAM 1 Flash")
+        L_Layout.addWidget(self.CAM1)
+
+        # on with cam 2 flash
+        self.CAM2 = QRadioButton("CAM 2 Flash")
+        L_Layout.addWidget(self.CAM2)
+
+        # off regardless
+        self.OFF = QRadioButton("OFF")
+        self.OFF.setChecked(True)
+        L_Layout.addWidget(self.OFF)
+
+        # on regardless
+        self.ON = QRadioButton("ON")
+        L_Layout.addWidget(self.ON)
+
+        # self.CAM1.state = "L{:d}F1".format(wavelength)
+        # self.CAM2.state = "L{:d}F2".format(wavelength)
+        # self.OFF.state = "L{:d}OFF".format(wavelength)
+        # self.ON.state = "L{:d}ON".format(wavelength)
+
+        # Create a button group for radio buttons
+        self.L_button_group = QButtonGroup()
+        self.L_button_group.addButton(self.CAM1, 1)
+        self.L_button_group.addButton(self.CAM2, 2)
+        self.L_button_group.addButton(self.OFF, 3)
+        self.L_button_group.addButton(self.ON, 4)
+
+        self.L_button_group.buttonPressed.connect(self.laser_radio_changed)
+
+        self.V_Layout.addRow(
+            QLabel('Status:'), L_Layout)
+
+        # Power control
+        self.L_power_label = QLabel("Power (mW):")
+        self.L_power = QDoubleSpinBox()
+        self.L_power.label = self.L_power_label
+        self.L_power.setDecimals(2)
+        self.L_power.setMinimum(0)
+        self.L_power.setMaximum(100)
+        self.L_power.setValue(0)
+        self.L_set_curr_btn = QPushButton(
+            "Set Power",
+            clicked=lambda:
+            self.Laser.SetPower(
+                self.L_power.value()))
+
+        self.V_Layout.addRow(
+            self.L_power_label, self.L_power)
+        self.V_Layout.addRow(self.L_set_curr_btn)
+
         self.R_Temps_Label = QLabel("NA")
         self.S_Temps_Label = QLabel("NA")
         self.R_TEC_Label = QLabel("NA")
 
-        self.V_Layout.addRow(
-            QLabel('Currents Read:'), self.R_Current_Label)
         self.V_Layout.addRow(
             QLabel('Temp. Set (LD, Crystal, Fan):'), self.S_Temps_Label)
         self.V_Layout.addRow(
@@ -442,18 +324,6 @@ class CombinerLaserWidget(QGroupBox):
         self.timer.timeout.connect(self.update_stats)
         self.timer.start()
 
-    def laser_connect(self):
-        self.Laser.OpenCOM()
-
-        if self.Switches_Layout.isEmpty():
-            for idx in range(len(self.Laser.Wavelengths)):
-                if self.Laser.Wavelengths[idx] > 0:
-                    switch = LaserSwitches(
-                        self.Laser, idx + 1,
-                        self.Laser.Wavelengths[idx])
-                    self._laserSwitches.append(switch)
-                    self.Switches_Layout.addWidget(switch)
-
     def set_config(self):
         if not self.Laser.isOpen():
             self.Laser.setPortName(
@@ -461,15 +331,24 @@ class CombinerLaserWidget(QGroupBox):
             self.Laser.setBaudRate(
                 self.baudrate_comboBox.currentData())
 
+    def laser_connect(self):
+        self.Laser.OpenCOM()
+
+        wavelength = self.Laser.Model.split('L')[0]
+
+        self.CAM1.state = "L{}F1".format(wavelength)
+        self.CAM2.state = "L{}F2".format(wavelength)
+        self.OFF.state = "L{}OFF".format(wavelength)
+        self.ON.state = "L{}ON".format(wavelength)
+
     def update_stats(self):
         if self.Laser.isOpen():
             self.Laser.GetReadings(False)
             self.Laser.GetSettings(False)
-            self.Laser.GetCurrent()
 
-            self.R_Current_Label.setText(
-                "{:.2f} mA, {:.2f} mA, {:.2f} mA, {:.2f} mA".format(
-                    *self.Laser.Current))
+            self.L_power.setMaximum(self.Laser.Max_Power)
+            self.L_power_label.setText(
+                "Power {:.2f} (mW):".format(self.Laser.S_Power))
             self.R_Temps_Label.setText(
                 "{:.2f} C, {:.2f} C, {:.2f} C".format(
                     self.Laser.R_Diode_Temp,
@@ -503,11 +382,25 @@ class CombinerLaserWidget(QGroupBox):
                 if self.portname_comboBox.findText(info.portName()) == -1:
                     self.portname_comboBox.addItem(info.portName())
 
+    def laser_radio_changed(self, object):
+        '''Sends enable/disable signals to the
+        laser combiner according to selected setting
+
+        Parameters
+        ----------
+        object : [QRadioButton]
+            the radio button toggled
+        '''
+        if ("OFF" in object.state):
+            self.Laser.SendCommand(io_single_laser.ON_DIS)
+        else:
+            self.Laser.SendCommand(io_single_laser.ON_EN)
+
     def GetRelayState(self):
-        states = ''
-        for switch in self._laserSwitches:
-            states += switch.L_button_group.checkedButton().state
-        return states
+        try:
+            return self.L_button_group.checkedButton().state
+        except Exception:
+            return ''
 
     def StartGUI():
         '''Initializes a new QApplication and control_module.
@@ -555,12 +448,12 @@ class CombinerLaserWidget(QGroupBox):
             ctypes.windll.shell32.\
                 SetCurrentProcessExplicitAppUserModelID(myappid)
 
-        widget = CombinerLaserWidget()
+        widget = SingleLaserWidget()
         widget.show()
         return app, widget
 
 
 if __name__ == '__main__':
-    app, widget = CombinerLaserWidget.StartGUI()
+    app, widget = SingleLaserWidget.StartGUI()
 
     app.exec_()

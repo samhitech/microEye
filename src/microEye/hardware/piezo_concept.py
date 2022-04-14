@@ -215,23 +215,11 @@ class piezo_concept(stage):
             self.piezoTracking = True
             self._tracking_btn.setText("Focus Tracking On")
 
-    def fine_steps_valuechange(self):
-        '''Updates the fine step label.
-        '''
-        self.fine_steps_label.setText(
-            "Fine step " + str(self.fine_steps_slider.value()) + " nm")
-
-    def coarse_steps_valuechange(self):
-        '''Updates the coarse step label.
-        '''
-        self.coarse_steps_label.setText(
-            "Coarse step " + str(self.coarse_steps_slider.value()) + " um")
-
     def getQWidget(self):
         '''Generates a QGroupBox with
         stage controls.'''
         group = QGroupBox('PiezoConcept FOC100')
-        layout = QVBoxLayout()
+        layout = QFormLayout()
         group.setLayout(layout)
 
         # Piezostage controls
@@ -261,24 +249,18 @@ class piezo_concept(stage):
 
         fine_step = 25
         coarse_step = 1
-        self.fine_steps_label = QLabel("Fine step " + str(fine_step) + " nm")
-        self.fine_steps_slider = QSlider(Qt.Orientation.Horizontal)
+        self.fine_steps_label = QLabel("Fine step [nm]")
+        self.fine_steps_slider = QSpinBox()
         self.fine_steps_slider.setMinimum(1)
         self.fine_steps_slider.setMaximum(1000)
         self.fine_steps_slider.setValue(fine_step)
-        self.fine_steps_slider.setTickInterval(200)
-        self.fine_steps_slider.valueChanged.connect(
-            self.fine_steps_valuechange)
 
         self.coarse_steps_label = QLabel(
-            "Coarse step " + str(coarse_step) + " um")
-        self.coarse_steps_slider = QSlider(Qt.Orientation.Horizontal)
+            "Coarse step [um]")
+        self.coarse_steps_slider = QSpinBox()
         self.coarse_steps_slider.setMinimum(1)
         self.coarse_steps_slider.setMaximum(20)
         self.coarse_steps_slider.setValue(coarse_step)
-        self.coarse_steps_slider.setTickInterval(4)
-        self.coarse_steps_slider.valueChanged.connect(
-            self.coarse_steps_valuechange)
 
         self.piezo_HOME_btn = QPushButton(
             "⌂",
@@ -320,13 +302,16 @@ class piezo_concept(stage):
         btns.addWidget(self._connect_btn)
         btns.addWidget(self._disconnect_btn)
         btns.addWidget(self._config_btn)
-        layout.addLayout(btns)
-        layout.addWidget(self.fine_steps_label)
-        layout.addWidget(self.fine_steps_slider)
-        layout.addWidget(self.coarse_steps_label)
-        layout.addWidget(self.coarse_steps_slider)
-        layout.addLayout(self.move_buttons)
-        layout.addWidget(self._tracking_conf_btn)
+        layout.addRow(btns)
+        layout.addRow(
+            self.fine_steps_label,
+            self.fine_steps_slider)
+        layout.addRow(
+            self.coarse_steps_label,
+            self.coarse_steps_slider)
+        layout.addRow(self.move_buttons)
+        layout.addRow(
+            QLabel('Tracking:'), self._tracking_conf_btn)
         layout.addWidget(self._tracking_btn)
         layout.addWidget(self._inverted)
 

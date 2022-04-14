@@ -17,9 +17,9 @@ class dark_calibration():
         self._exposure = exposure
         self._shape = shape
         self._accumulator = np.zeros(
-            shape=shape, dtype=np.int64)
+            shape=shape, dtype=np.float64)
         self._quad_accum = np.zeros(
-            shape=shape, dtype=np.int64)
+            shape=shape, dtype=np.float64)
 
     def addFrame(self, image: np.ndarray):
         '''Adds an image frame to the mean/variance estimators.
@@ -58,8 +58,9 @@ class dark_calibration():
             raise ValueError('Counter should be non-zero.')
 
         mean = self._accumulator / self._counter
-        mean_x2 = self._quad_accum / self._counter
-        variance = mean_x2 - np.square(mean)
+        variance = (
+            self._quad_accum -
+            np.square(self._accumulator)/self._counter)/(self._counter - 1)
 
         return mean, variance
 
