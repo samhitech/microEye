@@ -177,8 +177,7 @@ class vimba_cam:
             except Exception:
                 exposure = self.cam.ExposureTimeAbs
                 self.exposure_current = exposure.get()
-                self.exposure_increment = 1
-                # self.cam.ExposureTimeIncrement.get()
+                self.exposure_increment = self.cam.ExposureTimeIncrement.get()
                 self.exposure_unit = exposure.get_unit()
                 self.exposure_range = exposure.get_range()
             if output:
@@ -215,6 +214,15 @@ class vimba_cam:
             return 1
         except Exception:
             print("Exposure Set ERROR")
+            return 0
+
+    def set_black_level(self, value: float):
+        try:
+            blackLevel = self.cam.BlackLevel
+            blackLevel.set(value)
+            return 1
+        except Exception:
+            print("Black Level Set ERROR")
             return 0
 
     def set_exposure_mode(self, value: str = 'Timed'):
@@ -552,17 +560,6 @@ class vimba_cam:
             else:
                 return 0
         except Exception:
-            print("Pixel Format Set ERROR")
-            return 'NA'
-
-    def get_pixel_size(self):
-        try:
-            # with self.cam:
-            self.pixel_size = self.cam.PixelSize.get()
-            self.bytes_per_pixel = int(np.ceil(int(self.pixel_size)/8))
-            print("Pixel Format", self.pixel_size)
-            return self.pixel_size
-        except Exception:
             pFormat = str(self.cam.get_pixel_format())
             if '8' in pFormat:
                 self.pixel_size = 8
@@ -578,6 +575,109 @@ class vimba_cam:
             else:
                 print("Pixel Format Not supported.")
                 return 'NA'
+        finally:
+            self.set_black_level(5.0)
+
+    def get_pixel_size(self):
+        try:
+            # with self.cam:
+            self.pixel_size = self.cam.PixelSize.get()
+            self.bytes_per_pixel = int(np.ceil(int(self.pixel_size)/8))
+            print("Pixel Format", self.pixel_size)
+            return self.pixel_size
+        except Exception:
+            print("Pixel Size Get ERROR")
+            return 'NA'
+
+    def get_io_lines(self):
+        try:
+            lines = []
+            for line in self.cam.LineSelector.get_available_entries():
+                lines.append(str(line))
+            return lines
+        except Exception:
+            print("get_io_lines ERROR")
+            return None
+
+    def get_line_modes(self):
+        try:
+            modes = []
+            for mode in self.cam.LineMode.get_available_entries():
+                modes.append(str(mode))
+            return modes
+        except Exception:
+            print("get_line_modes ERROR")
+            return None
+
+    def get_line_sources(self):
+        try:
+            sources = []
+            for source in self.cam.LineSource.get_available_entries():
+                sources.append(str(source))
+            return sources
+        except Exception:
+            print("get_line_sources ERROR")
+            return None
+
+    def get_line_source(self):
+        try:
+            return str(self.cam.LineSource.get())
+        except Exception:
+            print("get_line_source ERROR")
+            return None
+
+    def get_line_mode(self):
+        try:
+            return str(self.cam.LineMode.get())
+        except Exception:
+            print("get_line_mode ERROR")
+            return None
+
+    def get_line_inverter(self):
+        try:
+            return self.cam.LineInverter.get()
+        except Exception:
+            print("get_line_inverter ERROR")
+            return None
+
+    def get_line_status(self):
+        try:
+            return self.cam.LineStatus.get()
+        except Exception:
+            print("get_line_status ERROR")
+            return None
+
+    def set_line_inverter(self, value: bool):
+        try:
+            self.cam.LineInverter.set(value)
+            return True
+        except Exception:
+            print("set_line_inverter ERROR")
+            return False
+
+    def set_line_source(self, value: str):
+        try:
+            self.cam.LineSource.set(value)
+            return True
+        except Exception:
+            print("set_line_source ERROR")
+            return False
+
+    def set_line_mode(self, value: str):
+        try:
+            self.cam.LineMode.set(value)
+            return True
+        except Exception:
+            print("set_line_mode ERROR")
+            return False
+
+    def select_io_line(self, value: str):
+        try:
+            self.cam.LineSelector.set(value)
+            return True
+        except Exception:
+            print("select_io_line ERROR")
+            return False
 
     def get_roi(self):
         try:

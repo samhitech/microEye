@@ -2,10 +2,48 @@
 import numpy as np
 import pandas as pd
 from PyQt5.QtCore import *
+from pkg_resources import yield_lines
 from scipy.interpolate import interp1d
 
 from ..Rendering import gauss_hist_render
 from .processing import *
+
+from enum import Enum
+
+
+class DataColumns(Enum):
+    Frame = (0, 'frame')
+    X_pixel = (1, 'x [pixel]')
+    Y_pixel = (2, 'y [pixel]')
+    X_nm = (3, 'x [nm]')
+    Y_nm = (4, 'y [nm]')
+    Z_nm = (5, 'z [nm]')
+    Intensity = (6, 'intensity')
+    TrackID = (7, 'trackID')
+    NeighbourDist = (8, 'neighbour_dist [nm]')
+    NMerged = (9, 'n_merged')
+
+    XY_Ratio = (10, 'XY_Ratio')
+    X_Sigma = (11, 'X_Sigma')
+    Y_Sigma = (12, 'Y_Sigma')
+    Offset = (13, 'Offset')
+
+    def __str__(self):
+        return self.value[1]
+
+    @classmethod
+    def from_string(cls, s):
+        for column in cls:
+            if column.value[1] == s:
+                return column
+        raise ValueError(cls.__name__ + ' has no value matching "' + s + '"')
+
+    @classmethod
+    def values(cls):
+        res = []
+        for column in cls:
+            res.append(column.value[1])
+        return np.array(res)
 
 
 class ResultsUnits:
@@ -20,10 +58,10 @@ class FittingMethod:
 
 class FittingResults:
 
-    columns = np.array([
-        'frame', 'x [pixel]', 'y [pixel]', 'x [nm]', 'y [nm]', 'z [nm]',
-        'intensity', 'trackID', 'neighbour_dist [nm]', 'n_merged'
-    ])
+    # columns = np.array([
+    #     'frame', 'x [pixel]', 'y [pixel]', 'x [nm]', 'y [nm]', 'z [nm]',
+    #     'intensity', 'trackID', 'neighbour_dist [nm]', 'n_merged'
+    # ])
 
     def __init__(self, unit=ResultsUnits.Pixel, pixelSize=130.0):
         '''Fitting Results
@@ -48,13 +86,22 @@ class FittingResults:
         self.neighbour_dist = []
         self.n_merged = []
 
+        self.xy_Ratio = []
+        self.x_Sigma = []
+        self.y_Sigma = []
+        self.offset = []
+
     def extend(self, data: np.ndarray):
         '''Extend results by contents of data array
 
         Parameters
         ----------
         data : np.ndarray
-            array of shape (n, m=4), columns (X, Y, Intensity, Frame)
+            array of shape (n, m=6), columns
+            (X, Y, Z, Intensity, Frame, XY_Ratio)
+            or
+            array of shape (n, m=9), added columns
+            (Sigma_X, Sigma_Y, Offset)
         '''
         if self.unit is ResultsUnits.Pixel:
             self.locX.extend(data[:, 0])
@@ -66,6 +113,17 @@ class FittingResults:
         self.locZ_nm.extend(data[:, 2])
         self.intensity.extend(data[:, 3])
         self.frame.extend(data[:, 4])
+
+        self.xy_Ratio.extend(data[:, 5])
+
+        if data.shape[1] == 9:
+            self.x_Sigma.extend(data[:, 6])
+            self.y_Sigma.extend(data[:, 7])
+            self.offset.extend(data[:, 8])
+        else:
+            self.x_Sigma.extend([0] * data.shape[0])
+            self.y_Sigma.extend([0] * data.shape[0])
+            self.offset.extend([0] * data.shape[0])
 
         self.trackID.extend([0] * data.shape[0])
         self.neighbour_dist.extend([0] * data.shape[0])
@@ -90,7 +148,11 @@ class FittingResults:
                     np.array(self.intensity),
                     np.array(self.trackID),
                     np.array(self.neighbour_dist),
-                    np.array(self.n_merged)]
+                    np.array(self.n_merged),
+                    np.array(self.xy_Ratio),
+                    np.array(self.x_Sigma),
+                    np.array(self.y_Sigma),
+                    np.array(self.offset)]
         else:
             loc = np.c_[
                     np.array(self.frame),
@@ -102,11 +164,15 @@ class FittingResults:
                     np.array(self.intensity),
                     np.array(self.trackID),
                     np.array(self.neighbour_dist),
-                    np.array(self.n_merged)]
+                    np.array(self.n_merged),
+                    np.array(self.xy_Ratio),
+                    np.array(self.x_Sigma),
+                    np.array(self.y_Sigma),
+                    np.array(self.offset)]
 
         return pd.DataFrame(
-            loc, columns=FittingResults.columns).sort_values(
-            by=FittingResults.columns[0])
+            loc, columns=DataColumns.values()).sort_values(
+            by=str(DataColumns.Frame))
 
     def toRender(self):
         '''Returns columns for rendering
@@ -156,57 +222,78 @@ class FittingResults:
     def fromDataFrame(dataFrame: pd.DataFrame, pixelSize: float):
         fittingResults = None
 
-        if FittingResults.columns[3] in dataFrame and \
-                FittingResults.columns[4] in dataFrame:
+        if str(DataColumns.X_nm) in dataFrame and \
+                str(DataColumns.Y_nm) in dataFrame:
             fittingResults = FittingResults(
                 ResultsUnits.Nanometer,
                 pixelSize)
             fittingResults.locX_nm = \
-                dataFrame[FittingResults.columns[3]]
+                dataFrame[str(DataColumns.X_nm)]
             fittingResults.locY_nm = \
-                dataFrame[FittingResults.columns[4]]
-        elif FittingResults.columns[1] in dataFrame and \
-                FittingResults.columns[2] in dataFrame:
+                dataFrame[str(DataColumns.Y_nm)]
+        elif str(DataColumns.X_pixel) in dataFrame and \
+                str(DataColumns.Y_pixel) in dataFrame:
             fittingResults = FittingResults(
                 ResultsUnits.Pixel,
                 pixelSize)
             fittingResults.locX = \
-                dataFrame[FittingResults.columns[1]]
+                dataFrame[str(DataColumns.X_pixel)]
             fittingResults.locY = \
-                dataFrame[FittingResults.columns[2]]
+                dataFrame[str(DataColumns.Y_pixel)]
         else:
             return None
 
-        if FittingResults.columns[0] in dataFrame:
-            fittingResults.frame = dataFrame[FittingResults.columns[0]]
+        if str(DataColumns.Frame) in dataFrame:
+            fittingResults.frame = dataFrame[str(DataColumns.Frame)]
         else:
             fittingResults.frame = np.zeros(len(fittingResults))
 
-        if FittingResults.columns[5] in dataFrame:
-            fittingResults.locZ_nm = dataFrame[FittingResults.columns[5]]
+        if str(DataColumns.Z_nm) in dataFrame:
+            fittingResults.locZ_nm = \
+                dataFrame[str(DataColumns.Z_nm)]
         else:
             fittingResults.locZ_nm = np.zeros(len(fittingResults))
 
-        if FittingResults.columns[6] in dataFrame:
-            fittingResults.intensity = dataFrame[FittingResults.columns[6]]
+        if str(DataColumns.Intensity) in dataFrame:
+            fittingResults.intensity = dataFrame[str(DataColumns.Intensity)]
         else:
             fittingResults.intensity = np.ones(len(fittingResults))
 
-        if FittingResults.columns[7] in dataFrame:
-            fittingResults.trackID = dataFrame[FittingResults.columns[7]]
+        if str(DataColumns.TrackID) in dataFrame:
+            fittingResults.trackID = dataFrame[str(DataColumns.TrackID)]
         else:
             fittingResults.trackID = np.zeros(len(fittingResults))
 
-        if FittingResults.columns[8] in dataFrame:
+        if str(DataColumns.NeighbourDist) in dataFrame:
             fittingResults.neighbour_dist = \
-                dataFrame[FittingResults.columns[8]]
+                dataFrame[str(DataColumns.NeighbourDist)]
         else:
             fittingResults.neighbour_dist = np.zeros(len(fittingResults))
 
-        if FittingResults.columns[9] in dataFrame:
-            fittingResults.n_merged = dataFrame[FittingResults.columns[9]]
+        if str(DataColumns.NMerged) in dataFrame:
+            fittingResults.n_merged = dataFrame[str(DataColumns.NMerged)]
         else:
             fittingResults.n_merged = np.zeros(len(fittingResults))
+
+        if str(DataColumns.XY_Ratio) in dataFrame:
+            fittingResults.xy_Ratio = dataFrame[str(DataColumns.XY_Ratio)]
+        else:
+            fittingResults.xy_Ratio = np.zeros(len(fittingResults))
+
+        if str(DataColumns.X_Sigma) in dataFrame:
+            fittingResults.x_Sigma = dataFrame[str(DataColumns.X_Sigma)]
+        else:
+            fittingResults.x_Sigma = np.zeros(len(fittingResults))
+
+        if str(DataColumns.Y_Sigma) in dataFrame:
+            fittingResults.y_Sigma = dataFrame[str(DataColumns.Y_Sigma)]
+        else:
+            fittingResults.y_Sigma = np.zeros(len(fittingResults))
+
+        if str(DataColumns.Offset) in dataFrame:
+            fittingResults.offset = dataFrame[str(DataColumns.Offset)]
+        else:
+            fittingResults.offset = np.zeros(len(fittingResults))
 
         return fittingResults
 
@@ -301,7 +388,7 @@ class FittingResults:
 
         df = pd.DataFrame(
             data,
-            columns=FittingResults.columns)
+            columns=DataColumns.values())
 
         drift_corrected = FittingResults.fromDataFrame(df, self.pixelSize)
 
@@ -331,8 +418,8 @@ class FittingResults:
 
         df = pd.DataFrame(
             data,
-            columns=FittingResults.columns).sort_values(
-                by=FittingResults.columns[0])
+            columns=DataColumns.values()).sort_values(
+                by=str(DataColumns.Frame))
 
         print('Done ...                         ')
 
@@ -346,8 +433,8 @@ class FittingResults:
 
         df = pd.DataFrame(
             finalData,
-            columns=FittingResults.columns).sort_values(
-                by=FittingResults.columns[0])
+            columns=DataColumns.values()).sort_values(
+                by=str(DataColumns.Frame))
 
         print('Done ...                         ')
 
@@ -376,8 +463,8 @@ class FittingResults:
 
         df = pd.DataFrame(
             finalData,
-            columns=FittingResults.columns).sort_values(
-                by=FittingResults.columns[0])
+            columns=DataColumns.values()).sort_values(
+                by=str(DataColumns.Frame))
 
         print('Done ...                         ')
 
@@ -442,7 +529,7 @@ class FittingResults:
 
         df = pd.DataFrame(
             data,
-            columns=FittingResults.columns)
+            columns=DataColumns.values())
 
         drift_corrected = FittingResults.fromDataFrame(df, self.pixelSize)
 

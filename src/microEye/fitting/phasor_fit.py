@@ -17,7 +17,7 @@ def phasor_fit(image: np.ndarray, points: np.ndarray,
     if len(points) < 1:
         return None
 
-    sub_fit = np.zeros((points.shape[0], 5), points.dtype)
+    sub_fit = np.zeros((points.shape[0], 6), points.dtype)
 
     if intensity:
         bg_mask, sig_mask = roi_mask(roi_size)
@@ -49,8 +49,22 @@ def phasor_fit(image: np.ndarray, points: np.ndarray,
         magnitudeX = np.abs(fft_roi[0, 1])
         magnitudeY = np.abs(fft_roi[1, 0])
 
+        sub_fit[r, 5] = magnitudeX / magnitudeY
+
         if intensity:
-            sub_fit[r, 3] = intensity_estimate(roi, bg_mask, sig_mask)
+            idx = int(idx + x - roi_size//2)
+            idy = int(idy + y - roi_size//2)
+            if idx < 0:
+                idx = 0
+            if idy < 0:
+                idy = 0
+            if idx + roi_size > image.shape[1]:
+                idx = image.shape[1] - roi_size
+            if idy + roi_size > image.shape[0]:
+                idy = image.shape[0] - roi_size
+            int_roi = image[idy:idy + roi_size, idx:idx + roi_size]
+
+            sub_fit[r, 3] = intensity_estimate(int_roi, bg_mask, sig_mask)
 
     return sub_fit
 

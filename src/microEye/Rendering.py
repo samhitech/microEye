@@ -76,7 +76,7 @@ class gauss_hist_render:
 
     def __init__(self, pixelSize=10):
         self._pixel_size = pixelSize
-        self._std = 10  # nm
+        self._std = pixelSize  # nm
         self._gauss_std = self._std / self._pixel_size
         self._gauss_len = 1 + np.ceil(self._gauss_std * 6)
         if self._gauss_len % 2 == 0:

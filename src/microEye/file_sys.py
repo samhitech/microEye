@@ -291,7 +291,8 @@ class tiff_viewer(QMainWindow):
                 'Exported Columns',
                 ['Frame', 'Coordinates [Pixel]', 'Coordinates [nm]',
                  'Intensity', 'Super-res image', 'Track ID',
-                 'Next NN Distance', 'Number of Merged NNs'], checked=True)
+                 'Next NN Distance', 'Number of Merged NNs',
+                 'X/Y Ratio', 'Sigma X', 'Sigma Y', 'Offset'], checked=True)
 
         self.export_precision = QLineEdit('%10.5f')
 
@@ -1042,13 +1043,17 @@ class tiff_viewer(QMainWindow):
                 'Intensity' in options,
                 'Track ID' in options,
                 'Next NN Distance' in options,
-                'Number of Merged NNs' in options
+                'Number of Merged NNs' in options,
+                'X/Y Ratio' in options,
+                'Sigma X' in options,
+                'Sigma Y' in options,
+                'Offset' in options
             ]
 
             dataFrame = self.fittingResults.dataFrame()
             dataFrame.to_csv(
                 filename, index=False,
-                columns=FittingResults.columns[exp_columns],
+                columns=DataColumns.values()[exp_columns],
                 float_format=self.export_precision.text(),
                 sep='\t',
                 encoding='utf-8')
