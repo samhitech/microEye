@@ -281,7 +281,8 @@ class tiff_viewer(QMainWindow):
             '2D MLE Gauss-Fit (CPU)', FittingMethod._2D_Gauss_MLE_CPU)
 
         self.render_cbox = QComboBox()
-        self.render_cbox.addItem('2D Gaussian Histogram')
+        self.render_cbox.addItem('2D Histogram', 0)
+        self.render_cbox.addItem('2D Gaussian Histogram', 1)
 
         self.frc_cbox = QComboBox()
         self.frc_cbox.addItem('Binomial')
@@ -1101,7 +1102,11 @@ class tiff_viewer(QMainWindow):
         if self.fittingResults is None:
             return None
         elif len(self.fittingResults) > 0:
-            renderClass = gauss_hist_render(self.super_px_size.value())
+            render_idx = self.render_cbox.currentData()
+            if render_idx == 0:
+                renderClass = hist2D_render(self.super_px_size.value())
+            elif render_idx == 1:
+                renderClass = gauss_hist_render(self.super_px_size.value())
             img = renderClass.render(
                 *self.fittingResults.toRender())
             img_norm = cv2.normalize(

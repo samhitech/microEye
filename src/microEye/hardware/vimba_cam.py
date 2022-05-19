@@ -746,8 +746,8 @@ class vimba_cam:
         return values[np.abs(values - value).argmin()]
 
 
-if __name__ == '__main__':
-    camera = vimba_cam('')
+# if __name__ == '__main__':
+    # camera = vimba_cam('')
 
     # with camera.vimba, camera.cam:
     #     camera.set_exposure(-1)

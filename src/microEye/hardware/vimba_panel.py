@@ -75,6 +75,7 @@ class Vimba_Panel(QGroupBox):
         self._buffer = Queue()  # data memory stack
         self._temps = Queue()  # camera sensor temperature stack
         # stack of (frame, temperature) tuples (for saving)
+        self.frame = None
         self._frames = Queue()
         # reserved for testing/displaying execution time
         self._exec_time = 0
@@ -371,6 +372,10 @@ class Vimba_Panel(QGroupBox):
             "Center AOI",
             clicked=lambda: self.center_AOI()
         )
+        self.AOI_select_btn = QPushButton(
+            "Select AOI",
+            clicked=lambda: self.select_AOI()
+        )
 
         # GPIOs
         self.lineSelector = QComboBox()
@@ -473,6 +478,7 @@ class Vimba_Panel(QGroupBox):
         self.third_tab_Layout.addRow(self.AOI_set_btn)
         self.third_tab_Layout.addRow(self.AOI_reset_btn)
         self.third_tab_Layout.addRow(self.AOI_center_btn)
+        self.third_tab_Layout.addRow(self.AOI_select_btn)
 
         self.fourth_tab_Layout.addRow(
             QLabel('Selected Line:'),
@@ -579,6 +585,17 @@ class Vimba_Panel(QGroupBox):
         self.AOI_y_tbox.setText(str(self.cam.offsetY))
         self.AOI_width_tbox.setText(str(self.cam.width))
         self.AOI_height_tbox.setText(str(self.cam.height))
+
+    def select_AOI(self):
+        if self.frame is not None:
+            aoi = cv2.selectROI(self.frame._view)
+            cv2.destroyWindow('ROI selector')
+
+            z = self.zoom_box.value()
+            self.AOI_x_tbox.setText(str(int(aoi[0] / z)))
+            self.AOI_y_tbox.setText(str(int(aoi[1] / z)))
+            self.AOI_width_tbox.setText(str(int(aoi[2] / z)))
+            self.AOI_height_tbox.setText(str(int(aoi[3] / z)))
 
     @pyqtSlot()
     def save_browse_clicked(self):
@@ -805,7 +822,7 @@ class Vimba_Panel(QGroupBox):
                 # Execute
                 self._threadpool.start(self.s_worker)
 
-    def _capture_handler(self, cam: vb.Camera, frame):
+    def _capture_handler(self, cam, frame):
         self._buffer.put(frame.as_numpy_ndarray())
         cam.queue_frame(frame)
         # add sensor temperature to the stack
@@ -874,7 +891,7 @@ class Vimba_Panel(QGroupBox):
 
                     # reshape image into proper shape
                     # (height, width, bytes per pixel)
-                    frame = uImage(self._buffer.get()) \
+                    self.frame = uImage(self._buffer.get()) \
                         if self.cam.bytes_per_pixel > 1\
                         else uImage.fromUINT8(
                             self._buffer.get(),
@@ -883,9 +900,10 @@ class Vimba_Panel(QGroupBox):
                     # add to saving stack
                     if self.cam_save_temp.isChecked():
                         if not self.mini:
-                            self._frames.put((frame.image, self._temps.get()))
+                            self._frames.put(
+                                (self.frame.image, self._temps.get()))
                         else:
-                            self._frames.put(frame.image)
+                            self._frames.put(self.frame.image)
 
                     if self.preview_ch_box.isChecked():
                         _range = None
@@ -893,25 +911,27 @@ class Vimba_Panel(QGroupBox):
                         if not self.auto_stretch.isChecked():
                             _range = (self.alpha.value(), self.beta.value())
 
-                        frame.equalizeLUT(
+                        self.frame.equalizeLUT(
                             _range, self.slow_lut_rbtn.isChecked())
                         if self.auto_stretch.isChecked():
-                            self.alpha.setValue(frame._min)
-                            self.beta.setValue(frame._max)
-                        self.histogram.setXRange(frame._min, frame._max)
-                        self.hist_cdf.setXRange(frame._min, frame._max)
+                            self.alpha.setValue(self.frame._min)
+                            self.beta.setValue(self.frame._max)
+                        self.histogram.setXRange(
+                            self.frame._min, self.frame._max)
+                        self.hist_cdf.setXRange(
+                            self.frame._min, self.frame._max)
 
-                        self._plot_ref.setData(frame._hist[:, 0])
-                        self._cdf_plot_ref.setData(frame._cdf)
+                        self._plot_ref.setData(self.frame._hist[:, 0])
+                        self._cdf_plot_ref.setData(self.frame._cdf)
 
                         # resizing the image
-                        frame._view = cv2.resize(
-                            frame._view, (0, 0),
+                        self.frame._view = cv2.resize(
+                            self.frame._view, (0, 0),
                             fx=self.zoom_box.value(),
                             fy=self.zoom_box.value())
 
                         # display it
-                        cv2.imshow(cam.name, frame._view)
+                        cv2.imshow(cam.name, self.frame._view)
                         cv2.waitKey(1)
                     else:
                         cv2.waitKey(1)
@@ -1047,7 +1067,8 @@ class Vimba_Panel(QGroupBox):
                 if darkCal._counter > 1:
                     darkCal.saveResults(path)
 
-            saveMetadata(index)
+            if self.cam_save_temp.isChecked():
+                saveMetadata(index)
 
     @staticmethod
     def find_nearest(array, value):

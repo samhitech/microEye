@@ -6,7 +6,6 @@ import traceback
 from queue import Queue
 
 import cv2
-from lmfit.minimizer import minimize
 import numpy as np
 import pyqtgraph as pg
 import tifffile as tf
@@ -1122,7 +1121,8 @@ class IDS_Panel(QGroupBox):
                 if darkCal._counter > 1:
                     darkCal.saveResults(path)
 
-            saveMetadata(index)
+            if self.cam_save_temp.isChecked():
+                saveMetadata(index)
 
     @staticmethod
     def find_nearest(array, value):

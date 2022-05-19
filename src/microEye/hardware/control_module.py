@@ -7,7 +7,7 @@ import traceback
 import subprocess
 from queue import Queue
 
-from lmfit import Model
+# from lmfit import Model
 
 import numpy as np
 import pyqtgraph

@@ -14,42 +14,17 @@ from scipy.fftpack import fft2, fftshift, ifft2, ifftshift
 from scipy.interpolate import interp1d
 
 
-def explicit2dGauss(mu, sigma, corr, flux, offset, shape):
-    '''Generates a 2D Multivariate Gaussian
+def model(xc, yc, sigma_x, sigma_y, flux, offset, X, Y):
+    y_gauss = gauss_1d(Y[:, 0], yc, sigma_y)
+    x_gauss = gauss_1d(X[0, :], xc, sigma_x)
 
-    Params
-    -------
-    mu (tuple | list)
-        vector holding [yc, xc] the distribution mean
-    sigma (tuple | list)
-        the standard deviation [y_sigma, x_sigma]
-    corr (float)
-        the correlation between X and Y
-    flux (float)
-        the flux
-    offset (float)
-        the distribution offset
-    shape (tuple | list)
-        the shape of 2D produced gaussian array
+    return flux * np.einsum('i,j->ij', y_gauss, x_gauss) + offset
 
-    Returns
-    -------
-    Z (np.ndarray)
-        a 2D Multivariate Gaussian array
-    '''
-    diag2nd = corr * sigma[0] * sigma[1]
-    covar = np.array([[sigma[0], diag2nd], [diag2nd, sigma[1]]])
 
-    cov_inv = np.linalg.inv(covar)  # inverse of covariance matrix
-    cov_det = np.linalg.det(covar)  # determinant of covariance matrix
-    # Plotting
-    y_len = np.arange(0, shape[0])
-    x_len = np.arange(0, shape[1])
-    X, Y = np.meshgrid(x_len, y_len)
-    coe = flux / ((2 * np.pi)**2 * cov_det)**0.5
-    return (coe * np.exp(-0.5 * (cov_inv[0, 0]*(X-mu[0])**2 + (cov_inv[0, 1]
-            + cov_inv[1, 0])*(X-mu[0])*(Y-mu[1]) + cov_inv[1, 1]*(Y-mu[1])**2))
-            ) + offset
+@numba.njit()
+def gauss_1d(x: np.ndarray, mu: np.ndarray, sigma: np.ndarray):
+    return 1 / (np.sqrt(2 * np.pi) * sigma) * \
+           np.exp(-0.5 * (x - mu)**2 / sigma**2)
 
 
 def radial_cordinate(shape):
@@ -74,7 +49,7 @@ def radial_cordinate(shape):
 
 class gauss_hist_render:
 
-    def __init__(self, pixelSize=10):
+    def __init__(self, pixelSize=10, is2D_hist = False):
         self._pixel_size = pixelSize
         self._std = pixelSize  # nm
         self._gauss_std = self._std / self._pixel_size
@@ -82,13 +57,17 @@ class gauss_hist_render:
         if self._gauss_len % 2 == 0:
             self._gauss_len += 1
         self._gauss_shape = [int(self._gauss_len)] * 2
-        self._gauss_2d = explicit2dGauss(
-            mu=[(self._gauss_len - 1) / 2] * 2,
-            sigma=[self._gauss_std] * 2,
-            corr=0,
-            flux=1,
-            offset=0,
-            shape=self._gauss_shape)
+                    
+        xy_len = np.arange(0, self._gauss_shape[0])
+        X, Y = np.meshgrid(xy_len, xy_len)
+        self._gauss_2d = model(
+            (self._gauss_len - 1) / 2,
+            (self._gauss_len - 1) / 2,
+            self._gauss_std,
+            self._gauss_std,
+            1,
+            0,
+            X, Y)
         self._image = None
 
     def render(self, X_loc, Y_loc, Intensity, shape=None):
@@ -172,6 +151,86 @@ class gauss_hist_render:
         return self.render(data[:, 0], data[:, 1], data[:, 2], shape)
 
 
+class hist2D_render:
+
+    def __init__(self, pixelSize=10):
+        self._pixel_size = pixelSize
+        self._image = None
+
+    def render(self, X_loc, Y_loc, Intensity, shape=None):
+        '''Renders as super resolution image from
+        single molecule localizations.
+
+        Params
+        -------
+        X_loc (np.ndarray)
+            Sub-pixel localized points X coordinates
+        Y_loc (np.ndarray)
+            Sub-pixel localized points Y coordinates
+        Intensity (np.ndarray)
+            Sub-pixel localized points intensity estimate
+        shape tuple(int, int), optional
+            Super-res image (height, width), by default None
+
+        Returns
+        -------
+        Image (np.ndarray)
+            the rendered 2D super-res image array
+        '''
+        if not len(X_loc) == len(Y_loc) == len(Intensity):
+            raise Exception('The supplied arguments are of different lengths.')
+
+        x_min = np.min(X_loc)
+        y_min = np.min(Y_loc)
+
+        if x_min < 0:
+            X_loc -= x_min
+        if y_min < 0:
+            Y_loc -= y_min
+
+        if shape is None:
+            x_max = int((np.max(X_loc) / self._pixel_size) +
+                        4)
+            y_max = int((np.max(Y_loc) / self._pixel_size) +
+                        4)
+        else:
+            x_max = shape[1]
+            y_max = shape[0]
+        n_max = max(x_max, y_max)
+
+        step = int(2)
+
+        self._image = np.zeros([n_max, n_max])
+
+        X = np.round(X_loc / self._pixel_size) + 2
+        Y = np.round(Y_loc / self._pixel_size) + 2
+
+        render_compute(
+            np.c_[X, Y, Intensity],
+            0, 1,
+            self._image)
+
+        return self._image
+
+    def fromArray(self, data: np.ndarray, shape=None):
+        '''Renders as super resolution image from
+        single molecule localizations.
+
+        Params
+        -------
+        data (np.ndarray)
+            Array with sub-pixel localization data columns (X, Y, Intensity)
+        shape tuple(int, int), optional
+            Super-res image (height, width), by default None
+
+        Returns
+        -------
+        Image (np.ndarray)
+            the rendered 2D super-res image array
+        '''
+        return self.render(data[:, 0], data[:, 1], data[:, 2], shape)
+
+
 @numba.jit(nopython=True)
 def render_compute(data, step, gauss_2d, out_img):
     for x, y, Intensity in data:
@@ -202,7 +261,7 @@ def FRC_resolution_binomial(data: np.ndarray, pixelSize=10):
     # Two separate datsets based on the value of the last column are generated.
     data1, data2 = data[data[:, -1] == 0], data[data[:, -1] == 1]
 
-    gaussHist = gauss_hist_render(pixelSize)
+    gaussHist = hist2D_render(pixelSize)
 
     image_1 = gaussHist.fromArray(data1)
     image_2 = gaussHist.fromArray(data2)
