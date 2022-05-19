@@ -165,6 +165,40 @@ class Vimba_Panel(QGroupBox):
         self.cam_exposure_qs.setSuffix(self._cam.exposure_unit)
         self.cam_exposure_qs.valueChanged.connect(self.exposure_spin_changed)
 
+        self.cam_exp_shortcuts = QHBoxLayout()
+        self.cam_exp_shortcuts.addWidget(
+            QPushButton(
+                'min',
+                clicked=lambda: self.cam_exposure_qs.setValue(self._cam.exposure_range[0]))
+        )
+        self.cam_exp_shortcuts.addWidget(
+            QPushButton('1ms', clicked=lambda: self.cam_exposure_qs.setValue(1e3))
+        )
+        self.cam_exp_shortcuts.addWidget(
+            QPushButton('10ms', clicked=lambda: self.cam_exposure_qs.setValue(1e4))
+        )
+        self.cam_exp_shortcuts.addWidget(
+            QPushButton('30ms', clicked=lambda: self.cam_exposure_qs.setValue(3e4))
+        )
+        self.cam_exp_shortcuts.addWidget(
+            QPushButton('50ms', clicked=lambda: self.cam_exposure_qs.setValue(5e4))
+        )
+        self.cam_exp_shortcuts.addWidget(
+            QPushButton('100ms', clicked=lambda: self.cam_exposure_qs.setValue(1e5))
+        )
+        self.cam_exp_shortcuts.addWidget(
+            QPushButton('150ms', clicked=lambda: self.cam_exposure_qs.setValue(1.5e5))
+        )
+        self.cam_exp_shortcuts.addWidget(
+            QPushButton('200ms', clicked=lambda: self.cam_exposure_qs.setValue(2e5))
+        )
+        self.cam_exp_shortcuts.addWidget(
+            QPushButton('500ms', clicked=lambda: self.cam_exposure_qs.setValue(5e5))
+        )
+        self.cam_exp_shortcuts.addWidget(
+            QPushButton('1s', clicked=lambda: self.cam_exposure_qs.setValue(1e6))
+        )
+
         # exposure mode combobox
         self.cam_exposure_mode_lbl = QLabel("Exposure Mode")
         self.cam_exposure_mode_cbox = QComboBox()
@@ -413,6 +447,7 @@ class Vimba_Panel(QGroupBox):
             self.cam_exposure_lbl,
             self.cam_exposure_qs)
         self.first_tab_Layout.addRow(self.cam_exposure_slider)
+        self.first_tab_Layout.addRow(self.cam_exp_shortcuts)
         self.first_tab_Layout.addRow(
             self.cam_exposure_mode_lbl,
             self.cam_exposure_mode_cbox)
@@ -656,11 +691,7 @@ class Vimba_Panel(QGroupBox):
             self._cam.set_exposure(value)
             self._cam.get_exposure(False)
 
-        self.cam_exposure_qs.valueChanged.disconnect(
-            self.exposure_spin_changed)
-        self.cam_exposure_qs.setValue(self._cam.exposure_current)
-        self.cam_exposure_qs.valueChanged.connect(
-            self.exposure_spin_changed)
+        self.refresh_exposure()
 
         self.OME_tab.exposure.setValue(self._cam.exposure_current / 1000)
         if self.master:
@@ -680,15 +711,25 @@ class Vimba_Panel(QGroupBox):
             self._cam.set_exposure(value)
             self._cam.get_exposure(False)
 
-        self.cam_exposure_slider.elementChanged[int, float] \
-            .connect(self.cam_exposure_value_changed)
-        self.cam_exposure_slider.setNearest(self._cam.exposure_current)
-        self.cam_exposure_slider.elementChanged[int, float] \
-            .disconnect(self.cam_exposure_value_changed)
+        self.refresh_exposure()
 
         self.OME_tab.exposure.setValue(self._cam.exposure_current / 1000)
         if self.master:
             self.exposureChanged.emit()
+
+    def refresh_exposure(self):
+
+        self.cam_exposure_slider.elementChanged[int, float] \
+            .disconnect(self.cam_exposure_value_changed)
+        self.cam_exposure_slider.setNearest(self._cam.exposure_current)
+        self.cam_exposure_slider.elementChanged[int, float] \
+            .connect(self.cam_exposure_value_changed)
+        
+        self.cam_exposure_qs.valueChanged.disconnect(
+            self.exposure_spin_changed)
+        self.cam_exposure_qs.setValue(self._cam.exposure_current)
+        self.cam_exposure_qs.valueChanged.connect(
+            self.exposure_spin_changed)
 
     def io_line_changed(self, value):
         with self._cam.cam:
@@ -900,8 +941,7 @@ class Vimba_Panel(QGroupBox):
                     # add to saving stack
                     if self.cam_save_temp.isChecked():
                         if not self.mini:
-                            self._frames.put(
-                                (self.frame.image, self._temps.get()))
+                            self._frames.put((self.frame.image, self._temps.get()))
                         else:
                             self._frames.put(self.frame.image)
 
@@ -916,10 +956,8 @@ class Vimba_Panel(QGroupBox):
                         if self.auto_stretch.isChecked():
                             self.alpha.setValue(self.frame._min)
                             self.beta.setValue(self.frame._max)
-                        self.histogram.setXRange(
-                            self.frame._min, self.frame._max)
-                        self.hist_cdf.setXRange(
-                            self.frame._min, self.frame._max)
+                        self.histogram.setXRange(self.frame._min, self.frame._max)
+                        self.hist_cdf.setXRange(self.frame._min, self.frame._max)
 
                         self._plot_ref.setData(self.frame._hist[:, 0])
                         self._cdf_plot_ref.setData(self.frame._cdf)

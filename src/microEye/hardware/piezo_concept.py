@@ -32,6 +32,8 @@ class piezo_concept(stage):
     '''
 
     def __init__(self):
+        self.pixel_slider = None
+        
         super().__init__()
 
         self.serial = QSerialPort(
@@ -215,6 +217,21 @@ class piezo_concept(stage):
             self.piezoTracking = True
             self._tracking_btn.setText("Focus Tracking On")
 
+    @property
+    def center_pixel(self):
+        if self.pixel_slider is None:
+            return 0
+        else:
+            return self.pixel_slider.value()
+
+    @center_pixel.setter
+    def center_pixel(self, value):
+        if self.pixel_slider is None:
+            return False
+        else:
+            self.pixel_slider.setValue(value)
+            return True
+
     def getQWidget(self):
         '''Generates a QGroupBox with
         stage controls.'''
@@ -261,6 +278,13 @@ class piezo_concept(stage):
         self.coarse_steps_slider.setMinimum(1)
         self.coarse_steps_slider.setMaximum(20)
         self.coarse_steps_slider.setValue(coarse_step)
+
+        self.pixel_slider = QDoubleSpinBox()
+        self.pixel_slider.setMinimum(0)
+        self.pixel_slider.setMaximum(10000)
+        self.pixel_slider.setDecimals(3)
+        self.pixel_slider.setSingleStep(0.005)
+        self.pixel_slider.setValue(0)
 
         self.piezo_HOME_btn = QPushButton(
             "⌂",
@@ -312,6 +336,8 @@ class piezo_concept(stage):
         layout.addRow(self.move_buttons)
         layout.addRow(
             QLabel('Tracking:'), self._tracking_conf_btn)
+        layout.addRow(
+            QLabel('Fit to Pixel:'), self.pixel_slider)
         layout.addWidget(self._tracking_btn)
         layout.addWidget(self._inverted)
 

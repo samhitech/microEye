@@ -1,3 +1,4 @@
+from math import floor
 from typing import Optional
 import numpy as np
 
@@ -203,14 +204,22 @@ class vimba_cam:
                 self.exposure_increment = self.cam.ExposureTimeIncrement.get()
                 self.exposure_unit = exposure.get_unit()
                 self.exposure_range = exposure.get_range()
-            set_value = self.exposure_increment * (
-                (value - self.exposure_range[0])//self.exposure_increment)\
+            floor_value = self.exposure_increment * np.floor(
+                (value - self.exposure_range[0])/self.exposure_increment)\
                 + self.exposure_range[0]
+            ceil_value = self.exposure_increment * np.ceil(
+                (value - self.exposure_range[0])/self.exposure_increment)\
+                + self.exposure_range[0]
+            set_value = 0
+            if np.abs(floor_value - value) < np.abs(ceil_value - value):
+                set_value = floor_value
+            else:
+                set_value = ceil_value
             set_value = max(
                 min(set_value, self.exposure_range[1]),
                 self.exposure_range[0])
             exposure.set(set_value)
-            self.exposure_current = set_value
+            self.get_exposure()
             return 1
         except Exception:
             print("Exposure Set ERROR")

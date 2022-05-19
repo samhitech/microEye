@@ -1,5 +1,6 @@
 dask==2022.1.0
-lmfit==1.0.3
+emcee==3.1.1
+matplotlib==3.4.3
 numba==0.55.0
 numpy==1.21.5
 ome_types==0.2.9
@@ -12,7 +13,9 @@ pyqtgraph==0.12.2
 pyueye==4.90.0.0
 QDarkStyle==3.0.2
 scikit_image==0.18.3
-scipy==1.7.1
+scikit_learn==1.1.0
+scipy==1.8.0
 setuptools==49.2.1
+sympy==1.8
 tifffile==2022.2.2
 zarr==2.10.3
