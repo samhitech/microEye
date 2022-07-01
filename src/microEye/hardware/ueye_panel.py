@@ -71,6 +71,7 @@ class IDS_Panel(QGroupBox):
         self._buffer = Queue()  # data memory stack
         self._temps = Queue()  # camera sensor temperature stack
         # stack of (frame, temperature) tuples (for saving)
+        self.frame = None
         self._frames = Queue()
         # reserved for testing/displaying execution time
         self._exec_time = 0
@@ -117,17 +118,17 @@ class IDS_Panel(QGroupBox):
             self.main_tab_view.addTab(self.OME_tab, "OME-XML metadata")
 
         # first tab vertical layout
-        self.first_tab_Layout = QVBoxLayout()
+        self.first_tab_Layout = QFormLayout()
         # set as first tab layout
         self.first_tab.setLayout(self.first_tab_Layout)
 
         # second tab vertical layout
-        self.second_tab_Layout = QVBoxLayout()
+        self.second_tab_Layout = QFormLayout()
         # set as second tab layout
         self.second_tab.setLayout(self.second_tab_Layout)
 
         # third tab vertical layout
-        self.third_tab_Layout = QVBoxLayout()
+        self.third_tab_Layout = QFormLayout()
         # set as third tab layout
         self.third_tab.setLayout(self.third_tab_Layout)
 
@@ -310,19 +311,13 @@ class IDS_Panel(QGroupBox):
         self.lut_btns.addButton(self.fast_lut_rbtn)
 
         # display size
-        self.zoom_layout = QHBoxLayout()
-        self.zoom_lbl = QLabel("Resize " + "{:.0f}%".format(self._zoom*100))
-        self.zoom_in_btn = QPushButton(
-            "+",
-            clicked=lambda: self.zoom_in()
-        )
-        self.zoom_out_btn = QPushButton(
-            "-",
-            clicked=lambda: self.zoom_out()
-        )
-        self.zoom_layout.addWidget(self.zoom_lbl, 4)
-        self.zoom_layout.addWidget(self.zoom_out_btn, 1)
-        self.zoom_layout.addWidget(self.zoom_in_btn, 1)
+        self.zoom_lbl = QLabel("Resize Display:")
+        self.zoom_box = QDoubleSpinBox()
+        self.zoom_box.setSingleStep(0.02)
+        self.zoom_box.setMinimum(0.1)
+        self.zoom_box.setMaximum(4.0)
+        self.zoom_box.setDecimals(2)
+        self.zoom_box.setValue(0.5)
 
         # controls for histogram stretching and plot
         self.histogram_lbl = QLabel("Histogram")
@@ -377,75 +372,89 @@ class IDS_Panel(QGroupBox):
             "Center AOI",
             clicked=lambda: self.center_AOI()
         )
+        self.AOI_select_btn = QPushButton(
+            "Select AOI",
+            clicked=lambda: self.select_AOI()
+        )
 
         # adding widgets to the main layout
-        self.first_tab_Layout.addWidget(self.cam_pixel_clock_lbl)
-        self.first_tab_Layout.addWidget(self.cam_pixel_clock_cbox)
-        self.first_tab_Layout.addWidget(self.cam_trigger_mode_lbl)
-        self.first_tab_Layout.addWidget(self.cam_trigger_mode_cbox)
-        self.first_tab_Layout.addWidget(self.cam_framerate_lbl)
-        self.first_tab_Layout.addWidget(self.cam_framerate_ledit)
+        self.first_tab_Layout.addRow(
+            self.cam_pixel_clock_lbl,
+            self.cam_pixel_clock_cbox)
+        self.first_tab_Layout.addRow(
+            self.cam_trigger_mode_lbl,
+            self.cam_trigger_mode_cbox)
+        self.first_tab_Layout.addRow(
+            self.cam_framerate_lbl,
+            self.cam_framerate_ledit)
         self.first_tab_Layout.addWidget(self.cam_framerate_slider)
-        self.first_tab_Layout.addWidget(self.cam_exposure_lbl)
-        self.first_tab_Layout.addWidget(self.cam_exposure_ledit)
+        self.first_tab_Layout.addRow(
+            self.cam_exposure_lbl,
+            self.cam_exposure_ledit)
         self.first_tab_Layout.addWidget(self.cam_exposure_slider)
         if not self.mini:
-            self.first_tab_Layout.addWidget(self.cam_flash_mode_lbl)
-            self.first_tab_Layout.addWidget(self.cam_flash_mode_cbox)
-            self.first_tab_Layout.addWidget(self.cam_flash_duration_lbl)
-            self.first_tab_Layout.addWidget(self.cam_flash_duration_ledit)
+            self.first_tab_Layout.addRow(
+                self.cam_flash_mode_lbl,
+                self.cam_flash_mode_cbox)
+            self.first_tab_Layout.addRow(
+                self.cam_flash_duration_lbl,
+                self.cam_flash_duration_ledit)
             self.first_tab_Layout.addWidget(self.cam_flash_duration_slider)
-            self.first_tab_Layout.addWidget(self.cam_flash_delay_lbl)
-            self.first_tab_Layout.addWidget(self.cam_flash_delay_ledit)
+            self.first_tab_Layout.addRow(
+                self.cam_flash_delay_lbl,
+                self.cam_flash_delay_ledit)
             self.first_tab_Layout.addWidget(self.cam_flash_delay_slider)
-        self.first_tab_Layout.addLayout(self.config_Hlay)
-        self.first_tab_Layout.addWidget(self.cam_freerun_btn)
-        self.first_tab_Layout.addWidget(self.cam_trigger_btn)
-        self.first_tab_Layout.addWidget(self.cam_stop_btn)
+        self.first_tab_Layout.addRow(self.config_Hlay)
+        self.first_tab_Layout.addRow(self.cam_freerun_btn)
+        self.first_tab_Layout.addRow(self.cam_trigger_btn)
+        self.first_tab_Layout.addRow(self.cam_stop_btn)
         if not self.mini:
-            self.first_tab_Layout.addWidget(QLabel("Experiment:"))
-            self.first_tab_Layout.addWidget(self.experiment_name)
-            self.first_tab_Layout.addWidget(QLabel("Save Directory:"))
-            self.first_tab_Layout.addLayout(self.save_dir_layout)
+            self.first_tab_Layout.addRow(
+                QLabel("Experiment:"),
+                self.experiment_name)
+            self.first_tab_Layout.addRow(
+                QLabel("Save Directory:"),
+                self.save_dir_layout)
             self.first_tab_Layout.addWidget(self.frames_tbox)
             self.first_tab_Layout.addWidget(self.cam_save_temp)
             self.first_tab_Layout.addWidget(self.dark_cal)
             self.first_tab_Layout.addWidget(self.save_bigg_tiff)
             self.first_tab_Layout.addWidget(self.cam_save_meta)
-        self.first_tab_Layout.addStretch()
 
         if not self.mini:
-            self.second_tab_Layout.addWidget(self.preview_ch_box)
-        self.second_tab_Layout.addWidget(self.slow_lut_rbtn)
-        self.second_tab_Layout.addWidget(self.fast_lut_rbtn)
+            self.second_tab_Layout.addRow(self.preview_ch_box)
+        self.second_tab_Layout.addRow(self.slow_lut_rbtn)
+        self.second_tab_Layout.addRow(self.fast_lut_rbtn)
         if not self.mini:
-            self.second_tab_Layout.addLayout(self.zoom_layout)
+            self.second_tab_Layout.addRow(
+                self.zoom_lbl,
+                self.zoom_box)
 
-        self.second_tab_Layout.addWidget(self.histogram_lbl)
-        self.second_tab_Layout.addWidget(self.alpha)
+        self.second_tab_Layout.addRow(
+            self.histogram_lbl, self.alpha)
         self.second_tab_Layout.addWidget(self.beta)
         self.second_tab_Layout.addWidget(self.auto_stretch)
-        self.second_tab_Layout.addWidget(self.histogram)
-        self.second_tab_Layout.addWidget(self.hist_cdf)
-        self.second_tab_Layout.addWidget(QLabel("Stats"))
-        self.second_tab_Layout.addWidget(self.info_temp)
+        self.second_tab_Layout.addRow(self.histogram)
+        self.second_tab_Layout.addRow(self.hist_cdf)
+        self.second_tab_Layout.addRow(
+            QLabel("Stats"),
+            self.info_temp)
         self.second_tab_Layout.addWidget(self.info_cap)
         self.second_tab_Layout.addWidget(self.info_disp)
         self.second_tab_Layout.addWidget(self.info_save)
-        self.second_tab_Layout.addStretch()
 
-        self.third_tab_Layout.addWidget(QLabel("X"))
-        self.third_tab_Layout.addWidget(self.AOI_x_tbox)
-        self.third_tab_Layout.addWidget(QLabel("Y"))
-        self.third_tab_Layout.addWidget(self.AOI_y_tbox)
-        self.third_tab_Layout.addWidget(QLabel("Width"))
-        self.third_tab_Layout.addWidget(self.AOI_width_tbox)
-        self.third_tab_Layout.addWidget(QLabel("Height"))
-        self.third_tab_Layout.addWidget(self.AOI_height_tbox)
-        self.third_tab_Layout.addWidget(self.AOI_set_btn)
-        self.third_tab_Layout.addWidget(self.AOI_reset_btn)
-        self.third_tab_Layout.addWidget(self.AOI_center_btn)
-        self.third_tab_Layout.addStretch()
+        self.third_tab_Layout.addRow(
+            QLabel("X"), self.AOI_x_tbox)
+        self.third_tab_Layout.addRow(
+            QLabel("Y"), self.AOI_y_tbox)
+        self.third_tab_Layout.addRow(
+            QLabel("Width"), self.AOI_width_tbox)
+        self.third_tab_Layout.addRow(
+            QLabel("Height"), self.AOI_height_tbox)
+        self.third_tab_Layout.addRow(self.AOI_set_btn)
+        self.third_tab_Layout.addRow(self.AOI_reset_btn)
+        self.third_tab_Layout.addRow(self.AOI_center_btn)
+        self.third_tab_Layout.addRow(self.AOI_select_btn)
 
     @property
     def cam(self):
@@ -540,6 +549,17 @@ class IDS_Panel(QGroupBox):
                 int(
                     (self.cam.rectAOI.s32Height.value -
                      int(self.AOI_height_tbox.text()))/2)))
+
+    def select_AOI(self):
+        if self.frame is not None:
+            aoi = cv2.selectROI(self.frame._view)
+            cv2.destroyWindow('ROI selector')
+
+            z = self.zoom_box.value()
+            self.AOI_x_tbox.setText(str(int(aoi[0] / z)))
+            self.AOI_y_tbox.setText(str(int(aoi[1] / z)))
+            self.AOI_width_tbox.setText(str(int(aoi[2] / z)))
+            self.AOI_height_tbox.setText(str(int(aoi[3] / z)))
 
     def zoom_in(self):
         """Increase image display size"""
@@ -951,16 +971,17 @@ class IDS_Panel(QGroupBox):
 
                     # reshape image into proper shape
                     # (height, width, bytes per pixel)
-                    frame = uImage.fromBuffer(
+                    self.frame = uImage.fromBuffer(
                         self._buffer.get(),
                         cam.height.value, cam.width.value, cam.bytes_per_pixel)
 
                     # add to saving stack
                     if self.cam_save_temp.isChecked():
                         if not self.mini:
-                            self._frames.put((frame.image, self._temps.get()))
+                            self._frames.put(
+                                (self.frame.image, self._temps.get()))
                         else:
-                            self._frames.put(frame.image)
+                            self._frames.put(self.frame.image)
 
                     if self.preview_ch_box.isChecked():
                         _range = None
@@ -968,23 +989,27 @@ class IDS_Panel(QGroupBox):
                         if not self.auto_stretch.isChecked():
                             _range = (self.alpha.value(), self.beta.value())
 
-                        frame.equalizeLUT(
+                        self.frame.equalizeLUT(
                             _range, self.slow_lut_rbtn.isChecked())
                         if self.auto_stretch.isChecked():
-                            self.alpha.setValue(frame._min)
-                            self.beta.setValue(frame._max)
-                        self.histogram.setXRange(frame._min, frame._max)
-                        self.hist_cdf.setXRange(frame._min, frame._max)
+                            self.alpha.setValue(self.frame._min)
+                            self.beta.setValue(self.frame._max)
+                        self.histogram.setXRange(
+                            self.frame._min, self.frame._max)
+                        self.hist_cdf.setXRange(
+                            self.frame._min, self.frame._max)
 
-                        self._plot_ref.setData(frame._hist[:, 0])
-                        self._cdf_plot_ref.setData(frame._cdf)
+                        self._plot_ref.setData(self.frame._hist[:, 0])
+                        self._cdf_plot_ref.setData(self.frame._cdf)
 
                         # resizing the image
-                        frame._view = cv2.resize(
-                            frame._view, (0, 0), fx=self._zoom, fy=self._zoom)
+                        self.frame._view = cv2.resize(
+                            self.frame._view, (0, 0),
+                            fx=self.zoom_box.value(),
+                            fy=self.zoom_box.value())
 
                         # display it
-                        cv2.imshow(cam.name, frame._view)
+                        cv2.imshow(cam.name, self.frame._view)
                         cv2.waitKey(1)
                     else:
                         cv2.waitKey(1)

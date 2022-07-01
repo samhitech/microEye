@@ -169,34 +169,53 @@ class Vimba_Panel(QGroupBox):
         self.cam_exp_shortcuts.addWidget(
             QPushButton(
                 'min',
-                clicked=lambda: self.cam_exposure_qs.setValue(self._cam.exposure_range[0]))
+                clicked=lambda: self.cam_exposure_qs.setValue(
+                    self._cam.exposure_range[0]))
         )
         self.cam_exp_shortcuts.addWidget(
-            QPushButton('1ms', clicked=lambda: self.cam_exposure_qs.setValue(1e3))
+            QPushButton(
+                '1ms',
+                clicked=lambda: self.cam_exposure_qs.setValue(1e3))
         )
         self.cam_exp_shortcuts.addWidget(
-            QPushButton('10ms', clicked=lambda: self.cam_exposure_qs.setValue(1e4))
+            QPushButton(
+                '10ms',
+                clicked=lambda: self.cam_exposure_qs.setValue(1e4))
         )
         self.cam_exp_shortcuts.addWidget(
-            QPushButton('30ms', clicked=lambda: self.cam_exposure_qs.setValue(3e4))
+            QPushButton(
+                '30ms',
+                clicked=lambda: self.cam_exposure_qs.setValue(3e4))
         )
         self.cam_exp_shortcuts.addWidget(
-            QPushButton('50ms', clicked=lambda: self.cam_exposure_qs.setValue(5e4))
+            QPushButton(
+                '50ms',
+                clicked=lambda: self.cam_exposure_qs.setValue(5e4))
         )
         self.cam_exp_shortcuts.addWidget(
-            QPushButton('100ms', clicked=lambda: self.cam_exposure_qs.setValue(1e5))
+            QPushButton(
+                '100ms',
+                clicked=lambda: self.cam_exposure_qs.setValue(1e5))
         )
         self.cam_exp_shortcuts.addWidget(
-            QPushButton('150ms', clicked=lambda: self.cam_exposure_qs.setValue(1.5e5))
+            QPushButton(
+                '150ms',
+                clicked=lambda: self.cam_exposure_qs.setValue(1.5e5))
         )
         self.cam_exp_shortcuts.addWidget(
-            QPushButton('200ms', clicked=lambda: self.cam_exposure_qs.setValue(2e5))
+            QPushButton(
+                '200ms',
+                clicked=lambda: self.cam_exposure_qs.setValue(2e5))
         )
         self.cam_exp_shortcuts.addWidget(
-            QPushButton('500ms', clicked=lambda: self.cam_exposure_qs.setValue(5e5))
+            QPushButton(
+                '500ms',
+                clicked=lambda: self.cam_exposure_qs.setValue(5e5))
         )
         self.cam_exp_shortcuts.addWidget(
-            QPushButton('1s', clicked=lambda: self.cam_exposure_qs.setValue(1e6))
+            QPushButton(
+                '1s',
+                clicked=lambda: self.cam_exposure_qs.setValue(1e6))
         )
 
         # exposure mode combobox
@@ -382,18 +401,18 @@ class Vimba_Panel(QGroupBox):
                 " T {:.2f} °C".format(self._cam.get_temperature()))
 
         # AOI controls
-        self.AOI_x_tbox = QLineEdit("0")
-        self.AOI_y_tbox = QLineEdit("0")
-        self.AOI_width_tbox = QLineEdit("0")
-        self.AOI_height_tbox = QLineEdit("0")
-        self.AOI_x_tbox.setValidator(
-            QIntValidator(0, self.cam.width_range[1]))
-        self.AOI_y_tbox.setValidator(
-            QIntValidator(0, self.cam.height_range[1]))
-        self.AOI_width_tbox.setValidator(
-            QIntValidator(self.cam.width_range[0], self.cam.width_range[1]))
-        self.AOI_height_tbox.setValidator(
-            QIntValidator(self.cam.height_range[0], self.cam.height_range[1]))
+        self.AOI_x_tbox = QSpinBox()
+        self.AOI_y_tbox = QSpinBox()
+        self.AOI_width_tbox = QSpinBox()
+        self.AOI_height_tbox = QSpinBox()
+        self.AOI_x_tbox.setMinimum(0)
+        self.AOI_x_tbox.setMaximum(self.cam.width_range[1])
+        self.AOI_y_tbox.setMinimum(0)
+        self.AOI_y_tbox.setMaximum(self.cam.height_range[1])
+        self.AOI_width_tbox.setMinimum(self.cam.width_range[0])
+        self.AOI_width_tbox.setMaximum(self.cam.width_range[1])
+        self.AOI_height_tbox.setMinimum(self.cam.height_range[0])
+        self.AOI_height_tbox.setMaximum(self.cam.height_range[1])
         self.AOI_set_btn = QPushButton(
             "Set AOI",
             clicked=lambda: self.set_AOI()
@@ -578,15 +597,15 @@ class Vimba_Panel(QGroupBox):
 
         with self._cam.cam:
             self.cam.set_roi(
-                int(self.AOI_width_tbox.text()),
-                int(self.AOI_height_tbox.text()),
-                int(self.AOI_x_tbox.text()),
-                int(self.AOI_y_tbox.text()))
+                self.AOI_width_tbox.value(),
+                self.AOI_height_tbox.value(),
+                self.AOI_x_tbox.value(),
+                self.AOI_y_tbox.value())
 
-        self.AOI_x_tbox.setText(str(int(self.cam.offsetX)))
-        self.AOI_y_tbox.setText(str(int(self.cam.offsetY)))
-        self.AOI_width_tbox.setText(str(int(self.cam.width)))
-        self.AOI_height_tbox.setText(str(int(self.cam.height)))
+        self.AOI_x_tbox.setValue(int(self.cam.offsetX))
+        self.AOI_y_tbox.setValue(int(self.cam.offsetY))
+        self.AOI_width_tbox.setValue(int(self.cam.width))
+        self.AOI_height_tbox.setValue(int(self.cam.height))
 
     def reset_AOI(self):
         '''Resets the AOI for the slected IDS_Camera
@@ -598,10 +617,10 @@ class Vimba_Panel(QGroupBox):
 
         with self._cam.cam:
             self.cam.set_roi(self.cam.width_max, self.cam.height_max)
-        self.AOI_x_tbox.setText("0")
-        self.AOI_y_tbox.setText("0")
-        self.AOI_width_tbox.setText(str(int(self.cam.width)))
-        self.AOI_height_tbox.setText(str(int(self.cam.height)))
+        self.AOI_x_tbox.setValue(0)
+        self.AOI_y_tbox.setValue(0)
+        self.AOI_width_tbox.setValue(int(self.cam.width))
+        self.AOI_height_tbox.setValue(int(self.cam.height))
 
     def center_AOI(self):
         '''Sets the AOI for the slected vimba_cam
@@ -616,10 +635,10 @@ class Vimba_Panel(QGroupBox):
                 int(self.AOI_width_tbox.text()),
                 int(self.AOI_height_tbox.text()))
 
-        self.AOI_x_tbox.setText(str(self.cam.offsetX))
-        self.AOI_y_tbox.setText(str(self.cam.offsetY))
-        self.AOI_width_tbox.setText(str(self.cam.width))
-        self.AOI_height_tbox.setText(str(self.cam.height))
+        self.AOI_x_tbox.setValue(self.cam.offsetX)
+        self.AOI_y_tbox.setValue(self.cam.offsetY)
+        self.AOI_width_tbox.setValue(self.cam.width)
+        self.AOI_height_tbox.setValue(self.cam.height)
 
     def select_AOI(self):
         if self.frame is not None:
@@ -627,10 +646,10 @@ class Vimba_Panel(QGroupBox):
             cv2.destroyWindow('ROI selector')
 
             z = self.zoom_box.value()
-            self.AOI_x_tbox.setText(str(int(aoi[0] / z)))
-            self.AOI_y_tbox.setText(str(int(aoi[1] / z)))
-            self.AOI_width_tbox.setText(str(int(aoi[2] / z)))
-            self.AOI_height_tbox.setText(str(int(aoi[3] / z)))
+            self.AOI_x_tbox.setValue(int(aoi[0] / z))
+            self.AOI_y_tbox.setValue(int(aoi[1] / z))
+            self.AOI_width_tbox.setValue(int(aoi[2] / z))
+            self.AOI_height_tbox.setValue(int(aoi[3] / z))
 
     @pyqtSlot()
     def save_browse_clicked(self):
@@ -724,7 +743,7 @@ class Vimba_Panel(QGroupBox):
         self.cam_exposure_slider.setNearest(self._cam.exposure_current)
         self.cam_exposure_slider.elementChanged[int, float] \
             .connect(self.cam_exposure_value_changed)
-        
+
         self.cam_exposure_qs.valueChanged.disconnect(
             self.exposure_spin_changed)
         self.cam_exposure_qs.setValue(self._cam.exposure_current)
@@ -941,7 +960,8 @@ class Vimba_Panel(QGroupBox):
                     # add to saving stack
                     if self.cam_save_temp.isChecked():
                         if not self.mini:
-                            self._frames.put((self.frame.image, self._temps.get()))
+                            self._frames.put(
+                                (self.frame.image, self._temps.get()))
                         else:
                             self._frames.put(self.frame.image)
 
@@ -956,8 +976,10 @@ class Vimba_Panel(QGroupBox):
                         if self.auto_stretch.isChecked():
                             self.alpha.setValue(self.frame._min)
                             self.beta.setValue(self.frame._max)
-                        self.histogram.setXRange(self.frame._min, self.frame._max)
-                        self.hist_cdf.setXRange(self.frame._min, self.frame._max)
+                        self.histogram.setXRange(
+                            self.frame._min, self.frame._max)
+                        self.hist_cdf.setXRange(
+                            self.frame._min, self.frame._max)
 
                         self._plot_ref.setData(self.frame._hist[:, 0])
                         self._cdf_plot_ref.setData(self.frame._cdf)
@@ -1151,15 +1173,15 @@ class Vimba_Panel(QGroupBox):
 
                 w, h, x, y = self.cam.get_roi()
 
-                self.AOI_x_tbox.setText(str(int(x)))
-                self.AOI_y_tbox.setText(str(int(y)))
-                self.AOI_width_tbox.setText(str(int(w)))
-                self.AOI_height_tbox.setText(str(int(h)))
+                self.AOI_x_tbox.setValue(int(x))
+                self.AOI_y_tbox.setValue(int(y))
+                self.AOI_width_tbox.setValue(int(w))
+                self.AOI_height_tbox.setValue(int(h))
 
                 self.cam_trigger_mode_cbox.setCurrentText(
                     self.cam.get_trigger_mode())
 
-                self.cam_exposure_ledit.setValue(self.cam.get_exposure())
+                self.cam_exposure_qs.setValue(self.cam.get_exposure())
         else:
             QMessageBox.warning(
                 self, "Warning", "No file selected.")
