@@ -7,7 +7,7 @@ The *Control Module* allows setting the laser excitation presets, manual focus a
 
 The *Tiff Viewer Module* allows accessing tiff images (single file and sequecnces) of order TYX (2D SMLM), also allows for visualizing the filtering-localization process *WYSIWYG*.  
 
-This toolkit is compatible with the [hardware](#hardware) we are using in our microscope. For further details check our microscope's github (TBA)
+This toolkit is compatible with the [hardware](#hardware) we are using in our microscope. For further details check our *miEye* microscope's [OSF project](http://doi.org/10.17605/osf.io/j2fqy)
 
 ## Uses Packages
  
@@ -29,7 +29,32 @@ This toolkit is compatible with the [hardware](#hardware) we are using in our mi
 
 ## How to Install [Package](https://pypi.org/project/microEye/)
 
+1. Download and install the latest [*Python*](https://www.python.org/downloads/) 3.9 stable release. (We tested with 3.9.4 and 3.9.7)
+
+2. Open a terminal and install *microEye* package using *pip*.
+
     > pip install microEye
+
+3. Download the file [*requirements.txt*](https://github.com/samhitech/microEye/blob/main/requirements.txt) and install the *microEye* required packages by executing the following line. (This may take a while) 
+
+    > pip install -r /path/to/requirements.txt
+
+4. Install the dependent hardware specific drivers for the cameras if you intend to use the hardware control or acquisition modules.
+(*microEye* might not function as expected in case drivers are missing)
+      * *Integrated Optics* [Laser control software](https://integratedoptics.com/downloads).
+ 
+      * *IDS uEye* CMOS cameras: install [*IDS Software Suite 4.96.1*](https://en.ids-imaging.com/download-details/AB00604.html?os=windows&version=win10&bus=64&floatcalc=) for *Windows 32/64-bit*. (We did not test it with Linux)
+
+      * *Allied Vision* CMOS cameras: install the [*Vimba SDK*](https://www.alliedvision.com/en/products/vimba-sdk) 5.0 or 6.0 outside the *Program Files* to skip the run as admin requirement, then in a terminal navigate to  directory [*.../Allied Vision/Vimba_5.0/VimbaPython/*] where [*setup.py*] is located and execute:
+
+    > python -m pip install .
+
+      * *Thorlabs* CMOS cameras: install [Thorcam](https://www.thorlabs.com/software_pages/ViewSoftwarePage.cfm?Code=ThorCam) in its default directory as it is initial to have *uc480_64.dll*  in path 'C:\Program Files\Thorlabs\Scientific Imaging\ThorCam\uc480_64.dll'. (Note, *Thorlabs* cameras can get identified by *Windows* as *IDS uEye* cameras and run without this software)  
+
+5. Other hardware used by the *miEye* microscope include:
+      * *Thorlabs* [*Kinesis® Software*](https://www.thorlabs.com/newgrouppage9.cfm?objectgroup_id=10285) and [*Elliptec™ Software*](https://www.thorlabs.com/software_pages/ViewSoftwarePage.cfm?Code=ELL).
+
+6. Download and run examples to start using *microEye*! :partying_face:
 
 ## Microscope Scheme
 

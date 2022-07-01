@@ -883,7 +883,7 @@ class Vimba_Panel(QGroupBox):
                 self._threadpool.start(self.s_worker)
 
     def _capture_handler(self, cam, frame):
-        self._buffer.put(frame.as_numpy_ndarray())
+        self._buffer.put(frame.as_numpy_ndarray().copy())
         cam.queue_frame(frame)
         # add sensor temperature to the stack
         self._temps.put(self.cam.get_temperature())
