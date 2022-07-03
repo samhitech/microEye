@@ -52,8 +52,8 @@ def phasor_fit(image: np.ndarray, points: np.ndarray,
         sub_fit[r, 5] = magnitudeX / magnitudeY
 
         if intensity:
-            idx = int(idx + x - roi_size//2)
-            idy = int(idy + y - roi_size//2)
+            idx = int(x - roi_size//2)
+            idy = int(y - roi_size//2)
             if idx < 0:
                 idx = 0
             if idy < 0:

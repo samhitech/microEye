@@ -834,7 +834,8 @@ class tiff_viewer(QMainWindow):
                         return None
 
                 def done(results):
-                    plotFRC(*results)
+                    if results is not None:
+                        plotFRC(*results)
                     self.frc_res_btn.setDisabled(False)
             else:
                 return
