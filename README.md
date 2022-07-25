@@ -58,7 +58,11 @@ This toolkit is compatible with the [hardware](#hardware) we are using in our mi
 
 ## Microscope Scheme
 
-![scheme](https://user-images.githubusercontent.com/89871015/135764774-8c2dbc12-bff1-4325-97bc-7f1fc356f517.png)
+Schematic overview of the miEye instrument. A) The excitation path via single-mode fiber (SMF) for TIRF-, HILO-, and Epi-mode. B) The excitation path via multi-mode fiber (MMF) for Epi-mode when imaging MMF output on the sample plane. C) The fluorescence emission path. D) IR laser-based autofocusing path. AC: achromat lens, AS: aspheric lens, BFP: back-focal plane, TL: tube lens, B: B-coated N-BK7 optics, BS: beamsplitter.
+
+![quadScheme_3](https://user-images.githubusercontent.com/89871015/180858486-5fe32a49-4765-496b-a2a4-5e813657c27b.png)
+
+![scheme_git](https://user-images.githubusercontent.com/89871015/180858238-fef780a8-ced5-40ab-8074-5a94ee01452c.png)
 
 ## Hardware 
 
@@ -68,9 +72,11 @@ This toolkit is compatible with the [hardware](#hardware) we are using in our mi
   - Allied Vision cameras using Vimba SDK, specifically [Alvium 1800 U-158m](https://www.alliedvision.com/en/products/alvium-configurator/alvium-1800-u/158/#_configurator).
 - Integrated Optics Multi-wavelength Laser Combiner [MatchBox](https://integratedoptics.com/products/wavelength-combiners).
 - Piezo Concept nanopositioner for microscope objectives [FOC](https://piezoconcept-store.squarespace.com/1-axis/p/foc).
+- Thorlab's Elliptec Dual-Position/Four-Position ([ELL6](https://www.thorlabs.com/thorproduct.cfm?partnumber=ELL6)/[ELL9](https://www.thorlabs.com/thorproduct.cfm?partnumber=ELL9)) support.
+- Thorlab's Kinesis [KDC101](https://www.thorlabs.com/thorproduct.cfm?partnumber=KDC101) controller for [Z825B](https://www.thorlabs.com/thorproduct.cfm?partnumber=Z825B) 25mm motorized actuators used for the XY stage instead of manual micrometers. (Requires activating USB VCP to access the COM port from device manger)
 - Parallax Linescan Camera Module used for IR autofocus stabilization tracking [TSL1401-DB (#28317)](https://eu.mouser.com/ProductDetail/Parallax/28317?qs=%2Fha2pyFaduiCRhuOAXMuCmQIeG1Q3R01m6Y1EH%252BmN80%3D) acquisition done by an Arduino [LineScanner](https://github.com/samhitech/LineScanner).
 - [RelayBox](https://github.com/samhitech/RelayBox) arduino for laser control using the camera flash signal with different presets.
-- Parts list related to our iteration of [hohlbeinlab miCube](https://hohlbeinlab.github.io/miCube/index.html) (TBA).
+- Parts list of our [miEye OSF Project](https://osf.io/j2fqy/) an iteration of [hohlbeinlab miCube](https://hohlbeinlab.github.io/miCube/index.html).
 
 ## Acquisition Module
 
