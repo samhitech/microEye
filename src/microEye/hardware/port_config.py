@@ -7,10 +7,10 @@ from PyQt5.QtWidgets import *
 class port_config(QDialog):
     '''A dialog for setting the serial port config | Inherits QDialog
     '''
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, title='Serial Port Config.'):
         super(port_config, self).__init__(parent)
 
-        self.setWindowTitle('Serial Port Config.')
+        self.setWindowTitle(title)
         self.portname_comboBox = QComboBox()    # port name combobox
         self.baudrate_comboBox = QComboBox()    # baudrate combobox
 
@@ -20,8 +20,10 @@ class port_config(QDialog):
 
         # adding default baudrates (default 115200)
         for baudrate in QSerialPortInfo.standardBaudRates():
-            if baudrate == 115200:
-                self.baudrate_comboBox.addItem(str(baudrate), baudrate)
+            # if baudrate == 115200:
+            self.baudrate_comboBox.addItem(str(baudrate), baudrate)
+
+        self.baudrate_comboBox.setCurrentText('115200')
 
         # dialog buttons
         buttonBox = QDialogButtonBox()

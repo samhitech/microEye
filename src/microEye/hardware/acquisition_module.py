@@ -24,6 +24,7 @@ from .ueye_camera import IDS_Camera
 from .ueye_panel import IDS_Panel
 from .vimba_cam import *
 from .vimba_panel import *
+from .kinesis import *
 
 try:
     from pyueye import ueye
@@ -74,6 +75,9 @@ class acquisition_module(QMainWindow):
         self._exec_time = 0.0
         self._calc = ""
 
+        # XY Stage
+        self.kinesisXY = KinesisXY(threadpool=self.threadpool)
+
         #  Layout
         self.LayoutInit()
 
@@ -108,7 +112,6 @@ class acquisition_module(QMainWindow):
         self.tabView = QTabWidget()
 
         self.first_tab = QWidget()
-        self.second_tab = QWidget()
 
         # first tab vertical layout
         self.first_tab_Layout = QFormLayout()
@@ -120,6 +123,7 @@ class acquisition_module(QMainWindow):
         self.pyEditor.exec_btn.clicked.connect(lambda: self.exec_script())
 
         self.tabView.addTab(self.first_tab, "Main")
+        self.tabView.addTab(self.kinesisXY.getQWidget(), "Stage Controls")
         self.tabView.addTab(self.pyEditor, "Scripting")
 
         # CAM Table

@@ -33,6 +33,7 @@ from .io_single_laser import *
 from .IR_Cam import *
 from .piezo_concept import *
 from .port_config import *
+from .elliptec import *
 from ..thread_worker import *
 from .CameraListWidget import *
 from ..qlist_slider import *
@@ -84,6 +85,9 @@ class control_module(QMainWindow):
         self.laserRelay.setPortName('COM6')
         self.laserRelay_last = ""
         self.laserRelay_curr = ""
+
+        # Elliptec controller
+        self._elliptec_controller = elliptec_controller()
 
         # Layout
         self.LayoutInit()
@@ -267,6 +271,20 @@ class control_module(QMainWindow):
 
         self.laserPanels = []
 
+        # Elliptec Tab
+        self.elliptecLayout = QHBoxLayout()
+        self.elliptecLayout.addWidget(self._elliptec_controller.getQWidget())
+
+        self._elliptec_controller.address_bx.setValue(2)
+        self._elliptec_controller.stage_type.setCurrentText('ELL6')
+        self._elliptec_controller._add_btn.click()
+        self._elliptec_controller.address_bx.setValue(0)
+        self._elliptec_controller.stage_type.setCurrentText('ELL9')
+        self._elliptec_controller._add_btn.click()
+        self.elliptecLayout.addStretch()
+        self.elliptec_tab = QWidget()
+        self.elliptec_tab.setLayout(self.elliptecLayout)
+
         # cameras tab
         self.camListWidget = CameraListWidget()
         self.camListWidget.addCamera.connect(self.add_camera)
@@ -307,6 +325,7 @@ class control_module(QMainWindow):
         app.aboutToQuit.connect(self.remote_view.close)
         # Tabs
         self.Tab_Widget.addTab(self.lasers_tab, 'Lasers')
+        self.Tab_Widget.addTab(self.elliptec_tab, 'Elliptec Stages')
         self.Tab_Widget.addTab(self.camListWidget, 'Cameras List')
         self.Tab_Widget.addTab(graphs_tab, 'Graphs')
 
@@ -639,6 +658,10 @@ class control_module(QMainWindow):
                 "background-color: green")
         else:
             self.laser_relay_connect_btn.setStyleSheet("background-color: red")
+        if self._elliptec_controller.isOpen():
+            self._elliptec_controller._connect_btn.setStyleSheet("background-color: green")
+        else:
+            self._elliptec_controller._connect_btn.setStyleSheet("background-color: red")
 
         if self.laserRelay.isOpen():
             if self.laserRelay_last == self.relaySettings():
