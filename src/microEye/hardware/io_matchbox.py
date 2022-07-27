@@ -127,6 +127,7 @@ class io_combiner(QSerialPort):
             implemented in the MatchBox class.
         '''
         if(self.isOpen()):
+            self.readAll()
             self.write(command)
             self.waitForBytesWritten(500)
             QThread.msleep(delay)
@@ -134,7 +135,7 @@ class io_combiner(QSerialPort):
                 self.waitForReadyRead(500)
 
             response = str(self.readAll().replace(b'\xff', b''),
-                           encoding='utf8').strip('\r\n').strip()
+                           encoding='utf-8', errors='replace').strip('\r\n').strip()
             if log_print:
                 print(response, command)
 
@@ -205,9 +206,17 @@ class io_combiner(QSerialPort):
 
             if not ('<ERR>' in res or '<ACK>' in res):
                 values = res.strip('<').strip(
-                    ' >').replace('ÿÿÿÿÿ', '').strip().split(' ')
-                if len(values) >= 3:
-                    self.Wavelengths = list(map(int, values))
+                    ' >').strip().split(' ')
+                self.Wavelengths = []
+                if len(values) == 3:
+                        self.Wavelengths.append(0)
+                for x in range(len(values)):
+                    if values[x].isdigit():
+                        self.Wavelengths.append(int(values[x]))
+                    else:
+                        self.Wavelengths.append(0)                    
+                # if len(values) >= 3:
+                #     self.Wavelengths = list(map(int, values))
 
     def GetReadings(self, log_print: bool = True):
         if(self.isOpen()):

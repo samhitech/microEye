@@ -84,7 +84,7 @@ class KinesisDevice:
 class KinesisXY:
     '''Class for controlling Two Kinesis Devices as an XY Stage'''
 
-    def __init__(self, x_port='COM11', y_port='COM12', threadpool=None) -> None:
+    def __init__(self, x_port='COM12', y_port='COM11', threadpool=None) -> None:
         self.X_Kinesis = KinesisDevice(x_port)
         self.Y_Kinesis = KinesisDevice(y_port)
         self.position = [0, 0]
@@ -275,11 +275,21 @@ class KinesisXY:
                 self.center
             )
         )
+        self.x_id_btn = QPushButton(
+            "ID X",
+            clicked=lambda: self.X_Kinesis.identify()
+        )
+        self.y_id_btn = QPushButton(
+            "ID Y",
+            clicked=lambda: self.Y_Kinesis.identify()
+        )
         
         controls = QHBoxLayout()
         controls.addWidget(self._move_btn)
         controls.addWidget(self._home_btn)
         controls.addWidget(self._center_btn)
+        controls.addWidget(self.x_id_btn)
+        controls.addWidget(self.y_id_btn)
         formLayout.addRow(controls)
 
         self.n_x_jump_btn = QPushButton(
@@ -287,8 +297,8 @@ class KinesisXY:
             clicked=lambda: self.doAsync(
                 controlsWidget,
                 self.move_relative,
-                0,
-                - self.jump_spin.value()
+                - self.jump_spin.value(),
+                0
             )
         )
         self.n_x_step_btn = QPushButton(
@@ -296,17 +306,17 @@ class KinesisXY:
             clicked=lambda: self.doAsync(
                 controlsWidget,
                 self.move_relative,
-                0,
-                - self.step_spin.value()
+                - self.step_spin.value(),
+                0
             )
         )
         self.p_x_step_btn = QPushButton(
             "x+",
             clicked=lambda: self.doAsync(
                 controlsWidget,
-                self.move_relative,
-                0,
-                self.step_spin.value()
+                self.move_relative,                
+                self.step_spin.value(),
+                0
             )
         )
         self.p_x_jump_btn = QPushButton(
@@ -314,8 +324,8 @@ class KinesisXY:
             clicked=lambda: self.doAsync(
                 controlsWidget,
                 self.move_relative,
-                0,
-                self.jump_spin.value()
+                self.jump_spin.value(),
+                0
             )
         )
 
@@ -324,8 +334,8 @@ class KinesisXY:
             clicked=lambda: self.doAsync(
                 controlsWidget,
                 self.move_relative,
-                - self.jump_spin.value(),
-                0
+                0,
+                - self.jump_spin.value()
             )
         )
         self.n_y_step_btn = QPushButton(
@@ -333,8 +343,8 @@ class KinesisXY:
             clicked=lambda: self.doAsync(
                 controlsWidget,
                 self.move_relative,
-                - self.step_spin.value(),
-                0
+                0,
+                - self.step_spin.value()
             )
         )
         self.p_y_step_btn = QPushButton(
@@ -342,8 +352,8 @@ class KinesisXY:
             clicked=lambda: self.doAsync(
                 controlsWidget,
                 self.move_relative,
-                self.step_spin.value(),
-                0
+                0,                
+                self.step_spin.value()
             )
         )
         self.p_y_jump_btn = QPushButton(
@@ -351,8 +361,8 @@ class KinesisXY:
             clicked=lambda: self.doAsync(
                 controlsWidget,
                 self.move_relative,
-                self.jump_spin.value(),
-                0
+                0,                
+                self.jump_spin.value()
             )
         )
 

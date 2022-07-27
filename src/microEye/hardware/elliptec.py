@@ -175,10 +175,20 @@ class elliptec_controller():
             "x",
             clicked=lambda: layout.removeRow(group)
         )
+
+        
         move_buttons.addWidget(HOME_btn)
         move_buttons.addWidget(BW_btn)
         move_buttons.addWidget(FW_btn)
         move_buttons.addWidget(remove_btn)
+
+        group.button_group = QButtonGroup()
+        group.button_group.setExclusive(True)
+        group.button_group.addButton(BW_btn)
+        group.button_group.addButton(FW_btn)
+
+        FW_btn.setCheckable(True)
+        BW_btn.setCheckable(True)
 
         layout.addRow(group)
 
@@ -218,7 +228,8 @@ class elliptec_controller():
         fourth_btn = QPushButton(
             "4th",
             clicked=lambda: self.setSLOT(address, 3)
-        )
+        )        
+        
         move_buttons.addWidget(HOME_btn)
         move_buttons.addWidget(BW_btn)
         move_buttons.addWidget(FW_btn)
@@ -227,5 +238,17 @@ class elliptec_controller():
         move_buttons.addWidget(third_btn)
         move_buttons.addWidget(fourth_btn)
         move_buttons.addWidget(remove_btn)
+        
+        group.button_group = QButtonGroup()
+        group.button_group.setExclusive(True)
+        group.button_group.addButton(first_btn)
+        group.button_group.addButton(second_btn)
+        group.button_group.addButton(third_btn)
+        group.button_group.addButton(fourth_btn)
+        
+        first_btn.setCheckable(True)
+        second_btn.setCheckable(True)
+        third_btn.setCheckable(True)        
+        fourth_btn.setCheckable(True)
 
         layout.addRow(group)
