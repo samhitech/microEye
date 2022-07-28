@@ -13,17 +13,7 @@ class elliptec_controller():
     def __init__(self) -> None:
 
         self._connect_btn = QPushButton()
-        # self.ZPosition = 50000
-        # self.LastCmd = ''
-        # self.Received = ''
-        # self.center_pixel = 64
-        # self.piezoTracking = False
-        # self.pConst = 26.45
-        # self.iConst = 0.0
-        # self.dConst = 0.0
-        # self.tau = 0.0
-        # self.threshold = 0.016
-         
+
         self.serial = QSerialPort(
             None,
             readyRead=self.rx_piezo
@@ -87,7 +77,7 @@ class elliptec_controller():
         '''Moves the stage at a specific address one step BACKWARD'''
         if(self.isOpen()):
             self.LastCmd = '{}ma000000{}0'.format(address, slot * 2)
-            self.write(self.LastCmd.encode('utf-8')) 
+            self.write(self.LastCmd.encode('utf-8'))
 
     def rx_piezo(self):
         '''Controller dataReady signal.
@@ -125,7 +115,7 @@ class elliptec_controller():
         self.address_bx = QSpinBox()
         self.address_bx.setMinimum(0)
         self.address_bx.setMaximum(9)
-        
+
         layout.addRow(
             QLabel("Address:"),
             self.address_bx)
@@ -133,7 +123,6 @@ class elliptec_controller():
         self.stage_type = QComboBox()
         self.stage_type.addItems(['ELL6', 'ELL9'])
 
-        
         layout.addRow(
             QLabel("Stage Type:"),
             self.stage_type)
@@ -143,7 +132,7 @@ class elliptec_controller():
             clicked=lambda: self.add_stage(
                 self.stage_type.currentText(), self.address_bx.value(), layout)
         )
-        
+
         layout.addWidget(self._add_btn)
 
         return group
@@ -176,7 +165,6 @@ class elliptec_controller():
             clicked=lambda: layout.removeRow(group)
         )
 
-        
         move_buttons.addWidget(HOME_btn)
         move_buttons.addWidget(BW_btn)
         move_buttons.addWidget(FW_btn)
@@ -228,8 +216,8 @@ class elliptec_controller():
         fourth_btn = QPushButton(
             "4th",
             clicked=lambda: self.setSLOT(address, 3)
-        )        
-        
+        )
+
         move_buttons.addWidget(HOME_btn)
         move_buttons.addWidget(BW_btn)
         move_buttons.addWidget(FW_btn)
@@ -238,17 +226,17 @@ class elliptec_controller():
         move_buttons.addWidget(third_btn)
         move_buttons.addWidget(fourth_btn)
         move_buttons.addWidget(remove_btn)
-        
+
         group.button_group = QButtonGroup()
         group.button_group.setExclusive(True)
         group.button_group.addButton(first_btn)
         group.button_group.addButton(second_btn)
         group.button_group.addButton(third_btn)
         group.button_group.addButton(fourth_btn)
-        
+
         first_btn.setCheckable(True)
         second_btn.setCheckable(True)
-        third_btn.setCheckable(True)        
+        third_btn.setCheckable(True)
         fourth_btn.setCheckable(True)
 
         layout.addRow(group)

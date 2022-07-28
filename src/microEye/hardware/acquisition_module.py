@@ -25,6 +25,7 @@ from .ueye_panel import IDS_Panel
 from .vimba_cam import *
 from .vimba_panel import *
 from .kinesis import *
+from .scan_acquisition import *
 
 try:
     from pyueye import ueye
@@ -78,6 +79,10 @@ class acquisition_module(QMainWindow):
         # XY Stage
         self.kinesisXY = KinesisXY(threadpool=self.threadpool)
 
+        self.lastTile = None
+        self._stop_scan = False
+        self._scanning = False
+
         #  Layout
         self.LayoutInit()
 
@@ -112,6 +117,7 @@ class acquisition_module(QMainWindow):
         self.tabView = QTabWidget()
 
         self.first_tab = QWidget()
+        self.second_tab = QWidget()
 
         # first tab vertical layout
         self.first_tab_Layout = QFormLayout()
@@ -119,11 +125,25 @@ class acquisition_module(QMainWindow):
         self.first_tab.setLayout(self.first_tab_Layout)
 
         # second tab vertical layout
+        self.second_tab_Layout = QVBoxLayout()
+        # set as second tab layout
+        self.second_tab.setLayout(self.second_tab_Layout)
+
+        self.scanAcqWidget = ScanAcquisitionWidget()
+        self.scanAcqWidget.startAcquisition.connect(
+            self.start_scan_acquisition)
+        self.scanAcqWidget.stopAcquisition.connect(self.stop_scan_acquisition)
+        self.scanAcqWidget.openLastTile.connect(self.show_last_tile)
+
+        self.second_tab_Layout.addWidget(self.kinesisXY.getQWidget())
+        self.second_tab_Layout.addWidget(self.scanAcqWidget)
+
+        # second tab vertical layout
         self.pyEditor = pyEditor()
         self.pyEditor.exec_btn.clicked.connect(lambda: self.exec_script())
 
         self.tabView.addTab(self.first_tab, "Main")
-        self.tabView.addTab(self.kinesisXY.getQWidget(), "Stage Controls")
+        self.tabView.addTab(self.second_tab, "Stage Controls")
         self.tabView.addTab(self.pyEditor, "Scripting")
 
         # CAM Table
@@ -199,6 +219,87 @@ class acquisition_module(QMainWindow):
         AllWidgets.setLayout(self.Hlayout)
 
         self.setCentralWidget(AllWidgets)
+
+    def scan_acquisition(self, steps, step_size, delay, average):
+        try:
+            data = []
+            if self.kinesisXY.isOpen()[0] and self.kinesisXY.isOpen()[1] \
+                    and len(self.vimba_cams) > 0:
+                cam = self.vimba_cams[0]
+                for x in range(steps[0]):
+                    self.kinesisXY.move_relative(
+                        round(step_size[0] / 1000, 4), 0)
+                    for y in range(steps[0]):
+                        if y > 0:
+                            self.kinesisXY.move_relative(0, ((-1)**x) * round(
+                                step_size[1] / 1000, 4))
+                        frame = None
+                        with cam.cam:
+                            QThread.msleep(delay)
+                            if average > 1:
+                                frames_avg = []
+                                for n in range(average):
+                                    frames_avg.append(
+                                        cam.cam.get_frame().as_numpy_ndarray())
+                                frame = uImage(
+                                    np.array(
+                                        frames_avg).mean(
+                                            axis=0, dtype=np.uint16))
+                            else:
+                                frame = uImage(
+                                    cam.cam.get_frame().as_numpy_ndarray())
+                            frame.equalizeLUT(None, True)
+                        frame._view = cv2.resize(
+                            frame._view, (0, 0),
+                            fx=0.5,
+                            fy=0.5)
+                        Y = (x % 2) * 3 + ((-1)**x) * y
+                        data.append(
+                            TileImage(frame, [Y, x], self.kinesisXY.position))
+
+                self.kinesisXY.update()
+
+        except Exception:
+            traceback.print_exc()
+        finally:
+            return data
+
+    def result_scan_acquisition(self, data):
+        self._scanning = False
+        self.scanAcqWidget.acquire_btn.setEnabled(True)
+
+        self.lastTile = TiledImageSelector(data)
+        self.lastTile.positionSelected.connect(
+            lambda x, y: self.kinesisXY.doAsync(
+                None, self.kinesisXY.move_absolute, x, y)
+        )
+        self.lastTile.show()
+
+    def start_scan_acquisition(
+            self, params):
+        if not self._scanning:
+            self._stop_scan = False
+            self._scanning = True
+
+            self.scan_worker = thread_worker(
+                self.scan_acquisition,
+                [params[0], params[1]],
+                [params[2], params[3]],
+                params[4],
+                params[5], progress=False, z_stage=False)
+            self.scan_worker.signals.result.connect(
+                self.result_scan_acquisition)
+            # Execute
+            self.threadpool.start(self.scan_worker)
+
+            self.scanAcqWidget.acquire_btn.setEnabled(False)
+
+    def stop_scan_acquisition(self):
+        self._stop_scan = True
+
+    def show_last_tile(self):
+        if self.lastTile is not None:
+            self.lastTile.show()
 
     def exec_script(self):
         exec(self.pyEditor.toPlainText())
@@ -329,13 +430,11 @@ class acquisition_module(QMainWindow):
                 with pan.cam.cam:
                     if pan.cam.cam.get_serial() == cam["Serial"]:
                         if not pan.cam.acquisition:
-                            pan.cam.free_memory()
-                            pan.cam.dispose()
 
                             pan._dispose_cam = True
                             pan._stop_thread = True
-                            self.thorlabs_cams.remove(pan.cam)
-                            self.thor_panels.remove(pan)
+                            self.vimba_cams.remove(pan.cam)
+                            self.vimba_panels.remove(pan)
                             self.Hlayout.removeWidget(pan)
                             pan.setParent(None)
                             break

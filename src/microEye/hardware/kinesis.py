@@ -67,7 +67,7 @@ class KinesisDevice:
     def wait(self):
         if self.isOpen():
             return self.serial.read(6)
-        
+
     def isOpen(self):
         '''Returns True if connected.'''
         return self.serial.isOpen()
@@ -84,7 +84,7 @@ class KinesisDevice:
 class KinesisXY:
     '''Class for controlling Two Kinesis Devices as an XY Stage'''
 
-    def __init__(self, x_port='COM12', y_port='COM11', threadpool=None) -> None:
+    def __init__(self, x_port='COM12', y_port='COM11', threadpool=None):
         self.X_Kinesis = KinesisDevice(x_port)
         self.Y_Kinesis = KinesisDevice(y_port)
         self.position = [0, 0]
@@ -100,13 +100,15 @@ class KinesisXY:
         return self.X_Kinesis.wait(), self.Y_Kinesis.wait()
 
     def center(self, x_center=17, y_center=17):
-        return self.move_absolute(x_center, y_center)
+        return self.move_absolute(x_center, y_center, True)
 
-    def move_absolute(self, x, y):
+    def move_absolute(self, x, y, force=False):
         x = round(max(self.min[0], min(self.max[0], x)), self.prec)
         y = round(max(self.min[1], min(self.max[1], y)), self.prec)
-        self.X_Kinesis.move_absolute(x)
-        self.Y_Kinesis.move_absolute(y)
+        if x != self.position[0] or force:
+            self.X_Kinesis.move_absolute(x)
+        if y != self.position[1] or force:
+            self.Y_Kinesis.move_absolute(y)
         self.position = [x, y]
         return self.X_Kinesis.wait(), self.Y_Kinesis.wait()
 
@@ -128,7 +130,7 @@ class KinesisXY:
         '''Closes the serial ports.'''
         self.X_Kinesis.close()
         self.Y_Kinesis.close()
-    
+
     def isOpen(self):
         return self.X_Kinesis.isOpen(), self.Y_Kinesis.isOpen()
 
@@ -153,8 +155,8 @@ class KinesisXY:
         if res[0] and res[1]:
             self.X_Kinesis.serial.read_all()
             self.Y_Kinesis.serial.read_all()
-
-        group.setEnabled(False)
+        if group is not None:
+            group.setEnabled(False)
         _worker = thread_worker(
                 callback, *args, progress=False, z_stage=False)
         # Execute
@@ -163,10 +165,11 @@ class KinesisXY:
 
         self.threadpool.start(_worker)
 
-    def update(self, group):
+    def update(self, group=None):
         self.x_spin.setValue(self.position[0])
         self.y_spin.setValue(self.position[1])
-        group.setEnabled(True)
+        if group is not None:
+            group.setEnabled(True)
 
     def getQWidget(self):
         '''Generates a QGroupBox with XY
@@ -187,7 +190,7 @@ class KinesisXY:
             "Config.",
             clicked=lambda: self.open_dialog()
         )
-        
+
         self._stop_btn = QPushButton(
             "STOP!",
             clicked=lambda: self.stop()
@@ -207,7 +210,7 @@ class KinesisXY:
         hLayout.addLayout(formLayout, 3)
         container.addWidget(controlsWidget)
         container.addStretch()
-        
+
         self.x_spin = QDoubleSpinBox()
         self.y_spin = QDoubleSpinBox()
         self.x_spin.setDecimals(self.prec)
@@ -283,7 +286,7 @@ class KinesisXY:
             "ID Y",
             clicked=lambda: self.Y_Kinesis.identify()
         )
-        
+
         controls = QHBoxLayout()
         controls.addWidget(self._move_btn)
         controls.addWidget(self._home_btn)
@@ -314,7 +317,7 @@ class KinesisXY:
             "x+",
             clicked=lambda: self.doAsync(
                 controlsWidget,
-                self.move_relative,                
+                self.move_relative,
                 self.step_spin.value(),
                 0
             )
@@ -352,7 +355,7 @@ class KinesisXY:
             clicked=lambda: self.doAsync(
                 controlsWidget,
                 self.move_relative,
-                0,                
+                0,
                 self.step_spin.value()
             )
         )
@@ -361,7 +364,7 @@ class KinesisXY:
             clicked=lambda: self.doAsync(
                 controlsWidget,
                 self.move_relative,
-                0,                
+                0,
                 self.jump_spin.value()
             )
         )
@@ -371,12 +374,11 @@ class KinesisXY:
         grid.addWidget(self.n_x_step_btn, 2, 1)
         grid.addWidget(self.p_x_step_btn, 2, 3)
         grid.addWidget(self.p_x_jump_btn, 2, 4)
-        
+
         grid.addWidget(self.n_y_jump_btn, 4, 2)
         grid.addWidget(self.n_y_step_btn, 3, 2)
         grid.addWidget(self.p_y_step_btn, 1, 2)
         grid.addWidget(self.p_y_jump_btn, 0, 2)
-        
 
         hLayout.addLayout(grid, 1)
         hLayout.addStretch()

@@ -33,7 +33,7 @@ class piezo_concept(stage):
 
     def __init__(self):
         self.pixel_slider = None
-        
+
         super().__init__()
 
         self.serial = QSerialPort(

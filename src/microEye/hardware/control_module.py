@@ -659,9 +659,11 @@ class control_module(QMainWindow):
         else:
             self.laser_relay_connect_btn.setStyleSheet("background-color: red")
         if self._elliptec_controller.isOpen():
-            self._elliptec_controller._connect_btn.setStyleSheet("background-color: green")
+            self._elliptec_controller._connect_btn.setStyleSheet(
+                "background-color: green")
         else:
-            self._elliptec_controller._connect_btn.setStyleSheet("background-color: red")
+            self._elliptec_controller._connect_btn.setStyleSheet(
+                "background-color: red")
 
         if self.laserRelay.isOpen():
             if self.laserRelay_last == self.relaySettings():

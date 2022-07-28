@@ -10,7 +10,7 @@ class laser_panel(QGroupBox):
     '''
 
     def __init__(self, index: int, wavelength: int,
-                 mbox: io_matchbox, maximum: int, *args, **kwargs):
+                 mbox: io_combiner, maximum: int, *args, **kwargs):
         '''Initializes a new laser control panel for
         a specific laser diode in a laser combiner.
 
@@ -111,19 +111,19 @@ class laser_panel(QGroupBox):
         '''
         if ("OFF" in object.state):
             if ("L405" in object.state):
-                self.match_box.SendCommand(io_matchbox.DISABLE_4)
+                self.match_box.SendCommand(io_combiner.DISABLE_4)
             elif ("L488" in object.state):
-                self.match_box.SendCommand(io_matchbox.DISABLE_3)
+                self.match_box.SendCommand(io_combiner.DISABLE_3)
             elif ("L520" in object.state):
-                self.match_box.SendCommand(io_matchbox.DISABLE_2)
+                self.match_box.SendCommand(io_combiner.DISABLE_2)
             elif ("L638" in object.state):
-                self.match_box.SendCommand(io_matchbox.DISABLE_1)
+                self.match_box.SendCommand(io_combiner.DISABLE_1)
         else:
             if ("L405" in object.state):
-                self.match_box.SendCommand(io_matchbox.ENABLE_4)
+                self.match_box.SendCommand(io_combiner.ENABLE_4)
             elif ("L488" in object.state):
-                self.match_box.SendCommand(io_matchbox.ENABLE_3)
+                self.match_box.SendCommand(io_combiner.ENABLE_3)
             elif ("L520" in object.state):
-                self.match_box.SendCommand(io_matchbox.ENABLE_2)
+                self.match_box.SendCommand(io_combiner.ENABLE_2)
             elif ("L638" in object.state):
-                self.match_box.SendCommand(io_matchbox.ENABLE_1)
+                self.match_box.SendCommand(io_combiner.ENABLE_1)
