@@ -84,7 +84,7 @@ class KinesisDevice:
 class KinesisXY:
     '''Class for controlling Two Kinesis Devices as an XY Stage'''
 
-    def __init__(self, x_port='COM12', y_port='COM11', threadpool=None):
+    def __init__(self, x_port='COM12', y_port='COM11', threadpool: QThreadPool=None):
         self.X_Kinesis = KinesisDevice(x_port)
         self.Y_Kinesis = KinesisDevice(y_port)
         self.position = [0, 0]
@@ -109,8 +109,13 @@ class KinesisXY:
             self.X_Kinesis.move_absolute(x)
         if y != self.position[1] or force:
             self.Y_Kinesis.move_absolute(y)
+        if x != self.position[0] or force:
+            self.X_Kinesis.wait()
+        if y != self.position[1] or force:
+            self.Y_Kinesis.wait()
+
         self.position = [x, y]
-        return self.X_Kinesis.wait(), self.Y_Kinesis.wait()
+        return self.position
 
     def move_relative(self, x, y):
         x = self.position[0] + x
@@ -162,6 +167,11 @@ class KinesisXY:
         # Execute
         _worker.signals.result.connect(
             lambda: self.update(group))
+
+        _worker.setAutoDelete(True)
+
+        _worker.signals.finished.connect(
+            lambda: self.threadpool.clear())
 
         self.threadpool.start(_worker)
 

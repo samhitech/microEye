@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import threading
 import time
 import traceback
 from queue import Queue
@@ -39,7 +40,7 @@ class Vimba_Panel(QGroupBox):
 
     exposureChanged = pyqtSignal()
 
-    def __init__(self, threadpool, cam: vimba_cam,
+    def __init__(self, threadpool: QThreadPool, cam: vimba_cam,
                  *args, mini=False, **kwargs):
         """
         Initializes a new Vimba_Panel Qt widget
@@ -826,6 +827,8 @@ class Vimba_Panel(QGroupBox):
         self.start_all_workers()
 
     def stop(self):
+        if self._event is not None:
+            self._event.set()
         self._stop_thread = True  # set stop acquisition workers flag to true
 
     def start_all_workers(self):
@@ -840,6 +843,7 @@ class Vimba_Panel(QGroupBox):
             self.d_worker = thread_worker(
                 self._display, self.cam, progress=False, z_stage=False)
             # Execute
+            self.d_worker.setAutoDelete(True)
             self._threadpool.start(self.d_worker)
 
         # Pass the save function to be executed
@@ -847,6 +851,7 @@ class Vimba_Panel(QGroupBox):
             if self.s_worker is None or self.s_worker.done:
                 self.s_worker = thread_worker(
                     self._save, progress=False, z_stage=False)
+                self.s_worker.setAutoDelete(True)
                 # Execute
                 self._threadpool.start(self.s_worker)
 
@@ -855,6 +860,7 @@ class Vimba_Panel(QGroupBox):
             # Any other args, kwargs are passed to the run function
             self.c_worker = thread_worker(
                 self._capture, self.cam, progress=False, z_stage=False)
+            self.c_worker.setAutoDelete(True)
             # Execute
             self._threadpool.start(self.c_worker)
 
@@ -889,6 +895,7 @@ class Vimba_Panel(QGroupBox):
         self._temps.put(self.cam.get_temperature())
         self._counter = self._counter + 1
         if self._counter > self._nFrames - 1 and not self.mini:
+            self._event.set()
             self._stop_thread = True
             logging.debug('Stop')
 
@@ -903,29 +910,36 @@ class Vimba_Panel(QGroupBox):
         cam : vimba_cam
             the vimba_cam used to acquire frames.
         '''
-        with self._cam.cam:
-            try:
-                self._buffer.queue.clear()
-                self._temps.queue.clear()
-                self._frames.queue.clear()
-                self._counter = 0
-                self.time = QDateTime.currentDateTime()
-                self._nFrames = int(self.frames_tbox.text())
-                # Continuous image capture
+        try:
+            self._buffer.queue.clear()
+            self._temps.queue.clear()
+            self._frames.queue.clear()
+            self._counter = 0
+            self._event = threading.Event()
+            self.time = QDateTime.currentDateTime()
+            self._nFrames = int(self.frames_tbox.text())
+            # Continuous image capture
+            
+            with self._cam.cam:
                 cam.cam.start_streaming(self._capture_handler)
-                while(True):
-                    QThread.usleep(500)
 
-                    if self._stop_thread:
-                        cam.cam.stop_streaming()
-                        break  # in case stop threads is initiated
-                self._exec_time = self.time.msecsTo(
-                    QDateTime.currentDateTime()) / self._counter
-            except Exception:
-                traceback.print_exc()
-            finally:
-                # reset flags and release resources
-                cam.acquisition = False
+                self._event.wait()
+            # while(True):
+            #     QThread.usleep(500)
+
+            #     if self._stop_thread:
+            #         break  # in case stop threads is initiated
+        except Exception:
+            traceback.print_exc()
+        finally:
+            # reset flags and release resources
+            with self._cam.cam:
+                cam.cam.stop_streaming()
+            self._exec_time = self.time.msecsTo(
+                QDateTime.currentDateTime()) / self._counter
+            cam.acquisition = False
+            self._threadpool.releaseThread()
+
 
     def _display(self, cam: vimba_cam):
         '''Display function executed by the display worker.

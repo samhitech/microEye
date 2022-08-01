@@ -155,8 +155,8 @@ class ScanAcquisitionWidget(QGroupBox):
                 self.y_steps.value(),
                 self.x_stepsize.value(),
                 self.y_stepsize.value(),
-                self.delay,
-                self.average)
+                self.delay.value(),
+                self.average.value())
             )
         )
         self.last_btn = QPushButton(
