@@ -60,9 +60,9 @@ This toolkit is compatible with the [hardware](#hardware) we are using in our mi
 
 Schematic overview of the miEye instrument. A) The excitation path via single-mode fiber (SMF) for TIRF-, HILO-, and Epi-mode. B) The excitation path via multi-mode fiber (MMF) for Epi-mode when imaging MMF output on the sample plane. C) The fluorescence emission path. D) IR laser-based autofocusing path. AC: achromat lens, AS: aspheric lens, BFP: back-focal plane, TL: tube lens, B: B-coated N-BK7 optics, BS: beamsplitter.
 
-![quadScheme_3](https://user-images.githubusercontent.com/89871015/180858486-5fe32a49-4765-496b-a2a4-5e813657c27b.png)
+![quadScheme_4](https://user-images.githubusercontent.com/89871015/182302644-9fdf8615-75c3-4702-9913-d1a535f60e22.png)
 
-![scheme_git](https://user-images.githubusercontent.com/89871015/180858238-fef780a8-ced5-40ab-8074-5a94ee01452c.png)
+![scheme_git_0](https://user-images.githubusercontent.com/89871015/182302694-3f70d058-b1b6-4ef5-9cc2-aec9b58a05f0.png)
 
 ## Hardware 
 
