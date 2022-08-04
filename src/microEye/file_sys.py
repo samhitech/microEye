@@ -299,11 +299,12 @@ class tiff_viewer(QMainWindow):
 
         self.px_size = QDoubleSpinBox()
         self.px_size.setMinimum(0)
-        self.px_size.setMaximum(10000)
+        self.px_size.setMaximum(20000)
         self.px_size.setValue(117.5)
 
         self.super_px_size = QSpinBox()
         self.super_px_size.setMinimum(0)
+        self.super_px_size.setMaximum(200)
         self.super_px_size.setValue(10)
 
         self.drift_cross_args = QHBoxLayout()
@@ -322,12 +323,12 @@ class tiff_viewer(QMainWindow):
         self.nn_neighbors = QSpinBox()
         self.nn_neighbors.setValue(1)
         self.nn_max_distance = QDoubleSpinBox()
-        self.nn_max_distance.setMaximum(10000)
+        self.nn_max_distance.setMaximum(20000)
         self.nn_max_distance.setValue(30)
         self.nn_max_off = QSpinBox()
         self.nn_max_off.setValue(1)
         self.nn_max_length = QSpinBox()
-        self.nn_max_length.setMaximum(10000)
+        self.nn_max_length.setMaximum(20000)
         self.nn_max_length.setValue(500)
         self.nneigh_merge_args.addWidget(self.nn_neighbors)
         self.nneigh_merge_args.addWidget(self.nn_max_distance)

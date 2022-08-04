@@ -514,10 +514,8 @@ class control_module(QMainWindow):
                     self.peak_fit(movez_callback, data.copy())
                     if(self.file is not None):
                         np.savetxt(self.file,
-                                   np.concatenate(
-                                    (data, self.popt),
-                                    axis=0)
-                                   .reshape((1, 131)), delimiter=";")
+                                   np.array((self._exec_time, self.popt[1]))
+                                   .reshape((1, 2)), delimiter=";")
                         self.frames_saved = 1 + self.frames_saved
                     counter = counter + 1
                     progress_callback.emit(data)
@@ -733,8 +731,13 @@ class control_module(QMainWindow):
         creates a file in the current directory.
         '''
         if(self.file is None):
+            filename = None
+            if filename is None:
+                filename, _ = QFileDialog.getSaveFileName(
+                    self, "Save IR Track Data", filter="CSV Files (*.csv)")
+
             self.file = open(
-                'Data_' + time.strftime("%Y_%m_%d_%H%M%S") + '.csv', 'ab')
+                filename, 'ab')
 
     @pyqtSlot()
     def stop_IR(self):
