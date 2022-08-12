@@ -736,8 +736,9 @@ class control_module(QMainWindow):
                 filename, _ = QFileDialog.getSaveFileName(
                     self, "Save IR Track Data", filter="CSV Files (*.csv)")
 
-            self.file = open(
-                filename, 'ab')
+                if len(filename) > 0:
+                    self.file = open(
+                        filename, 'ab')
 
     @pyqtSlot()
     def stop_IR(self):

@@ -354,6 +354,9 @@ class Vimba_Panel(QGroupBox):
         self.preview_ch_box = QCheckBox("Preview")
         self.preview_ch_box.setChecked(not self.mini)
 
+        self.dual_view_bx = QCheckBox("Dual Channel (Splits the AOI in half).")
+        self.dual_view_bx.setChecked(False)
+
         # preview checkbox
         self.slow_lut_rbtn = QRadioButton("LUT Numpy (12bit)")
         self.slow_lut_rbtn.setChecked(True)
@@ -498,6 +501,8 @@ class Vimba_Panel(QGroupBox):
 
         if not self.mini:
             self.second_tab_Layout.addRow(self.preview_ch_box)
+            self.second_tab_Layout.addRow(self.dual_view_bx)
+
         self.second_tab_Layout.addRow(self.slow_lut_rbtn)
         self.second_tab_Layout.addRow(self.fast_lut_rbtn)
         if not self.mini:
@@ -919,7 +924,7 @@ class Vimba_Panel(QGroupBox):
             self.time = QDateTime.currentDateTime()
             self._nFrames = int(self.frames_tbox.text())
             # Continuous image capture
-            
+
             with self._cam.cam:
                 cam.cam.start_streaming(self._capture_handler)
 
@@ -939,7 +944,6 @@ class Vimba_Panel(QGroupBox):
                 QDateTime.currentDateTime()) / self._counter
             cam.acquisition = False
             self._threadpool.releaseThread()
-
 
     def _display(self, cam: vimba_cam):
         '''Display function executed by the display worker.
@@ -965,10 +969,10 @@ class Vimba_Panel(QGroupBox):
 
                     # reshape image into proper shape
                     # (height, width, bytes per pixel)
-                    self.frame = uImage(self._buffer.get()) \
+                    self.frame = uImage(self._buffer.get()[..., 0]) \
                         if self.cam.bytes_per_pixel > 1\
                         else uImage.fromUINT8(
-                            self._buffer.get(),
+                            self._buffer.get()[..., 0],
                             self.cam.height, self.cam.width)
 
                     # add to saving stack
@@ -998,14 +1002,32 @@ class Vimba_Panel(QGroupBox):
                         self._plot_ref.setData(self.frame._hist[:, 0])
                         self._cdf_plot_ref.setData(self.frame._cdf)
 
-                        # resizing the image
-                        self.frame._view = cv2.resize(
-                            self.frame._view, (0, 0),
-                            fx=self.zoom_box.value(),
-                            fy=self.zoom_box.value())
+                        if self.dual_view_bx.isChecked():
+                            mid = self.frame._view.shape[1] // 2
+                            left_view = self.frame._view[:, :mid]
+                            right_view = self.frame._view[:, mid:]
+                            BGR_img = np.zeros(
+                                left_view.shape[:2] + (3,), dtype=np.uint8)
 
-                        # display it
-                        cv2.imshow(cam.name, self.frame._view)
+                            BGR_img[..., 1] = np.fliplr(right_view)
+                            BGR_img[..., 2] = left_view
+
+                            BGR_img = cv2.resize(
+                                BGR_img,
+                                (0, 0),
+                                fx=self.zoom_box.value(),
+                                fy=self.zoom_box.value())
+
+                            cv2.imshow(cam.name, BGR_img)
+                        else:
+                            # resizing the image
+                            self.frame._view = cv2.resize(
+                                self.frame._view, (0, 0),
+                                fx=self.zoom_box.value(),
+                                fy=self.zoom_box.value())
+
+                            # display it
+                            cv2.imshow(cam.name, self.frame._view)
                         cv2.waitKey(1)
                     else:
                         cv2.waitKey(1)

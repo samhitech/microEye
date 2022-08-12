@@ -1,4 +1,5 @@
 from tracemalloc import start
+from turtle import shape
 from typing import Union
 import cv2
 import numba
@@ -15,6 +16,10 @@ class uImage():
         self._image = image
         self._height = image.shape[0]
         self._width = image.shape[1]
+        if len(image.shape) > 2:
+            self._channels = image.shape[2]
+        else:
+            self._channels = 1
         self._min = 0
         self._max = 255 if image.dtype == np.uint8 else 2**16 - 1
         self._isfloat = (image.dtype == np.float16
@@ -38,16 +43,24 @@ class uImage():
             raise Exception(
                 'Image must be a numpy array of type np.uint16 or np.uint8.')
         self._image = value
-        self._height = self._image.shape[0]
-        self._width = self._image.shape[1]
+        self._height = value.shape[0]
+        self._width = value.shape[1]
+        if len(value.shape) > 2:
+            self._channels = value.shape[2]
+        else:
+            self._channels = 1
 
     @property
     def width(self):
-        return self._width
+        return self._image.shape[1]
 
     @property
     def height(self):
-        return self._height
+        return self._image.shape[0]
+
+    @property
+    def channels(self):
+        return self._channels
 
     def calcHist(self):
         self.n_bins = 2**16 if self._image.dtype == np.uint16 else 256
@@ -143,6 +156,33 @@ class uImage():
             return uImage.fromUINT8(buffer, height, width)
         else:
             return uImage.fromUINT16(buffer, height, width)
+
+    def hsplitData(self):
+        mid = self._image.shape[1] // 2
+        left_view = self._image[:, :mid]
+        right_view = self._image[:, mid:]
+        RGB_img = np.zeros(
+            left_view.shape[:2] + (3,), dtype=np.uint8)
+
+        RGB_img[..., 0] = left_view
+        RGB_img[..., 1] = np.fliplr(right_view)
+
+        return uImage(RGB_img)
+
+    def hsplitView(self, RGB=True) -> np.ndarray:
+        mid = self._view.shape[1] // 2
+        left_view = self._view[:, :mid]
+        right_view = self._view[:, mid:]
+
+        _img = np.zeros(
+            left_view.shape[:2] + (3,), dtype=np.uint8)
+        if RGB:
+            _img[..., 0] = left_view
+            _img[..., 1] = np.fliplr(right_view)
+        else:
+            _img[..., 2] = left_view
+            _img[..., 1] = np.fliplr(right_view)
+        return _img
 
 
 class TiffSeqHandler:
