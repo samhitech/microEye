@@ -13,12 +13,9 @@ from ome_types.model.ome import OME
 from PyQt5.QtCore import *
 from PyQt5.QtGui import QFont, QIcon
 from PyQt5.QtWidgets import *
-from sympy import zeros
-
-from microEye.fitting.gaussian_fit import gaussian_2D_fit
-
 from .fitting.results import *
 from .fitting.fit import *
+from .fitting import pyfit3Dcspline
 
 from .checklist_dialog import Checklist
 from .Filters import *
@@ -171,6 +168,9 @@ class tiff_viewer(QMainWindow):
         self.enableROI.setChecked(False)
         self.enableROI.stateChanged.connect(self.enableROI_changed)
 
+        self.detection = QCheckBox('Enable Realtime localization.')
+        self.detection.setChecked(False)
+
         self.saveCropped = QPushButton(
             'Save Cropped Image',
             clicked=lambda: self.save_cropped_img())
@@ -186,89 +186,82 @@ class tiff_viewer(QMainWindow):
             self.max_slider)
         self.image_control_layout.addWidget(self.autostretch)
         self.image_control_layout.addWidget(self.enableROI)
+        self.image_control_layout.addWidget(self.detection)
         self.image_control_layout.addWidget(self.saveCropped)
 
         self.controls_layout.addLayout(
             self.image_control_layout)
 
+        self.blobDetectionWidget = BlobDetectionWidget()
+        self.blobDetectionWidget.update.connect(
+            lambda: self.update_display())
+
+        self.detection_method = QComboBox()
+        # self.detection_method.currentIndexChanged.connect()
+        self.detection_method.addItem(
+            'OpenCV Blob Detection',
+            self.blobDetectionWidget
+        )
+
+        self.doG_FilterWidget = DoG_FilterWidget()
+        self.doG_FilterWidget.update.connect(
+            lambda: self.update_display())
+        self.bandpassFilterWidget = BandpassFilterWidget()
+        self.bandpassFilterWidget.setVisible(False)
+        self.bandpassFilterWidget.update.connect(
+            lambda: self.update_display())
+
+        self.image_filter = QComboBox()
+        self.image_filter.addItem(
+            'Difference of Gaussians',
+            self.doG_FilterWidget)
+        self.image_filter.addItem(
+            'Fourier Bandpass Filter',
+            self.bandpassFilterWidget)
+
+        # displays the selected item
+        def update_visibility(box: QComboBox):
+            for idx in range(box.count()):
+                box.itemData(idx).setVisible(
+                    idx == box.currentIndex())
+
+        self.detection_method.currentIndexChanged.connect(
+            lambda: update_visibility(self.detection_method))
+        self.image_filter.currentIndexChanged.connect(
+            lambda: update_visibility(self.image_filter))
+
+        self.image_control_layout.addRow(
+            QLabel('Approx. Loc. Method:'),
+            self.detection_method)
+        self.image_control_layout.addRow(
+            QLabel('Image filter:'),
+            self.image_filter)
+
+        self.th_min_label = QLabel('Relative threshold:')
+        self.th_min_slider = QDoubleSpinBox()
+        self.th_min_slider.setMinimum(0)
+        self.th_min_slider.setMaximum(100)
+        self.th_min_slider.setSingleStep(0.01)
+        self.th_min_slider.setDecimals(3)
+        self.th_min_slider.setValue(0.2)
+        self.th_min_slider.valueChanged.connect(self.slider_changed)
+
+        self.image_control_layout.addRow(
+            self.th_min_label,
+            self.th_min_slider)
+
         self.tempMedianFilter = TemporalMedianFilterWidget()
         self.tempMedianFilter.update.connect(lambda: self.update_display())
         self.controls_layout.addWidget(self.tempMedianFilter)
 
-        self.detection_layout = QFormLayout()
-        self.detection_group = QGroupBox('Blob Detection / Fitting')
-        self.detection_group.setLayout(self.detection_layout)
-
-        self.detection = QCheckBox('Enabled')
-        self.detection.setChecked(False)
-
-        self.th_min_label = QLabel('Detection threshold:')
-        self.th_min_slider = QSpinBox()
-        self.th_min_slider.setMinimum(0)
-        self.th_min_slider.setMaximum(255)
-        self.th_min_slider.setValue(127)
-
-        self.detection_layout.addWidget(self.detection)
-        self.detection_layout.addRow(
-            self.th_min_label,
-            self.th_min_slider)
-
-        self.controls_layout.addWidget(self.detection_group)
-
-        self.minArea = QDoubleSpinBox()
-        self.minArea.setMinimum(0)
-        self.minArea.setMaximum(1024)
-        self.minArea.setSingleStep(0.05)
-        self.minArea.setValue(1.5)
-        self.minArea.valueChanged.connect(self.slider_changed)
-
-        self.maxArea = QDoubleSpinBox()
-        self.maxArea.setMinimum(0)
-        self.maxArea.setMaximum(1024)
-        self.maxArea.setSingleStep(0.05)
-        self.maxArea.setValue(80.0)
-        self.maxArea.valueChanged.connect(self.slider_changed)
-
-        self.minCircularity = QDoubleSpinBox()
-        self.minCircularity.setMinimum(0)
-        self.minCircularity.setMaximum(1)
-        self.minCircularity.setSingleStep(0.05)
-        self.minCircularity.setValue(0)
-        self.minCircularity.valueChanged.connect(self.slider_changed)
-
-        self.minConvexity = QDoubleSpinBox()
-        self.minConvexity.setMinimum(0)
-        self.minConvexity.setMaximum(1)
-        self.minConvexity.setSingleStep(0.05)
-        self.minConvexity.setValue(0)
-        self.minConvexity.valueChanged.connect(self.slider_changed)
-
-        self.minInertiaRatio = QDoubleSpinBox()
-        self.minInertiaRatio.setMinimum(0)
-        self.minInertiaRatio.setMaximum(1)
-        self.minInertiaRatio.setSingleStep(0.05)
-        self.minInertiaRatio.setValue(0)
-        self.minInertiaRatio.valueChanged.connect(self.slider_changed)
-
-        self.detection_layout.addRow(
-            QLabel('Min area:'),
-            self.minArea)
-        self.detection_layout.addRow(
-            QLabel('Max area:'),
-            self.maxArea)
-        # self.controls_layout.addWidget(self.minCircularity)
-        # self.controls_layout.addWidget(self.minConvexity)
-        # self.controls_layout.addWidget(self.minInertiaRatio)
-
-        self.bandpassFilter = BandpassFilterWidget()
-        self.bandpassFilter.update.connect(lambda: self.update_display())
-        self.controls_layout.addWidget(self.bandpassFilter)
+        self.controls_layout.addWidget(self.blobDetectionWidget)
+        self.controls_layout.addWidget(self.doG_FilterWidget)
+        self.controls_layout.addWidget(self.bandpassFilterWidget)
 
         self.pages_slider.valueChanged.connect(self.slider_changed)
         self.min_slider.valueChanged.connect(self.slider_changed)
         self.max_slider.valueChanged.connect(self.slider_changed)
         self.autostretch.stateChanged.connect(self.slider_changed)
-        self.th_min_slider.valueChanged.connect(self.slider_changed)
         self.detection.stateChanged.connect(self.slider_changed)
 
         self.controls_layout.addStretch()
@@ -276,9 +269,20 @@ class tiff_viewer(QMainWindow):
         # Localization / Render layout
         self.fitting_cbox = QComboBox()
         self.fitting_cbox.addItem(
-            '2D Phasor-Fit (CPU)', FittingMethod._2D_Phasor_CPU)
+            '2D Phasor-Fit (CPU)',
+            FittingMethod._2D_Phasor_CPU)
         self.fitting_cbox.addItem(
-            '2D MLE Gauss-Fit (CPU)', FittingMethod._2D_Gauss_MLE_CPU)
+            '2D MLE Gauss-Fit fixed sigma (GPU/CPU)',
+            FittingMethod._2D_Gauss_MLE_fixed_sigma)
+        self.fitting_cbox.addItem(
+            '2D MLE Gauss-Fit free sigma (GPU/CPU)',
+            FittingMethod._2D_Gauss_MLE_free_sigma)
+        self.fitting_cbox.addItem(
+            '2D MLE Gauss-Fit elliptical sigma (GPU/CPU)',
+            FittingMethod._2D_Gauss_MLE_elliptical_sigma)
+        self.fitting_cbox.addItem(
+            '2D MLE Gauss-Fit cspline (GPU/CPU)',
+            FittingMethod._3D_Gauss_MLE_cspline_sigma)
 
         self.render_cbox = QComboBox()
         self.render_cbox.addItem('2D Histogram', 0)
@@ -619,18 +623,6 @@ class tiff_viewer(QMainWindow):
             #     ome.to_xml())
             # print(om.OME.from_tiff(self.tiff.filename))
 
-    def zoom_in(self):
-        """Increase image display size"""
-        self._zoom = min(self._zoom + 0.05, 4)
-        self.zoom_lbl.setText("Scale " + "{:.0f}%".format(self._zoom*100))
-        self.update_display()
-
-    def zoom_out(self):
-        """Decrease image display size"""
-        self._zoom = max(self._zoom - 0.05, 0.25)
-        self.zoom_lbl.setText("Scale " + "{:.0f}%".format(self._zoom*100))
-        self.update_display()
-
     def slider_changed(self, value):
         if self.tiffSeq_Handler is not None:
             self.update_display()
@@ -704,30 +696,25 @@ class tiff_viewer(QMainWindow):
                 img = self.uImage._view
 
             # bandpass filter
-            img = self.bandpassFilter.filter.run(img)
+            img = self.image_filter.currentData().filter.run(img)
 
             _, th_img = cv2.threshold(
                 img,
-                self.th_min_slider.value(),
+                np.quantile(img, 1-1e-4) * self.th_min_slider.value(),
                 255,
                 cv2.THRESH_BINARY)
 
-            cv2.namedWindow("Keypoints_TH", cv2.WINDOW_NORMAL)
-            cv2.imshow("Keypoints_TH", th_img)
+            cv2.namedWindow("Thresholded filtered Img.", cv2.WINDOW_NORMAL)
+            cv2.imshow("Thresholded filtered Img.", th_img)
             # print(ex, end='\r')
             # Detect blobs.
 
-            keypoints = self.get_blob_detector()[0].detect(th_img)
-
-            im_with_keypoints = cv2.drawKeypoints(
-                img, keypoints, np.array([]),
-                (0, 0, 255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+            points, im_with_keypoints = self.detection_method.currentData()\
+                .detector.find_peaks_preview(th_img, img)
 
             # Show keypoints
-            cv2.namedWindow("Keypoints_CV", cv2.WINDOW_NORMAL)
-            cv2.imshow("Keypoints_CV", im_with_keypoints)
-
-            points = cv2.KeyPoint_convert(keypoints)
+            cv2.namedWindow("Approx. Loc.", cv2.WINDOW_NORMAL)
+            cv2.imshow("Approx. Loc.", im_with_keypoints)
 
             if len(points) > 0 and origin is not None:
                 points[:, 0] += origin[0]
@@ -738,65 +725,54 @@ class tiff_viewer(QMainWindow):
 
             if method == FittingMethod._2D_Phasor_CPU:
                 sub_fit = phasor_fit(image, points, False)
-            elif method == FittingMethod._2D_Gauss_MLE_CPU:
-                sub_fit = gaussian_2D_fit(image, points)
 
-            if sub_fit is not None:
+                if sub_fit is not None:
 
-                keypoints = [cv2.KeyPoint(*point, size=1.0) for
-                             point in sub_fit[:, :2]]
+                    keypoints = [cv2.KeyPoint(*point, size=1.0) for
+                                 point in sub_fit[:, :2]]
 
-                # Draw detected blobs as red circles.
-                # cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS ensures
-                # the size of the circle corresponds to the size of blob
-                im_with_keypoints = cv2.drawKeypoints(
-                    self.uImage._view, keypoints, np.array([]),
-                    (0, 0, 255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+                    # Draw detected blobs as red circles.
+                    im_with_keypoints = cv2.drawKeypoints(
+                        self.uImage._view, keypoints, np.array([]),
+                        (0, 0, 255),
+                        cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
 
-                # Show keypoints
-                # cv2.imshow("Keypoints_PH", im_with_keypoints)
+                    self.image.setImage(im_with_keypoints, autoLevels=False)
+            else:
+                rois, coords = pyfit3Dcspline.get_roi_list(image, points, 13)
+                Parameters = None
 
-                self.image.setImage(im_with_keypoints, autoLevels=False)
+                if method == FittingMethod._2D_Gauss_MLE_fixed_sigma:
+                    Parameters, CRLBs, LogLikelihood = \
+                        pyfit3Dcspline.CPUmleFit_LM(
+                            rois, 1, np.array([1]), None, 0)
+                elif method == FittingMethod._2D_Gauss_MLE_free_sigma:
+                    Parameters, CRLBs, LogLikelihood = \
+                        pyfit3Dcspline.CPUmleFit_LM(
+                            rois, 2, np.array([1]), None, 0)
+                elif method == FittingMethod._2D_Gauss_MLE_elliptical_sigma:
+                    Parameters, CRLBs, LogLikelihood = \
+                        pyfit3Dcspline.CPUmleFit_LM(
+                            rois, 4, np.array([1]), None, 0)
+                elif method == FittingMethod._3D_Gauss_MLE_cspline_sigma:
+                    Parameters, CRLBs, LogLikelihood = \
+                        pyfit3Dcspline.CPUmleFit_LM(
+                            rois, 5,
+                            np.ones((64, 4, 4, 4), dtype=np.float32), None, 0)
 
-                # return np.array(points, copy=True)
+                if Parameters is not None:
+                    keypoints = [cv2.KeyPoint(
+                        Parameters[idx, 0] + coords[idx, 0],
+                        Parameters[idx, 1] + coords[idx, 1],
+                        size=1.0) for idx in range(rois.shape[0])]
 
-    def get_blob_detector_params(self) -> cv2.SimpleBlobDetector_Params:
-        # Setup SimpleBlobDetector parameters.
-        params = cv2.SimpleBlobDetector_Params()
+                    # Draw detected blobs as red circles.
+                    im_with_keypoints = cv2.drawKeypoints(
+                        self.uImage._view, keypoints, np.array([]),
+                        (0, 0, 255),
+                        cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
 
-        params.filterByColor = True
-        params.blobColor = 255
-
-        params.minDistBetweenBlobs = 0
-
-        # Change thresholds
-        params.minThreshold = float(self.th_min_slider.value())
-        params.maxThreshold = 255
-
-        # Filter by Area.
-        params.filterByArea = True
-        params.minArea = self.minArea.value()
-        params.maxArea = self.maxArea.value()
-
-        # Filter by Circularity
-        params.filterByCircularity = False
-        params.minCircularity = self.minCircularity.value()
-
-        # Filter by Convexity
-        params.filterByConvexity = False
-        params.minConvexity = self.minConvexity.value()
-
-        # Filter by Inertia
-        params.filterByInertia = False
-        params.minInertiaRatio = self.minInertiaRatio.value()
-
-        # Create a detector with the parameters
-        return params
-
-    def get_blob_detector(self) \
-            -> tuple[cv2.SimpleBlobDetector, cv2.SimpleBlobDetector_Params]:
-        params = self.get_blob_detector_params()
-        return get_blob_detector(params), params
+                    self.image.setImage(im_with_keypoints, autoLevels=False)
 
     def FRC_estimate(self):
         frc_method = self.frc_cbox.currentText()

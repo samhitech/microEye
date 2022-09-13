@@ -229,7 +229,7 @@ class acquisition_module(QMainWindow):
                 for x in range(steps[0]):
                     self.kinesisXY.move_relative(
                         round(step_size[0] / 1000, 4), 0)
-                    for y in range(steps[0]):
+                    for y in range(steps[1]):
                         if y > 0:
                             self.kinesisXY.move_relative(0, ((-1)**x) * round(
                                 step_size[1] / 1000, 4))
@@ -253,7 +253,7 @@ class acquisition_module(QMainWindow):
                             frame._view, (0, 0),
                             fx=0.5,
                             fy=0.5)
-                        Y = (x % 2) * 3 + ((-1)**x) * y
+                        Y = (x % 2) * (steps[1] - 1) + ((-1)**x) * y
                         data.append(
                             TileImage(frame, [Y, x], self.kinesisXY.position))
 

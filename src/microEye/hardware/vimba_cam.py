@@ -688,6 +688,120 @@ class vimba_cam:
             print("select_io_line ERROR")
             return False
 
+    def get_timers(self):
+        try:
+            timers = []
+            for timer in self.cam.TimerSelector.get_available_entries():
+                timers.append(str(timer))
+            return timers
+        except Exception:
+            print("get_timers ERROR")
+            return None
+
+    def get_timer_trigger_activations(self):
+        try:
+            modes = []
+            for mode in \
+                    self.cam.TimerTriggerActivation.get_available_entries():
+                modes.append(str(mode))
+            return modes
+        except Exception:
+            print("get_timer_trigger_activations ERROR")
+            return None
+
+    def get_timer_trigger_sources(self):
+        try:
+            sources = []
+            for source in self.cam.TimerTriggerSource.get_available_entries():
+                sources.append(str(source))
+            return sources
+        except Exception:
+            print("get_timer_trigger_sources ERROR")
+            return None
+
+    def get_timer_trigger_source(self):
+        try:
+            return str(self.cam.TimerTriggerSource.get())
+        except Exception:
+            print("get_timer_trigger_source ERROR")
+            return None
+
+    def get_timer_trigger_activation(self):
+        try:
+            return str(self.cam.TimerTriggerActivation.get())
+        except Exception:
+            print("get_timer_trigger_activation ERROR")
+            return None
+
+    def get_timer_status(self):
+        try:
+            return self.cam.TimerStatus.get()
+        except Exception:
+            print("get_timer_status ERROR")
+            return None
+
+    def set_timer_trigger_source(self, value: str):
+        try:
+            self.cam.TimerTriggerSource.set(value)
+            return True
+        except Exception:
+            print("set_timer_trigger_source ERROR")
+            return False
+
+    def set_timer_trigger_activation(self, value: str):
+        try:
+            self.cam.TimerTriggerActivation.set(value)
+            return True
+        except Exception:
+            print("set_line_mode ERROR")
+            return False
+
+    def get_timer_duration(self):
+        try:
+            duration = self.cam.TimerDuration
+            return duration.get(), duration.get_range()
+        except Exception:
+            print("get_timer_duration ERROR")
+
+    def get_timer_delay(self):
+        try:
+            delay = self.cam.TimerDelay
+            return delay.get(), delay.get_range()
+        except Exception:
+            print("get_timer_delay ERROR")
+
+    def set_timer_duration(self, value: float):
+        try:
+            self.cam.TimerDuration.set(value)
+            return True
+        except Exception:
+            print("set_timer_duration ERROR")
+            return False
+
+    def set_timer_delay(self, value: float):
+        try:
+            self.cam.TimerDelay.set(value)
+            return True
+        except Exception:
+            print("set_timer_delay ERROR")
+            return False
+
+    def select_timer(self, value: str):
+        try:
+            self.cam.TimerSelector.set(value)
+            return True
+        except Exception:
+            print("select_timer ERROR")
+            return False
+
+    def reset_timer(self):
+        try:
+            self.cam.TimerReset.run()
+            return True
+        except Exception:
+            print("reset_timer ERROR")
+            return False
+
     def get_roi(self):
         try:
             # with self.cam:

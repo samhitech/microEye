@@ -1,17 +1,19 @@
+import math
 import re
-from PyQt5.QtWidgets import QWidget
-import cv2
-from numba.core.types import abstract
-import numpy as np
-from numpy.lib.type_check import imag
-from scipy.fftpack import fft2, ifft2, fftshift, ifftshift
-import numba
-import tifffile as tf
 
+import cv2
+import dask.array
+import numba
+import numpy as np
+import tifffile as tf
+from numba.core.types import abstract
+from numpy.lib.type_check import imag
 from PyQt5.QtCore import *
 from PyQt5.QtWidgets import *
+from PyQt5.QtWidgets import QWidget
+from scipy.fftpack import fft2, fftshift, ifft2, ifftshift
+from scipy import signal
 from zarr.core import Array
-import dask.array
 
 from .uImage import ZarrImageSequence
 
@@ -23,6 +25,112 @@ class AbstractFilter:
 
     def getWidget(self):
         return QWidget()
+
+
+class DoG_Filter(AbstractFilter):
+
+    def __init__(self, sigma=1, factor=2.5) -> None:
+        '''Difference of Gauss init
+
+        Parameters
+        ----------
+        sigma : int, optional
+            sigma_min, by default 1
+        factor : float, optional
+            factor = sigma_max/sigma_min, by default 2.5
+        '''
+        self.setParams(sigma, factor)
+
+    def setParams(self, sigma, factor):
+        self._show_filter = False
+        self.sigma = sigma
+        self.factor = factor
+        self.rsize = max(math.ceil(6*self.sigma+1), 3)
+        self.dog = \
+            DoG_Filter.gaussian_kernel(self.rsize, self.sigma) - \
+            DoG_Filter.gaussian_kernel(
+                self.rsize, max(1, self.factor*self.sigma))
+
+    def gaussian_kernel(dim, sigma):
+        x = cv2.getGaussianKernel(dim, sigma)
+        kernel = x.dot(x.T)
+        return kernel
+
+    def run(self, image: np.ndarray) -> np.ndarray:
+        return cv2.normalize(
+            signal.convolve2d(image, np.rot90(self.dog), mode='same'),
+            None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
+
+
+class DoG_FilterWidget(QGroupBox):
+    update = pyqtSignal()
+
+    def __init__(self) -> None:
+        super().__init__()
+
+        self.setTitle('DoG Filter')
+
+        self.filter = DoG_Filter()
+
+        self._layout = QFormLayout()
+
+        self.arg_1 = QDoubleSpinBox()
+        self.arg_1.setMinimum(0)
+        self.arg_1.setMaximum(1000)
+        self.arg_1.setSingleStep(0.1)
+        self.arg_1.setValue(1.0)
+        self.arg_1.valueChanged.connect(self.value_changed)
+
+        self.arg_2 = QDoubleSpinBox()
+        self.arg_2.setMinimum(1)
+        self.arg_2.setMaximum(100)
+        self.arg_2.setSingleStep(0.1)
+        self.arg_2.setValue(2.5)
+        self.arg_2.valueChanged.connect(self.value_changed)
+
+        self.arg_3 = QCheckBox('Show Filter')
+        self.arg_3.setChecked(True)
+        self.arg_3.stateChanged.connect(self.value_changed)
+
+        self.arg_1.valueChanged.emit(1.0)
+        self.arg_2.valueChanged.emit(2.5)
+
+        self._layout.addRow(
+            QLabel('\u03C3 min:'),
+            self.arg_1)
+        self._layout.addRow(
+            QLabel('Factor (\u03C3 max/\u03C3 min):'),
+            self.arg_2)
+        self._layout.addWidget(self.arg_3)
+
+        self.setLayout(self._layout)
+
+    def value_changed(self, value):
+        self.filter.setParams(
+            self.arg_1.value(), self.arg_2.value()
+        )
+        self.filter._show_filter = self.arg_3.isChecked()
+
+        self.update.emit()
+
+
+class GaussFilter(AbstractFilter):
+
+    def __init__(self, sigma=1) -> None:
+        self.setSigma(sigma)
+
+    def setSigma(self, sigma):
+        self.sigma = 1
+        self.gauss = GaussFilter.gaussian_kernel(
+            max(3, math.ceil(3*sigma+1)), sigma)
+
+    def gaussian_kernel(dim, sigma):
+        x = cv2.getGaussianKernel(dim, sigma)
+        kernel = x.dot(x.T)
+        return kernel
+
+    def run(self, image: np.ndarray) -> np.ndarray:
+        return signal.convolve2d(image, np.rot90(self.gauss), mode='same')
 
 
 class BandpassFilter(AbstractFilter):

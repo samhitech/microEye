@@ -120,7 +120,7 @@ class Vimba_Panel(QGroupBox):
         self.main_tab_view.addTab(self.first_tab, "Main")
         self.main_tab_view.addTab(self.second_tab, "Preview")
         self.main_tab_view.addTab(self.third_tab, "Area of Interest (AOI)")
-        self.main_tab_view.addTab(self.fourth_tab, "GPIOs")
+        self.main_tab_view.addTab(self.fourth_tab, "GPIOs / Timers")
         if not self.mini:
             self.main_tab_view.addTab(self.OME_tab, "OME-XML metadata")
 
@@ -452,6 +452,64 @@ class Vimba_Panel(QGroupBox):
             'Set Config.',
             clicked=lambda: self.set_io_line_config())
 
+        # Timers
+        self.timerSelector = QComboBox()
+        self.timerActivation = QComboBox()
+        self.timerSource = QComboBox()
+        self.timerDelay = QDoubleSpinBox()
+        self.timerDuration = QDoubleSpinBox()
+        self.timerReset = QPushButton('Timer Reset')
+
+        with self._cam.cam:
+            self.timerSelector.addItems(
+                self.cam.get_timers())
+            self.timerActivation.addItems(
+                self.cam.get_timer_trigger_activations())
+            self.timerSource.addItems(
+                self.cam.get_timer_trigger_sources())
+
+        def reset_timer():
+            with self._cam.cam:
+                self.cam.reset_timer()
+
+        def update_timer():
+            with self._cam.cam:
+                timer = self.timerSelector.currentText()
+                self.cam.select_timer(timer)
+                delay = self.cam.get_timer_delay()
+                duration = self.cam.get_timer_duration()
+                self.timerDelay.setMinimum(delay[1][0])
+                self.timerDelay.setMaximum(delay[1][1])
+                self.timerDelay.setValue(delay[0])
+                self.timerDuration.setMinimum(duration[1][0])
+                self.timerDuration.setMaximum(duration[1][1])
+                self.timerDuration.setValue(duration[0])
+
+                self.timerActivation.setCurrentText(
+                    self.cam.get_timer_trigger_activation())
+                self.timerSource.setCurrentText(
+                    self.cam.get_timer_trigger_activation())
+
+        def set_timer():
+            with self._cam.cam:
+                timer = self.timerSelector.currentText()
+                self.cam.select_timer(timer)
+                act = self.timerActivation.currentText()
+                source = self.timerSource.currentText()
+                self.cam.set_timer_trigger_activation(act)
+                self.cam.set_timer_trigger_source(source)
+                self.cam.set_timer_duration(
+                    self.timerDuration.value())
+                self.cam.set_timer_delay(
+                    self.timerDelay.value())
+
+        self.timerSelector.currentIndexChanged.connect(update_timer)
+        self.timerReset.clicked.connect(reset_timer)
+
+        self.set_timer_config = QPushButton(
+            'Set Timer Config.',
+            clicked=set_timer)
+
         # adding widgets to the main layout
         self.first_tab_Layout.addRow(
             self.cam_trigger_mode_lbl,
@@ -551,6 +609,26 @@ class Vimba_Panel(QGroupBox):
             self.lineSource)
         self.fourth_tab_Layout.addWidget(
             self.set_io_config)
+
+        self.fourth_tab_Layout.addRow(
+            QLabel('Selected Timer:'),
+            self.timerSelector)
+        self.fourth_tab_Layout.addRow(
+            QLabel('Timer Delay (us):'),
+            self.timerDelay)
+        self.fourth_tab_Layout.addRow(
+            QLabel('Timer Duration (us):'),
+            self.timerDuration)
+        self.fourth_tab_Layout.addRow(
+            QLabel('Timer Trigger Activation:'),
+            self.timerActivation)
+        self.fourth_tab_Layout.addRow(
+            QLabel('Timer Trigger Source:'),
+            self.timerSource)
+        self.fourth_tab_Layout.addWidget(
+            self.timerReset)
+        self.fourth_tab_Layout.addWidget(
+            self.set_timer_config)
 
     @property
     def cam(self):
@@ -1003,20 +1081,14 @@ class Vimba_Panel(QGroupBox):
                         self._cdf_plot_ref.setData(self.frame._cdf)
 
                         if self.dual_view_bx.isChecked():
-                            mid = self.frame._view.shape[1] // 2
-                            left_view = self.frame._view[:, :mid]
-                            right_view = self.frame._view[:, mid:]
-                            BGR_img = np.zeros(
-                                left_view.shape[:2] + (3,), dtype=np.uint8)
-
-                            BGR_img[..., 1] = np.fliplr(right_view)
-                            BGR_img[..., 2] = left_view
+                            BGR_img = self.frame.hsplitView(False)
 
                             BGR_img = cv2.resize(
                                 BGR_img,
                                 (0, 0),
                                 fx=self.zoom_box.value(),
-                                fy=self.zoom_box.value())
+                                fy=self.zoom_box.value(),
+                                interpolation=cv2.INTER_NEAREST)
 
                             cv2.imshow(cam.name, BGR_img)
                         else:
@@ -1024,7 +1096,8 @@ class Vimba_Panel(QGroupBox):
                             self.frame._view = cv2.resize(
                                 self.frame._view, (0, 0),
                                 fx=self.zoom_box.value(),
-                                fy=self.zoom_box.value())
+                                fy=self.zoom_box.value(),
+                                interpolation=cv2.INTER_NEAREST)
 
                             # display it
                             cv2.imshow(cam.name, self.frame._view)

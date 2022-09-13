@@ -53,7 +53,10 @@ class ResultsUnits:
 
 class FittingMethod:
     _2D_Phasor_CPU = 0
-    _2D_Gauss_MLE_CPU = 1
+    _2D_Gauss_MLE_fixed_sigma = 1
+    _2D_Gauss_MLE_free_sigma = 2
+    _2D_Gauss_MLE_elliptical_sigma = 4
+    _3D_Gauss_MLE_cspline_sigma = 5
 
 
 class FittingResults:
