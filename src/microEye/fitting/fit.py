@@ -1,15 +1,19 @@
 
+from typing import Union
 import cv2
 import numba
 import numpy as np
 import pandas as pd
 import pyqtgraph as pg
 
+from microEye.fitting.pyfit3Dcspline.mainfunctions import get_roi_list_CMOS
+
 from ..Filters import *
-from ..uImage import uImage
+from ..uImage import TiffSeqHandler, uImage
 from .phasor_fit import *
 from .gaussian_fit import *
 from .results import *
+from .pyfit3Dcspline import CPUmleFit_LM, get_roi_list
 
 
 def get_blob_detector(
@@ -53,48 +57,18 @@ def get_blob_detector(
         return cv2.SimpleBlobDetector_create(params)
 
 
-def localize_frame(
-            index,
-            image: np.ndarray,
-            filtered: np.ndarray,
-            filter: AbstractFilter,
-            params: cv2.SimpleBlobDetector_Params,
-            threshold=255,
-            method=FittingMethod._2D_Phasor_CPU):
+class AbstractDetector:
+    def __init__(self) -> None:
+        pass
 
-    uImg = uImage(filtered)
+    def find_peaks(self, img: np.ndarray):
+        return None
 
-    uImg.equalizeLUT(None, True)
-
-    if filter is BandpassFilter:
-        filter._show_filter = False
-        filter._refresh = False
-
-    img = filter.run(uImg._view)
-
-    # Detect blobs.
-    _, th_img = cv2.threshold(
-            img,
-            threshold,
-            255,
-            cv2.THRESH_BINARY)
-
-    keypoints = get_blob_detector(params).detect(th_img)
-
-    points: np.ndarray = cv2.KeyPoint_convert(keypoints)
-
-    if method == FittingMethod._2D_Phasor_CPU:
-        result = phasor_fit(image, points)
-    elif method == FittingMethod._2D_Gauss_MLE_CPU:
-        result = gaussian_2D_fit(image, points)
-
-    if result is not None:
-        result[:, 4] = [index + 1] * result.shape[0]
-
-    return result
+    def find_peaks_preview(self, th_img: np.ndarray, img: np.ndarray):
+        return None, img
 
 
-class CV_BlobDetector:
+class CV_BlobDetector(AbstractDetector):
     def __init__(self, **kwargs) -> None:
         self.set_blob_detector_params(**kwargs)
 
@@ -226,3 +200,120 @@ class BlobDetectionWidget(QGroupBox):
             maxArea=self.maxArea.value()
         )
         self.update.emit()
+
+
+def pre_localize_frame(
+        index,
+        tiffSeq_Handler: Union[TiffSeqHandler, ZarrImageSequence],
+        image: np.ndarray, varim: np.ndarray,
+        temp: TemporalMedianFilter,
+        filter: AbstractFilter,
+        detector: AbstractDetector,
+        roiInfo,
+        rel_threshold=0.4,
+        roiSize=13,
+        method=FittingMethod._2D_Phasor_CPU):
+
+    filtered = image.copy()
+
+    # apply the median filter
+    if temp is not None:
+        frames = temp.getFrames(index, tiffSeq_Handler)
+        filtered = temp.run(image, frames, roiInfo)
+
+    # crop image to ROI
+    if roiInfo is not None:
+        origin = roiInfo[0]  # ROI (x,y)
+        dim = roiInfo[1]  # ROI (w,h)
+        image = image[
+            int(origin[1]):int(origin[1] + dim[1]),
+            int(origin[0]):int(origin[0] + dim[0])]
+        filtered = filtered[
+            int(origin[1]):int(origin[1] + dim[1]),
+            int(origin[0]):int(origin[0] + dim[0])]
+
+    frames, params, crlbs, loglike = localize_frame(
+        index=index,
+        image=image,
+        filtered=filtered,
+        varim=None,
+        filter=filter,
+        detector=detector,
+        rel_threshold=rel_threshold,
+        method=method,
+        roiSize=roiSize
+    )
+
+    if params is not None:
+        if len(params) > 0 and roiInfo is not None:
+            params[:, 0] += origin[0]
+            params[:, 1] += origin[1]
+
+    return frames, params, crlbs, loglike
+
+
+def localize_frame(
+            index,
+            image: np.ndarray,
+            filtered: np.ndarray,
+            varim: np.ndarray,
+            filter: AbstractFilter,
+            detector: AbstractDetector,
+            rel_threshold=0.4,
+            PSFparam=np.array([1.5]),
+            roiSize=13,
+            method=FittingMethod._2D_Phasor_CPU):
+
+    uImg = uImage(filtered)
+
+    uImg.equalizeLUT(None, True)
+
+    if filter is BandpassFilter:
+        filter._show_filter = False
+        filter._refresh = False
+
+    img = filter.run(uImg._view)
+
+    # Detect blobs.
+    _, th_img = cv2.threshold(
+            img,
+            np.quantile(img, 1-1e-4) * rel_threshold,
+            255,
+            cv2.THRESH_BINARY)
+
+    points: np.ndarray = detector.find_peaks(th_img)
+
+    if method == FittingMethod._2D_Phasor_CPU:
+        params = phasor_fit(image, points, roi_size=roiSize)
+        crlbs, loglike = None, None
+    else:
+        if varim is None:
+            rois, coords = get_roi_list(image, points, roiSize)
+        else:
+            rois, varim, coords = get_roi_list_CMOS(
+                image, varim, points, roiSize)
+
+        if method == FittingMethod._2D_Gauss_MLE_fixed_sigma:
+            params, crlbs, loglike = CPUmleFit_LM(
+                rois, 1, PSFparam, varim, 0)
+        elif method == FittingMethod._2D_Gauss_MLE_free_sigma:
+            params, crlbs, loglike = CPUmleFit_LM(
+                rois, 2, PSFparam, varim, 0)
+        elif method == FittingMethod._2D_Gauss_MLE_elliptical_sigma:
+            params, crlbs, loglike = CPUmleFit_LM(
+                rois, 4, PSFparam, varim, 0)
+        elif method == FittingMethod._3D_Gauss_MLE_cspline_sigma:
+            params, crlbs, loglike = CPUmleFit_LM(
+                rois, 5, PSFparam, varim, 0)
+
+        params[:, :2] += coords
+
+    if params is not None:
+        frames = [index + 1] * params.shape[0]
+    else:
+        frames = None
+
+    return frames, params, crlbs, loglike
+
+
+# def get_approx_fit_list():

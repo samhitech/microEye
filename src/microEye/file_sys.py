@@ -13,12 +13,13 @@ from ome_types.model.ome import OME
 from PyQt5.QtCore import *
 from PyQt5.QtGui import QFont, QIcon
 from PyQt5.QtWidgets import *
-from .fitting.results import *
-from .fitting.fit import *
-from .fitting import pyfit3Dcspline
 
 from .checklist_dialog import Checklist
 from .Filters import *
+from .fitting import pyfit3Dcspline
+from .fitting.fit import *
+from .fitting.results import *
+from .fitting.results_stats import resultsStatsWidget
 from .metadata import MetadataEditor
 from .Rendering import *
 from .thread_worker import *
@@ -32,7 +33,7 @@ class tiff_viewer(QMainWindow):
         self.title = 'microEye tiff viewer'
         self.left = 0
         self.top = 0
-        self.width = 1024
+        self.width = 1280
         self.height = 512
         self._zoom = 1  # display resize
         self._n_levels = 4096
@@ -104,14 +105,14 @@ class tiff_viewer(QMainWindow):
         # Side TabView
         self.tabView = QTabWidget()
         self.tabView.setMinimumWidth(350)
-        self.tabView.setMaximumWidth(400)
+        self.tabView.setMaximumWidth(450)
 
         # Graphical layout
-        self.g_layout_widget = QVBoxLayout()
+        self.g_layout_widget = QTabWidget()
 
         # Add the two sub-main layouts
-        self.main_layout.addWidget(self.tabView, 2)
-        self.main_layout.addLayout(self.g_layout_widget, 3)
+        self.main_layout.addWidget(self.tabView, 3)
+        self.main_layout.addWidget(self.g_layout_widget, 4)
 
         # Tiff File system tree viewer tab
         self.file_tree = QWidget()
@@ -294,10 +295,8 @@ class tiff_viewer(QMainWindow):
 
         self.export_options = Checklist(
                 'Exported Columns',
-                ['Frame', 'Coordinates [Pixel]', 'Coordinates [nm]',
-                 'Intensity', 'Super-res image', 'Track ID',
-                 'Next NN Distance', 'Number of Merged NNs',
-                 'X/Y Ratio', 'Sigma X', 'Sigma Y', 'Offset'], checked=True)
+                ['Super-res image', ] + FittingResults.uniqueKeys(None),
+                checked=True)
 
         self.export_precision = QLineEdit('%10.5f')
 
@@ -310,6 +309,13 @@ class tiff_viewer(QMainWindow):
         self.super_px_size.setMinimum(0)
         self.super_px_size.setMaximum(200)
         self.super_px_size.setValue(10)
+
+        self.fit_roi_size = QSpinBox()
+        self.fit_roi_size.setMinimum(7)
+        self.fit_roi_size.setMaximum(99)
+        self.fit_roi_size.setSingleStep(2)
+        self.fit_roi_size.lineEdit().setReadOnly(True)
+        self.fit_roi_size.setValue(13)
 
         self.drift_cross_args = QHBoxLayout()
         self.drift_cross_bins = QSpinBox()
@@ -343,7 +349,7 @@ class tiff_viewer(QMainWindow):
             'Localize',
             clicked=lambda: self.localize())
         self.refresh_btn = QPushButton(
-            'Display / Refresh Super-res Image',
+            'Refresh SuperRes Image',
             clicked=lambda: self.update_loc())
         self.frc_res_btn = QPushButton(
             'FRC Resolution',
@@ -391,6 +397,10 @@ class tiff_viewer(QMainWindow):
             self.render_cbox
         )
         self.loc_form.addRow(
+            QLabel('Fitting roi-size [pixel]:'),
+            self.fit_roi_size
+        )
+        self.loc_form.addRow(
             QLabel('Pixel-size [nm]:'),
             self.px_size
         )
@@ -398,8 +408,10 @@ class tiff_viewer(QMainWindow):
             QLabel('S-res pixel-size [nm]:'),
             self.super_px_size
         )
-        self.loc_form.addRow(self.loc_btn)
-        self.loc_form.addRow(self.refresh_btn)
+        self.loc_ref_lay = QHBoxLayout()
+        self.loc_ref_lay.addWidget(self.loc_btn)
+        self.loc_ref_lay.addWidget(self.refresh_btn)
+        self.loc_form.addRow(self.loc_ref_lay)
         self.loc_form.addRow(
             QLabel('FRC Method:'),
             self.frc_cbox
@@ -422,7 +434,7 @@ class tiff_viewer(QMainWindow):
         self.loc_form.addRow(self.im_exp_layout)
 
         # graphics layout
-        # # A plot area (ViewBox + axes) for displaying the image
+        # A plot area (ViewBox + axes) for displaying the image
         self.uImage = None
         self.image = pg.ImageItem(np.zeros((256, 256)), axisOrder='row-major')
         self.image_plot = pg.ImageView(imageItem=self.image)
@@ -440,8 +452,18 @@ class tiff_viewer(QMainWindow):
         self.roi.sigRegionChangeFinished.connect(self.slider_changed)
         self.roi.setVisible(False)
 
+        # results stats widget
+        self.results_plot_scroll = QScrollArea()
+        self.results_plot = resultsStatsWidget()
+        self.results_plot_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.results_plot_scroll.setWidgetResizable(True)
+        self.results_plot_scroll.setWidget(self.results_plot)
+
         # self.image_plot.setColorMap(pg.colormap.getFromMatplotlib('jet'))
-        self.g_layout_widget.addWidget(self.image_plot)
+        self.g_layout_widget.addTab(self.image_plot, 'Image Preview')
+        self.g_layout_widget.addTab(
+            self.results_plot_scroll, 'Preview Fitting Stats')
         # Item for displaying image data
 
         self.show()
@@ -1012,27 +1034,15 @@ class tiff_viewer(QMainWindow):
         if len(filename) > 0:
             options = self.export_options.toList()
 
-            exp_columns = [
-                'Frame' in options,
-                'Coordinates [Pixel]' in options,
-                'Coordinates [Pixel]' in options,
-                'Coordinates [nm]' in options,
-                'Coordinates [nm]' in options,
-                'Coordinates [nm]' in options,
-                'Intensity' in options,
-                'Track ID' in options,
-                'Next NN Distance' in options,
-                'Number of Merged NNs' in options,
-                'X/Y Ratio' in options,
-                'Sigma X' in options,
-                'Sigma Y' in options,
-                'Offset' in options
-            ]
-
             dataFrame = self.fittingResults.dataFrame()
+            exp_columns = []
+            for col in dataFrame.columns:
+                if col in options:
+                    exp_columns.append(col)
+
             dataFrame.to_csv(
                 filename, index=False,
-                columns=DataColumns.values()[exp_columns],
+                columns=exp_columns,
                 float_format=self.export_precision.text(),
                 sep='\t',
                 encoding='utf-8')
@@ -1117,11 +1127,14 @@ class tiff_viewer(QMainWindow):
         progress_callback : func
             a progress callback emitted at a certain interval.
         '''
+        # method
+        method = self.fitting_cbox.currentData()
 
         # new instance of FittingResults
         self.fittingResults = FittingResults(
             ResultsUnits.Pixel,  # unit is pixels
-            self.px_size.value()  # pixel projected size
+            self.px_size.value(),  # pixel projected size
+            method
         )
 
         self.thread_done = 0  # number of threads done
@@ -1129,13 +1142,9 @@ class tiff_viewer(QMainWindow):
         time = start
 
         # Filters + Blob detector params
-        filter = self.bandpassFilter.filter
-        self.bandpassFilter.arg_4.setChecked(False)
+        filter = self.image_filter.currentData().filter
         tempEnabled = self.tempMedianFilter.enabled.isChecked()
-        params = self.get_blob_detector_params()
-
-        # method
-        method = self.fitting_cbox.currentData()
+        detector = self.detection_method.currentData().detector
 
         # ROI
         roiInfo = self.get_roi_info()
@@ -1166,13 +1175,17 @@ class tiff_viewer(QMainWindow):
                             self.tempMedianFilter.filter._temporal_window
 
                     worker = thread_worker(
-                        self.localize_frame,
+                        pre_localize_frame,
                         i + k,
+                        self.tiffSeq_Handler,
                         img,
+                        None,
                         temp,
                         filter,
-                        params,
+                        detector,
                         roiInfo,
+                        self.th_min_slider.value(),
+                        self.fit_roi_size.value(),
                         method,
                         progress=False, z_stage=False)
                     worker.signals.result.connect(self.update_lists)
@@ -1195,56 +1208,6 @@ class tiff_viewer(QMainWindow):
         QThread.msleep(5000)
 
         self.export_loc(filename)
-
-    def localize_frame(
-            self, index, image: np.ndarray,
-            temp: TemporalMedianFilter,
-            filter: AbstractFilter,
-            params: cv2.SimpleBlobDetector_Params,
-            roiInfo,
-            method=FittingMethod._2D_Phasor_CPU):
-
-        filtered = image.copy()
-
-        # apply the median filter
-        if temp is not None:
-            frames = temp.getFrames(index, self.tiffSeq_Handler)
-            filtered = temp.run(image, frames, roiInfo)
-        # else:
-        #     filtered_img = None
-
-        # crop image to ROI
-        if roiInfo is not None:
-            origin = roiInfo[0]  # ROI (x,y)
-            dim = roiInfo[1]  # ROI (w,h)
-            image = image[
-                int(origin[1]):int(origin[1] + dim[1]),
-                int(origin[0]):int(origin[0] + dim[0])]
-            filtered = filtered[
-                int(origin[1]):int(origin[1] + dim[1]),
-                int(origin[0]):int(origin[0] + dim[0])]
-
-            # if filtered_img is not None:
-            #     filtered_img = filtered_img[
-            #         int(origin[1]):int(origin[1] + dim[1]),
-            #         int(origin[0]):int(origin[0] + dim[0])]
-
-        results = localize_frame(
-            index=index,
-            image=image,
-            filtered=filtered,
-            filter=filter,
-            params=params,
-            threshold=self.th_min_slider.value(),
-            method=method
-        )
-
-        if results is not None:
-            if len(results) > 0 and roiInfo is not None:
-                results[:, 0] += origin[0]
-                results[:, 1] += origin[1]
-
-        return results
 
     def StartGUI(path=None):
         '''Initializes a new QApplication and control_module.

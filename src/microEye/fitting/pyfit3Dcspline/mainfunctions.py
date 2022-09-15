@@ -6,303 +6,304 @@ import math
 from scipy import ndimage
 from numba import cuda
 
-from . import GPU
 from . import CPU
 
 from .constants import *
 
 
-ParametersHeaders = {
-    1: ['x', 'y', 'bg', 'I', 'iteration'],
-    2: ['x', 'y', 'bg', 'I', 'sigma', 'iteration'],
-    3: ['x', 'y', 'bg', 'I', 'sigmax', 'sigmay', 'iteration'],
-    5: ['x', 'y', 'bg', 'I', 'z', 'iteration']
-}
+if cuda.is_available():
 
+    from . import GPU
 
-def GPUmleFit_LM(
-        data: np.ndarray, fittype: int, PSFparam: np.ndarray,
-        varim: np.ndarray, initZ: float, iterations: int = 30):
-    '''
-    GPU Fit
+    def GPUmleFit_LM(
+            data: np.ndarray, fittype: int, PSFparam: np.ndarray,
+            varim: np.ndarray, initZ: float, iterations: int = 30):
+        '''
+        GPU Fit
 
-    Parameters
-    ----------
-    data : np.ndarray
-        image stack in shape (roi_index, roi_size)
-    fittype : int
-        fitting mode:
+        Parameters
+        ----------
+        data : np.ndarray
+            image stack in shape (roi_index, roi_size)
+        fittype : int
+            fitting mode:
 
-            1. fix PSF.
-            2. free PSF.
-            3. Gauss fit z. (SMAP developers suppressed this)
-            4. fit PSFx, PSFy elliptical.
-            5. cspline.
+                1. fix PSF.
+                2. free PSF.
+                3. Gauss fit z. (SMAP developers suppressed this)
+                4. fit PSFx, PSFy elliptical.
+                5. cspline.
 
-    PSFparam : np.ndarray
-        paramters for fitters:
+        PSFparam : np.ndarray
+            paramters for fitters:
 
-            1. fix PSF: PSFxy sigma.
-            2. free PSF: start PSFxy.
-            3. Gauss fit z: parameters: PSFx, Ax, Ay, Bx, By, gamma, d, PSFy.
-            4. fit PSFx, PSFy elliptical: start PSFx, PSFy.
-            5. cspline: cspline coefficients.
-    varim : np.ndarray
-        Variance map for CMOS, if None then EMCCD, default is None.
-    initZ : float
-        z start parameter. unit: distance of stack calibration, center based.
-    iterations : int
-        number of fit iterations (if None default=30)
+                1. fix PSF: PSFxy sigma.
+                2. free PSF: start PSFxy.
+                3. Gauss fit z parameters:
+                    PSFx, Ax, Ay, Bx, By, gamma, d, PSFy.
 
-    Returns
-    -------
-    Parameters : np.ndarray
-        fitting results in shape (roi_index, column) for each fit mode:
+                4. fit PSFx, PSFy elliptical: start PSFx, PSFy.
+                5. cspline: cspline coefficients.
+        varim : np.ndarray
+            Variance map for CMOS, if None then EMCCD, default is None.
+        initZ : float
+            z start parameter.
+            unit: distance of stack calibration, center-based.
+        iterations : int
+            number of fit iterations (if None default=30)
 
-            1. x, y, bg, I, iteration.
-            2. x, y, bg, I, sigma, iteration.
-            3. ???
-            4. x, y, bg, I, sigmax, sigmay, iteration.
-            5. x, y, bg, I, z, iteration.
-    CRLBs : np.ndarray
-        Cramer-Rao Lower Bounds for fitting results
-        in shape (roi_index, column).
-    LogLikelihood : np.ndarray
-        Log Likelihood in shape (roi_index).
-    '''
-    blockx = 0
-    threadx = 0
-    PSFSigma = 1
-    startParameters = 0
-    d_data = None
-    Ndim = Nfitraw = sz = cameratype = 0  # default cameratype 0 EMCCD
-    noParameters = 0
+        Returns
+        -------
+        Parameters : np.ndarray
+            fitting results in shape (roi_index, column) for each fit mode:
 
-    # CMOS
-    d_varim = None
+                1. x, y, bg, I, iteration.
+                2. x, y, bg, I, sigma, iteration.
+                3. ???
+                4. x, y, bg, I, sigmax, sigmay, iteration.
+                5. x, y, bg, I, z, iteration.
+        CRLBs : np.ndarray
+            Cramer-Rao Lower Bounds for fitting results
+            in shape (roi_index, column).
+        LogLikelihood : np.ndarray
+            Log Likelihood in shape (roi_index).
+        '''
+        blockx = 0
+        threadx = 0
+        PSFSigma = 1
+        startParameters = 0
+        d_data = None
+        Ndim = Nfitraw = sz = cameratype = 0  # default cameratype 0 EMCCD
+        noParameters = 0
 
-    # Spline
-    spline_xsize = spline_ysize = spline_zsize = 0
-    coeff = d_coeff = 0
-    # d_Parameters = d_CRLBs = d_LogLikelihood = 0
-    BlockSize = BSZ  # for no shared scenario, we don't care!
+        # CMOS
+        d_varim = None
 
-    # fun with timing
-    freq = 0
-    togpu = 0
-    fit = 0
-    fromgpu = 0
-    cleanup = 0
-    start = stop = 0
-    start = time.perf_counter_ns()
-    # QueryPerformanceFrequency(&freq)
-    # QueryPerformanceCounter(&start)
+        # Spline
+        spline_xsize = spline_ysize = spline_zsize = 0
+        coeff = d_coeff = 0
+        # d_Parameters = d_CRLBs = d_LogLikelihood = 0
+        BlockSize = BSZ  # for no shared scenario, we don't care!
 
-    # input checks
-    sz = math.sqrt(data.shape[1])
-    Nfitraw = data.shape[0]
+        # fun with timing
+        freq = 0
+        togpu = 0
+        fit = 0
+        fromgpu = 0
+        cleanup = 0
+        start = stop = 0
+        start = time.perf_counter_ns()
+        # QueryPerformanceFrequency(&freq)
+        # QueryPerformanceCounter(&start)
 
-    # if fittype == 1:  # fixed sigma
-    #     pass
-    # elif fittype == 2:  # free sigma
-    #     pass
-    if fittype == 4:  # fixed sigmax and sigmay
-        PSFSigma = float(PSFparam[0])
-    elif fittype == 5:  # spline fit
-        coeff = PSFparam.flatten()
-        spline_xsize = PSFparam.shape[1]
-        spline_ysize = PSFparam.shape[2]
-        spline_zsize = PSFparam.shape[3]
+        # input checks
+        sz = math.sqrt(data.shape[1])
+        Nfitraw = data.shape[0]
 
-    if varim is None:
-        cameratype = 0  # EMCCD
-    else:
-        cameratype = 1  # sCMOS
+        # if fittype == 1:  # fixed sigma
+        #     pass
+        # elif fittype == 2:  # free sigma
+        #     pass
+        if fittype == 4:  # fixed sigmax and sigmay
+            PSFSigma = float(PSFparam[0])
+        elif fittype == 5:  # spline fit
+            coeff = PSFparam.flatten()
+            spline_xsize = PSFparam.shape[1]
+            spline_ysize = PSFparam.shape[2]
+            spline_zsize = PSFparam.shape[3]
 
-    # query GPUs
-    assert cuda.is_available(), 'No GPU is available.'
-    deviceCount = len(cuda.gpus)
+        if varim is None:
+            cameratype = 0  # EMCCD
+        else:
+            cameratype = 1  # sCMOS
 
-    # check if we are allocating more memory than the card has
-    availableMemory = cuda.current_context().get_memory_info()[0]
-    requiredMemory = 0
-    float_size = 4  # in bytes
+        # query GPUs
+        assert cuda.is_available(), 'No GPU is available.'
+        deviceCount = len(cuda.gpus)
 
-    if fittype == 1:  # fixed sigma
-        requiredMemory += (2*NV_P + 2) * Nfitraw * float_size
-    elif fittype == 2:  # free sigma
-        requiredMemory += (2*NV_PS + 2) * Nfitraw * float_size
-    elif fittype == 4:  # fixed sigmax and sigmay
-        requiredMemory += (2*NV_PS2 + 2) * Nfitraw * float_size
-    elif fittype == 5:  # spline fit
-        requiredMemory += (2*NV_PS + 2) * Nfitraw * float_size
-        requiredMemory += \
-            spline_xsize * spline_ysize * spline_zsize * 64 * float_size
+        # check if we are allocating more memory than the card has
+        availableMemory = cuda.current_context().get_memory_info()[0]
+        requiredMemory = 0
+        float_size = 4  # in bytes
 
-    if cameratype == 0:  # EMCCD
-        requiredMemory += sz * sz * Nfitraw * float_size
-    elif cameratype == 1:  # sCMOS
-        requiredMemory += 2 * sz * sz * Nfitraw * float_size
+        if fittype == 1:  # fixed sigma
+            requiredMemory += (2*NV_P + 2) * Nfitraw * float_size
+        elif fittype == 2:  # free sigma
+            requiredMemory += (2*NV_PS + 2) * Nfitraw * float_size
+        elif fittype == 4:  # fixed sigmax and sigmay
+            requiredMemory += (2*NV_PS2 + 2) * Nfitraw * float_size
+        elif fittype == 5:  # spline fit
+            requiredMemory += (2*NV_PS + 2) * Nfitraw * float_size
+            requiredMemory += \
+                spline_xsize * spline_ysize * spline_zsize * 64 * float_size
 
-    assert requiredMemory < 0.9*availableMemory, \
-        'Trying to allocation {:.3f}MB. GPU only has {:.0f}MB.\n'.format(
-            requiredMemory/(1024*1024), availableMemory/(1024*1024)
-        ) + \
-        'Please break your fitting into multiple smaller runs.\n'
-    print(
-        'Allocating {:.3e}% out of available GPU memory {:.0f}MB.'.format(
-            100*requiredMemory/availableMemory, availableMemory/(1024*1024)))
+        if cameratype == 0:  # EMCCD
+            requiredMemory += sz * sz * Nfitraw * float_size
+        elif cameratype == 1:  # sCMOS
+            requiredMemory += 2 * sz * sz * Nfitraw * float_size
 
-    # copy data to device
-    d_data = cuda.to_device(data.flatten().astype(np.float32))
+        assert requiredMemory < 0.9*availableMemory, \
+            'Trying to allocation {:.3f}MB. GPU only has {:.0f}MB.\n'.format(
+                requiredMemory/(1024*1024), availableMemory/(1024*1024)
+            ) + \
+            'Please break your fitting into multiple smaller runs.\n'
+        print(
+            'Allocating {:.3e}% out of available GPU memory {:.0f}MB.'.format(
+                100*requiredMemory/availableMemory,
+                availableMemory/(1024*1024)))
 
-    # CMOS
-    if cameratype == 1:
-        d_varim = cuda.to_device(varim.flatten().astype(np.float32))
+        # copy data to device
+        d_data = cuda.to_device(data.flatten().astype(np.float32))
 
-    if fittype == 5:
-        d_coeff = cuda.to_device(coeff.flatten().astype(np.float32))
+        # CMOS
+        if cameratype == 1:
+            d_varim = cuda.to_device(varim.flatten().astype(np.float32))
 
-    # create output for parameters and CRLBs
-    if fittype == 1:  # (x,y,bg,I)
-        d_Parameters = cuda.to_device(
-            np.zeros((NV_P + 1) * Nfitraw, np.float32))
-        d_CRLBs = cuda.to_device(
-            np.zeros(NV_P * Nfitraw, np.float32))
-    elif fittype == 2:  # (x,y,bg,I,Sigma)
-        d_Parameters = cuda.to_device(
-            np.zeros((NV_PS + 1) * Nfitraw, np.float32))
-        d_CRLBs = cuda.to_device(
-            np.zeros(NV_PS * Nfitraw, np.float32))
-    elif fittype == 4:  # (x,y,bg,I,Sx,Sy)
-        d_Parameters = cuda.to_device(
-            np.zeros((NV_PS2 + 1) * Nfitraw, np.float32))
-        d_CRLBs = cuda.to_device(
-            np.zeros(NV_PS2 * Nfitraw, np.float32))
-    elif fittype == 5:  # (x,y,bg,I,z)
-        d_Parameters = cuda.to_device(
-            np.zeros((NV_PS + 1) * Nfitraw, np.float32))
-        d_CRLBs = cuda.to_device(
-            np.zeros(NV_PS * Nfitraw, np.float32))
+        if fittype == 5:
+            d_coeff = cuda.to_device(coeff.flatten().astype(np.float32))
 
-    d_LogLikelihood = cuda.to_device(
-            np.zeros(Nfitraw, np.float32))
+        # create output for parameters and CRLBs
+        if fittype == 1:  # (x,y,bg,I)
+            d_Parameters = cuda.to_device(
+                np.zeros((NV_P + 1) * Nfitraw, np.float32))
+            d_CRLBs = cuda.to_device(
+                np.zeros(NV_P * Nfitraw, np.float32))
+        elif fittype == 2:  # (x,y,bg,I,Sigma)
+            d_Parameters = cuda.to_device(
+                np.zeros((NV_PS + 1) * Nfitraw, np.float32))
+            d_CRLBs = cuda.to_device(
+                np.zeros(NV_PS * Nfitraw, np.float32))
+        elif fittype == 4:  # (x,y,bg,I,Sx,Sy)
+            d_Parameters = cuda.to_device(
+                np.zeros((NV_PS2 + 1) * Nfitraw, np.float32))
+            d_CRLBs = cuda.to_device(
+                np.zeros(NV_PS2 * Nfitraw, np.float32))
+        elif fittype == 5:  # (x,y,bg,I,z)
+            d_Parameters = cuda.to_device(
+                np.zeros((NV_PS + 1) * Nfitraw, np.float32))
+            d_CRLBs = cuda.to_device(
+                np.zeros(NV_PS * Nfitraw, np.float32))
 
-    # print(
-    #     d_data.nbytes +
-    #     (d_varim.nbytes if d_varim is not None else 0) +
-    #     (d_coeff.nbytes if fittype == 5 else 0) +
-    #     d_Parameters.nbytes +
-    #     d_CRLBs.nbytes +
-    #     d_LogLikelihood.nbytes,
-    #     requiredMemory
-    # )
+        d_LogLikelihood = cuda.to_device(
+                np.zeros(Nfitraw, np.float32))
 
-    stop = time.perf_counter_ns()
-    togpu = stop - start
-    print('Data copied to GPU in {:.3f}ms.\n'.format(
-        togpu/1e6))
-    start = time.perf_counter_ns()
+        # print(
+        #     d_data.nbytes +
+        #     (d_varim.nbytes if d_varim is not None else 0) +
+        #     (d_coeff.nbytes if fittype == 5 else 0) +
+        #     d_Parameters.nbytes +
+        #     d_CRLBs.nbytes +
+        #     d_LogLikelihood.nbytes,
+        #     requiredMemory
+        # )
 
-    # setup kernel
-    blockx = math.ceil(Nfitraw / BlockSize)
-    threadx = BlockSize
+        stop = time.perf_counter_ns()
+        togpu = stop - start
+        print('Data copied to GPU in {:.3f}ms.\n'.format(
+            togpu/1e6))
+        start = time.perf_counter_ns()
 
-    if fittype == 1:  # fit x,y,bg,I
-        if cameratype == 0:
-            GPU.kernel_MLEFit_LM_EMCCD[blockx, threadx](
-                d_data, PSFSigma, int(sz), iterations, d_Parameters,
-                d_CRLBs, d_LogLikelihood, Nfitraw)
-        elif cameratype == 1:
-            GPU.kernel_MLEFit_LM_sCMOS[blockx, threadx](
-                d_data, PSFSigma, int(sz), iterations, d_Parameters,
-                d_CRLBs, d_LogLikelihood, int(Nfitraw), d_varim)
-    elif fittype == 2:  # fit x,y,bg,I,sigma
-        if cameratype == 0:
-            GPU.kernel_MLEFit_LM_Sigma_EMCCD[blockx, threadx](
-                d_data, PSFSigma, int(sz), iterations, d_Parameters,
-                d_CRLBs, d_LogLikelihood, int(Nfitraw))
-        elif cameratype == 1:
-            GPU.kernel_MLEFit_LM_Sigma_sCMOS[blockx, threadx](
-                d_data, PSFSigma, int(sz), iterations, d_Parameters,
-                d_CRLBs, d_LogLikelihood, int(Nfitraw), d_varim)
-    elif fittype == 4:  # fit x,y,bg,I,sigmax,sigmay
-        if cameratype == 0:
-            GPU.kernel_MLEFit_LM_sigmaxy_EMCCD[blockx, threadx](
-                d_data, PSFSigma, int(sz), iterations, d_Parameters,
-                d_CRLBs, d_LogLikelihood, int(Nfitraw))
-        elif cameratype == 1:
-            GPU.kernel_MLEFit_LM_sigmaxy_sCMOS[blockx, threadx](
-                d_data, PSFSigma, int(sz), iterations, d_Parameters,
-                d_CRLBs, d_LogLikelihood, int(Nfitraw), d_varim)
-    elif fittype == 5:  # fit x,y,bg,I,z
-        if (initZ < 0):
-            initZ = spline_zsize / 2.0
+        # setup kernel
+        blockx = math.ceil(Nfitraw / BlockSize)
+        threadx = BlockSize
 
-        if cameratype == 0:
-            GPU.kernel_splineMLEFit_z_EMCCD[blockx, threadx](
-                d_data, d_coeff, spline_xsize, spline_ysize, spline_zsize,
-                int(sz), iterations, d_Parameters, d_CRLBs, d_LogLikelihood,
-                initZ, int(Nfitraw))
-        elif cameratype == 1:
-            GPU.kernel_splineMLEFit_z_sCMOS[blockx, threadx](
-                d_data, d_coeff, spline_xsize, spline_ysize, spline_zsize,
-                int(sz), iterations, d_Parameters, d_CRLBs, d_LogLikelihood,
-                initZ, int(Nfitraw), d_varim)
+        if fittype == 1:  # fit x,y,bg,I
+            if cameratype == 0:
+                GPU.kernel_MLEFit_LM_EMCCD[blockx, threadx](
+                    d_data, PSFSigma, int(sz), iterations, d_Parameters,
+                    d_CRLBs, d_LogLikelihood, Nfitraw)
+            elif cameratype == 1:
+                GPU.kernel_MLEFit_LM_sCMOS[blockx, threadx](
+                    d_data, PSFSigma, int(sz), iterations, d_Parameters,
+                    d_CRLBs, d_LogLikelihood, int(Nfitraw), d_varim)
+        elif fittype == 2:  # fit x,y,bg,I,sigma
+            if cameratype == 0:
+                GPU.kernel_MLEFit_LM_Sigma_EMCCD[blockx, threadx](
+                    d_data, PSFSigma, int(sz), iterations, d_Parameters,
+                    d_CRLBs, d_LogLikelihood, int(Nfitraw))
+            elif cameratype == 1:
+                GPU.kernel_MLEFit_LM_Sigma_sCMOS[blockx, threadx](
+                    d_data, PSFSigma, int(sz), iterations, d_Parameters,
+                    d_CRLBs, d_LogLikelihood, int(Nfitraw), d_varim)
+        elif fittype == 4:  # fit x,y,bg,I,sigmax,sigmay
+            if cameratype == 0:
+                GPU.kernel_MLEFit_LM_sigmaxy_EMCCD[blockx, threadx](
+                    d_data, PSFSigma, int(sz), iterations, d_Parameters,
+                    d_CRLBs, d_LogLikelihood, int(Nfitraw))
+            elif cameratype == 1:
+                GPU.kernel_MLEFit_LM_sigmaxy_sCMOS[blockx, threadx](
+                    d_data, PSFSigma, int(sz), iterations, d_Parameters,
+                    d_CRLBs, d_LogLikelihood, int(Nfitraw), d_varim)
+        elif fittype == 5:  # fit x,y,bg,I,z
+            if (initZ < 0):
+                initZ = spline_zsize / 2.0
 
-    cuda.synchronize()
+            if cameratype == 0:
+                GPU.kernel_splineMLEFit_z_EMCCD[blockx, threadx](
+                    d_data, d_coeff, spline_xsize, spline_ysize, spline_zsize,
+                    int(sz), iterations,
+                    d_Parameters, d_CRLBs, d_LogLikelihood,
+                    initZ, int(Nfitraw))
+            elif cameratype == 1:
+                GPU.kernel_splineMLEFit_z_sCMOS[blockx, threadx](
+                    d_data, d_coeff, spline_xsize, spline_ysize, spline_zsize,
+                    int(sz), iterations,
+                    d_Parameters, d_CRLBs, d_LogLikelihood,
+                    initZ, int(Nfitraw), d_varim)
 
-    stop = time.perf_counter_ns()
-    fit = stop - start
-    print('Fitted {:d} localizations in {:.3f}ms.\n'.format(
-        Nfitraw,
-        fit/1e6))
-    start = time.perf_counter_ns()
+        cuda.synchronize()
 
-    # copy to matlab output
-    if fittype == 1:  # (x,y,bg,I)
-        Parameters = d_Parameters.copy_to_host()
-        CRLBs = d_CRLBs.copy_to_host()
-    elif fittype == 2:  # (x,y,bg,I,Sigma)
-        Parameters = d_Parameters.copy_to_host()
-        CRLBs = d_CRLBs.copy_to_host()
-    elif fittype == 4:  # (x,y,bg,I,Sx,Sy)
-        Parameters = d_Parameters.copy_to_host()
-        CRLBs = d_CRLBs.copy_to_host()
-    elif fittype == 5:  # (x,y,bg,I,z)
-        Parameters = d_Parameters.copy_to_host()
-        CRLBs = d_CRLBs.copy_to_host()
+        stop = time.perf_counter_ns()
+        fit = stop - start
+        print('Fitted {:d} localizations in {:.3f}ms.\n'.format(
+            Nfitraw,
+            fit/1e6))
+        start = time.perf_counter_ns()
 
-    LogLikelihood = d_LogLikelihood.copy_to_host()
+        # copy to matlab output
+        if fittype == 1:  # (x,y,bg,I)
+            Parameters = d_Parameters.copy_to_host()
+            CRLBs = d_CRLBs.copy_to_host()
+        elif fittype == 2:  # (x,y,bg,I,Sigma)
+            Parameters = d_Parameters.copy_to_host()
+            CRLBs = d_CRLBs.copy_to_host()
+        elif fittype == 4:  # (x,y,bg,I,Sx,Sy)
+            Parameters = d_Parameters.copy_to_host()
+            CRLBs = d_CRLBs.copy_to_host()
+        elif fittype == 5:  # (x,y,bg,I,z)
+            Parameters = d_Parameters.copy_to_host()
+            CRLBs = d_CRLBs.copy_to_host()
 
-    stop = time.perf_counter_ns()
-    fromgpu = stop - start
-    print('Data copied to Host in {:.3f}ms.\n'.format(
-        fromgpu/1e6))
-    start = time.perf_counter_ns()
+        LogLikelihood = d_LogLikelihood.copy_to_host()
 
-    # cleanup
-    # cuda.current_context().reset()
+        stop = time.perf_counter_ns()
+        fromgpu = stop - start
+        print('Data copied to Host in {:.3f}ms.\n'.format(
+            fromgpu/1e6))
+        start = time.perf_counter_ns()
 
-    # cuda.close()
+        # cleanup
+        # cuda.current_context().reset()
 
-    stop = time.perf_counter_ns()
+        # cuda.close()
 
-    # reshape output for parameters and CRLBs
-    if fittype == 1:  # (x,y,bg,I)
-        Parameters = Parameters.reshape((-1, (NV_P + 1)))
-        CRLBs = CRLBs.reshape((-1, NV_P))
-    elif fittype == 2:  # (x,y,bg,I,Sigma)
-        Parameters = Parameters.reshape((-1, (NV_PS + 1)))
-        CRLBs = CRLBs.reshape((-1, NV_PS))
-    elif fittype == 4:  # (x,y,bg,I,Sx,Sy)
-        Parameters = Parameters.reshape((-1, (NV_PS2 + 1)))
-        CRLBs = CRLBs.reshape((-1, NV_PS2))
-    elif fittype == 5:  # (x,y,bg,I,z)
-        Parameters = Parameters.reshape((-1, (NV_PS + 1)))
-        CRLBs = CRLBs.reshape((-1, NV_PS))
+        stop = time.perf_counter_ns()
 
-    return Parameters, CRLBs, LogLikelihood
+        # reshape output for parameters and CRLBs
+        if fittype == 1:  # (x,y,bg,I)
+            Parameters = Parameters.reshape((-1, (NV_P + 1)))
+            CRLBs = CRLBs.reshape((-1, NV_P))
+        elif fittype == 2:  # (x,y,bg,I,Sigma)
+            Parameters = Parameters.reshape((-1, (NV_PS + 1)))
+            CRLBs = CRLBs.reshape((-1, NV_PS))
+        elif fittype == 4:  # (x,y,bg,I,Sx,Sy)
+            Parameters = Parameters.reshape((-1, (NV_PS2 + 1)))
+            CRLBs = CRLBs.reshape((-1, NV_PS2))
+        elif fittype == 5:  # (x,y,bg,I,z)
+            Parameters = Parameters.reshape((-1, (NV_PS + 1)))
+            CRLBs = CRLBs.reshape((-1, NV_PS))
+
+        return Parameters, CRLBs, LogLikelihood
 
 
 def CPUmleFit_LM(
@@ -378,11 +379,11 @@ def CPUmleFit_LM(
     sz = math.sqrt(data.shape[1])
     Nfitraw = data.shape[0]
 
-    # if fittype == 1:  # fixed sigma
-    #     pass
-    # elif fittype == 2:  # free sigma
-    #     pass
-    if fittype == 4:  # fixed sigmax and sigmay
+    if fittype == 1:  # fixed sigma
+        PSFSigma = float(PSFparam[0])
+    elif fittype == 2:  # free sigma
+        PSFSigma = float(PSFparam[0])
+    elif fittype == 4:  # fixed sigmax and sigmay
         PSFSigma = float(PSFparam[0])
     elif fittype == 5:  # spline fit
         coeff = PSFparam.flatten()
@@ -645,7 +646,7 @@ def get_roi_list_CMOS(
 
     Returns
     -------
-    tuple[np.ndarray, np.ndarray]
+    tuple[np.ndarray, np.ndarray, np.ndarray]
         roi_list array of shape (nRoi, roi_size**2),
         coord_list of roi top left corner
     '''
@@ -675,7 +676,7 @@ def get_roi_list_CMOS(
         roi_list[0, r, :] = image[idy:idy+roi_size, idx:idx+roi_size].flatten()
         roi_list[1, r, :] = varim[idy:idy+roi_size, idx:idx+roi_size].flatten()
 
-    return roi_list, coord_list
+    return roi_list[0], roi_list[1], coord_list
 
 
 def psf2cspline_np(psf):

@@ -1,19 +1,15 @@
 import math
-import re
 
 import cv2
 import dask.array
 import numba
 import numpy as np
 import tifffile as tf
-from numba.core.types import abstract
-from numpy.lib.type_check import imag
 from PyQt5.QtCore import *
 from PyQt5.QtWidgets import *
 from PyQt5.QtWidgets import QWidget
-from scipy.fftpack import fft2, fftshift, ifft2, ifftshift
 from scipy import signal
-from zarr.core import Array
+from scipy.fftpack import fft2, fftshift, ifft2, ifftshift
 
 from .uImage import ZarrImageSequence
 
