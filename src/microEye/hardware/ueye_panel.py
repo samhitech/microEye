@@ -7,22 +7,21 @@ from queue import Queue
 
 import cv2
 import numpy as np
+import numba as nb
 import pyqtgraph as pg
 import tifffile as tf
-from numpy import random, true_divide
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 from pyqtgraph import PlotWidget, plot
 from pyqtgraph.metaarray.MetaArray import axis
 
-from .camera_calibration import dark_calibration
-
+from ..metadata import MetadataEditor
 from ..qlist_slider import *
 from ..thread_worker import *
-from .ueye_camera import IDS_Camera
 from ..uImage import uImage
-from ..metadata import MetadataEditor
+from .camera_calibration import dark_calibration
+from .ueye_camera import IDS_Camera
 
 try:
     from pyueye import ueye
@@ -182,6 +181,12 @@ class IDS_Panel(QGroupBox):
             QCompleter(map("{:.6f}".format, self.cam_exposure_slider.values)))
         self.cam_exposure_ledit.setValidator(QDoubleValidator())
         self.cam_exposure_ledit.returnPressed.connect(self.cam_exposure_return)
+
+        # Averaging choice
+        self.frame_averaging = QSpinBox()
+        self.frame_averaging.setMinimum(1)
+        self.frame_averaging.setMaximum(512)
+        self.frame_averaging.setValue(1)
 
         # trigger mode combobox
         self.cam_trigger_mode_lbl = QLabel("Trigger Mode")
@@ -348,18 +353,18 @@ class IDS_Panel(QGroupBox):
         self.info_temp = QLabel(" T {:.2f} °C".format(self.cam.temperature))
 
         # AOI controls
-        self.AOI_x_tbox = QLineEdit("0")
-        self.AOI_y_tbox = QLineEdit("0")
-        self.AOI_width_tbox = QLineEdit("0")
-        self.AOI_height_tbox = QLineEdit("0")
-        self.AOI_x_tbox.setValidator(
-            QIntValidator(0, self.cam.width.value))
-        self.AOI_y_tbox.setValidator(
-            QIntValidator(0, self.cam.height.value))
-        self.AOI_width_tbox.setValidator(
-            QIntValidator(10, self.cam.width.value))
-        self.AOI_height_tbox.setValidator(
-            QIntValidator(10, self.cam.height.value))
+        self.AOI_x_tbox = QSpinBox()
+        self.AOI_y_tbox = QSpinBox()
+        self.AOI_width_tbox = QSpinBox()
+        self.AOI_height_tbox = QSpinBox()
+        self.AOI_x_tbox.setMinimum(0)
+        self.AOI_x_tbox.setMaximum(self.cam.width.value)
+        self.AOI_y_tbox.setMinimum(0)
+        self.AOI_y_tbox.setMaximum(self.cam.height.value)
+        self.AOI_width_tbox.setMinimum(8)
+        self.AOI_width_tbox.setMaximum(self.cam.width.value)
+        self.AOI_height_tbox.setMinimum(8)
+        self.AOI_height_tbox.setMaximum(self.cam.height.value)
         self.AOI_set_btn = QPushButton(
             "Set AOI",
             clicked=lambda: self.set_AOI()
@@ -392,6 +397,9 @@ class IDS_Panel(QGroupBox):
             self.cam_exposure_lbl,
             self.cam_exposure_ledit)
         self.first_tab_Layout.addWidget(self.cam_exposure_slider)
+        self.first_tab_Layout.addRow(
+            QLabel('Averaged Frames'),
+            self.frame_averaging)
         if not self.mini:
             self.first_tab_Layout.addRow(
                 self.cam_flash_mode_lbl,
@@ -506,16 +514,22 @@ class IDS_Panel(QGroupBox):
             return  # if acquisition is already going on
 
         self.cam.set_AOI(
-            int(self.AOI_x_tbox.text()),
-            int(self.AOI_y_tbox.text()),
-            int(self.AOI_width_tbox.text()),
-            int(self.AOI_height_tbox.text()))
+            self.AOI_x_tbox.value(),
+            self.AOI_y_tbox.value(),
+            self.AOI_width_tbox.value(),
+            self.AOI_height_tbox.value())
 
         # setting the highest pixel clock as default
         self.cam_pixel_clock_cbox.setCurrentText(
             str(self._cam.pixel_clock_list[0].value))
         self.cam_pixel_clock_cbox.setCurrentText(
             str(self._cam.pixel_clock_list[-1].value))
+
+        self.AOI_x_tbox.setValue(self.cam.set_rectAOI.s32X.value)
+        self.AOI_y_tbox.setValue(self.cam.set_rectAOI.s32Y.value)
+        self.AOI_width_tbox.setValue(self.cam.set_rectAOI.s32Width.value)
+        self.AOI_height_tbox.setValue(self.cam.set_rectAOI.s32Height.value)
+        
 
     def reset_AOI(self):
         '''Resets the AOI for the slected IDS_Camera
@@ -526,10 +540,10 @@ class IDS_Panel(QGroupBox):
             return  # if acquisition is already going on
 
         self.cam.reset_AOI()
-        self.AOI_x_tbox.setText("0")
-        self.AOI_y_tbox.setText("0")
-        self.AOI_width_tbox.setText(str(self.cam.width.value))
-        self.AOI_height_tbox.setText(str(self.cam.height.value))
+        self.AOI_x_tbox.setValue(0)
+        self.AOI_y_tbox.setValue(0)
+        self.AOI_width_tbox.setValue(self.cam.width.value)
+        self.AOI_height_tbox.setValue(self.cam.height.value)
 
         # setting the highest pixel clock as default
         self.cam_pixel_clock_cbox.setCurrentText(
@@ -539,16 +553,12 @@ class IDS_Panel(QGroupBox):
 
     def center_AOI(self):
         '''Calculates the x, y values for a centered AOI'''
-        self.AOI_x_tbox.setText(
-            str(
-                int(
+        self.AOI_x_tbox.setValue(
                     (self.cam.rectAOI.s32Width.value -
-                     int(self.AOI_width_tbox.text()))/2)))
-        self.AOI_y_tbox.setText(
-            str(
-                int(
-                    (self.cam.rectAOI.s32Height.value -
-                     int(self.AOI_height_tbox.text()))/2)))
+                    self.AOI_width_tbox.value())/2)
+        self.AOI_y_tbox.setValue(
+            (self.cam.rectAOI.s32Height.value -
+            self.AOI_height_tbox.value())/2)
 
     def select_AOI(self):
         if self.frame is not None:
@@ -556,10 +566,10 @@ class IDS_Panel(QGroupBox):
             cv2.destroyWindow('ROI selector')
 
             z = self.zoom_box.value()
-            self.AOI_x_tbox.setText(str(int(aoi[0] / z)))
-            self.AOI_y_tbox.setText(str(int(aoi[1] / z)))
-            self.AOI_width_tbox.setText(str(int(aoi[2] / z)))
-            self.AOI_height_tbox.setText(str(int(aoi[3] / z)))
+            self.AOI_x_tbox.setValue(int(aoi[0] / z))
+            self.AOI_y_tbox.setValue(int(aoi[1] / z))
+            self.AOI_width_tbox.setValue(int(aoi[2] / z))
+            self.AOI_height_tbox.setValue(int(aoi[3] / z))
 
     def zoom_in(self):
         """Increase image display size"""
@@ -966,14 +976,34 @@ class IDS_Panel(QGroupBox):
 
                 # proceed only if the buffer is not empty
                 if not self._buffer.empty():
+                    if self.frame_averaging.value() > 1 and \
+                            self._buffer.qsize() < self.frame_averaging.value():
+                        if self._stop_thread:
+                            self._buffer.queue.clear()
+                        continue
+
                     self._dis_time = time.msecsTo(QDateTime.currentDateTime())
                     time = QDateTime.currentDateTime()
 
                     # reshape image into proper shape
                     # (height, width, bytes per pixel)
-                    self.frame = uImage.fromBuffer(
-                        self._buffer.get(),
-                        cam.height.value, cam.width.value, cam.bytes_per_pixel)
+                    if self.frame_averaging.value() > 1:
+                        images = []
+                        for n in range(self.frame_averaging.value()):
+                            dtype = '<u2'
+                            if cam.bytes_per_pixel == 1:
+                                dtype = 'u1'
+                            
+                            images.append(np.ndarray(
+                                shape=(cam.height.value, cam.width.value),
+                                dtype=dtype, buffer=self._buffer.get()))
+                        
+                        self.frame = uImage(mean_list(*images))
+
+                    else:
+                        self.frame = uImage.fromBuffer(
+                            self._buffer.get(),
+                            cam.height.value, cam.width.value, cam.bytes_per_pixel)
 
                     # add to saving stack
                     if self.cam_save_temp.isChecked():
@@ -1223,10 +1253,10 @@ class IDS_Panel(QGroupBox):
             if all(key in config for key in keys):
                 if self.cam.sInfo.strSensorName.decode('utf-8') == \
                         config['model']:
-                    self.AOI_x_tbox.setText(str(config['AOI x']))
-                    self.AOI_y_tbox.setText(str(config['AOI y']))
-                    self.AOI_width_tbox.setText(str(config['AOI w']))
-                    self.AOI_height_tbox.setText(str(config['AOI h']))
+                    self.AOI_x_tbox.setValue(int(config['AOI x']))
+                    self.AOI_y_tbox.setValue(int(config['AOI y']))
+                    self.AOI_width_tbox.setValue(int(config['AOI w']))
+                    self.AOI_height_tbox.setValue(int(config['AOI h']))
                     self.set_AOI()
 
                     self.cam_pixel_clock_cbox.setCurrentText(
@@ -1258,3 +1288,15 @@ class IDS_Panel(QGroupBox):
         else:
             QMessageBox.warning(
                 self, "Warning", "No file selected.")
+
+
+@nb.njit(parallel=True)
+def mean_list(*data):
+    m = np.zeros(data[0].shape, dtype=np.float64)
+    l = len(data)
+    for x in nb.prange(m.shape[0]):
+        for y in nb.prange(m.shape[1]):            
+            for z in nb.prange(l):
+                m[x, y] += data[z][x, y] / l
+    
+    return m  

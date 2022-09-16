@@ -454,7 +454,7 @@ class FittingResults:
             self.x_Sigma = value
         elif key == 'sigmay':
             self.y_Sigma = value
-        elif 'ratio' in key:
+        elif 'ratio' in key and 'iteration' not in key:
             self.xy_Ratio = value
         elif key == 'loglike':
             self.loglike = value
@@ -498,7 +498,7 @@ class FittingResults:
             return self.x_Sigma
         elif key == 'sigmay':
             return self.y_Sigma
-        elif 'ratio' in key:
+        elif 'ratio' in key and 'iteration' not in key:
             return self.xy_Ratio
         elif key == 'loglike':
             return self.loglike

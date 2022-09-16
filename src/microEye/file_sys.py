@@ -131,9 +131,9 @@ class tiff_viewer(QMainWindow):
 
         # Add Tabs
         self.tabView.addTab(self.file_tree, 'File system')
-        self.tabView.addTab(self.controls_group, 'Tiff Options')
-        self.tabView.addTab(self.loc_group, 'Localization / Render')
-        self.tabView.addTab(self.metadataEditor, 'OME-XML Metadata')
+        self.tabView.addTab(self.controls_group, 'Prefit Options')
+        self.tabView.addTab(self.loc_group, 'Fitting')
+        self.tabView.addTab(self.metadataEditor, 'Metadata')
 
         # Add the File system tab contents
         self.imsq_pattern = QLineEdit('/image_0*.ome.tif')
@@ -378,15 +378,21 @@ class tiff_viewer(QMainWindow):
         self.nn_layout.addWidget(self.nneigh_merge_btn)
 
         self.im_exp_layout = QHBoxLayout()
-        self.export_loc_btn = QPushButton(
-            'Export Localizations',
-            clicked=lambda: self.export_loc())
         self.import_loc_btn = QPushButton(
-            'Import Localizations',
+            'Import',
             clicked=lambda: self.import_loc())
+        self.export_loc_btn = QPushButton(
+            'Export',
+            clicked=lambda: self.export_loc())
+        self.apply_filters_btn = QPushButton(
+            'Apply Filters',
+            clicked=lambda: self.apply_filters())
+        self.apply_filters_btn.setToolTip(
+            'Applies the filters permanently to fitting results.')
 
         self.im_exp_layout.addWidget(self.import_loc_btn)
         self.im_exp_layout.addWidget(self.export_loc_btn)
+        self.im_exp_layout.addWidget(self.apply_filters_btn)
 
         self.loc_form.addRow(
             QLabel('Fitting:'),
@@ -455,6 +461,8 @@ class tiff_viewer(QMainWindow):
         # results stats widget
         self.results_plot_scroll = QScrollArea()
         self.results_plot = resultsStatsWidget()
+        self.results_plot.dataFilterUpdated.connect(
+            self.filter_updated)
         self.results_plot_scroll.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.results_plot_scroll.setWidgetResizable(True)
@@ -462,8 +470,8 @@ class tiff_viewer(QMainWindow):
 
         # self.image_plot.setColorMap(pg.colormap.getFromMatplotlib('jet'))
         self.g_layout_widget.addTab(self.image_plot, 'Image Preview')
-        self.g_layout_widget.addTab(
-            self.results_plot_scroll, 'Preview Fitting Stats')
+        self.tabView.addTab(
+            self.results_plot_scroll, 'Data Filters')
         # Item for displaying image data
 
         self.show()
@@ -632,7 +640,7 @@ class tiff_viewer(QMainWindow):
             sum = np.array([page.asarray() for page in self.tiff.pages])
             avg = sum.mean(axis=0, dtype=np.float32)
 
-            self.image.setImage(avg, autoLevels=False)
+            self.image.setImage(avg, autoLevels=True)
 
     def genOME(self):
         if self.tiffSeq_Handler is not None:
@@ -702,7 +710,7 @@ class tiff_viewer(QMainWindow):
             self.max_slider.valueChanged.connect(self.slider_changed)
 
         # cv2.imshow(self.path, image)
-        self.image.setImage(self.uImage._view, autoLevels=False)
+        self.image.setImage(self.uImage._view, autoLevels=True)
 
         if self.detection.isChecked():
 
@@ -759,7 +767,7 @@ class tiff_viewer(QMainWindow):
                         (0, 0, 255),
                         cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
 
-                    self.image.setImage(im_with_keypoints, autoLevels=False)
+                    self.image.setImage(im_with_keypoints, autoLevels=True)
             else:
                 rois, coords = pyfit3Dcspline.get_roi_list(image, points, 13)
                 Parameters = None
@@ -794,7 +802,7 @@ class tiff_viewer(QMainWindow):
                         (0, 0, 255),
                         cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
 
-                    self.image.setImage(im_with_keypoints, autoLevels=False)
+                    self.image.setImage(im_with_keypoints, autoLevels=True)
 
     def FRC_estimate(self):
         frc_method = self.frc_cbox.currentText()
@@ -866,10 +874,10 @@ class tiff_viewer(QMainWindow):
 
             def done(results):
                 if results is not None:
-                    img_norm = cv2.normalize(
-                        results[1], None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
-                    self.image.setImage(img_norm, autoLevels=False)
+                    self.update_loc()
                     self.fittingResults = results[0]
+                    self.results_plot.setData(
+                        self.fittingResults.dataFrame())
                     plot_drift(*results[2])
                 self.drift_cross_btn.setDisabled(False)
 
@@ -897,6 +905,8 @@ class tiff_viewer(QMainWindow):
             def done(results):
                 if results is not None:
                     self.fittingResults = results[0]
+                    self.results_plot.setData(
+                        self.fittingResults.dataFrame())
                     plot_drift(*results[1])
                     self.update_loc()
                 self.drift_fdm_btn.setDisabled(False)
@@ -929,6 +939,8 @@ class tiff_viewer(QMainWindow):
 
             def done(results):
                 self.fittingResults = results
+                self.results_plot.setData(
+                    self.fittingResults.dataFrame())
                 self.nneigh_merge_btn.setDisabled(False)
 
             self.worker = thread_worker(
@@ -958,6 +970,8 @@ class tiff_viewer(QMainWindow):
 
             def done(results):
                 self.fittingResults = results
+                self.results_plot.setData(
+                    self.fittingResults.dataFrame())
                 self.nneigh_btn.setDisabled(False)
 
             self.worker = thread_worker(
@@ -985,6 +999,8 @@ class tiff_viewer(QMainWindow):
 
             def done(results):
                 self.fittingResults = results
+                self.results_plot.setData(
+                    self.fittingResults.dataFrame())
                 self.merge_btn.setDisabled(False)
 
             self.worker = thread_worker(
@@ -1011,6 +1027,7 @@ class tiff_viewer(QMainWindow):
 
             if results is not None:
                 self.fittingResults = results
+                self.results_plot.setData(results.dataFrame())
                 self.update_loc()
                 print('Done importing results.')
             else:
@@ -1057,6 +1074,14 @@ class tiff_viewer(QMainWindow):
                     bigtiff=True,
                     ome=False)
 
+    def apply_filters(self):
+        if self.results_plot.filtered is not None:
+            self.fittingResults = FittingResults.fromDataFrame(
+                self.results_plot.filtered, 1)
+            self.results_plot.setData(self.fittingResults.dataFrame())
+            self.update_loc()
+            print('Filters applied.')
+
     def localize(self):
         '''Initiates the localization main thread worker.
         '''
@@ -1069,6 +1094,8 @@ class tiff_viewer(QMainWindow):
         if len(filename) > 0:
             def done(res):
                 self.loc_btn.setDisabled(False)
+                self.results_plot.setData(
+                    self.fittingResults.dataFrame())
             # Any other args, kwargs are passed to the run function
             self.worker = thread_worker(
                 self.proccess_loc, filename,
@@ -1097,12 +1124,28 @@ class tiff_viewer(QMainWindow):
                 renderClass = gauss_hist_render(self.super_px_size.value())
             img = renderClass.render(
                 *self.fittingResults.toRender())
-            img_norm = cv2.normalize(
-                img, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
-            self.image.setImage(img_norm, autoLevels=False)
+            # img_norm = cv2.normalize(
+            #     img, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
+            self.image.setImage(img, autoLevels=True)
             return img
         else:
             return None
+
+    def filter_updated(self, df: pd.DataFrame):
+        if df is not None:
+            if df.count()[0] > 1:
+                render_idx = self.render_cbox.currentData()
+                if render_idx == 0:
+                    renderClass = hist2D_render(self.super_px_size.value())
+                elif render_idx == 1:
+                    renderClass = gauss_hist_render(self.super_px_size.value())
+                img = renderClass.render(
+                    df['x'].to_numpy(),
+                    df['y'].to_numpy(),
+                    df['I'].to_numpy())
+                # img_norm = cv2.normalize(
+                #     img, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
+                self.image.setImage(img, autoLevels=False)
 
     def update_lists(self, result: np.ndarray):
         '''Extends the fitting results by results emitted
