@@ -129,10 +129,17 @@ class tiff_viewer(QMainWindow):
         self.loc_form = QFormLayout()
         self.loc_group.setLayout(self.loc_form)
 
+        # results stats tab layout
+        self.data_filters = QWidget()
+        self.data_filters_layout = QVBoxLayout()
+        self.data_filters.setLayout(self.data_filters_layout)
+
         # Add Tabs
         self.tabView.addTab(self.file_tree, 'File system')
         self.tabView.addTab(self.controls_group, 'Prefit Options')
         self.tabView.addTab(self.loc_group, 'Fitting')
+        self.tabView.addTab(
+            self.data_filters, 'Data Filters')
         self.tabView.addTab(self.metadataEditor, 'Metadata')
 
         # Add the File system tab contents
@@ -332,6 +339,9 @@ class tiff_viewer(QMainWindow):
         self.nneigh_merge_args = QHBoxLayout()
         self.nn_neighbors = QSpinBox()
         self.nn_neighbors.setValue(1)
+        self.nn_min_distance = QDoubleSpinBox()
+        self.nn_min_distance.setMaximum(20000)
+        self.nn_min_distance.setValue(0)
         self.nn_max_distance = QDoubleSpinBox()
         self.nn_max_distance.setMaximum(20000)
         self.nn_max_distance.setValue(30)
@@ -341,6 +351,7 @@ class tiff_viewer(QMainWindow):
         self.nn_max_length.setMaximum(20000)
         self.nn_max_length.setValue(500)
         self.nneigh_merge_args.addWidget(self.nn_neighbors)
+        self.nneigh_merge_args.addWidget(self.nn_min_distance)
         self.nneigh_merge_args.addWidget(self.nn_max_distance)
         self.nneigh_merge_args.addWidget(self.nn_max_off)
         self.nneigh_merge_args.addWidget(self.nn_max_length)
@@ -384,15 +395,9 @@ class tiff_viewer(QMainWindow):
         self.export_loc_btn = QPushButton(
             'Export',
             clicked=lambda: self.export_loc())
-        self.apply_filters_btn = QPushButton(
-            'Apply Filters',
-            clicked=lambda: self.apply_filters())
-        self.apply_filters_btn.setToolTip(
-            'Applies the filters permanently to fitting results.')
 
         self.im_exp_layout.addWidget(self.import_loc_btn)
         self.im_exp_layout.addWidget(self.export_loc_btn)
-        self.im_exp_layout.addWidget(self.apply_filters_btn)
 
         self.loc_form.addRow(
             QLabel('Fitting:'),
@@ -429,7 +434,7 @@ class tiff_viewer(QMainWindow):
         self.loc_form.addRow(self.drift_cross_args)
         self.loc_form.addRow(self.drift_cross_btn)
         self.loc_form.addRow(
-            QLabel('NN (n-neighbor, max-distance, max-off, max-len):'))
+            QLabel('NN (n-neighbor, min, max-distance, max-off, max-len):'))
         self.loc_form.addRow(self.nneigh_merge_args)
         self.loc_form.addRow(self.nn_layout)
         self.loc_form.addRow(self.drift_fdm_btn)
@@ -468,10 +473,17 @@ class tiff_viewer(QMainWindow):
         self.results_plot_scroll.setWidgetResizable(True)
         self.results_plot_scroll.setWidget(self.results_plot)
 
+        self.apply_filters_btn = QPushButton(
+            'Apply Filters',
+            clicked=lambda: self.apply_filters())
+        self.apply_filters_btn.setToolTip(
+            'Applies the filters permanently to fitting results.')
+
+        self.data_filters_layout.addWidget(self.results_plot_scroll)
+        self.data_filters_layout.addWidget(self.apply_filters_btn)
+
         # self.image_plot.setColorMap(pg.colormap.getFromMatplotlib('jet'))
         self.g_layout_widget.addTab(self.image_plot, 'Image Preview')
-        self.tabView.addTab(
-            self.results_plot_scroll, 'Data Filters')
         # Item for displaying image data
 
         self.show()
@@ -820,8 +832,9 @@ class tiff_viewer(QMainWindow):
                         return None
 
                 def done(results):
-                    plotFRC_(*results)
                     self.frc_res_btn.setDisabled(False)
+                    if results is not None:
+                        plotFRC_(*results)
             else:
                 return
         elif 'Binomial' in frc_method:
@@ -841,9 +854,9 @@ class tiff_viewer(QMainWindow):
                         return None
 
                 def done(results):
+                    self.frc_res_btn.setDisabled(False)
                     if results is not None:
                         plotFRC(*results)
-                    self.frc_res_btn.setDisabled(False)
             else:
                 return
         else:
@@ -873,13 +886,13 @@ class tiff_viewer(QMainWindow):
                     return None
 
             def done(results):
+                self.drift_cross_btn.setDisabled(False)
                 if results is not None:
                     self.update_loc()
                     self.fittingResults = results[0]
                     self.results_plot.setData(
                         self.fittingResults.dataFrame())
                     plot_drift(*results[2])
-                self.drift_cross_btn.setDisabled(False)
 
             self.worker = thread_worker(
                 work_func,
@@ -903,13 +916,13 @@ class tiff_viewer(QMainWindow):
                     return None
 
             def done(results):
+                self.drift_fdm_btn.setDisabled(False)
                 if results is not None:
                     self.fittingResults = results[0]
                     self.results_plot.setData(
                         self.fittingResults.dataFrame())
                     plot_drift(*results[1])
                     self.update_loc()
-                self.drift_fdm_btn.setDisabled(False)
 
             self.worker = thread_worker(
                 work_func,
@@ -928,6 +941,7 @@ class tiff_viewer(QMainWindow):
             def work_func():
                 try:
                     return self.fittingResults.nearest_neighbour_merging(
+                        self.nn_min_distance.value(),
                         self.nn_max_distance.value(),
                         self.nn_max_off.value(),
                         self.nn_max_length.value(),
@@ -938,10 +952,11 @@ class tiff_viewer(QMainWindow):
                     return None
 
             def done(results):
-                self.fittingResults = results
-                self.results_plot.setData(
-                    self.fittingResults.dataFrame())
                 self.nneigh_merge_btn.setDisabled(False)
+                if results is not None:
+                    self.fittingResults = results
+                    self.results_plot.setData(
+                        self.fittingResults.dataFrame())
 
             self.worker = thread_worker(
                 work_func,
@@ -960,6 +975,7 @@ class tiff_viewer(QMainWindow):
             def work_func():
                 try:
                     return self.fittingResults.nn_trajectories(
+                        self.nn_min_distance.value(),
                         self.nn_max_distance.value(),
                         self.nn_max_off.value(),
                         self.nn_neighbors.value()
@@ -969,10 +985,11 @@ class tiff_viewer(QMainWindow):
                     return None
 
             def done(results):
-                self.fittingResults = results
-                self.results_plot.setData(
-                    self.fittingResults.dataFrame())
                 self.nneigh_btn.setDisabled(False)
+                if results is not None:
+                    self.fittingResults = results
+                    self.results_plot.setData(
+                        self.fittingResults.dataFrame())
 
             self.worker = thread_worker(
                 work_func,
@@ -998,10 +1015,11 @@ class tiff_viewer(QMainWindow):
                     return None
 
             def done(results):
-                self.fittingResults = results
-                self.results_plot.setData(
-                    self.fittingResults.dataFrame())
                 self.merge_btn.setDisabled(False)
+                if results is not None:
+                    self.fittingResults = results
+                    self.results_plot.setData(
+                        self.fittingResults.dataFrame())
 
             self.worker = thread_worker(
                 work_func,

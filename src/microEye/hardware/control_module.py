@@ -312,7 +312,7 @@ class control_module(QMainWindow):
         self.remote_img = self.remote_view.pg.ImageItem(axisOrder='row-major')
         self.roi_handles = [None, None]
         self.roi = self.remote_view.pg.LineSegmentROI(
-            [[10, 256], [138, 256]],
+            [[10, 0], [10, 256]],
             pen='r', handles=self.roi_handles)
         self.remote_plt.addItem(self.remote_img)
         self.remote_plt.addItem(self.roi)
@@ -427,13 +427,21 @@ class control_module(QMainWindow):
         else:
             return False
 
-    def Buffer(self) -> Queue:
+    def BufferGet(self) -> Queue:
         if self.cam is not None:
-            return self.cam_panel.buffer
+            return self.cam_panel.get()
         elif not self.IR_Cam.isDummy():
-            return self.IR_Cam.buffer
+            return self.IR_Cam.buffer.get()
         else:
-            return Queue()
+            return np.zeros((256,256), dtype=np.uint16)
+
+    def BufferSize(self) -> Queue:
+        if self.cam is not None:
+            return self.cam_panel.bufferSize
+        elif not self.IR_Cam.isDummy():
+            return 0
+        else:
+            return 0
 
     def relaySettings(self):
         '''Returns the RelayBox setting command.
@@ -487,7 +495,7 @@ class control_module(QMainWindow):
         counter = 0
         self._exec_time = 0
         time = QDateTime.currentDateTime()
-        QThread.sleep(1)
+        QThread.msleep(100)
         while(self.isVisible()):
             try:
                 # dt = Gaussian(
@@ -503,10 +511,10 @@ class control_module(QMainWindow):
                     self._exec_time = time.msecsTo(QDateTime.currentDateTime())
                     time = QDateTime.currentDateTime()
 
-                    data = self.Buffer().get()
+                    data = self.BufferGet()
 
                     if self.isImage():
-                        self.remote_img.setImage(data, _callSync='off')
+                        self.remote_img.setImage(data.copy(), _callSync='off')
                         data, _ = self.roi.getArrayRegion(
                             data, self.remote_img,
                             axes=(1, 0), returnMappedCoords=True)
@@ -519,7 +527,7 @@ class control_module(QMainWindow):
                         self.frames_saved = 1 + self.frames_saved
                     counter = counter + 1
                     progress_callback.emit(data)
-                QThread.msleep(5)
+                QThread.usleep(100)
             except Exception as e:
                 traceback.print_exc()
 
@@ -636,7 +644,7 @@ class control_module(QMainWindow):
 
         Worker = "    | Execution time: {:d}".format(self._exec_time)
         if self.cam is not None:
-            Worker += "    | Frames Buffer: {:d}".format(self.Buffer().qsize())
+            Worker += "    | Frames Buffer: {:d}".format(self.BufferSize())
         self.statusBar().showMessage(
             "Time: " + QDateTime.currentDateTime().toString("hh:mm:ss,zzz")
             + IR + RelayBox

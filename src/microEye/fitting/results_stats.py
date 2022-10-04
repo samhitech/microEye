@@ -62,11 +62,32 @@ class resultsStatsWidget(QWidget):
             self._layout.addWidget(pw)
             # self._layout.addWidget(pw, row, col)
 
-            hist, bins = np.histogram(df[column].to_numpy())
+            if column == 'trackID':
+                data = df[column].to_numpy()
+                data = data[data.nonzero()]
 
-            pw.plot(
-                bins, hist, stepMode="center",
-                fillLevel=0, fillOutline=True, brush=(0, 0, 255, 150))
+                if len(data) > 0:
+                    uniq, counts = np.unique(
+                        data, return_counts=True)
+
+                    pw.plot(
+                        uniq, counts,
+                        fillLevel=0, fillOutline=True, brush=(0, 0, 255, 150))
+                else:
+                    pw.plot(
+                        [0], [1],
+                        fillLevel=0, fillOutline=True, brush=(0, 0, 255, 150))
+            else:
+                min_val = np.floor(df[column].min())
+                max_val = np.ceil(df[column].max())
+                counts = df[column].count()
+                hist, bins = np.histogram(
+                    df[column].to_numpy(),
+                    bins=min(counts+1, 1024))
+
+                pw.plot(
+                    bins, hist / np.max(hist), stepMode="center",
+                    fillLevel=0, fillOutline=True, brush=(0, 0, 255, 150))
 
     def clearLayout(self):
         for i in reversed(range(self._layout.count())):

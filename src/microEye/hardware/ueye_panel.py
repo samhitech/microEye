@@ -36,7 +36,7 @@ class IDS_Panel(QGroupBox):
 
     exposureChanged = pyqtSignal()
 
-    def __init__(self, threadpool, cam: IDS_Camera,
+    def __init__(self, threadpool: QThreadPool, cam: IDS_Camera,
                  *args, mini=False, **kwargs):
         """
         Initializes a new IDS_Panel Qt widget
@@ -494,8 +494,15 @@ class IDS_Panel(QGroupBox):
             return Queue()
 
     @property
+    def bufferSize(self):
+        if self._frames is not None:
+            return self._frames.qsize()
+        else:
+            return 0
+
+    @property
     def isEmpty(self) -> bool:
-        return self.buffer.empty()
+        return self._frames.empty()
 
     def get(self) -> np.ndarray:
         if not self.isEmpty:
@@ -955,6 +962,8 @@ class IDS_Panel(QGroupBox):
             if self._dispose_cam:
                 cam.dispose()
 
+            self._threadpool.releaseThread()
+
     def _display(self, nRet, cam: IDS_Camera):
         '''Display function executed by the display worker.
 
@@ -1054,6 +1063,7 @@ class IDS_Panel(QGroupBox):
         except Exception:
             traceback.print_exc()
         finally:
+            self._threadpool.releaseThread()
             if not self.mini:
                 cv2.destroyWindow(cam.name)
 
@@ -1178,6 +1188,8 @@ class IDS_Panel(QGroupBox):
 
             if self.cam_save_temp.isChecked():
                 saveMetadata(index)
+
+            self._threadpool.releaseThread()
 
     @staticmethod
     def find_nearest(array, value):

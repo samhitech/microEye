@@ -651,29 +651,34 @@ class FittingResults:
             (frames_new, interpx, interpy)
 
     def nn_trajectories(
-            self, maxDistance=30, maxOff=1, neighbors=1):
+            self, minDistance=0, maxDistance=30, maxOff=1, neighbors=1):
         self.trackID = np.zeros(self.__len__(), dtype=np.int64)
-        self.neighbour_dist = np.zeros(self.__len__())
+        self.neighbour_dist = np.zeros(self.__len__(), dtype=np.float64)
         # data = self.dataFrame().to_numpy()
         data = np.c_[self.frames, self.locX, self.locY]
-        counter = 0
-        max_frame = np.max(self.frame)
 
-        for frameID in np.arange(0, max_frame + 1):
+        counter = 0
+        min_frame = np.min(self.frames)
+        max_frame = np.max(self.frames)
+
+        for frameID in np.arange(min_frame, max_frame + 1):
             for offset in np.arange(0, maxOff + 1):
-                counter = nn_trajectories(
-                    data, self.trackID, self.neighbour_dist,
-                    frameID=frameID, nextID=frameID + offset + 1,
-                    counter=counter, maxDistance=maxDistance,
-                    neighbors=neighbors)
+                nextID = frameID + offset + 1
+
+                currentMask = data[:, 0] == frameID
+                nextMask = data[:, 0] == nextID
+
+                counter, self.trackID[currentMask], \
+                    self.trackID[nextMask], \
+                    self.neighbour_dist[nextMask] = nn_trajectories(
+                        data[currentMask, :], data[nextMask, :],
+                        c_trackID=self.trackID[currentMask],
+                        counter=counter, minDistance=minDistance,
+                        maxDistance=maxDistance,
+                        neighbors=neighbors)
             print(
                 'NN {:.2%} ...               '.format(frameID / max_frame),
                 end="\r")
-
-        # df = pd.DataFrame(
-        #     data,
-        #     columns=DataColumns.values()).sort_values(
-        #         by=str(DataColumns.Frame))
 
         print('Done ...                         ')
 
@@ -682,11 +687,21 @@ class FittingResults:
     def merge_tracks(self, maxLength=500):
         self.n_merged = np.zeros(self.__len__(), dtype=np.int64)
         df = self.dataFrame()
-        columns = df.columns
+        columns = list(df.columns)
+
+        column_ids = np.zeros(4, dtype=np.int32)
+        column_ids[0] = columns.index('frame')
+        column_ids[1] = columns.index('trackID')
+        column_ids[2] = columns.index('n_merged')
+        if 'I' in columns:
+            column_ids[3] = columns.index('I')
+        elif 'intensity' in columns:
+            column_ids[3] = columns.index('intensity')
+
         data = df.to_numpy()
 
         print('Merging ...                         ')
-        finalData = merge_localizations(data, columns, maxLength)
+        finalData = merge_localizations(data, column_ids, maxLength)
 
         df = pd.DataFrame(
             finalData,
@@ -698,21 +713,32 @@ class FittingResults:
         return FittingResults.fromDataFrame(df, self.pixelSize)
 
     def nearest_neighbour_merging(
-            self, maxDistance=30, maxOff=1, maxLength=500, neighbors=1):
+            self, minDistance=0, maxDistance=30,
+            maxOff=1, maxLength=500, neighbors=1):
         self.trackID = np.zeros(self.__len__(), dtype=np.int64)
-        self.neighbour_dist = np.zeros(self.__len__())
+        self.neighbour_dist = np.zeros(self.__len__(), dtype=np.float64)
         # data = self.dataFrame().to_numpy()
         data = np.c_[self.frames, self.locX, self.locY]
-        counter = 0
-        max_frame = np.max(self.frame)
 
-        for frameID in np.arange(0, max_frame + 1):
+        counter = 0
+        min_frame = np.min(self.frames)
+        max_frame = np.max(self.frames)
+
+        for frameID in np.arange(min_frame, max_frame + 1):
             for offset in np.arange(0, maxOff + 1):
-                counter = nn_trajectories(
-                    data, self.trackID, self.neighbour_dist,
-                    frameID=frameID, nextID=frameID + offset + 1,
-                    counter=counter, maxDistance=maxDistance,
-                    neighbors=neighbors)
+                nextID = frameID + offset + 1
+
+                currentMask = data[:, 0] == frameID
+                nextMask = data[:, 0] == nextID
+
+                counter, self.trackID[currentMask], \
+                    self.trackID[nextMask], \
+                    self.neighbour_dist[nextMask] = nn_trajectories(
+                        data[currentMask, :], data[nextMask, :],
+                        c_trackID=self.trackID[currentMask],
+                        counter=counter, minDistance=minDistance,
+                        maxDistance=maxDistance,
+                        neighbors=neighbors)
             print(
                 'NN {:.2%} ...               '.format(frameID / max_frame),
                 end="\r")
@@ -720,10 +746,21 @@ class FittingResults:
         print('Merging ...                         ')
         self.n_merged = np.zeros(self.__len__(), dtype=np.int64)
         df = self.dataFrame()
-        columns = df.columns
+        columns = list(df.columns)
+
+        column_ids = np.zeros(4, dtype=np.int32)
+        column_ids[0] = columns.index('frame')
+        column_ids[1] = columns.index('trackID')
+        column_ids[2] = columns.index('n_merged')
+        if 'I' in columns:
+            column_ids[3] = columns.index('I')
+        elif 'intensity' in columns:
+            column_ids[3] = columns.index('intensity')
+
         data = df.to_numpy()
 
-        finalData = merge_localizations(data, columns, maxLength)
+        print('Merging ...                         ')
+        finalData = merge_localizations(data, column_ids, maxLength)
 
         df = pd.DataFrame(
             finalData,
