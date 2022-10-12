@@ -9,16 +9,16 @@ from sklearn.neighbors import NearestNeighbors
 
 
 @nb.njit(nb.types.Tuple((nb.int64, nb.int64[:], nb.int64[:], nb.float64[:]))(
-    nb.float64[:, :], nb.float64[:, :], nb.int64[:], nb.int64, nb.float64,
+    nb.float64[:, :], nb.float64[:, :], nb.int64[:], nb.int64[:],
+    nb.float64[:], nb.int64, nb.float64,
     nb.float64, nb.int64), parallel=True)
 def nn_trajectories(
         currentFrame: np.ndarray, nextFrame: np.ndarray,
-        c_trackID: np.ndarray, counter: int = 0, minDistance=0,
+        c_trackID: np.ndarray, n_trackID: np.ndarray,
+        nn_dist: np.ndarray, counter: int = 0, minDistance=0,
         maxDistance=30, neighbors=1):
 
     currentIDs = None
-    n_trackID = np.zeros(nextFrame.shape[0], dtype=np.int64)
-    _nn_dist = np.zeros(n_trackID.shape, dtype=np.float64)
 
     if len(currentFrame) > 0 and len(nextFrame) > 0:
         with nb.objmode(
@@ -42,20 +42,21 @@ def nn_trajectories(
         if np.isnan(distance).any():
             print("Nan!\n\n")
 
-        for idx in nb.prange(len(currentIDs)):
+        for idx in range(len(currentIDs)):
             if n_trackID[neighbourIDs[idx]] == 0:
                 if c_trackID[currentIDs[idx]] == 0:
-                    c_trackID[currentIDs[idx]] = counter + idx + 1
-                    n_trackID[neighbourIDs[idx]] = counter + idx + 1
+                    counter += 1
+                    c_trackID[currentIDs[idx]] = counter
+                    n_trackID[neighbourIDs[idx]] = counter
                 else:
                     n_trackID[neighbourIDs[idx]] = \
                         c_trackID[currentIDs[idx]]
 
-            _nn_dist[neighbourIDs[idx]] = distance[currentIDs[idx]]
+                nn_dist[neighbourIDs[idx]] = distance[currentIDs[idx]]
 
-    counter += 0 if currentIDs is None else len(currentIDs)
+    # counter += 0 if currentIDs is None else len(currentIDs)
 
-    return counter, c_trackID, n_trackID, _nn_dist
+    return counter, c_trackID, n_trackID, nn_dist
 
 
 @nb.njit(nb.float64[:, :](nb.float64[:, :], nb.int32[:], nb.int64),

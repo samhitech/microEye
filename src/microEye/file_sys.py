@@ -1164,6 +1164,29 @@ class tiff_viewer(QMainWindow):
                 # img_norm = cv2.normalize(
                 #     img, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
                 self.image.setImage(img, autoLevels=False)
+            else:
+                # Create a black image
+                img = np.zeros(
+                    (self.image.height(), self.image.width(), 3),
+                    np.uint8)
+
+                # Write some Text
+                font = cv2.FONT_HERSHEY_SIMPLEX
+                bottomLeftCornerOfText = (10, 50)
+                fontScale = 1
+                fontColor = (255, 255, 255)
+                thickness = 1
+                lineType = 2
+
+                cv2.putText(
+                    img, 'EMPTY!',
+                    bottomLeftCornerOfText,
+                    font,
+                    fontScale,
+                    fontColor,
+                    thickness,
+                    lineType)
+                self.image.setImage(img, autoLevels=False)
 
     def update_lists(self, result: np.ndarray):
         '''Extends the fitting results by results emitted

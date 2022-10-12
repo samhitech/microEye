@@ -70,9 +70,15 @@ class resultsStatsWidget(QWidget):
                     uniq, counts = np.unique(
                         data, return_counts=True)
 
-                    pw.plot(
-                        uniq, counts,
-                        fillLevel=0, fillOutline=True, brush=(0, 0, 255, 150))
+                    bars = pg.BarGraphItem(
+                        x=uniq, height=counts,
+                        width=0.9, brush='b')
+                    pw.addItem(bars)
+
+                    # pw.plot(
+                    #     uniq, counts, stepMode="center",
+                    #     fillLevel=0, fillOutline=True,
+                    #     brush=(0, 0, 255, 150))
                 else:
                     pw.plot(
                         [0], [1],
@@ -101,9 +107,11 @@ class resultsStatsWidget(QWidget):
         mask = np.ones(self.df.count()[0], dtype=bool)
         for idx, column in enumerate(self.df.columns):
             Rmin, Rmax = self.plot_lr[idx].getRegion()
-            mask &= np.logical_and(
-                self.df[column].to_numpy() >= Rmin,
-                self.df[column].to_numpy() <= Rmax)
+            mask = np.logical_and(
+                mask,
+                np.logical_and(
+                    self.df[column].to_numpy() >= Rmin,
+                    self.df[column].to_numpy() <= Rmax))
 
         self.filtered = self.df[mask]
 

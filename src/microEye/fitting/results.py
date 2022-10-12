@@ -673,6 +673,8 @@ class FittingResults:
                     self.neighbour_dist[nextMask] = nn_trajectories(
                         data[currentMask, :], data[nextMask, :],
                         c_trackID=self.trackID[currentMask],
+                        n_trackID=self.trackID[nextMask],
+                        nn_dist=self.neighbour_dist[nextMask],
                         counter=counter, minDistance=minDistance,
                         maxDistance=maxDistance,
                         neighbors=neighbors)
@@ -736,6 +738,8 @@ class FittingResults:
                     self.neighbour_dist[nextMask] = nn_trajectories(
                         data[currentMask, :], data[nextMask, :],
                         c_trackID=self.trackID[currentMask],
+                        n_trackID=self.trackID[nextMask],
+                        nn_dist=self.neighbour_dist[nextMask],
                         counter=counter, minDistance=minDistance,
                         maxDistance=maxDistance,
                         neighbors=neighbors)

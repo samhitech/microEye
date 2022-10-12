@@ -536,7 +536,6 @@ class IDS_Panel(QGroupBox):
         self.AOI_y_tbox.setValue(self.cam.set_rectAOI.s32Y.value)
         self.AOI_width_tbox.setValue(self.cam.set_rectAOI.s32Width.value)
         self.AOI_height_tbox.setValue(self.cam.set_rectAOI.s32Height.value)
-        
 
     def reset_AOI(self):
         '''Resets the AOI for the slected IDS_Camera
@@ -562,10 +561,10 @@ class IDS_Panel(QGroupBox):
         '''Calculates the x, y values for a centered AOI'''
         self.AOI_x_tbox.setValue(
                     (self.cam.rectAOI.s32Width.value -
-                    self.AOI_width_tbox.value())/2)
+                     self.AOI_width_tbox.value())/2)
         self.AOI_y_tbox.setValue(
             (self.cam.rectAOI.s32Height.value -
-            self.AOI_height_tbox.value())/2)
+             self.AOI_height_tbox.value())/2)
 
     def select_AOI(self):
         if self.frame is not None:
@@ -979,40 +978,41 @@ class IDS_Panel(QGroupBox):
         '''
         try:
             time = QDateTime.currentDateTime()
+            counter = 0
+            accumulator = None
             # Continuous image display
             while(nRet == ueye.IS_SUCCESS):
                 # for display time estimations
 
                 # proceed only if the buffer is not empty
                 if not self._buffer.empty():
-                    if self.frame_averaging.value() > 1 and \
-                            self._buffer.qsize() < self.frame_averaging.value():
-                        if self._stop_thread:
-                            self._buffer.queue.clear()
-                        continue
+                    counter += 1
 
                     self._dis_time = time.msecsTo(QDateTime.currentDateTime())
                     time = QDateTime.currentDateTime()
 
                     # reshape image into proper shape
                     # (height, width, bytes per pixel)
-                    if self.frame_averaging.value() > 1:
-                        images = []
-                        for n in range(self.frame_averaging.value()):
-                            dtype = '<u2'
-                            if cam.bytes_per_pixel == 1:
-                                dtype = 'u1'
-                            
-                            images.append(np.ndarray(
-                                shape=(cam.height.value, cam.width.value),
-                                dtype=dtype, buffer=self._buffer.get()))
-                        
-                        self.frame = uImage(mean_list(*images))
+                    self.frame = uImage.fromBuffer(
+                        self._buffer.get(),
+                        cam.height.value, cam.width.value,
+                        cam.bytes_per_pixel)
 
-                    else:
-                        self.frame = uImage.fromBuffer(
-                            self._buffer.get(),
-                            cam.height.value, cam.width.value, cam.bytes_per_pixel)
+                    if self.frame_averaging.value() > 1:
+                        if accumulator is None:
+                            accumulator = np.zeros(
+                                self.frame.shape, dtype=np.int64)
+
+                        accumulator += self.frame
+
+                        if counter < self.frame_averaging.value():
+                            if self._stop_thread:
+                                self._buffer.queue.clear()
+                            continue
+                        else:
+                            self.frame = uImage(accumulator / counter)
+                            counter = 0
+                            accumulator = None
 
                     # add to saving stack
                     if self.cam_save_temp.isChecked():
@@ -1305,10 +1305,10 @@ class IDS_Panel(QGroupBox):
 @nb.njit(parallel=True)
 def mean_list(*data):
     m = np.zeros(data[0].shape, dtype=np.float64)
-    l = len(data)
+    ll = len(data)
     for x in nb.prange(m.shape[0]):
-        for y in nb.prange(m.shape[1]):            
-            for z in nb.prange(l):
-                m[x, y] += data[z][x, y] / l
-    
-    return m  
+        for y in nb.prange(m.shape[1]):
+            for z in nb.prange(ll):
+                m[x, y] += data[z][x, y] / ll
+
+    return m

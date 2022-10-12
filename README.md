@@ -7,7 +7,7 @@ The *Control Module* allows setting the laser excitation presets, manual focus a
 
 The *Tiff Viewer Module* allows accessing tiff images (single file and sequecnces) of order TYX (2D SMLM), also allows for visualizing the filtering-localization process *WYSIWYG*.  
 
-This toolkit is compatible with the [hardware](#hardware) we are using in our microscope. For further details check our *miEye* microscope's [OSF project](http://doi.org/10.17605/osf.io/j2fqy)
+This toolkit is compatible with the [hardware](#hardware) we are using in our microscope. For further details check our *miEye* microscope's [paper](https://doi.org/10.1016/j.ohx.2022.e00368) and [OSF project](http://doi.org/10.17605/osf.io/j2fqy).
 
 ## Uses Packages
  
