@@ -986,7 +986,6 @@ class IDS_Panel(QGroupBox):
 
                 # proceed only if the buffer is not empty
                 if not self._buffer.empty():
-                    counter += 1
 
                     self._dis_time = time.msecsTo(QDateTime.currentDateTime())
                     time = QDateTime.currentDateTime()
@@ -999,11 +998,12 @@ class IDS_Panel(QGroupBox):
                         cam.bytes_per_pixel)
 
                     if self.frame_averaging.value() > 1:
+                        counter += 1
                         if accumulator is None:
                             accumulator = np.zeros(
-                                self.frame.shape, dtype=np.int64)
+                                self.frame._image.shape, dtype=np.int64)
 
-                        accumulator += self.frame
+                        accumulator += self.frame._image
 
                         if counter < self.frame_averaging.value():
                             if self._stop_thread:
