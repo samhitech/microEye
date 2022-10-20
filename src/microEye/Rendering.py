@@ -11,7 +11,7 @@ from numpy.lib.type_check import imag
 from pandas.core.window.rolling import Window
 from PyQt5.QtCore import *
 from scipy.fftpack import fft2, fftshift, ifft2, ifftshift
-from scipy.interpolate import interp1d
+from scipy.interpolate import interp1d, UnivariateSpline
 
 
 def model(xc, yc, sigma_x, sigma_y, flux, offset, X, Y):
@@ -49,7 +49,7 @@ def radial_cordinate(shape):
 
 class gauss_hist_render:
 
-    def __init__(self, pixelSize=10, is2D_hist = False):
+    def __init__(self, pixelSize=10, is2D_hist=False):
         self._pixel_size = pixelSize
         self._std = pixelSize  # nm
         self._gauss_std = self._std / self._pixel_size
@@ -57,7 +57,7 @@ class gauss_hist_render:
         if self._gauss_len % 2 == 0:
             self._gauss_len += 1
         self._gauss_shape = [int(self._gauss_len)] * 2
-                    
+
         xy_len = np.arange(0, self._gauss_shape[0])
         X, Y = np.meshgrid(xy_len, xy_len)
         self._gauss_2d = model(
@@ -249,9 +249,7 @@ def FRC_resolution_binomial(data: np.ndarray, pixelSize=10):
     pixelSize : int, optional
         super resolution image pixel size in nanometers, by default 10
     '''
-    print(
-        'Initialization ...               ',
-        end="\r")
+    print('Initialization ... ')
 
     n_points = data.shape[0]
 
@@ -276,11 +274,17 @@ def FRC_resolution_binomial(data: np.ndarray, pixelSize=10):
     image_1 *= window
     image_2 *= window
 
-    print(
-        'FFT ...               ',
-        end="\r")
-    fft_1 = np.fft.fft2(image_1)
-    fft_2 = np.fft.fft2(image_2)
+    start = QDateTime.currentDateTime()
+    print('FFT ... ')
+
+    fft_1 = cv2.dft(
+            np.float64(image_1), flags=cv2.DFT_COMPLEX_OUTPUT)
+    fft_1 = fft_1[..., 0] + 1j * fft_1[..., 1]
+    fft_2 = cv2.dft(
+            np.float64(image_2), flags=cv2.DFT_COMPLEX_OUTPUT)
+    fft_2 = fft_2[..., 0] + 1j * fft_2[..., 1]
+    # fft_1 = np.fft.fft2(image_1)
+    # fft_2 = np.fft.fft2(image_2)
     fft_12 = np.fft.fftshift(
         np.real(fft_1 * np.conj(fft_2)))
 
@@ -301,32 +305,26 @@ def FRC_resolution_binomial(data: np.ndarray, pixelSize=10):
     FRC_res = np.zeros((R_max, 5))
 
     print(
-        'FRC ...               ',
-        end="\r")
+        start.msecsTo(QDateTime.currentDateTime()) * 1e-3,
+        ' s')
+
+    start = QDateTime.currentDateTime()
+    print('FRC ... ')
     FRC_compute(fft_12, fft_11, fft_22, FRC_res, R, R_max)
 
-    # for idx in range(1, R_max + 1):
-    #     rMask = (R == idx)
-    #     FRC_res[idx-1, 0] = np.sum(fft_12[rMask])
-    #     FRC_res[idx-1, 1] = np.sum(fft_11[rMask])
-    #     FRC_res[idx-1, 2] = np.sum(fft_22[rMask])
-    #     FRC_res[idx-1, 3] = (FRC_res[idx-1, 0] / np.sqrt(
-    #         FRC_res[idx-1, 1] * FRC_res[idx-1, 2]))
-    #     print(
-    #         'FRC {:.2%} ...               '.format(idx / R_max),
-    #         end="\r")
-
-    # frequencies = np.linspace(0, 1/(2*pixelSize), R_max)
-
     print(
-        'Interpolation ...               ',
-        end="\r")
+        start.msecsTo(QDateTime.currentDateTime()) * 1e-3,
+        ' s')
+
+    print('Interpolation ... ')
     interpy = interp1d(
             frequencies, FRC_res[:, 3],
             kind='quadratic', fill_value='extrapolate')
     FRC = interpy(frequencies)
+    interpy = UnivariateSpline(frequencies, FRC_res[:, 3], k=5)
+    smoothed = interpy(frequencies)
 
-    idx = np.where(FRC <= (1/7))[0]
+    idx = np.where(smoothed <= (1/7))[0]
     if idx is not None:
         idx = idx.min()
         FRC_res = 1 / frequencies[idx]
@@ -337,17 +335,20 @@ def FRC_resolution_binomial(data: np.ndarray, pixelSize=10):
         'Done ...               ',
         end="\r")
 
-    return frequencies, FRC, FRC_res
+    return frequencies, FRC, smoothed, FRC_res
 
 
 @numba.jit(nopython=True, parallel=True)
 def FRC_compute(fft_12, fft_11, fft_22, FRC_res, R, R_max):
     for idx in numba.prange(1, R_max + 1):
         rMask = (R == idx)
-        rMask = np.where(rMask.flatten())[0]
-        FRC_res[idx-1, 0] = np.sum(fft_12.flatten()[rMask])
-        FRC_res[idx-1, 1] = np.sum(fft_11.flatten()[rMask])
-        FRC_res[idx-1, 2] = np.sum(fft_22.flatten()[rMask])
+        # rMask = np.where(rMask.flatten())[0]
+        for x in numba.prange(R.shape[0]):
+            for y in numba.prange(R.shape[1]):
+                if rMask[x, y]:
+                    FRC_res[idx-1, 0] += fft_12[x, y]
+                    FRC_res[idx-1, 1] += fft_11[x, y]
+                    FRC_res[idx-1, 2] += fft_22[x, y]
         FRC_res[idx-1, 3] = (FRC_res[idx-1, 0] / np.sqrt(
             FRC_res[idx-1, 1] * FRC_res[idx-1, 2]))
 
@@ -359,7 +360,7 @@ def masked_sum(array: np.ndarray, mask: np.ndarray):
     return np.sum(a[m])
 
 
-def plotFRC(frequencies, FRC, FRC_res):
+def plotFRC(frequencies, FRC, smoothed, FRC_res):
 
     print(
         'Plot ...               ',
@@ -368,7 +369,9 @@ def plotFRC(frequencies, FRC, FRC_res):
     plt = pg.plot()
 
     plt.showGrid(x=True, y=True)
-    plt.addLegend()
+    legend = plt.addLegend()
+    legend.anchor(
+        itemPos=(1, 0), parentPos=(1, 0))
 
     # set properties of the label for y axis
     plt.setLabel('left', 'FRC', units='')
@@ -389,8 +392,12 @@ def plotFRC(frequencies, FRC, FRC_res):
 
     line1 = plt.plot(
         frequencies, FRC,
-        pen='r', symbol='x', symbolPen='r',
-        symbolBrush=0.2, name='FRC')
+        pen=pg.mkPen('r', width=2), symbol=None, symbolPen='r',
+        symbolBrush=0, name='FRC')
+    line1 = plt.plot(
+        frequencies, smoothed,
+        pen=pg.mkPen('b', width=2), symbol=None, symbolPen='b',
+        symbolBrush=0, name='FRC cspline')
     line2 = plt.plotItem.addLine(y=1/7, pen='y')
 
 

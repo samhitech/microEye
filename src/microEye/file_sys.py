@@ -2,17 +2,20 @@ import os
 import sys
 
 import cv2
-import numba
+import numba as nb
 import numpy as np
 import pandas as pd
 import pyqtgraph as pg
 import qdarkstyle
 import tifffile as tf
 import zarr
+from numba import cuda
 from ome_types.model.ome import OME
 from PyQt5.QtCore import *
 from PyQt5.QtGui import QFont, QIcon
 from PyQt5.QtWidgets import *
+
+from microEye.fitting.pyfit3Dcspline.mainfunctions import GPUmleFit_LM
 
 from .checklist_dialog import Checklist
 from .Filters import *
@@ -24,6 +27,7 @@ from .metadata import MetadataEditor
 from .Rendering import *
 from .thread_worker import *
 from .uImage import *
+from microEye import fitting
 
 
 class tiff_viewer(QMainWindow):
@@ -361,7 +365,7 @@ class tiff_viewer(QMainWindow):
             clicked=lambda: self.localize())
         self.refresh_btn = QPushButton(
             'Refresh SuperRes Image',
-            clicked=lambda: self.update_loc())
+            clicked=lambda: self.renderLoc())
         self.frc_res_btn = QPushButton(
             'FRC Resolution',
             clicked=lambda: self.FRC_estimate())
@@ -820,7 +824,7 @@ class tiff_viewer(QMainWindow):
         frc_method = self.frc_cbox.currentText()
         time = QDateTime.currentDateTime()
         if 'Check' in frc_method:
-            img = self.update_loc()
+            img = self.renderLoc()
 
             if img is not None:
                 def work_func():
@@ -888,7 +892,7 @@ class tiff_viewer(QMainWindow):
             def done(results):
                 self.drift_cross_btn.setDisabled(False)
                 if results is not None:
-                    self.update_loc()
+                    self.renderLoc()
                     self.fittingResults = results[0]
                     self.results_plot.setData(
                         self.fittingResults.dataFrame())
@@ -922,7 +926,7 @@ class tiff_viewer(QMainWindow):
                     self.results_plot.setData(
                         self.fittingResults.dataFrame())
                     plot_drift(*results[1])
-                    self.update_loc()
+                    self.renderLoc()
 
             self.worker = thread_worker(
                 work_func,
@@ -1046,7 +1050,7 @@ class tiff_viewer(QMainWindow):
             if results is not None:
                 self.fittingResults = results
                 self.results_plot.setData(results.dataFrame())
-                self.update_loc()
+                self.renderLoc()
                 print('Done importing results.')
             else:
                 print('Error importing results.')
@@ -1083,7 +1087,7 @@ class tiff_viewer(QMainWindow):
                 encoding='utf-8')
 
             if 'Super-res image' in options:
-                sres_img = self.update_loc()
+                sres_img = self.renderLoc()
                 tf.imsave(
                     filename.replace('.tsv', '_super_res.tif'),
                     sres_img,
@@ -1097,7 +1101,7 @@ class tiff_viewer(QMainWindow):
             self.fittingResults = FittingResults.fromDataFrame(
                 self.results_plot.filtered, 1)
             self.results_plot.setData(self.fittingResults.dataFrame())
-            self.update_loc()
+            self.renderLoc()
             print('Filters applied.')
 
     def localize(self):
@@ -1110,21 +1114,45 @@ class tiff_viewer(QMainWindow):
             self, "Save localizations", filter="TSV Files (*.tsv)")
 
         if len(filename) > 0:
-            def done(res):
-                self.loc_btn.setDisabled(False)
-                self.results_plot.setData(
-                    self.fittingResults.dataFrame())
-            # Any other args, kwargs are passed to the run function
-            self.worker = thread_worker(
-                self.proccess_loc, filename,
-                progress=True, z_stage=False)
-            self.worker.signals.progress.connect(self.update_loc)
-            self.worker.signals.result.connect(done)
-            # Execute
-            self.loc_btn.setDisabled(True)
-            self._threadpool.start(self.worker)
 
-    def update_loc(self):
+            if self.fitting_cbox.currentData() == \
+                    FittingMethod._2D_Phasor_CPU or not cuda.is_available():
+                def done(res):
+                    self.loc_btn.setDisabled(False)
+                    if res is not None:
+                        self.results_plot.setData(
+                            self.fittingResults.dataFrame())
+                print('\nCPU Fit')
+                # Any other args, kwargs are passed to the run function
+                self.worker = thread_worker(
+                    self.localizeStackCPU, filename,
+                    progress=True, z_stage=False)
+                self.worker.signals.progress.connect(self.renderLoc)
+                self.worker.signals.result.connect(done)
+                # Execute
+                self.loc_btn.setDisabled(True)
+                self._threadpool.start(self.worker)
+            else:
+                def done(res):
+                    self.loc_btn.setDisabled(False)
+                    if res is not None:
+                        self.fittingResults.extend(res)
+                        self.export_loc(filename)
+                        self.results_plot.setData(
+                            self.fittingResults.dataFrame())
+                print('\nGPU Fit')
+                # Any other args, kwargs are passed to the run function
+                # self.localizeStackGPU(filename, None)
+                self.worker = thread_worker(
+                    self.localizeStackGPU, filename,
+                    progress=True, z_stage=False)
+                self.worker.signals.progress.connect(self.renderLoc)
+                self.worker.signals.result.connect(done)
+                # Execute
+                self.loc_btn.setDisabled(True)
+                self._threadpool.start(self.worker)
+
+    def renderLoc(self):
         '''Updates the rendered super-res image
 
         Returns
@@ -1201,8 +1229,8 @@ class tiff_viewer(QMainWindow):
             self.fittingResults.extend(result)
         self.thread_done += 1
 
-    def proccess_loc(self, filename: str, progress_callback):
-        '''Localization main thread worker function.
+    def localizeStackCPU(self, filename: str, progress_callback):
+        '''CPU Localization main thread worker function.
 
         Parameters
         ----------
@@ -1292,6 +1320,156 @@ class tiff_viewer(QMainWindow):
         QThread.msleep(5000)
 
         self.export_loc(filename)
+
+    def localizeStackGPU(self, filename: str, progress_callback):
+        '''CPU Localization main thread worker function.
+
+        Parameters
+        ----------
+        filename : str
+            filename where the fitting results would be saved.
+        progress_callback : func
+            a progress callback emitted at a certain interval.
+        '''
+        # method
+        method = self.fitting_cbox.currentData()
+
+        # new instance of FittingResults
+        self.fittingResults = FittingResults(
+            ResultsUnits.Pixel,  # unit is pixels
+            self.px_size.value(),  # pixel projected size
+            method
+        )
+
+        print('\nCollecting Prefit ROIs...')
+        start = QDateTime.currentDateTime()  # timer
+
+        # Filters + Blob detector params
+        filter = self.image_filter.currentData().filter
+        tempEnabled = self.tempMedianFilter.enabled.isChecked()
+        detector = self.detection_method.currentData().detector
+
+        # Vars
+        roiSize = self.fit_roi_size.value()
+        rel_threshold = self.th_min_slider.value()
+        varim = None
+        PSFparam = np.array([1.5])
+
+        roi_list = []
+        varim_list = []
+        coord_list = []
+        frames_list = []
+
+        # ROI
+        roiInfo = self.get_roi_info()
+        self.enableROI.setChecked(False)
+
+        for k in range(len(self.tiffSeq_Handler)):
+            cycle = QDateTime.currentDateTime()
+            image = self.tiffSeq_Handler.getSlice(k, 0, 0)
+
+            temp = None
+            if tempEnabled:
+                temp = TemporalMedianFilter()
+                temp._temporal_window = \
+                    self.tempMedianFilter.filter._temporal_window
+
+            filtered = image.copy()
+
+            # apply the median filter
+            if temp is not None:
+                frames = temp.getFrames(k, self.tiffSeq_Handler)
+                filtered = temp.run(image, frames, roiInfo)
+
+            # crop image to ROI
+            if roiInfo is not None:
+                origin = roiInfo[0]  # ROI (x,y)
+                dim = roiInfo[1]  # ROI (w,h)
+                image = image[
+                    int(origin[1]):int(origin[1] + dim[1]),
+                    int(origin[0]):int(origin[0] + dim[0])]
+                filtered = filtered[
+                    int(origin[1]):int(origin[1] + dim[1]),
+                    int(origin[0]):int(origin[0] + dim[0])]
+
+            uImg = uImage(filtered)
+
+            uImg.equalizeLUT(None, True)
+
+            if filter is BandpassFilter:
+                filter._show_filter = False
+                filter._refresh = False
+
+            img = filter.run(uImg._view)
+
+            # Detect blobs.
+            _, th_img = cv2.threshold(
+                    img,
+                    np.quantile(img, 1-1e-4) * rel_threshold,
+                    255,
+                    cv2.THRESH_BINARY)
+
+            points: np.ndarray = detector.find_peaks(th_img)
+
+            if varim is None:
+                rois, coords = get_roi_list(image, points, roiSize)
+            else:
+                rois, varims, coords = get_roi_list_CMOS(
+                    image, varim, points, roiSize)
+                varim_list += [varims]
+
+            roi_list += [rois]
+            coord_list += [coords]
+            frames_list += [k + 1] * rois.shape[0]
+
+            print(
+                'index: {:.2f}% {:d} ms    '.format(
+                    100*(k+1)/len(self.tiffSeq_Handler),
+                    cycle.msecsTo(QDateTime.currentDateTime())),
+                end="\r")
+
+        roi_list = np.vstack(roi_list)
+        coord_list = np.vstack(coord_list)
+        if varim is None:
+            varim_list = None
+        else:
+            varim_list = np.vstack(varim_list)
+
+        print(
+            '\n',
+            start.msecsTo(QDateTime.currentDateTime()),
+            ' ms')
+
+        if method == FittingMethod._2D_Gauss_MLE_fixed_sigma:
+            params, crlbs, loglike = GPUmleFit_LM(
+                roi_list, 1, PSFparam, varim_list, 0)
+        elif method == FittingMethod._2D_Gauss_MLE_free_sigma:
+            params, crlbs, loglike = GPUmleFit_LM(
+                roi_list, 2, PSFparam, varim_list, 0)
+        elif method == FittingMethod._2D_Gauss_MLE_elliptical_sigma:
+            params, crlbs, loglike = GPUmleFit_LM(
+                roi_list, 4, PSFparam, varim_list, 0)
+        elif method == FittingMethod._3D_Gauss_MLE_cspline_sigma:
+            params, crlbs, loglike = GPUmleFit_LM(
+                roi_list, 5, PSFparam, varim_list, 0)
+
+        params = params.astype(np.float64, copy=False)
+        crlbs = crlbs.astype(np.float64, copy=False)
+        loglike = loglike.astype(np.float64, copy=False)
+        frames_list = np.array(frames_list, dtype=np.int64)
+
+        if params is not None:
+            params[:, :2] += np.array(coord_list)
+            if len(params) > 0 and roiInfo is not None:
+                params[:, 0] += origin[0]
+                params[:, 1] += origin[1]
+
+        print(
+            '\nDone... ',
+            start.msecsTo(QDateTime.currentDateTime()) / 1000,
+            ' s')
+
+        return frames_list, params, crlbs, loglike
 
     def StartGUI(path=None):
         '''Initializes a new QApplication and control_module.
