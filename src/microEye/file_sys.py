@@ -3,6 +3,7 @@ import sys
 
 import cv2
 import numba as nb
+from numba import cuda
 import numpy as np
 import pandas as pd
 import pyqtgraph as pg
@@ -15,7 +16,11 @@ from PyQt5.QtCore import *
 from PyQt5.QtGui import QFont, QIcon
 from PyQt5.QtWidgets import *
 
-from microEye.fitting.pyfit3Dcspline.mainfunctions import GPUmleFit_LM
+if cuda.is_available(): 
+    from .fitting.pyfit3Dcspline.mainfunctions import GPUmleFit_LM
+else:
+    def GPUmleFit_LM(*args):
+        pass
 
 from .checklist_dialog import Checklist
 from .Filters import *

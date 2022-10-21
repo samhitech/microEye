@@ -433,7 +433,7 @@ class control_module(QMainWindow):
         elif not self.IR_Cam.isDummy():
             return self.IR_Cam.buffer.get()
         else:
-            return np.zeros((256,256), dtype=np.uint16)
+            return np.zeros((256, 256), dtype=np.uint16)
 
     def BufferSize(self) -> Queue:
         if self.cam is not None:

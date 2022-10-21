@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-import emcee
+# import emcee
 
 from scipy.optimize import curve_fit, minimize, least_squares
 from scipy.signal import find_peaks
@@ -283,34 +283,34 @@ def log_probability(
     return lp + log_likelihood(params, data, X, Y)
 
 
-def emcee_walker(
-        params, data: np.ndarray,
-        X: np.ndarray, Y: np.ndarray, Upsampling):
-    ndim = len(params)   # 5 free params
-    nwalkers = 2 * ndim  # at least 2 x ndim
+# def emcee_walker(
+#         params, data: np.ndarray,
+#         X: np.ndarray, Y: np.ndarray, Upsampling):
+#     ndim = len(params)   # 5 free params
+#     nwalkers = 2 * ndim  # at least 2 x ndim
 
-    pos = np.random.normal(0, 1e-4, (nwalkers, ndim)) + params
+#     pos = np.random.normal(0, 1e-4, (nwalkers, ndim)) + params
 
-    sampler = emcee.EnsembleSampler(
-        nwalkers,
-        ndim,
-        log_probability,
-        args=(data, X, Y, Upsampling)
-    )
+#     sampler = emcee.EnsembleSampler(
+#         nwalkers,
+#         ndim,
+#         log_probability,
+#         args=(data, X, Y, Upsampling)
+#     )
 
-    sampler.run_mcmc(pos, 1000, progress=True)
+#     sampler.run_mcmc(pos, 1000, progress=True)
 
-    flat_samples = sampler.get_chain(flat=True)
+#     flat_samples = sampler.get_chain(flat=True)
 
-    mcmc = np.percentile(flat_samples, [16, 50, 84], axis=0)
-    q = np.diff(mcmc, axis=0)
+#     mcmc = np.percentile(flat_samples, [16, 50, 84], axis=0)
+#     q = np.diff(mcmc, axis=0)
 
-    # fig, axes = plt.subplots(ndim, figsize=(10, 7), sharex=True)
-    # samples = sampler.get_chain()
-    # for i in range(ndim):
-    #     ax = axes[i]
-    #     ax.plot(samples[:, :, i], 'k', alpha=0.3)
-    #     ax.set_xlim(0, len(samples))
-    #     ax.yaxis.set_label_coords(-0.1, 0.5)
+#     # fig, axes = plt.subplots(ndim, figsize=(10, 7), sharex=True)
+#     # samples = sampler.get_chain()
+#     # for i in range(ndim):
+#     #     ax = axes[i]
+#     #     ax.plot(samples[:, :, i], 'k', alpha=0.3)
+#     #     ax.set_xlim(0, len(samples))
+#     #     ax.yaxis.set_label_coords(-0.1, 0.5)
 
-    return mcmc[1, :]
+#     return mcmc[1, :]

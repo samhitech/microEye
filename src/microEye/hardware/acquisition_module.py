@@ -26,6 +26,7 @@ from .vimba_cam import *
 from .vimba_panel import *
 from .kinesis import *
 from .scan_acquisition import *
+from ..hid_controller import *
 
 try:
     from pyueye import ueye
@@ -135,6 +136,13 @@ class acquisition_module(QMainWindow):
         self.scanAcqWidget.stopAcquisition.connect(self.stop_scan_acquisition)
         self.scanAcqWidget.openLastTile.connect(self.show_last_tile)
 
+        self.hid_controller = hid_controller()
+        self.hid_controller.reportEvent.connect(self.hid_report)
+        self.hid_controller.reportLStickPosition.connect(
+            self.hid_LStick_report)
+        self.hid_controller_toggle = False
+
+        self.second_tab_Layout.addWidget(self.hid_controller)
         self.second_tab_Layout.addWidget(self.kinesisXY.getQWidget())
         self.second_tab_Layout.addWidget(self.scanAcqWidget)
 
@@ -219,6 +227,90 @@ class acquisition_module(QMainWindow):
         AllWidgets.setLayout(self.Hlayout)
 
         self.setCentralWidget(AllWidgets)
+
+    def hid_report(self, reportedEvent: Buttons):
+        if reportedEvent == Buttons.LEFT:
+            if not self.hid_controller_toggle:
+                self.kinesisXY.n_x_step_btn.click()
+            else:
+                self.kinesisXY.n_x_jump_btn.click()
+        elif reportedEvent == Buttons.RIGHT:
+            if not self.hid_controller_toggle:
+                self.kinesisXY.p_x_step_btn.click()
+            else:
+                self.kinesisXY.p_x_jump_btn.click()
+        elif reportedEvent == Buttons.UP:
+            if not self.hid_controller_toggle:
+                self.kinesisXY.p_y_step_btn.click()
+            else:
+                self.kinesisXY.p_y_jump_btn.click()
+        elif reportedEvent == Buttons.DOWN:
+            if not self.hid_controller_toggle:
+                self.kinesisXY.n_y_step_btn.click()
+            else:
+                self.kinesisXY.n_y_jump_btn.click()
+        # elif reportedEvent == Buttons.X:
+        #     self.kinesisXY.n_x_jump_btn.click()
+        # elif reportedEvent == Buttons.B:
+        #     self.kinesisXY.p_x_jump_btn.click()
+        # elif reportedEvent == Buttons.Y:
+        #     self.kinesisXY.p_y_jump_btn.click()
+        # elif reportedEvent == Buttons.A:
+        #     self.kinesisXY.n_y_jump_btn.click()
+        elif reportedEvent == Buttons.R1:
+            self.kinesisXY._center_btn.click()
+        elif reportedEvent == Buttons.L1:
+            self.kinesisXY._stop_btn.click()
+        elif reportedEvent == Buttons.L3:
+            self.hid_controller_toggle = not self.hid_controller_toggle
+            if self.hid_controller_toggle:
+                self.kinesisXY.n_x_jump_btn.setStyleSheet(
+                    "background-color: green")
+                self.kinesisXY.n_y_jump_btn.setStyleSheet(
+                    "background-color: green")
+                self.kinesisXY.p_x_jump_btn.setStyleSheet(
+                    "background-color: green")
+                self.kinesisXY.p_y_jump_btn.setStyleSheet(
+                    "background-color: green")
+                self.kinesisXY.n_x_step_btn.setStyleSheet(
+                    "")
+                self.kinesisXY.n_y_step_btn.setStyleSheet(
+                    "")
+                self.kinesisXY.p_x_step_btn.setStyleSheet(
+                    "")
+                self.kinesisXY.p_y_step_btn.setStyleSheet(
+                    "")
+            else:
+                self.kinesisXY.n_x_jump_btn.setStyleSheet(
+                    "")
+                self.kinesisXY.n_y_jump_btn.setStyleSheet(
+                    "")
+                self.kinesisXY.p_x_jump_btn.setStyleSheet(
+                    "")
+                self.kinesisXY.p_y_jump_btn.setStyleSheet(
+                    "")
+                self.kinesisXY.n_x_step_btn.setStyleSheet(
+                    "background-color: green")
+                self.kinesisXY.n_y_step_btn.setStyleSheet(
+                    "background-color: green")
+                self.kinesisXY.p_x_step_btn.setStyleSheet(
+                    "background-color: green")
+                self.kinesisXY.p_y_step_btn.setStyleSheet(
+                    "background-color: green")
+
+    def hid_LStick_report(self, x, y):
+        diff_x = x - 128
+        diff_y = y - 127
+        diff = diff_x + diff_y
+        if abs(diff_x) > 30 or abs(diff_y) > 30:
+            if self.hid_controller_toggle:
+                self.kinesisXY.jump_spin.setValue(
+                    self.kinesisXY.jump_spin.value() + 0.0001 * (diff) / 128
+                )
+            else:
+                self.kinesisXY.step_spin.setValue(
+                    self.kinesisXY.step_spin.value() + 0.0001 * (diff) / 128
+                )
 
     def scan_acquisition(self, steps, step_size, delay, average):
         try:

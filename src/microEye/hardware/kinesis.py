@@ -1,4 +1,3 @@
-import re
 import serial
 
 from PyQt5.QtCore import *
@@ -84,7 +83,8 @@ class KinesisDevice:
 class KinesisXY:
     '''Class for controlling Two Kinesis Devices as an XY Stage'''
 
-    def __init__(self, x_port='COM12', y_port='COM11', threadpool: QThreadPool=None):
+    def __init__(self, x_port='COM12', y_port='COM11',
+                 threadpool: QThreadPool = None):
         self.X_Kinesis = KinesisDevice(x_port)
         self.Y_Kinesis = KinesisDevice(y_port)
         self.position = [0, 0]
@@ -378,6 +378,15 @@ class KinesisXY:
                 self.jump_spin.value()
             )
         )
+
+        self.n_x_step_btn.setStyleSheet(
+            "background-color: green")
+        self.n_y_step_btn.setStyleSheet(
+            "background-color: green")
+        self.p_x_step_btn.setStyleSheet(
+            "background-color: green")
+        self.p_y_step_btn.setStyleSheet(
+            "background-color: green")
 
         grid = QGridLayout()
         grid.addWidget(self.n_x_jump_btn, 2, 0)
