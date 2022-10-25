@@ -54,6 +54,7 @@ class Buttons(Enum):
 class hid_controller(QWidget):
     reportEvent = pyqtSignal(Buttons)
     reportLStickPosition = pyqtSignal(int, int)
+    reportRStickPosition = pyqtSignal(int, int)
 
     def __init__(self) -> None:
         super().__init__()
@@ -66,6 +67,7 @@ class hid_controller(QWidget):
         self.last_btn = None
         self.last_aux = None
         self.left_analog = (128, 127)
+        self.right_analog = (128, 127)
 
         self.devices_cbox = QComboBox()
         self.refresh_list()
@@ -121,8 +123,11 @@ class hid_controller(QWidget):
                         self.last_aux = None
 
                     self.left_analog = report[1], report[3]
+                    self.right_analog = report[5], report[7]
                     self.reportLStickPosition.emit(
                         *self.left_analog)
+                    self.reportRStickPosition.emit(
+                        *self.right_analog)
 
     def close_HID(self):
         if self.hid_device is not None:
@@ -151,6 +156,54 @@ class hid_controller(QWidget):
                 data[2],
                 data
             )
+
+
+def map_range(value, args):
+    old_min, old_max, new_min, new_max = args
+    return (new_min +
+            (new_max - new_min) * (value - old_min) / (old_max - old_min))
+
+
+def dz_scaled_radial(stick_input, deadzone):
+    input_magnitude = np.linalg.norm(stick_input)
+    if input_magnitude < deadzone:
+        return 0, 0
+    else:
+        input_normalized = stick_input / input_magnitude
+        # Formula:
+        # max_value = 1
+        # min_value = 0
+        # retval = input_normalized *
+        # (min_value + (max_value - min_value) * ((input_magnitude - deadzone)
+        #  / (max_value - deadzone)))
+        retval = input_normalized * map_range(
+            input_magnitude, (deadzone, 1, 0, 1))
+        return retval[0], retval[1]
+
+
+def dz_sloped_scaled_axial(stick_input, deadzone, n=1):
+    x_val = 0
+    y_val = 0
+    deadzone_x = deadzone * np.power(abs(stick_input[1]), n)
+    deadzone_y = deadzone * np.power(abs(stick_input[0]), n)
+    sign = np.sign(stick_input)
+    if abs(stick_input[0]) > deadzone_x:
+        x_val = sign[0] * map_range(abs(stick_input[0]), (deadzone_x, 1, 0, 1))
+    if abs(stick_input[1]) > deadzone_y:
+        y_val = sign[1] * map_range(abs(stick_input[1]), (deadzone_y, 1, 0, 1))
+    return x_val, y_val
+
+
+def dz_hybrid(stick_input, deadzone):
+    # First, check that input does not fall within deadzone
+    input_magnitude = np.linalg.norm(stick_input)
+    if input_magnitude < deadzone:
+        return 0, 0
+
+    # Then apply a scaled_radial transformation
+    partial_output = dz_scaled_radial(stick_input, deadzone)
+
+    return partial_output
 
 
 if __name__ == '__main__':

@@ -38,6 +38,7 @@ from ..thread_worker import *
 from .CameraListWidget import *
 from ..qlist_slider import *
 from ..pyscripting import *
+from ..hid_controller import *
 
 
 warnings.filterwarnings("ignore", category=OptimizeWarning)
@@ -227,6 +228,15 @@ class control_module(QMainWindow):
             clicked=self.setStage
         )
         self.stage_widget = None
+        self.stage_set_btn.click()
+
+        self.hid_controller = hid_controller()
+        self.hid_controller.reportEvent.connect(self.hid_report)
+        self.hid_controller.reportRStickPosition.connect(
+            self.hid_RStick_report)
+        self.hid_controller_toggle = False
+
+        self.VL_layout.addWidget(self.hid_controller, 3, 0)
 
         Left_Layout.addRow(
             QLabel('IR Camera:'), self.ir_cam_cbox)
@@ -809,6 +819,50 @@ class control_module(QMainWindow):
                     self.VL_layout.removeWidget(self.stage_widget)
                 self.stage_widget = self.stage.getQWidget()
                 self.VL_layout.addWidget(self.stage_widget, 2, 0)
+
+    def hid_report(self, reportedEvent: Buttons):
+        if type(self.stage) is piezo_concept:
+            if reportedEvent == Buttons.X:
+                self.stage.piezo_B_UP_btn.click()
+            elif reportedEvent == Buttons.B:
+                self.stage.piezo_B_DOWN_btn.click()
+            elif reportedEvent == Buttons.Y:
+                self.stage.piezo_S_UP_btn.click()
+            elif reportedEvent == Buttons.A:
+                self.stage.piezo_S_DOWN_btn.click()
+            elif reportedEvent == Buttons.Options:
+                self.stage.piezo_HOME_btn.click()
+            elif reportedEvent == Buttons.R3:
+                self.hid_controller_toggle = not self.hid_controller_toggle
+                if self.hid_controller_toggle:
+                    self.stage.fine_steps_slider.setStyleSheet(
+                        '')
+                    self.stage.pixel_slider.setStyleSheet(
+                        'background-color: green')
+                else:
+                    self.stage.fine_steps_slider.setStyleSheet(
+                        'background-color: green')
+                    self.stage.pixel_slider.setStyleSheet(
+                        '')
+
+    def hid_RStick_report(self, x, y):
+        diff_x = x - 128
+        diff_y = y - 127
+        deadzone = 16
+        res = dz_hybrid([diff_x, diff_y], deadzone)
+        diff = res[1]
+        if self.hid_controller_toggle:
+            pass
+        else:
+            if abs(diff) > 0 and abs(diff) < 100:
+                val = 0.5 * diff
+                val += self.stage.fine_steps_slider.value()
+                # val -= val % 5
+                self.stage.fine_steps_slider.setValue(val)
+            else:
+                val = self.stage.fine_steps_slider.value()
+                val -= val % 5
+                self.stage.fine_steps_slider.setValue(val)
 
     def StartGUI():
         '''Initializes a new QApplication and control_module.
