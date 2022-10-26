@@ -301,16 +301,27 @@ class acquisition_module(QMainWindow):
     def hid_LStick_report(self, x, y):
         diff_x = x - 128
         diff_y = y - 127
-        diff = diff_x + diff_y
-        if abs(diff_x) > 30 or abs(diff_y) > 30:
+        deadzone = 16
+        res = dz_hybrid([diff_x, diff_y], deadzone)
+        diff = res[1]
+        if abs(diff) > 0:
             if self.hid_controller_toggle:
-                self.kinesisXY.jump_spin.setValue(
-                    self.kinesisXY.jump_spin.value() + 0.0001 * (diff) / 128
-                )
+                val = 0.0001 * diff
+                val += self.kinesisXY.jump_spin.value()
+                self.kinesisXY.jump_spin.setValue(val)
             else:
-                self.kinesisXY.step_spin.setValue(
-                    self.kinesisXY.step_spin.value() + 0.0001 * (diff) / 128
-                )
+                val = 0.0001 * diff
+                val += self.kinesisXY.step_spin.value()
+                self.kinesisXY.step_spin.setValue(val)
+        else:
+            if self.hid_controller_toggle:
+                val = self.kinesisXY.jump_spin.value()
+                val -= val % 0.0005
+                self.kinesisXY.jump_spin.setValue(val)
+            else:
+                val = self.kinesisXY.step_spin.value()
+                val -= val % 0.0005
+                self.kinesisXY.step_spin.setValue(val)
 
     def scan_acquisition(self, steps, step_size, delay, average):
         try:

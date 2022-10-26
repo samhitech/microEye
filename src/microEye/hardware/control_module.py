@@ -851,11 +851,13 @@ class control_module(QMainWindow):
         deadzone = 16
         res = dz_hybrid([diff_x, diff_y], deadzone)
         diff = res[1]
-        if self.hid_controller_toggle:
-            pass
+        if self.hid_controller_toggle:            
+            if self.stage.piezoTracking:                
+                val = 1e-3 * diff
+                self.stage.center_pixel += val
         else:
             if abs(diff) > 0 and abs(diff) < 100:
-                val = 0.5 * diff
+                val = 0.25 * diff
                 val += self.stage.fine_steps_slider.value()
                 # val -= val % 5
                 self.stage.fine_steps_slider.setValue(val)
