@@ -461,12 +461,14 @@ class Vimba_Panel(QGroupBox):
         self.timerReset = QPushButton('Timer Reset')
 
         with self._cam.cam:
-            self.timerSelector.addItems(
-                self.cam.get_timers())
-            self.timerActivation.addItems(
-                self.cam.get_timer_trigger_activations())
-            self.timerSource.addItems(
-                self.cam.get_timer_trigger_sources())
+            timers = self.cam.get_timers()
+            if timers:
+                self.timerSelector.addItems(
+                    timers)
+                self.timerActivation.addItems(
+                    self.cam.get_timer_trigger_activations())
+                self.timerSource.addItems(
+                    self.cam.get_timer_trigger_sources())
 
         def reset_timer():
             with self._cam.cam:
