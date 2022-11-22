@@ -20,7 +20,8 @@ from .ueye_camera import IDS_Camera
 from .thorlabs import *
 from .thorlabs_panel import Thorlabs_Panel
 from .ueye_panel import IDS_Panel
-from .vimba_cam import get_camera_list
+from .vimba_panel import Vimba_Panel
+from .vimba_cam import get_camera_list, vimba_cam
 
 try:
     from pyueye import ueye

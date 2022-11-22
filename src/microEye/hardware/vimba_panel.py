@@ -295,12 +295,6 @@ class Vimba_Panel(QGroupBox):
             clicked=lambda: self.start_free_run(self._cam)
         )
 
-        # start trigger mode button
-        self.cam_trigger_btn = QPushButton(
-            "Trigger Mode (Start)",
-            clicked=lambda: self.start_software_triggered(self._cam)
-        )
-
         # config buttons
         self.cam_load_btn = QPushButton(
             "Load Config.",
@@ -336,8 +330,10 @@ class Vimba_Panel(QGroupBox):
         self.save_dir_layout.addWidget(self.save_dir_edit)
         self.save_dir_layout.addWidget(self.save_browse_btn)
 
-        self.frames_tbox = QLineEdit("1000")
-        self.frames_tbox.setValidator(QIntValidator())
+        self.frames_tbox = QSpinBox()
+        self.frames_tbox.setMaximum(1e9)
+        self.frames_tbox.setMinimum(1)
+        self.frames_tbox.setValue(1e6)
 
         # save to hard drive checkbox
         self.cam_save_temp = QCheckBox("Save to dir")
@@ -542,7 +538,6 @@ class Vimba_Panel(QGroupBox):
             self.cam_pixel_format_cbox)
         self.first_tab_Layout.addRow(self.config_Hlay)
         self.first_tab_Layout.addRow(self.cam_freerun_btn)
-        self.first_tab_Layout.addRow(self.cam_trigger_btn)
         self.first_tab_Layout.addRow(self.cam_stop_btn)
         if not self.mini:
             self.first_tab_Layout.addRow(
@@ -864,7 +859,7 @@ class Vimba_Panel(QGroupBox):
                 self.cam.set_line_inverter(
                     self.lineInverter.isChecked())
 
-    def start_free_run(self, cam: vimba_cam):
+    def start_free_run(self, cam: vimba_cam, Prefix=''):
         """
         Starts free run acquisition mode
 
@@ -879,31 +874,7 @@ class Vimba_Panel(QGroupBox):
 
         self._save_path = (self._directory + "\\"
                            + self.experiment_name.text()
-                           + "\\" + self.cam.name
-                           + time.strftime("_%Y_%m_%d_%H%M%S"))
-
-        cam.acquisition = True  # set acquisition flag to true
-
-        # start both capture and display workers
-        self.start_all_workers()
-
-    def start_software_triggered(self, cam: vimba_cam):
-        """
-        Starts trigger acquisition mode
-
-        Parameters
-        ----------
-        cam : vimba_cam
-            Vimba Camera python adapter
-        """
-
-        nRet = 0
-        if cam.acquisition:
-            return  # if acquisition is already going on
-
-        self._save_path = (self._directory + "\\"
-                           + self.experiment_name.text() + "\\"
-                           + self.cam.name
+                           + "\\" + Prefix + self.cam.name
                            + time.strftime("_%Y_%m_%d_%H%M%S"))
 
         cam.acquisition = True  # set acquisition flag to true
@@ -912,16 +883,24 @@ class Vimba_Panel(QGroupBox):
         self.start_all_workers()
 
     def stop(self):
-        if self._event is not None:
-            self._event.set()
+        if self.c_event is not None:
+            self.c_event.set()
         self._stop_thread = True  # set stop acquisition workers flag to true
 
     def start_all_workers(self):
         """
         Starts all workers
         """
-
         self._stop_thread = False  # set stop acquisition workers flag to false
+
+        self._buffer.queue.clear()
+        self._temps.queue.clear()
+        self._frames.queue.clear()
+        self._counter = 0
+        self.c_event = threading.Event()
+        self.s_event = threading.Event()
+        self.time = QDateTime.currentDateTime()
+        self._nFrames = self.frames_tbox.value()
 
         # Pass the display function to be executed
         if self.d_worker is None or self.d_worker.done:
@@ -944,34 +923,18 @@ class Vimba_Panel(QGroupBox):
         if self.c_worker is None or self.c_worker.done:
             # Any other args, kwargs are passed to the run function
             self.c_worker = thread_worker(
-                self._capture, self.cam, progress=False, z_stage=False)
+                _capture,
+                self.cam,
+                self._capture_handler,
+                self.c_event,
+                progress=False, z_stage=False)
+
+            def result(dateTime: QDateTime):
+                self._exec_time = self.time.msecsTo(dateTime) / self._counter
+            self.c_worker.signals.finished.connect(result)
             self.c_worker.setAutoDelete(True)
             # Execute
             self._threadpool.start(self.c_worker)
-
-        # Giving the capture thread a head start over the display one
-        QThread.msleep(500)
-
-    def start_dis_save_workers(self):
-        """
-        Starts both the display and save workers only
-        """
-        self._stop_thread = False  # set stop acquisition workers flag to false
-
-        # Pass the display function to be executed
-        if self.d_worker is None or self.d_worker.done:
-            self.d_worker = thread_worker(
-                self._display, self.cam, progress=False, z_stage=False)
-            # Execute
-            self._threadpool.start(self.d_worker)
-
-        # Pass the save function to be executed
-        if not self.mini:
-            if self.s_worker is None or self.s_worker.done:
-                self.s_worker = thread_worker(
-                    self._save, progress=False, z_stage=False)
-                # Execute
-                self._threadpool.start(self.s_worker)
 
     def _capture_handler(self, cam, frame):
         self._buffer.put(frame.as_numpy_ndarray().copy())
@@ -980,7 +943,7 @@ class Vimba_Panel(QGroupBox):
         self._temps.put(self.cam.get_temperature())
         self._counter = self._counter + 1
         if self._counter > self._nFrames - 1 and not self.mini:
-            self._event.set()
+            self.c_event.set()
             self._stop_thread = True
             logging.debug('Stop')
 
@@ -1000,20 +963,15 @@ class Vimba_Panel(QGroupBox):
             self._temps.queue.clear()
             self._frames.queue.clear()
             self._counter = 0
-            self._event = threading.Event()
+            self.c_event = threading.Event()
             self.time = QDateTime.currentDateTime()
-            self._nFrames = int(self.frames_tbox.text())
+            self._nFrames = self.frames_tbox.value()
             # Continuous image capture
 
             with self._cam.cam:
                 cam.cam.start_streaming(self._capture_handler)
 
-                self._event.wait()
-            # while(True):
-            #     QThread.usleep(500)
-
-            #     if self._stop_thread:
-            #         break  # in case stop threads is initiated
+                self.c_event.wait()
         except Exception:
             traceback.print_exc()
         finally:
@@ -1142,7 +1100,7 @@ class Vimba_Panel(QGroupBox):
 
             def getFilename(index: int):
                 return path + \
-                       '\\image_{:05d}.ome.tif'.format(index)
+                       '_image_{:05d}.ome.tif'.format(index)
 
             def saveMetadata(index: int):
                 if self.cam_save_meta.isChecked():
@@ -1175,7 +1133,7 @@ class Vimba_Panel(QGroupBox):
                         if not os.path.exists(path):
                             os.makedirs(path)
 
-                        tempFile = open(path + '\\temp_log.csv', 'ab')
+                        tempFile = open(path + '_temp_log.csv', 'ab')
 
                     if tiffWriter is None:
                         tiffWriter = tf.TiffWriter(
@@ -1240,6 +1198,7 @@ class Vimba_Panel(QGroupBox):
 
             if self.cam_save_temp.isChecked():
                 saveMetadata(index)
+            self.s_event.set()
 
     @staticmethod
     def find_nearest(array, value):
@@ -1296,3 +1255,31 @@ class Vimba_Panel(QGroupBox):
         else:
             QMessageBox.warning(
                 self, "Warning", "No file selected.")
+
+
+def _capture(cam: vimba_cam, _capture_handler, _event):
+    '''Capture function executed by the capture worker.
+
+    Sends software trigger signals and transfers the
+    acquired frame to the display processing stack.
+
+    Parameters
+    ----------
+    cam : vimba_cam
+        the vimba_cam used to acquire frames.
+    '''
+    try:
+        # Continuous image capture
+        with cam.cam:
+            cam.cam.start_streaming(_capture_handler)
+
+            _event.wait()
+    except Exception:
+        traceback.print_exc()
+    finally:
+        # reset flags and release resources
+        with cam.cam:
+            cam.cam.stop_streaming()
+        cam.acquisition = False
+        QThreadPool.globalInstance().releaseThread()
+        return QDateTime.currentDateTime()

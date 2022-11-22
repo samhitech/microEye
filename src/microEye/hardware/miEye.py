@@ -1,7 +1,6 @@
 import json
 import os
 import sys
-import time
 import traceback
 import warnings
 from queue import Queue
@@ -9,14 +8,10 @@ from queue import Queue
 import numpy as np
 import pyqtgraph
 import qdarkstyle
-from pyqode.core import api, modes, panels
-from pyqode.python import panels as pypanels
-from pyqode.python.widgets import PyCodeEdit
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtSerialPort import *
 from PyQt5.QtWidgets import *
-from pyqtgraph.graphicsItems.ROI import Handle
 from pyqtgraph.widgets.PlotWidget import PlotWidget
 from pyqtgraph.widgets.RemoteGraphicsView import RemoteGraphicsView
 from scipy.optimize import curve_fit
@@ -32,24 +27,22 @@ from .elliptec import *
 from .io_matchbox import *
 from .io_single_laser import *
 from .IR_Cam import *
+from .kinesis import *
 from .piezo_concept import *
 from .port_config import *
+from .scan_acquisition import *
 
 warnings.filterwarnings("ignore", category=OptimizeWarning)
 
 
-class control_module(QMainWindow):
-    '''The main GUI for laser control, autofocus IR tracking and
-    Piezostage control.
+class miEye_module(QMainWindow):
+    '''The main GUI for miEye combines control and acquisition modules
 
-    Works with Integrated Optics MatchBox Combiner,
-    PiezoConcept FOC100 controller,
-    and our Arduino RelayBox and Arduino CCD camera driver.
     | Inherits QMainWindow
     '''
 
     def __init__(self, *args, **kwargs):
-        super(control_module, self).__init__(*args, **kwargs)
+        super(miEye_module, self).__init__(*args, **kwargs)
 
         # setting title
         self.setWindowTitle(
@@ -57,19 +50,41 @@ class control_module(QMainWindow):
             (https://github.com/samhitech/microEye)")
 
         # setting geometry
-        self.setGeometry(0, 0, 1200, 600)
+        self.setGeometry(0, 0, 1200, 920)
 
         # Statusbar time
         self.statusBar().showMessage(
             "Time: " + QDateTime.currentDateTime().toString("hh:mm:ss,zzz"))
 
+        # Threading
+        self._threadpool = QThreadPool.globalInstance()
+        print("Multithreading with maximum %d threads"
+              % self._threadpool.maxThreadCount())
+
         # PiezoConcept
         self.stage = stage()
 
-        # Serial Port IR CCD array
+        # kinesis XY Stage
+        self.kinesisXY = KinesisXY(threadpool=self._threadpool)
+
+        self.lastTile = None
+        self._stop_scan = False
+        self._scanning = False
+
+        # Serial Port IR linear CCD array
         self.IR_Cam = IR_Cam()
 
-        # Camera
+        # Acquisition Cameras lists
+        self.ids_cams: list[IDS_Camera] = []
+        self.thorlabs_cams: list[thorlabs_camera] = []
+        self.vimba_cams: list[vimba_cam] = []
+
+        # Acquisition Cameras Panels
+        self.ids_panels: list[IDS_Panel] = []
+        self.thor_panels: list[Thorlabs_Panel] = []
+        self.vimba_panels: list[Vimba_Panel] = []
+
+        # IR 2D Camera
         self.cam = None
         self.cam_panel = None
 
@@ -116,11 +131,6 @@ class control_module(QMainWindow):
         self.timer.timeout.connect(self.update_gui)
         self.timer.start()
 
-        # Threading
-        self._threadpool = QThreadPool()
-        print("Multithreading with maximum %d threads"
-              % self._threadpool.maxThreadCount())
-
         # Any other args, kwargs are passed to the run function
         self.worker = thread_worker(self.worker_function)
         self.worker.signals.progress.connect(self.update_graphs)
@@ -147,7 +157,16 @@ class control_module(QMainWindow):
         Hlayout = QHBoxLayout()
         self.VL_layout = QGridLayout()
 
-        self.Tab_Widget = QTabWidget()
+        self.rp_splitter = QSplitter(Qt.Orientation.Vertical)
+        self.rp_splitter.setHandleWidth(2)
+        self.rp_splitter.setStyleSheet(
+            "QSplitter {background-color: none;}")
+
+        self.Tab_Widget_upper = QTabWidget()
+        self.Tab_Widget_lower = QTabWidget()
+
+        self.rp_splitter.addWidget(self.Tab_Widget_upper)
+        self.rp_splitter.addWidget(self.Tab_Widget_lower)
 
         # General settings groupbox
         LPanel_GBox = QGroupBox("Devices")
@@ -228,6 +247,8 @@ class control_module(QMainWindow):
         self.hid_controller.reportEvent.connect(self.hid_report)
         self.hid_controller.reportRStickPosition.connect(
             self.hid_RStick_report)
+        self.hid_controller.reportLStickPosition.connect(
+            self.hid_LStick_report)
         self.hid_controller_toggle = False
 
         self.VL_layout.addWidget(self.hid_controller, 3, 0)
@@ -275,19 +296,28 @@ class control_module(QMainWindow):
 
         self.laserPanels = []
 
-        # Elliptec Tab
-        self.elliptecLayout = QHBoxLayout()
-        self.elliptecLayout.addWidget(self._elliptec_controller.getQWidget())
+        # Stages Tab (Elliptec + Kinesis Tab + Scan Acquisition)
+        self.stages_Layout = QHBoxLayout()
+        self.stages_tab = QWidget()
+        self.stages_tab.setLayout(self.stages_Layout)
 
+        self.stages_Layout.addWidget(self._elliptec_controller.getQWidget())
+        # Elliptec init config
         self._elliptec_controller.address_bx.setValue(2)
         self._elliptec_controller.stage_type.setCurrentText('ELL6')
         self._elliptec_controller._add_btn.click()
         self._elliptec_controller.address_bx.setValue(0)
         self._elliptec_controller.stage_type.setCurrentText('ELL9')
         self._elliptec_controller._add_btn.click()
-        self.elliptecLayout.addStretch()
-        self.elliptec_tab = QWidget()
-        self.elliptec_tab.setLayout(self.elliptecLayout)
+        # Scan Acquisition
+        self.scanAcqWidget = ScanAcquisitionWidget()
+        self.scanAcqWidget.startAcquisition.connect(
+            self.start_scan_acquisition)
+        self.scanAcqWidget.stopAcquisition.connect(self.stop_scan_acquisition)
+        self.scanAcqWidget.openLastTile.connect(self.show_last_tile)
+
+        self.stages_Layout.addWidget(self.kinesisXY.getQWidget())
+        self.stages_Layout.addWidget(self.scanAcqWidget)
 
         # cameras tab
         self.camListWidget = CameraListWidget()
@@ -394,18 +424,18 @@ class control_module(QMainWindow):
         app = QApplication.instance()
         app.aboutToQuit.connect(self.remote_view.close)
         # Tabs
-        self.Tab_Widget.addTab(self.lasers_tab, 'Lasers')
-        self.Tab_Widget.addTab(self.elliptec_tab, 'Elliptec Stages')
-        self.Tab_Widget.addTab(self.camListWidget, 'Cameras List')
-        self.Tab_Widget.addTab(graphs_tab, 'Graphs')
+        self.Tab_Widget_lower.addTab(self.lasers_tab, 'Lasers')
+        self.Tab_Widget_upper.addTab(self.stages_tab, 'Stages')
+        self.Tab_Widget_lower.addTab(self.camListWidget, 'Cameras List')
+        self.Tab_Widget_lower.addTab(graphs_tab, 'Graphs')
 
         self.pyEditor = pyEditor()
         self.pyEditor.exec_btn.clicked.connect(lambda: self.scriptTest())
-        self.Tab_Widget.addTab(self.pyEditor, 'PyScript')
+        self.Tab_Widget_upper.addTab(self.pyEditor, 'PyScript')
 
         # Create a placeholder widget to hold the controls
         Hlayout.addLayout(self.VL_layout, 1)
-        Hlayout.addWidget(self.Tab_Widget, 3)
+        Hlayout.addWidget(self.rp_splitter, 3)
 
         AllWidgets = QWidget()
         AllWidgets.setLayout(Hlayout)
@@ -475,6 +505,36 @@ class control_module(QMainWindow):
         self.roi.updateFlag = False
 
     def add_camera(self, cam):
+        res = QMessageBox.information(
+            self,
+            'Acquisition / IR camera',
+            'Add acquisition or IR camera? (Yes/No)',
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No |
+            QMessageBox.StandardButton.Cancel)
+
+        if res == QMessageBox.StandardButton.Yes:
+            pass
+        elif res == QMessageBox.StandardButton.No:
+            self.add_IR_camera(cam)
+        else:
+            pass
+
+    def remove_camera(self, cam):
+        res = QMessageBox.warning(
+            self,
+            'Acquisition / IR camera',
+            'Remove acquisition or IR camera? (Yes/No)',
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No |
+            QMessageBox.StandardButton.Cancel)
+
+        if res == QMessageBox.StandardButton.Yes:
+            pass
+        elif res == QMessageBox.StandardButton.No:
+            self.remove_IR_camera(cam)
+        else:
+            pass
+
+    def add_IR_camera(self, cam):
         if self.cam is not None:
             QMessageBox.warning(
                 self,
@@ -504,7 +564,7 @@ class control_module(QMainWindow):
                 # ids_panel._directory = self.save_directory
                 ids_panel.master = False
                 self.cam_panel = ids_panel
-                self.Tab_Widget.addTab(ids_panel, ids_cam.name)
+                self.Tab_Widget_lower.addTab(ids_panel, ids_cam.name)
             if 'UC480' in cam["Driver"]:
                 thor_cam = thorlabs_camera(cam["camID"])
                 nRet = thor_cam.initialize()
@@ -517,7 +577,17 @@ class control_module(QMainWindow):
                     # thor_panel._directory = self.save_directory
                     thor_panel.master = False
                     self.cam_panel = thor_panel
-                    self.Tab_Widget.addTab(thor_panel, thor_cam.name)
+                    self.Tab_Widget_lower.addTab(thor_panel, thor_cam.name)
+            if 'Vimba' in cam["Driver"]:
+                v_cam = vimba_cam(cam["camID"])
+                self.cam = v_cam
+                v_panel = Vimba_Panel(
+                        self._threadpool,
+                        v_cam, cam["Model"] + " " + cam["Serial"],
+                        mini=True)
+                v_panel.master = False
+                self.cam_panel = v_panel
+                self.Tab_Widget_lower.addTab(v_panel, v_cam.name)
             self.graph_IR.setLabel(
                 "left", "Signal", "", **self.labelStyle)
         else:
@@ -527,18 +597,109 @@ class control_module(QMainWindow):
                 "Device is in use or already added.",
                 QMessageBox.StandardButton.Ok)
 
-    def remove_camera(self, cam):
+    def remove_IR_camera(self, cam):
         if self.cam.cInfo.SerNo.decode('utf-8') == cam["Serial"]:
             if not self.cam.acquisition:
-                self.cam.free_memory()
-                self.cam.dispose()
+                if self.cam.free_memory:
+                    self.cam.free_memory()
+                    self.cam.dispose()
 
             self.cam_panel._dispose_cam = True
             self.cam_panel._stop_thread = True
-            idx = self.Tab_Widget.indexOf(self.cam_panel)
-            self.Tab_Widget.removeTab(idx)
+            idx = self.Tab_Widget_lower.indexOf(self.cam_panel)
+            self.Tab_Widget_lower.removeTab(idx)
             self.cam = None
             self.cam_panel = None
+
+    def add_camera_clicked(self, cam):
+        home = os.path.expanduser('~')
+        _directory = os.path.join(home, 'Desktop')
+
+        if cam["InUse"] == 0:
+            if 'uEye' in cam["Driver"]:
+                ids_cam = IDS_Camera(cam["camID"])
+                nRet = ids_cam.initialize()
+                self.ids_cams.append(ids_cam)
+                ids_panel = IDS_Panel(
+                    self._threadpool,
+                    ids_cam, cam["Model"] + " " + cam["Serial"])
+                ids_panel._directory = _directory
+                ids_panel.master = False
+                self.ids_panels.append(ids_panel)
+                ids_panel.show()
+            if 'UC480' in cam["Driver"]:
+                thor_cam = thorlabs_camera(cam["camID"])
+                nRet = thor_cam.initialize()
+                if nRet == CMD.IS_SUCCESS:
+                    self.thorlabs_cams.append(thor_cam)
+                    thor_panel = Thorlabs_Panel(
+                        self._threadpool,
+                        thor_cam, cam["Model"] + " " + cam["Serial"])
+                    thor_panel._directory = _directory
+                    thor_panel.master = False
+                    self.thor_panels.append(thor_panel)
+                    thor_panel.show()
+            if 'Vimba' in cam["Driver"]:
+                v_cam = vimba_cam(cam["camID"])
+                self.vimba_cams.append(v_cam)
+                v_panel = Vimba_Panel(
+                        self._threadpool,
+                        v_cam, cam["Model"] + " " + cam["Serial"])
+                v_panel._directory = _directory
+                v_panel.master = False
+                self.vimba_panels.append(v_panel)
+                v_panel.show()
+        else:
+            QMessageBox.warning(
+                self,
+                "Warning",
+                "Device is in use or already added.",
+                QMessageBox.StandardButton.Ok)
+
+    def remove_camera_clicked(self, cam):
+
+        if 'uEye' in cam["Driver"]:
+            for pan in self.ids_panels:
+                if pan.cam.Cam_ID == cam["camID"]:
+                    if not pan.cam.acquisition:
+                        pan.cam.free_memory()
+                        pan.cam.dispose()
+
+                        pan._dispose_cam = True
+                        pan._stop_thread = True
+                        self.ids_cams.remove(pan.cam)
+                        self.ids_panels.remove(pan)
+                        pan.close()
+                        pan.setParent(None)
+                        break
+        if 'UC480' in cam["Driver"]:
+            for pan in self.thor_panels:
+                # if pan.cam.hCam.value == cam["camID"]:
+                if pan.cam.cInfo.SerNo.decode('utf-8') == cam["Serial"]:
+                    if not pan.cam.acquisition:
+                        pan.cam.free_memory()
+                        pan.cam.dispose()
+
+                        pan._dispose_cam = True
+                        pan._stop_thread = True
+                        self.thorlabs_cams.remove(pan.cam)
+                        self.thor_panels.remove(pan)
+                        pan.close()
+                        pan.setParent(None)
+                        break
+        if 'Vimba' in cam["Driver"]:
+            for pan in self.vimba_panels:
+                with pan.cam.cam:
+                    if pan.cam.cam.get_serial() == cam["Serial"]:
+                        if not pan.cam.acquisition:
+
+                            pan._dispose_cam = True
+                            pan._stop_thread = True
+                            self.vimba_cams.remove(pan.cam)
+                            self.vimba_panels.remove(pan)
+                            pan.close()
+                            pan.setParent(None)
+                            break
 
     def isEmpty(self):
         if self.cam_panel is not None:
@@ -964,6 +1125,92 @@ class control_module(QMainWindow):
                     self.stage.pixel_slider.setStyleSheet(
                         '')
 
+        if reportedEvent == Buttons.LEFT:
+            if not self.hid_controller_toggle:
+                self.kinesisXY.n_x_step_btn.click()
+            else:
+                self.kinesisXY.n_x_jump_btn.click()
+        elif reportedEvent == Buttons.RIGHT:
+            if not self.hid_controller_toggle:
+                self.kinesisXY.p_x_step_btn.click()
+            else:
+                self.kinesisXY.p_x_jump_btn.click()
+        elif reportedEvent == Buttons.UP:
+            if not self.hid_controller_toggle:
+                self.kinesisXY.p_y_step_btn.click()
+            else:
+                self.kinesisXY.p_y_jump_btn.click()
+        elif reportedEvent == Buttons.DOWN:
+            if not self.hid_controller_toggle:
+                self.kinesisXY.n_y_step_btn.click()
+            else:
+                self.kinesisXY.n_y_jump_btn.click()
+        elif reportedEvent == Buttons.R1:
+            self.kinesisXY._center_btn.click()
+        elif reportedEvent == Buttons.L1:
+            self.kinesisXY._stop_btn.click()
+        elif reportedEvent == Buttons.L3:
+            self.hid_controller_toggle = not self.hid_controller_toggle
+            if self.hid_controller_toggle:
+                self.kinesisXY.n_x_jump_btn.setStyleSheet(
+                    "background-color: green")
+                self.kinesisXY.n_y_jump_btn.setStyleSheet(
+                    "background-color: green")
+                self.kinesisXY.p_x_jump_btn.setStyleSheet(
+                    "background-color: green")
+                self.kinesisXY.p_y_jump_btn.setStyleSheet(
+                    "background-color: green")
+                self.kinesisXY.n_x_step_btn.setStyleSheet(
+                    "")
+                self.kinesisXY.n_y_step_btn.setStyleSheet(
+                    "")
+                self.kinesisXY.p_x_step_btn.setStyleSheet(
+                    "")
+                self.kinesisXY.p_y_step_btn.setStyleSheet(
+                    "")
+            else:
+                self.kinesisXY.n_x_jump_btn.setStyleSheet(
+                    "")
+                self.kinesisXY.n_y_jump_btn.setStyleSheet(
+                    "")
+                self.kinesisXY.p_x_jump_btn.setStyleSheet(
+                    "")
+                self.kinesisXY.p_y_jump_btn.setStyleSheet(
+                    "")
+                self.kinesisXY.n_x_step_btn.setStyleSheet(
+                    "background-color: green")
+                self.kinesisXY.n_y_step_btn.setStyleSheet(
+                    "background-color: green")
+                self.kinesisXY.p_x_step_btn.setStyleSheet(
+                    "background-color: green")
+                self.kinesisXY.p_y_step_btn.setStyleSheet(
+                    "background-color: green")
+
+    def hid_LStick_report(self, x, y):
+        diff_x = x - 128
+        diff_y = y - 127
+        deadzone = 16
+        res = dz_hybrid([diff_x, diff_y], deadzone)
+        diff = res[1]
+        if abs(diff) > 0:
+            if self.hid_controller_toggle:
+                val = 0.0001 * diff
+                val += self.kinesisXY.jump_spin.value()
+                self.kinesisXY.jump_spin.setValue(val)
+            else:
+                val = 0.0001 * diff
+                val += self.kinesisXY.step_spin.value()
+                self.kinesisXY.step_spin.setValue(val)
+        else:
+            if self.hid_controller_toggle:
+                val = self.kinesisXY.jump_spin.value()
+                val -= val % 0.0005
+                self.kinesisXY.jump_spin.setValue(val)
+            else:
+                val = self.kinesisXY.step_spin.value()
+                val -= val % 0.0005
+                self.kinesisXY.step_spin.setValue(val)
+
     def hid_RStick_report(self, x, y):
         diff_x = x - 128
         diff_y = y - 127
@@ -986,18 +1233,18 @@ class control_module(QMainWindow):
                 self.stage.fine_steps_slider.setValue(val)
 
     def StartGUI():
-        '''Initializes a new QApplication and control_module.
+        '''Initializes a new QApplication and miEye_module.
 
         Use
         -------
-        app, window = control_module.StartGUI()
+        app, window = miEye_module.StartGUI()
 
         app.exec_()
 
         Returns
         -------
-        tuple (QApplication, microEye.control_module)
-            Returns a tuple with QApp and control_module main window.
+        tuple (QApplication, microEye.miEye_module)
+            Returns a tuple with QApp and miEye_module main window.
         '''
         # create a QApp
         app = QApplication(sys.argv)
@@ -1027,9 +1274,158 @@ class control_module(QMainWindow):
 
         if sys.platform.startswith('win'):
             import ctypes
-            myappid = u'samhitech.mircoEye.control_module'  # appid
+            myappid = u'samhitech.mircoEye.miEye_module'  # appid
             ctypes.windll.shell32.\
                 SetCurrentProcessExplicitAppUserModelID(myappid)
 
-        window = control_module()
+        window = miEye_module()
         return app, window
+
+    def result_scan_acquisition(self, data):
+        self._scanning = False
+        self.scanAcqWidget.acquire_btn.setEnabled(True)
+
+        self.lastTile = TiledImageSelector(data)
+        self.lastTile.positionSelected.connect(
+            lambda x, y: self.kinesisXY.doAsync(
+                None, self.kinesisXY.move_absolute, x, y)
+        )
+        self.lastTile.show()
+
+    def start_scan_acquisition(
+            self, params):
+        if not self._scanning:
+            self._stop_scan = False
+            self._scanning = True
+
+            self.scan_worker = thread_worker(
+                scan_acquisition, self,
+                [params[0], params[1]],
+                [params[2], params[3]],
+                params[4],
+                params[5], progress=False, z_stage=False)
+            self.scan_worker.signals.result.connect(
+                self.result_scan_acquisition)
+            # Execute
+            self._threadpool.start(self.scan_worker)
+
+            self.scanAcqWidget.acquire_btn.setEnabled(False)
+
+    def stop_scan_acquisition(self):
+        self._stop_scan = True
+
+    def show_last_tile(self):
+        if self.lastTile is not None:
+            self.lastTile.show()
+
+
+def scan_acquisition(miEye: miEye_module, steps, step_size, delay, average=1):
+    '''Scan Acquisition (works with Allied Vision Cams only)
+
+    Parameters
+    ----------
+    miEye : miEye_module
+        the miEye module
+    steps : (int, int)
+        number of grid steps (x ,y)
+    step_size : (float, float)
+        step size in um (x ,y)
+    delay : float
+        delay in ms after moving before acquiring images
+    average : int
+        number of frames to average, default 1 (no averaging)
+
+    Returns
+    -------
+    list[TileImage]
+        result data list of TileImages
+    '''
+    try:
+        data = []
+        if miEye.kinesisXY.isOpen()[0] and miEye.kinesisXY.isOpen()[1] \
+                and len(miEye.vimba_cams) > 0:
+            cam = miEye.vimba_cams[0]
+            for x in range(steps[0]):
+                miEye.kinesisXY.move_relative(
+                    round(step_size[0] / 1000, 4), 0)
+                for y in range(steps[1]):
+                    if y > 0:
+                        miEye.kinesisXY.move_relative(0, ((-1)**x) * round(
+                            step_size[1] / 1000, 4))
+                    frame = None
+                    with cam.cam:
+                        QThread.msleep(delay)
+                        if average > 1:
+                            frames_avg = []
+                            for n in range(average):
+                                frames_avg.append(
+                                    cam.cam.get_frame().as_numpy_ndarray())
+                            frame = uImage(
+                                np.array(
+                                    frames_avg).mean(
+                                        axis=0, dtype=np.uint16))
+                        else:
+                            frame = uImage(
+                                cam.cam.get_frame().as_numpy_ndarray())
+                        frame.equalizeLUT(None, True)
+                    frame._view = cv2.resize(
+                        frame._view, (0, 0),
+                        fx=0.5,
+                        fy=0.5)
+                    Y = (x % 2) * (steps[1] - 1) + ((-1)**x) * y
+                    data.append(
+                        TileImage(frame, [Y, x], miEye.kinesisXY.position))
+
+            miEye.kinesisXY.update()
+
+    except Exception:
+        traceback.print_exc()
+    finally:
+        return data
+
+
+def z_stack_acquisition(
+        miEye: miEye_module, n,
+        step_size, delay=100, nFrames=1, reverse=False):
+    '''Z-Stack Acquisition (works with Allied Vision Cams only)
+
+    Parameters
+    ----------
+    miEye : miEye_module
+        the miEye module
+    n : int
+        number of z-stacks
+    step_size : int
+        step size in nm along z-axis
+    delay : float
+        delay in ms after moving before acquiring images
+    nFrames : int
+        number of frames for each stack
+    '''
+    try:
+        data = []
+        if miEye.stage.isOpen() and len(miEye.vimba_cams) > 0 and nFrames > 0:
+            cam = miEye.vimba_cams[0]
+            cam_pan = miEye.vimba_panels[0]
+            if cam.acquisition:
+                return
+            for x in range(n):
+                if x > 0:
+                    miEye.stage.piezoTracking = False
+                    if not reverse:
+                        miEye.stage.UP(step_size)
+                    else:
+                        miEye.stage.DOWN(step_size)
+                    miEye.stage.piezoTracking = True
+                    QThread.msleep(delay)
+                frame = None
+                cam_pan.frames_tbox.setValue(nFrames)
+                cam_pan.cam_save_temp.setChecked(True)
+                prefix = 'Z{:4d}'.format(x)
+                cam_pan.start_free_run(cam, prefix)
+
+                cam_pan.s_event.wait()
+    except Exception:
+        traceback.print_exc()
+    finally:
+        return

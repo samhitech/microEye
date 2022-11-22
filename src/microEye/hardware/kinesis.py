@@ -214,7 +214,7 @@ class KinesisXY:
         container.addLayout(btns)
 
         controlsWidget = QWidget()
-        hLayout = QHBoxLayout()
+        hLayout = QVBoxLayout()
         controlsWidget.setLayout(hLayout)
         formLayout = QFormLayout()
         hLayout.addLayout(formLayout, 3)

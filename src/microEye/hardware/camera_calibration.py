@@ -75,7 +75,7 @@ class dark_calibration():
         mean, variance = self.getResults()
 
         with tf.TiffWriter(
-                path + '\\image_mean_{:.5f}_ms'.format(
+                path + '_image_mean_{:.5f}_ms'.format(
                     self._exposure).replace('.', '_') + '.ome.tif',
                 append=False,
                 bigtiff=False,
@@ -85,7 +85,7 @@ class dark_calibration():
                 photometric='minisblack')
 
         with tf.TiffWriter(
-                path + '\\image_var_{:.5f}_ms'.format(
+                path + '_image_var_{:.5f}_ms'.format(
                     self._exposure).replace('.', '_') + '.ome.tif',
                 append=False,
                 bigtiff=False,

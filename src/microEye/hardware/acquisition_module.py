@@ -33,11 +33,6 @@ try:
 except Exception:
     ueye = None
 
-try:
-    import vimba as vb
-except Exception:
-    vb = None
-
 
 class acquisition_module(QMainWindow):
 

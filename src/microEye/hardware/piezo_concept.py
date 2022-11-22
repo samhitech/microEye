@@ -264,7 +264,7 @@ class piezo_concept(stage):
         self._inverted = QCheckBox('Inverted')
         self._inverted.setChecked(False)
 
-        fine_step = 50
+        fine_step = 100
         coarse_step = 1
         self.fine_steps_label = QLabel("Fine step [nm]")
         self.fine_steps_slider = QSpinBox()

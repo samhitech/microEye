@@ -160,7 +160,7 @@ class ScanAcquisitionWidget(QGroupBox):
             )
         )
         self.last_btn = QPushButton(
-            'Last Image Scan',
+            'Last Scan',
             clicked=lambda: self.openLastTile.emit()
         )
 
