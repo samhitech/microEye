@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setuptools.setup(
     name="microEye",
-    version="0.2.9",
+    version="0.3.0",
     author="Mohammad Nour Alsamsam",
     author_email="nour.alsamsam@gmail.com",
     description="A python toolkit for fluorescence microscopy \

@@ -130,10 +130,11 @@ class acquisition_module(QMainWindow):
         self.second_tab.setLayout(self.second_tab_Layout)
 
         self.scanAcqWidget = ScanAcquisitionWidget()
-        self.scanAcqWidget.startAcquisition.connect(
+        self.scanAcqWidget.startAcquisitionXY.connect(
             self.start_scan_acquisition)
-        self.scanAcqWidget.stopAcquisition.connect(self.stop_scan_acquisition)
-        self.scanAcqWidget.openLastTile.connect(self.show_last_tile)
+        self.scanAcqWidget.stopAcquisitionXY.connect(
+            self.stop_scan_acquisition)
+        self.scanAcqWidget.openLastTileXY.connect(self.show_last_tile)
 
         self.hid_controller = hid_controller()
         self.hid_controller.reportEvent.connect(self.hid_report)

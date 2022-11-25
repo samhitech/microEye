@@ -77,9 +77,13 @@ class TiledImageSelector(QWidget):
 
 
 class ScanAcquisitionWidget(QGroupBox):
-    startAcquisition = pyqtSignal(tuple)
-    stopAcquisition = pyqtSignal()
-    openLastTile = pyqtSignal()
+    startAcquisitionXY = pyqtSignal(tuple)
+    stopAcquisitionXY = pyqtSignal()
+    openLastTileXY = pyqtSignal()
+    startAcquisitionZ = pyqtSignal(tuple)
+    stopAcquisitionZ = pyqtSignal()
+
+    moveZ = pyqtSignal(bool, int)
 
     def __init__(self) -> None:
         super().__init__()
@@ -146,11 +150,11 @@ class ScanAcquisitionWidget(QGroupBox):
             self.average
         )
 
-        buttons = QHBoxLayout()
+        xy_buttons = QHBoxLayout()
 
         self.acquire_btn = QPushButton(
             'Acquire',
-            clicked=lambda: self.startAcquisition.emit((
+            clicked=lambda: self.startAcquisitionXY.emit((
                 self.x_steps.value(),
                 self.y_steps.value(),
                 self.x_stepsize.value(),
@@ -161,18 +165,74 @@ class ScanAcquisitionWidget(QGroupBox):
         )
         self.last_btn = QPushButton(
             'Last Scan',
-            clicked=lambda: self.openLastTile.emit()
+            clicked=lambda: self.openLastTileXY.emit()
         )
 
         self.stop_btn = QPushButton(
             'STOP!',
-            clicked=lambda: self.stopAcquisition.emit()
+            clicked=lambda: self.stopAcquisitionXY.emit()
         )
 
-        buttons.addWidget(self.acquire_btn)
-        buttons.addWidget(self.last_btn)
-        buttons.addWidget(self.stop_btn)
-        layout.addRow(buttons)
+        xy_buttons.addWidget(self.acquire_btn)
+        xy_buttons.addWidget(self.last_btn)
+        xy_buttons.addWidget(self.stop_btn)
+        layout.addRow(xy_buttons)
+
+        self.z_steps = QSpinBox()
+        self.z_steps.setMinimum(2)
+        self.z_steps.setMaximum(10000)
+        self.z_steps.setValue(10)
+
+        self.z_stepsize = QSpinBox()
+        self.z_stepsize.setMinimum(1)
+        self.z_stepsize.setMaximum(20000)
+        self.z_stepsize.setValue(25)
+
+        self.n_frames = QSpinBox()
+        self.n_frames.setMinimum(1)
+        self.n_frames.setMaximum(1e9)
+        self.n_frames.setValue(10)
+
+        self.reverse = QCheckBox()
+        self.reverse.setChecked(False)
+
+        layout.addRow(
+            QLabel('Number of Z steps'),
+            self.z_steps
+        )
+        layout.addRow(
+            QLabel('Z Step size [nm]'),
+            self.z_stepsize
+        )
+        layout.addRow(
+            QLabel('Number of Frames'),
+            self.n_frames
+        )
+        layout.addRow(
+            QLabel('Reverse'),
+            self.reverse
+        )
+
+        z_buttons = QHBoxLayout()
+
+        self.z_acquire_btn = QPushButton(
+            'Acquire Z-stack',
+            clicked=lambda: self.startAcquisitionZ.emit((
+                self.z_steps.value(),
+                self.z_stepsize.value(),
+                self.delay.value(),
+                self.n_frames.value(),
+                self.reverse.isChecked())
+            )
+        )
+        self.z_stop_btn = QPushButton(
+            'STOP!',
+            clicked=lambda: self.stopAcquisitionZ.emit()
+        )
+
+        z_buttons.addWidget(self.z_acquire_btn)
+        z_buttons.addWidget(self.z_stop_btn)
+        layout.addRow(z_buttons)
 
 
 if __name__ == '__main__':

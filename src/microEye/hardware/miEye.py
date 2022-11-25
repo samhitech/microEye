@@ -323,10 +323,15 @@ class miEye_module(QMainWindow):
         self._elliptec_controller._add_btn.click()
         # Scan Acquisition
         self.scanAcqWidget = ScanAcquisitionWidget()
-        self.scanAcqWidget.startAcquisition.connect(
-            self.start_scan_acquisition)
-        self.scanAcqWidget.stopAcquisition.connect(self.stop_scan_acquisition)
-        self.scanAcqWidget.openLastTile.connect(self.show_last_tile)
+        self.scanAcqWidget.startAcquisitionXY.connect(
+            self.start_scan_acquisitionXY)
+        self.scanAcqWidget.startAcquisitionZ.connect(
+            self.start_scan_acquisitionZ)
+        self.scanAcqWidget.stopAcquisitionXY.connect(
+            self.stop_scan_acquisition)
+        self.scanAcqWidget.openLastTileXY.connect(self.show_last_tile)
+
+        self.scanAcqWidget.moveZ.connect(self.movez_stage)
 
         self.stages_Layout.addWidget(self.kinesisXY.getQWidget())
         self.stages_Layout.addWidget(self.scanAcqWidget)
@@ -525,7 +530,7 @@ class miEye_module(QMainWindow):
             QMessageBox.StandardButton.Cancel)
 
         if res == QMessageBox.StandardButton.Yes:
-            pass
+            self.add_camera_clicked(cam)
         elif res == QMessageBox.StandardButton.No:
             self.add_IR_camera(cam)
         else:
@@ -540,7 +545,7 @@ class miEye_module(QMainWindow):
             QMessageBox.StandardButton.Cancel)
 
         if res == QMessageBox.StandardButton.Yes:
-            pass
+            self.remove_camera_clicked(cam)
         elif res == QMessageBox.StandardButton.No:
             self.remove_IR_camera(cam)
         else:
@@ -1296,15 +1301,17 @@ class miEye_module(QMainWindow):
     def result_scan_acquisition(self, data):
         self._scanning = False
         self.scanAcqWidget.acquire_btn.setEnabled(True)
+        self.scanAcqWidget.z_acquire_btn.setEnabled(True)
 
-        self.lastTile = TiledImageSelector(data)
-        self.lastTile.positionSelected.connect(
-            lambda x, y: self.kinesisXY.doAsync(
-                None, self.kinesisXY.move_absolute, x, y)
-        )
-        self.lastTile.show()
+        if data:
+            self.lastTile = TiledImageSelector(data)
+            self.lastTile.positionSelected.connect(
+                lambda x, y: self.kinesisXY.doAsync(
+                    None, self.kinesisXY.move_absolute, x, y)
+            )
+            self.lastTile.show()
 
-    def start_scan_acquisition(
+    def start_scan_acquisitionXY(
             self, params):
         if not self._scanning:
             self._stop_scan = False
@@ -1322,6 +1329,26 @@ class miEye_module(QMainWindow):
             self._threadpool.start(self.scan_worker)
 
             self.scanAcqWidget.acquire_btn.setEnabled(False)
+            self.scanAcqWidget.z_acquire_btn.setEnabled(False)
+
+    def start_scan_acquisitionZ(
+            self, params):
+        if not self._scanning:
+            self._stop_scan = False
+            self._scanning = True
+
+            self.scan_worker = thread_worker(
+                z_stack_acquisition, self,
+                params[0], params[1],
+                params[2], params[3],
+                params[4], progress=False, z_stage=False)
+            self.scan_worker.signals.result.connect(
+                self.result_scan_acquisition)
+            # Execute
+            self._threadpool.start(self.scan_worker)
+
+            self.scanAcqWidget.acquire_btn.setEnabled(False)
+            self.scanAcqWidget.z_acquire_btn.setEnabled(False)
 
     def stop_scan_acquisition(self):
         self._stop_scan = True
@@ -1398,7 +1425,8 @@ def scan_acquisition(miEye: miEye_module, steps, step_size, delay, average=1):
 
 def z_stack_acquisition(
         miEye: miEye_module, n,
-        step_size, delay=100, nFrames=1, reverse=False):
+        step_size, delay=100, nFrames=1,
+        reverse=False):
     '''Z-Stack Acquisition (works with Allied Vision Cams only)
 
     Parameters
@@ -1423,17 +1451,14 @@ def z_stack_acquisition(
                 return
             for x in range(n):
                 if x > 0:
-                    miEye.stage.piezoTracking = False
-                    if not reverse:
-                        miEye.stage.UP(step_size)
-                    else:
-                        miEye.stage.DOWN(step_size)
-                    miEye.stage.piezoTracking = True
+                    miEye.stage.autoFocusTracking()
+                    miEye.scanAcqWidget.moveZ.emit(reverse, step_size)
                     QThread.msleep(delay)
+                    miEye.stage.autoFocusTracking()
                 frame = None
                 cam_pan.frames_tbox.setValue(nFrames)
                 cam_pan.cam_save_temp.setChecked(True)
-                prefix = 'Z{:4d}'.format(x)
+                prefix = 'Z_{:04d}_'.format(x)
                 cam_pan.start_free_run(cam, prefix)
 
                 cam_pan.s_event.wait()

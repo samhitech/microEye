@@ -868,9 +868,10 @@ class Vimba_Panel(QGroupBox):
         if cam.acquisition:
             return  # if acquisition is already going on
 
-        self._save_path = (self._directory + "\\"
+        self._save_path = (self._directory + "/"
                            + self.experiment_name.text()
-                           + "\\" + Prefix + self.cam.name
+                           + "/" + Prefix
+                           + self.cam.name.replace(' ', '_').replace('-', '_')
                            + time.strftime("_%Y_%m_%d_%H%M%S"))
 
         cam.acquisition = True  # set acquisition flag to true
@@ -927,7 +928,7 @@ class Vimba_Panel(QGroupBox):
 
             def result(dateTime: QDateTime):
                 self._exec_time = self.time.msecsTo(dateTime) / self._counter
-            self.c_worker.signals.finished.connect(result)
+            self.c_worker.signals.result.connect(result)
             self.c_worker.setAutoDelete(True)
             # Execute
             self._threadpool.start(self.c_worker)
@@ -1126,8 +1127,8 @@ class Vimba_Panel(QGroupBox):
                     frame, temp = self._frames.get()
 
                     if tempFile is None:
-                        if not os.path.exists(path):
-                            os.makedirs(path)
+                        if not os.path.exists(os.path.join(path, os.pardir)):
+                            os.makedirs(os.path.join(path, os.pardir))
 
                         tempFile = open(path + '_temp_log.csv', 'ab')
 
