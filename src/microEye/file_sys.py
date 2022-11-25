@@ -2,7 +2,6 @@ import os
 import sys
 
 import cv2
-import numba as nb
 from numba import cuda
 import numpy as np
 import pandas as pd
@@ -16,7 +15,7 @@ from PyQt5.QtCore import *
 from PyQt5.QtGui import QFont, QIcon
 from PyQt5.QtWidgets import *
 
-if cuda.is_available(): 
+if cuda.is_available():
     from .fitting.pyfit3Dcspline.mainfunctions import GPUmleFit_LM
 else:
     def GPUmleFit_LM(*args):

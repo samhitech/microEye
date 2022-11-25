@@ -31,6 +31,18 @@ from .kinesis import *
 from .piezo_concept import *
 from .port_config import *
 from .scan_acquisition import *
+from .thorlabs import *
+from .thorlabs_panel import Thorlabs_Panel
+from .ueye_camera import IDS_Camera
+from .ueye_panel import IDS_Panel
+
+try:
+    import vimba as vb
+
+    from .vimba_cam import *
+    from .vimba_panel import *
+except Exception:
+    vb = None
 
 warnings.filterwarnings("ignore", category=OptimizeWarning)
 

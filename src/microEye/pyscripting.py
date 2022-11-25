@@ -1,6 +1,4 @@
-from cv2 import filterSpeckles
-from pyqode.core import api, modes, panels
-from pyqode.python import panels as pypanels
+
 from pyqode.python.widgets import PyCodeEdit
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *

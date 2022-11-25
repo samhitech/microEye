@@ -13,8 +13,6 @@ import tifffile as tf
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
-from pyqtgraph import PlotWidget, plot
-from pyqtgraph.metaarray.MetaArray import axis
 
 from ..metadata import MetadataEditor
 from ..qlist_slider import *

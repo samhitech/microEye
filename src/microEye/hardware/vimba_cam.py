@@ -1,46 +1,52 @@
-from math import floor
+
 from typing import Optional
 import numpy as np
 
 try:
     import vimba as vb
+
+    def get_camera_list():
+        cam_list = []
+        with vb.Vimba.get_instance() as vimba:
+            cams = vimba.get_all_cameras()
+            for cam in cams:
+                cam_list.append({
+                            "camID": cam.get_id(),
+                            "devID": cam.get_interface_id(),
+                            "senID": 'NA',
+                            "Status": 'NA',
+                            "InUse": 0,
+                            "Model": cam.get_model(),
+                            "Serial": cam.get_serial(),
+                            "Driver": 'Vimba',
+                            "Name": cam.get_name()})
+        return cam_list
+
+    def get_camera(camera_id: Optional[str]) -> vb.Camera:
+        with vb.Vimba.get_instance() as vimba:
+            if camera_id:
+                try:
+                    return vimba.get_camera_by_id(camera_id)
+                except vb.VimbaCameraError:
+                    print(
+                        'Failed to access Camera \'{}\'. Abort.'.format(
+                            camera_id))
+            else:
+                cams = vimba.get_all_cameras()
+                if not cams:
+                    print('No Cameras accessible. Abort.')
+                    return None
+
+                return cams[0]
+
 except Exception:
     vb = None
 
+    def get_camera_list():
+        return []
 
-def get_camera_list():
-    cam_list = []
-    with vb.Vimba.get_instance() as vimba:
-        cams = vimba.get_all_cameras()
-        for cam in cams:
-            cam_list.append({
-                        "camID": cam.get_id(),
-                        "devID": cam.get_interface_id(),
-                        "senID": 'NA',
-                        "Status": 'NA',
-                        "InUse": 0,
-                        "Model": cam.get_model(),
-                        "Serial": cam.get_serial(),
-                        "Driver": 'Vimba',
-                        "Name": cam.get_name()})
-    return cam_list
-
-
-def get_camera(camera_id: Optional[str]) -> vb.Camera:
-    with vb.Vimba.get_instance() as vimba:
-        if camera_id:
-            try:
-                return vimba.get_camera_by_id(camera_id)
-            except vb.VimbaCameraError:
-                print(
-                    'Failed to access Camera \'{}\'. Abort.'.format(camera_id))
-        else:
-            cams = vimba.get_all_cameras()
-            if not cams:
-                print('No Cameras accessible. Abort.')
-                return None
-
-            return cams[0]
+    def get_camera(camera_id: Optional[str]):
+        return None
 
 
 class vimba_cam:

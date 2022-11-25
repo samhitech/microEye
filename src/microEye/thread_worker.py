@@ -1,6 +1,5 @@
 import sys
 import traceback
-import numba
 
 import numpy as np
 from PyQt5.QtCore import *

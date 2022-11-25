@@ -1,9 +1,6 @@
 import os
 import sys
 import traceback
-from datetime import datetime
-from logging import exception
-from typing import Match
 
 import qdarkstyle
 from PyQt5.QtCore import *

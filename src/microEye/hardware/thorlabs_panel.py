@@ -1,6 +1,5 @@
 import json
 import os
-import queue
 import time
 import traceback
 from queue import Queue
@@ -9,14 +8,10 @@ import cv2
 import numpy as np
 import pyqtgraph as pg
 import tifffile as tf
-from numpy import random
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
-from pyqtgraph import PlotWidget, plot
-from pyqtgraph.metaarray.MetaArray import axis
 from pyueye import ueye
-from tifffile.tifffile import astype
 
 from ..qlist_slider import *
 from ..thread_worker import *

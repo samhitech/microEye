@@ -1,6 +1,4 @@
-from tkinter import Widget
-from numba.cuda.simulator.api import detect
-import ome_types
+
 import ome_types.model as om
 import typing
 
@@ -8,20 +6,15 @@ from ome_types.model.channel import *
 from ome_types.model.detector import Detector, Type
 from ome_types.model.dichroic import Dichroic
 from ome_types.model.filter import Filter
-from ome_types.model.filter_ref import FilterRef
-from ome_types.model.filter_set import FilterSet
 from ome_types.model.instrument import Instrument
 from ome_types.model.microscope import Microscope
 from ome_types.model.objective import Correction, Immersion, Objective
 from ome_types.model.ome import OME
 from ome_types.model.simple_types import PixelType, UnitsLength, UnitsTime
-from ome_types.model.tiff_data import TiffData
 
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
-from ome_types.model.transmittance_range import TransmittanceRange
-from pydantic.utils import ClassAttribute
 
 
 class MetadataEditor(QWidget):

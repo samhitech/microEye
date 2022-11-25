@@ -1,7 +1,5 @@
 import numpy as np
 import os.path
-import time
-import cv2
 import logging
 
 from ctypes import *

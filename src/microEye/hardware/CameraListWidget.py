@@ -1,16 +1,7 @@
-# Libraries
-import ctypes
+
 import os
-import sys
-import traceback
-from logging import exception
-from math import exp
 import typing
 
-import cv2
-import numpy as np
-import qdarkstyle
-import tifffile as tf
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
@@ -18,10 +9,6 @@ from PyQt5.QtWidgets import *
 from ..thread_worker import *
 from .ueye_camera import IDS_Camera
 from .thorlabs import *
-from .thorlabs_panel import Thorlabs_Panel
-from .ueye_panel import IDS_Panel
-from .vimba_panel import Vimba_Panel
-from .vimba_cam import get_camera_list, vimba_cam
 
 try:
     from pyueye import ueye
@@ -30,8 +17,12 @@ except Exception:
 
 try:
     import vimba as vb
+    from .vimba_cam import get_camera_list
 except Exception:
     vb = None
+
+    def get_camera_list():
+        return []
 
 
 class CameraListWidget(QWidget):

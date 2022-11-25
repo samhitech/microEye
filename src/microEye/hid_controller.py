@@ -3,8 +3,6 @@ import sys
 from enum import Enum
 import hid
 import numpy as np
-import pandas as pd
-import pyqtgraph as pg
 from PyQt5.QtCore import *
 from PyQt5.QtWidgets import *
 

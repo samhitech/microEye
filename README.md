@@ -23,7 +23,7 @@ This toolkit is compatible with the [hardware](#hardware) we are using in our mi
 - pyqtgraph
 - qdarkstyle
 - ome-types
-- lmfit
+- hidapi
 - pyqode.python ([Jedi Fix](https://github.com/pyQode/pyqode.python/blob/6cc30087dab69d334a48c716d8d19fc1546ff0c6/pyqode/python/backend/workers.py))
 - VimbaPython (Included in [Vimba SDK](https://www.alliedvision.com/en/products/vimba-sdk/) and installed manually)
 
@@ -84,35 +84,25 @@ Schematic overview of the miEye instrument. A) The excitation path via single-mo
 
 ### How to use
 
-    from microEye.hardware import acquisition_module
-    
-    try:
-        app, window = acquisition_module.StartGUI()
-        app.exec_()
-    except Exception as e:
-        traceback.print_exc()
-    finally:
-        # dispose camera adapters
-        for cam in window.ids_cams:
-            cam.dispose()
-
-        # Destroys the OpenCv windows
-        cv2.destroyAllWindows()
-        
 For Vimba SDK to work the script should be executed as administrator on Windows and wrapped in a with statement:
 
      from microEye.hardware import acquisition_module
-     
+
      try:
          import vimba as vb
      except Exception:
          vb = None
 
-     with vb.Vimba.get_instance() as vimba:
+
+     if vb:
+         with vb.Vimba.get_instance() as vimba:
+             app, window = acquisition_module.StartGUI()
+
+             app.exec_()
+     else:
          app, window = acquisition_module.StartGUI()
 
          app.exec_()
-
 
 ## Control Module
 
@@ -125,6 +115,10 @@ For Vimba SDK to work the script should be executed as administrator on Windows 
     app, window = control_module.StartGUI()
     app.exec_()
 
+
+## miEye Module
+
+TBA
 
 ## Data Viewer / Processor
 

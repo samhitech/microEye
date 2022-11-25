@@ -1,16 +1,13 @@
-import struct
+
 import os
 import sys
 from os import name
-from queue import Queue
 
 import numpy as np
-import pyqtgraph
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtSerialPort import *
 from PyQt5.QtWidgets import *
-from pyqtgraph.graphicsItems.ROI import Handle
 from pyqtgraph.widgets.PlotWidget import PlotWidget
 
 import qdarkstyle

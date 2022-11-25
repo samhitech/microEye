@@ -6,8 +6,6 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtWidgets import *
 import pyqtgraph as pg
 
-from .results import FittingMethod
-
 
 ParametersHeaders = {
     0: ['x', 'y', 'bg', 'I', 'ratio x/y', 'frame'],

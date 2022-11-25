@@ -1,4 +1,4 @@
-import json
+
 import logging
 import os
 import threading
@@ -10,13 +10,9 @@ import cv2
 import numpy as np
 import pyqtgraph as pg
 import tifffile as tf
-from numpy import random, true_divide
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
-from pyqtgraph import PlotWidget, plot
-from pyqtgraph.metaarray.MetaArray import axis
-from tifffile.tifffile import astype
 
 from .camera_calibration import dark_calibration
 

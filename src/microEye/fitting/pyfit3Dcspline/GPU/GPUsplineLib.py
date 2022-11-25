@@ -1,4 +1,4 @@
-import numpy as np
+
 import numba as nb
 import math
 from numba import cuda

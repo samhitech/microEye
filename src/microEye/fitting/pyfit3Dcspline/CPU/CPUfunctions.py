@@ -1,8 +1,7 @@
-from mailbox import NoSuchMailboxError
+
 import numpy as np
 import numba as nb
 import math
-from numba import cuda
 
 from ..constants import *
 

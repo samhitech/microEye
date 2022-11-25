@@ -2,9 +2,7 @@ import math
 
 import cv2
 import dask.array
-import numba
 import numpy as np
-import tifffile as tf
 from PyQt5.QtCore import *
 from PyQt5.QtWidgets import *
 from PyQt5.QtWidgets import QWidget

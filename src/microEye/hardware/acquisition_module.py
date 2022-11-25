@@ -10,7 +10,6 @@ import cv2
 import numpy as np
 import qdarkstyle
 import tifffile as tf
-from pyqode.python.widgets import PyCodeEdit
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
@@ -22,8 +21,6 @@ from .thorlabs_panel import Thorlabs_Panel
 from ..thread_worker import *
 from .ueye_camera import IDS_Camera
 from .ueye_panel import IDS_Panel
-from .vimba_cam import *
-from .vimba_panel import *
 from .kinesis import *
 from .scan_acquisition import *
 from ..hid_controller import *
@@ -32,6 +29,13 @@ try:
     from pyueye import ueye
 except Exception:
     ueye = None
+
+try:
+    import vimba as vb
+    from .vimba_cam import *
+    from .vimba_panel import *
+except Exception:
+    vb = None
 
 
 class acquisition_module(QMainWindow):

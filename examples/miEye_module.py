@@ -1,4 +1,4 @@
-from microEye.hardware import acquisition_module
+from microEye.hardware import miEye_module
 
 try:
     import vimba as vb
@@ -8,10 +8,10 @@ except Exception:
 
 if vb:
     with vb.Vimba.get_instance() as vimba:
-        app, window = acquisition_module.StartGUI()
+        app, window = miEye_module.StartGUI()
 
         app.exec_()
 else:
-    app, window = acquisition_module.StartGUI()
+    app, window = miEye_module.StartGUI()
 
     app.exec_()

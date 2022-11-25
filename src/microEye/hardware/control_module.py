@@ -1,22 +1,17 @@
 import json
 import os
 import sys
-import time
 import traceback
 import warnings
 from queue import Queue
 
 import numpy as np
-import pyqtgraph
+import pyqtgraph as pg
 import qdarkstyle
-from pyqode.core import api, modes, panels
-from pyqode.python import panels as pypanels
-from pyqode.python.widgets import PyCodeEdit
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtSerialPort import *
 from PyQt5.QtWidgets import *
-from pyqtgraph.graphicsItems.ROI import Handle
 from pyqtgraph.widgets.PlotWidget import PlotWidget
 from pyqtgraph.widgets.RemoteGraphicsView import RemoteGraphicsView
 from scipy.optimize import curve_fit
@@ -34,6 +29,10 @@ from .io_single_laser import *
 from .IR_Cam import *
 from .piezo_concept import *
 from .port_config import *
+from .thorlabs import *
+from .thorlabs_panel import Thorlabs_Panel
+from .ueye_camera import IDS_Camera
+from .ueye_panel import IDS_Panel
 
 warnings.filterwarnings("ignore", category=OptimizeWarning)
 
@@ -349,7 +348,7 @@ class control_module(QMainWindow):
         self.remote_view = RemoteGraphicsView()
         self.remote_view.pg.setConfigOptions(
             antialias=True, imageAxisOrder='row-major')
-        pyqtgraph.setConfigOption('imageAxisOrder', 'row-major')
+        pg.setConfigOption('imageAxisOrder', 'row-major')
         self.remote_plt = self.remote_view.pg.ViewBox(invertY=True)
         self.remote_plt._setProxyOptions(deferGetattr=True)
         self.remote_view.setCentralItem(self.remote_plt)

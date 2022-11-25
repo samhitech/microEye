@@ -1,17 +1,13 @@
 
 from typing import Union
 import cv2
-import numba
 import numpy as np
-import pandas as pd
-import pyqtgraph as pg
 
 from microEye.fitting.pyfit3Dcspline.mainfunctions import get_roi_list_CMOS
 
 from ..Filters import *
 from ..uImage import TiffSeqHandler, uImage
 from .phasor_fit import *
-from .gaussian_fit import *
 from .results import *
 from .pyfit3Dcspline import CPUmleFit_LM, get_roi_list
 
