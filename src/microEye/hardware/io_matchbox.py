@@ -317,12 +317,12 @@ class LaserSwitches(QGroupBox):
         L_Layout = QVBoxLayout()
 
         # on with cam 1 flash
-        self.CAM1 = QRadioButton("CAM 1 Flash")
+        self.CAM1 = QRadioButton("CAM 1")
         self.CAM1.state = "L{:d}F1".format(wavelength)
         L_Layout.addWidget(self.CAM1)
 
         # on with cam 2 flash
-        self.CAM2 = QRadioButton("CAM 2 Flash")
+        self.CAM2 = QRadioButton("CAM 2")
         self.CAM2.state = "L{:d}F2".format(wavelength)
         L_Layout.addWidget(self.CAM2)
 

@@ -6,6 +6,7 @@ import time
 import traceback
 from queue import Queue
 
+import json
 import cv2
 import numpy as np
 import pyqtgraph as pg
@@ -81,6 +82,8 @@ class Vimba_Panel(QGroupBox):
         # reserved for testing/displaying execution tim
         self._directory = ""  # save directory
         self._save_path = ""  # save path
+        self._save_prefix = ""  # save prefix
+        self._save_timestamp = ""  # save timestamp
 
         self._dis_time = 0
 
@@ -313,6 +316,8 @@ class Vimba_Panel(QGroupBox):
         self.experiment_name = QLineEdit("Experiment_001")
         self.experiment_name.textChanged.connect(
             lambda x: self.OME_tab.experiment.setText(x))
+        self.experiment_name.mouseDoubleClickEvent.connect(
+            self.exp_name_update)
 
         self.save_dir_layout = QHBoxLayout()
 
@@ -739,6 +744,16 @@ class Vimba_Panel(QGroupBox):
 
         self.save_dir_edit.setText(self._directory)
 
+    def exp_name_update(self, e):
+        exp_name = self.experiment_name.text().split('_')
+        if exp_name[0].isdigit():
+            num = int(exp_name[0]) + 1
+            exp_name[0] = str(num)
+        else:
+            exp_name.insert(0, '1')
+
+        self.experiment_name.setText('_'.join(exp_name))
+
     @pyqtSlot(str)
     def cam_cbox_changed(self, value):
         """
@@ -868,11 +883,11 @@ class Vimba_Panel(QGroupBox):
         if cam.acquisition:
             return  # if acquisition is already going on
 
+        self._save_prefix = Prefix
+        self._save_timestamp = time.strftime("_%Y_%m_%d_%H%M%S")
         self._save_path = (self._directory + "/"
                            + self.experiment_name.text()
-                           + "/" + Prefix
-                           + self.cam.name.replace(' ', '_').replace('-', '_')
-                           + time.strftime("_%Y_%m_%d_%H%M%S"))
+                           + "/")
 
         cam.acquisition = True  # set acquisition flag to true
 
@@ -911,7 +926,15 @@ class Vimba_Panel(QGroupBox):
         if not self.mini:
             if self.s_worker is None or self.s_worker.done:
                 self.s_worker = thread_worker(
-                    self._save, progress=False, z_stage=False)
+                    self._save,
+                    {
+                        'name': self.cam.name_no_space,
+                        'path': self._save_path,
+                        'prefix': self._save_prefix,
+                        'timestamp': self._save_timestamp,
+                        'biggTiff': self.save_bigg_tiff.isChecked(),
+                        'meta': self.get_meta()
+                    }, progress=False, z_stage=False)
                 self.s_worker.setAutoDelete(True)
                 # Execute
                 self._threadpool.start(self.s_worker)
@@ -1075,7 +1098,7 @@ class Vimba_Panel(QGroupBox):
             if not self.mini:
                 cv2.destroyWindow(cam.name)
 
-    def _save(self):
+    def _save(self, params: dict):
         '''Save function executed by the save worker.
 
         Saves the acquired frames in bigtiff format associated
@@ -1088,16 +1111,22 @@ class Vimba_Panel(QGroupBox):
         '''
         try:
             frames_saved = 0
-            path = self._save_path
+            path = params['path']
+            prefix = params['prefix']
+            timestamp = params['timestamp']
             tiffWriter = None
             tempFile = None
+            metaFile = None
             darkCal = None
             index = 0
-            biggTiff = self.save_bigg_tiff.isChecked()
+            major = 0
+            biggTiff = params['biggTiff']
+            meta = params['meta']
 
-            def getFilename(index: int):
+            def getFilename(major: int, index: int):
                 return path + \
-                       '_image_{:05d}.ome.tif'.format(index)
+                       '{:02d}_{}_image_{:05d}.ome.tif'.format(
+                        major, prefix, index)
 
             def saveMetadata(index: int):
                 if self.cam_save_meta.isChecked():
@@ -1106,7 +1135,7 @@ class Vimba_Panel(QGroupBox):
                         self._cam.width,
                         self._cam.height)
                     tf.tiffcomment(
-                        getFilename(index),
+                        getFilename(major, index),
                         ome.to_xml())
                 else:
                     ome = self.OME_tab.gen_OME_XML_short(
@@ -1114,8 +1143,11 @@ class Vimba_Panel(QGroupBox):
                         self._cam.width,
                         self._cam.height)
                     tf.tiffcomment(
-                        getFilename(index),
+                        getFilename(major, index),
                         ome.to_xml())
+
+            while(os.path.exists(getFilename(major, index))):
+                major += 1
 
             while(True):
                 # save in case frame stack is not empty
@@ -1127,14 +1159,22 @@ class Vimba_Panel(QGroupBox):
                     frame, temp = self._frames.get()
 
                     if tempFile is None:
-                        if not os.path.exists(os.path.join(path, os.pardir)):
-                            os.makedirs(os.path.join(path, os.pardir))
+                        if not os.path.exists(path):
+                            os.makedirs(path)
 
-                        tempFile = open(path + '_temp_log.csv', 'ab')
+                        tempFile = open(
+                            path + prefix + '{:02d}_{}_temp_log.csv'.format(
+                                major, prefix), 'ab')
+
+                    if metaFile is None:
+                        metaFile = open(
+                            path + params['name'] + timestamp + '.txt', 'w+')
+                        json.dump(meta, metaFile)
+                        metaFile.close()
 
                     if tiffWriter is None:
                         tiffWriter = tf.TiffWriter(
-                            getFilename(index),
+                            getFilename(major, index),
                             append=False,
                             bigtiff=biggTiff,
                             ome=False)
@@ -1158,7 +1198,7 @@ class Vimba_Panel(QGroupBox):
                             frames_saved = 0
                             index += 1
                             tiffWriter = tf.TiffWriter(
-                                getFilename(index),
+                                getFilename(major, index),
                                 append=False,
                                 bigtiff=biggTiff,
                                 ome=False)
@@ -1191,7 +1231,8 @@ class Vimba_Panel(QGroupBox):
                 tiffWriter.close()
             if darkCal is not None:
                 if darkCal._counter > 1:
-                    darkCal.saveResults(path)
+                    darkCal.saveResults(
+                        path, '{:02d}_{}'.format(major, prefix))
 
             if self.cam_save_temp.isChecked():
                 saveMetadata(index)
@@ -1211,6 +1252,13 @@ class Vimba_Panel(QGroupBox):
         """
         array = np.asarray(array)
         return (np.abs(array - value)).argmin()
+
+    def get_meta(self):
+        meta = {
+            'Exposure': self._cam.exposure_current,
+            'ROI': self._cam.get_roi(),
+            'Frames': self.frames_tbox.value()
+        }
 
     def save_config(self):
         filename, _ = QFileDialog.getSaveFileName(

@@ -58,6 +58,7 @@ class vimba_cam:
         self.cam = get_camera(camera_id)
         self.Cam_ID = self.cam.get_id()
         self.name = self.cam.get_name()
+        self.name_no_space = self.name.replace(' ', '_').replace('-', '_')
 
         self.temperature = -127
 

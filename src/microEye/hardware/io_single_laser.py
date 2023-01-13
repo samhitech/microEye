@@ -254,11 +254,11 @@ class SingleLaserWidget(QGroupBox):
         L_Layout = QVBoxLayout()
 
         # on with cam 1 flash
-        self.CAM1 = QRadioButton("CAM 1 Flash")
+        self.CAM1 = QRadioButton("CAM 1")
         L_Layout.addWidget(self.CAM1)
 
         # on with cam 2 flash
-        self.CAM2 = QRadioButton("CAM 2 Flash")
+        self.CAM2 = QRadioButton("CAM 2")
         L_Layout.addWidget(self.CAM2)
 
         # off regardless

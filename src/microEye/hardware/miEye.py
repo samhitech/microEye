@@ -642,8 +642,8 @@ class miEye_module(QMainWindow):
                     ids_cam, cam["Model"] + " " + cam["Serial"])
                 ids_panel._directory = _directory
                 ids_panel.master = False
-                self.ids_panels.append(ids_panel)
                 ids_panel.show()
+                self.ids_panels.append(ids_panel)
             if 'UC480' in cam["Driver"]:
                 thor_cam = thorlabs_camera(cam["camID"])
                 nRet = thor_cam.initialize()
@@ -654,8 +654,8 @@ class miEye_module(QMainWindow):
                         thor_cam, cam["Model"] + " " + cam["Serial"])
                     thor_panel._directory = _directory
                     thor_panel.master = False
-                    self.thor_panels.append(thor_panel)
                     thor_panel.show()
+                    self.thor_panels.append(thor_panel)
             if 'Vimba' in cam["Driver"]:
                 v_cam = vimba_cam(cam["camID"])
                 self.vimba_cams.append(v_cam)
@@ -664,8 +664,8 @@ class miEye_module(QMainWindow):
                         v_cam, cam["Model"] + " " + cam["Serial"])
                 v_panel._directory = _directory
                 v_panel.master = False
-                self.vimba_panels.append(v_panel)
                 v_panel.show()
+                self.vimba_panels.append(v_panel)
         else:
             QMessageBox.warning(
                 self,
@@ -1001,6 +1001,22 @@ class miEye_module(QMainWindow):
             self.cam_panel.info_save.setText(
                 " Save {:d} | {:.2f} ms ".format(
                     self.cam_panel._frames.qsize(), self.cam_panel._save_time))
+
+        for panel in self.vimba_panels:
+            panel.info_temp.setText(
+                " T {:.2f} °C".format(panel.cam.temperature))
+            panel.info_cap.setText(
+                " Capture {:d}/{:d} {:.2%} | {:.2f} ms ".format(
+                    panel._counter,
+                    panel._nFrames,
+                    panel._counter / panel._nFrames,
+                    panel._exec_time))
+            panel.info_disp.setText(
+                " Display {:d} | {:.2f} ms ".format(
+                    panel._buffer.qsize(), panel._dis_time))
+            panel.info_save.setText(
+                " Save {:d} | {:.2f} ms ".format(
+                    panel._frames.qsize(), panel._save_time))
 
     @pyqtSlot()
     def open_dialog(self, serial: QSerialPort):
