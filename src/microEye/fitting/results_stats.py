@@ -1,11 +1,12 @@
 import sys
+import typing
+import traceback
+
 import numpy as np
 import pandas as pd
+import pyqtgraph as pg
 from PyQt5.QtCore import *
 from PyQt5.QtWidgets import *
-from PyQt5.QtWidgets import *
-import pyqtgraph as pg
-
 
 ParametersHeaders = {
     0: ['x', 'y', 'bg', 'I', 'ratio x/y', 'frame'],
@@ -19,8 +20,8 @@ ParametersHeaders = {
 class resultsStatsWidget(QWidget):
     dataFilterUpdated = pyqtSignal(pd.DataFrame)
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, parent: typing.Optional['QWidget'] = None):
+        super().__init__(parent=parent)
 
         minHeight = 125
 
@@ -42,7 +43,7 @@ class resultsStatsWidget(QWidget):
             # row = idx // 2
             # col = idx % 2
 
-            pw = pg.PlotWidget()
+            pw = pg.PlotWidget(self)
             pw.setMinimumHeight(125)
             pw.setLabel('left', 'Counts', units='')
             pw.setLabel('bottom', column, units='')
@@ -82,16 +83,20 @@ class resultsStatsWidget(QWidget):
                         [0], [1],
                         fillLevel=0, fillOutline=True, brush=(0, 0, 255, 150))
             else:
-                min_val = np.floor(df[column].min())
-                max_val = np.ceil(df[column].max())
-                counts = df[column].count()
-                hist, bins = np.histogram(
-                    df[column].to_numpy(),
-                    bins=min(counts+1, 1024))
+                try:
+                    min_val = np.floor(df[column].min())
+                    max_val = np.ceil(df[column].max())
+                    counts = df[column].count()
+                    hist, bins = np.histogram(
+                        df[column].to_numpy(),
+                        bins=min(counts+1, 1024))
 
-                pw.plot(
-                    bins, hist / np.max(hist), stepMode="center",
-                    fillLevel=0, fillOutline=True, brush=(0, 0, 255, 150))
+                    pw.plot(
+                        bins, hist / np.max(hist), stepMode="center",
+                        fillLevel=0, fillOutline=True, brush=(0, 0, 255, 150))
+                except Exception:
+                    traceback.print_exc()
+                    print(column)
 
     def clearLayout(self):
         for i in reversed(range(self._layout.count())):

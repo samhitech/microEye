@@ -316,8 +316,8 @@ class Vimba_Panel(QGroupBox):
         self.experiment_name = QLineEdit("Experiment_001")
         self.experiment_name.textChanged.connect(
             lambda x: self.OME_tab.experiment.setText(x))
-        self.experiment_name.mouseDoubleClickEvent.connect(
-            self.exp_name_update)
+        # self.experiment_name.mouseDoubleClickEvent.connect(
+        #     self.exp_name_update)
 
         self.save_dir_layout = QHBoxLayout()
 
@@ -1017,7 +1017,7 @@ class Vimba_Panel(QGroupBox):
         try:
             time = QDateTime.currentDateTime()
             # Continuous image display
-            while(True):
+            while (True):
                 # for display time estimations
 
                 # proceed only if the buffer is not empty
@@ -1146,10 +1146,10 @@ class Vimba_Panel(QGroupBox):
                         getFilename(major, index),
                         ome.to_xml())
 
-            while(os.path.exists(getFilename(major, index))):
+            while (os.path.exists(getFilename(major, index))):
                 major += 1
 
-            while(True):
+            while (True):
                 # save in case frame stack is not empty
                 if not self._frames.empty():
                     # for save time estimations
@@ -1254,11 +1254,13 @@ class Vimba_Panel(QGroupBox):
         return (np.abs(array - value)).argmin()
 
     def get_meta(self):
-        meta = {
-            'Exposure': self._cam.exposure_current,
-            'ROI': self._cam.get_roi(),
-            'Frames': self.frames_tbox.value()
-        }
+        with self._cam.cam:
+            meta = {
+                'Exposure': self._cam.exposure_current,
+                'ROI': self._cam.get_roi(False),
+                'Frames': self.frames_tbox.value()
+            }
+        return meta
 
     def save_config(self):
         filename, _ = QFileDialog.getSaveFileName(

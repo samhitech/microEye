@@ -5,11 +5,11 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setuptools.setup(
     name="microEye",
-    version="0.3.0",
+    version="0.3.1",
     author="Mohammad Nour Alsamsam",
     author_email="nour.alsamsam@gmail.com",
     description="A python toolkit for fluorescence microscopy \
-        that features multi IDS uEye industrial-grade CMOS \
+        that features industrial-grade CMOS \
         cameras and Integrated Optics laser combiner MatchBox.",
     long_description=long_description,
     long_description_content_type="text/markdown",

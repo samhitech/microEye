@@ -126,7 +126,7 @@ class io_combiner(QSerialPort):
             command to be sent, please check the constants
             implemented in the MatchBox class.
         '''
-        if(self.isOpen()):
+        if (self.isOpen()):
             self.readAll()
             self.write(command)
             self.waitForBytesWritten(500)
@@ -151,7 +151,7 @@ class io_combiner(QSerialPort):
             self.open(QIODevice.ReadWrite)
             self.flush()
 
-            if(self.isOpen()):
+            if (self.isOpen()):
                 self.SendCommand(io_combiner.ON)
                 self.SendCommand(io_combiner.START)
                 # self.SendCommand(io_single_laser.STATUS)
@@ -166,14 +166,14 @@ class io_combiner(QSerialPort):
     def CloseCOM(self):
         '''Closes the serial port.
         '''
-        if(self.isOpen()):
+        if (self.isOpen()):
             self.SendCommand(io_combiner.OFF)
             self.waitForBytesWritten(500)
 
             self.close()
 
     def GetMaxCurrent(self):
-        if(self.isOpen()):
+        if (self.isOpen()):
             res = self.SendCommand(io_combiner.MAX_CUR)
 
             if not ('<ERR>' in res or '<ACK>' in res):
@@ -182,7 +182,7 @@ class io_combiner(QSerialPort):
                     self.Max = list(map(int, values))
 
     def GetCurrent(self, log_print: bool = False):
-        if(self.isOpen()):
+        if (self.isOpen()):
             res = self.SendCommand(
                 io_combiner.CUR_CUR, log_print)
 
@@ -192,7 +192,7 @@ class io_combiner(QSerialPort):
                     self.Current = list(map(float, values))
 
     def GetSetCurrent(self, log_print: bool = False):
-        if(self.isOpen()):
+        if (self.isOpen()):
             res = self.SendCommand(
                 io_combiner.CUR_SET, log_print)
 
@@ -202,7 +202,7 @@ class io_combiner(QSerialPort):
                     self.Setting = list(map(int, values))
 
     def GetWavelengths(self):
-        if(self.isOpen()):
+        if (self.isOpen()):
             res = self.SendCommand(io_combiner.GET_WAVELENGTHS)
 
             if not ('<ERR>' in res or '<ACK>' in res):
@@ -220,7 +220,7 @@ class io_combiner(QSerialPort):
                 #     self.Wavelengths = list(map(int, values))
 
     def GetReadings(self, log_print: bool = True):
-        if(self.isOpen()):
+        if (self.isOpen()):
             res = self.SendCommand(
                 io_combiner.READ,
                 log_print)
@@ -239,7 +239,7 @@ class io_combiner(QSerialPort):
                     self.R_Input_Voltage = readings[9]
 
     def GetSettings(self, log_print: bool = True):
-        if(self.isOpen()):
+        if (self.isOpen()):
             res = self.SendCommand(
                 io_combiner.SETTINGS,
                 log_print)
@@ -258,7 +258,7 @@ class io_combiner(QSerialPort):
                     self.S_Fan_Temp = float(readings[9]) / 100
 
     def SetCurrent(self, index: int, value: int) -> bool:
-        if(self.isOpen()):
+        if (self.isOpen()):
             res = self.SendCommand(
                 'Lc{:.0f} {:.0f}'.format(index, value).encode('utf-8'))
 
@@ -268,7 +268,7 @@ class io_combiner(QSerialPort):
                 return False
 
     def SetDisabled(self, index: int) -> bool:
-        if(self.isOpen()):
+        if (self.isOpen()):
             res = self.SendCommand(
                 'L{:.0f}D'.format(index).encode('utf-8'))
 
@@ -278,7 +278,7 @@ class io_combiner(QSerialPort):
                 return False
 
     def SetEnabled(self, index: int) -> bool:
-        if(self.isOpen()):
+        if (self.isOpen()):
             res = self.SendCommand(
                 'L{:.0f}E'.format(index).encode('utf-8'))
 
@@ -288,7 +288,7 @@ class io_combiner(QSerialPort):
                 return False
 
     def GetInfo(self):
-        if(self.isOpen()):
+        if (self.isOpen()):
             res = self.SendCommand(
                 io_combiner.INFO,
                 delay=50)
@@ -352,7 +352,7 @@ class LaserSwitches(QGroupBox):
         self.L_current.setMaximum(Laser.Max[index - 1])
         self.L_current.setValue(0)
         self.L_set_curr_btn = QPushButton(
-            "Set Current [mA]",
+            "Set [mA]",
             clicked=lambda:
             self.Laser.SetCurrent(
                 self.index,

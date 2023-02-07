@@ -654,7 +654,7 @@ def get_roi_list_CMOS(
 
     assert len(image.shape) == 2, 'image should be a 2D ndarray!'
 
-    assert image.shape != varim.shape, 'image & varim must have equal shape!'
+    assert image.shape == varim.shape, 'image & varim must have equal shape!'
 
     roi_list = np.zeros((2, points.shape[0], roi_size**2), np.float32)
     coord_list = np.zeros_like(points)

@@ -32,7 +32,7 @@ class TiledImageSelector(QWidget):
         imageWidget.ci.setSpacing(0)
         imageWidget.sceneObj.sigMouseClicked.connect(self.clicked)
 
-        for tImg in images:
+        for idx, tImg in enumerate(images):
             vb: pg.ViewBox = imageWidget.addViewBox(*tImg.index)
             vb.setMouseEnabled(False, False)
             vb.setDefaultPadding(0.004)
@@ -42,7 +42,7 @@ class TiledImageSelector(QWidget):
             vb.action = QAction("Save Raw Data (.tif)")
             menu.addAction(vb.action)
             vb.action.triggered.connect(
-                lambda: self.save_raw_data(tImg.uImage._image))
+                lambda: self.save_raw_data(idx))
             img = pg.ImageItem(tImg.uImage._view.T)
             vb.addItem(img)
             vb.item = tImg
@@ -63,7 +63,7 @@ class TiledImageSelector(QWidget):
                     *event.currentItem.item.position))
             self.imgView.setImage(event.currentItem.addedItems[0].image)
 
-    def save_raw_data(self, data):
+    def save_raw_data(self, idx: int):
         filename = None
         if filename is None:
             filename, _ = QFileDialog.getSaveFileName(
@@ -72,7 +72,7 @@ class TiledImageSelector(QWidget):
         if len(filename) > 0:
             tf.imwrite(
                 filename,
-                data,
+                self.images[idx].uImage._image,
                 photometric='minisblack')
 
 

@@ -803,7 +803,7 @@ class miEye_module(QMainWindow):
         self._exec_time = 0
         time = QDateTime.currentDateTime()
         QThread.msleep(100)
-        while(self.isVisible()):
+        while (self.isVisible()):
             try:
                 # dt = Gaussian(
                 #     np.array(range(512)), 255, np.random.normal() + 256, 50)
@@ -827,7 +827,7 @@ class miEye_module(QMainWindow):
                         data = np.squeeze(data)
                     # self.ydata_temp = self.ydata
                     self.peak_fit(movez_callback, data.copy())
-                    if(self.file is not None):
+                    if (self.file is not None):
                         np.savetxt(self.file,
                                    np.array((self._exec_time, self.popt[1]))
                                    .reshape((1, 2)), delimiter=";")
@@ -1061,7 +1061,7 @@ class miEye_module(QMainWindow):
         '''Starts the IR peak position acquisition and
         creates a file in the current directory.
         '''
-        if(self.file is None):
+        if (self.file is None):
             filename = None
             if filename is None:
                 filename, _ = QFileDialog.getSaveFileName(
@@ -1075,7 +1075,7 @@ class miEye_module(QMainWindow):
     def stop_IR(self):
         '''Stops the IR peak position acquisition and closes the file.
         '''
-        if(self.file is not None):
+        if (self.file is not None):
             self.file.close()
             self.file = None
             self.frames_saved = 0
@@ -1481,4 +1481,8 @@ def z_stack_acquisition(
     except Exception:
         traceback.print_exc()
     finally:
+        miEye.stage.autoFocusTracking()
+        miEye.scanAcqWidget.moveZ.emit(not reverse, (n-1)*step_size)
+        QThread.msleep(delay)
+        miEye.stage.autoFocusTracking()
         return

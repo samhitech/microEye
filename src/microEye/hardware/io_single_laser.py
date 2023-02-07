@@ -96,7 +96,7 @@ class io_single_laser(QSerialPort):
             command to be sent, please check the constants
             implemented in the MatchBox class.
         '''
-        if(self.isOpen()):
+        if (self.isOpen()):
             self.write(command)
             self.waitForBytesWritten(500)
             QThread.msleep(delay)
@@ -119,7 +119,7 @@ class io_single_laser(QSerialPort):
             self.open(QIODevice.ReadWrite)
             self.flush()
 
-            if(self.isOpen()):
+            if (self.isOpen()):
                 self.SendCommand(io_single_laser.ON_DIS)
                 self.SendCommand(io_single_laser.START)
                 # self.SendCommand(io_single_laser.STATUS)
@@ -130,21 +130,21 @@ class io_single_laser(QSerialPort):
     def CloseCOM(self):
         '''Closes the serial port.
         '''
-        if(self.isOpen()):
+        if (self.isOpen()):
             self.SendCommand(io_single_laser.OFF)
             self.waitForBytesWritten(500)
 
             self.close()
 
     def GetMaxPower(self):
-        if(self.isOpen()):
+        if (self.isOpen()):
             res = self.SendCommand(io_single_laser.P_MAX)
 
             if not ('<ERR>' in res or '<ACK>' in res):
                 self.Max_Power = float(res)
 
     def GetReadings(self, log_print: bool = True):
-        if(self.isOpen()):
+        if (self.isOpen()):
             res = self.SendCommand(
                 io_single_laser.READ,
                 log_print)
@@ -163,7 +163,7 @@ class io_single_laser(QSerialPort):
                     self.R_Input_Voltage = readings[9]
 
     def GetSettings(self, log_print: bool = True):
-        if(self.isOpen()):
+        if (self.isOpen()):
             res = self.SendCommand(
                 io_single_laser.SETTINGS,
                 log_print)
@@ -182,7 +182,7 @@ class io_single_laser(QSerialPort):
                     self.S_Fan_Temp = float(readings[9]) / 100
 
     def SetPower(self, value: float) -> bool:
-        if(self.isOpen()):
+        if (self.isOpen()):
             res = self.SendCommand(
                 io_single_laser.P_SET +
                 '{:.2f}'.format(value).encode('utf-8'))
@@ -193,7 +193,7 @@ class io_single_laser(QSerialPort):
                 return False
 
     def GetInfo(self):
-        if(self.isOpen()):
+        if (self.isOpen()):
             res = self.SendCommand(
                 io_single_laser.INFO,
                 delay=50)

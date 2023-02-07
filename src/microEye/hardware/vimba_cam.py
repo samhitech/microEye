@@ -809,7 +809,7 @@ class vimba_cam:
             print("reset_timer ERROR")
             return False
 
-    def get_roi(self):
+    def get_roi(self, output=True):
         try:
             # with self.cam:
             self.width = self.cam.Width.get()
@@ -826,9 +826,10 @@ class vimba_cam:
             self.offsetY = self.cam.OffsetY.get()
             self.offsetY_range = self.cam.OffsetY.get_range()
             self.offsetY_inc = self.cam.OffsetY.get_increment()
-            print(
-                "W H X Y", self.width, self.height,
-                self.offsetX, self.offsetY)
+            if output:
+                print(
+                    "W H X Y", self.width, self.height,
+                    self.offsetX, self.offsetY)
             return (self.width, self.height, self.offsetX, self.offsetY)
         except Exception:
             print("ROI Get ERROR")

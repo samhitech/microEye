@@ -31,6 +31,7 @@ from .metadata import MetadataEditor
 from .Rendering import *
 from .thread_worker import *
 from .uImage import *
+from .cmosMaps import cmosMaps
 from microEye import fitting
 
 
@@ -137,6 +138,9 @@ class tiff_viewer(QMainWindow):
         self.loc_form = QFormLayout()
         self.loc_group.setLayout(self.loc_form)
 
+        # CMOS maps tab
+        self.cmos_group = cmosMaps()
+
         # results stats tab layout
         self.data_filters = QWidget()
         self.data_filters_layout = QVBoxLayout()
@@ -146,6 +150,7 @@ class tiff_viewer(QMainWindow):
         self.tabView.addTab(self.file_tree, 'File system')
         self.tabView.addTab(self.controls_group, 'Prefit Options')
         self.tabView.addTab(self.loc_group, 'Fitting')
+        self.tabView.addTab(self.cmos_group, 'CMOS')
         self.tabView.addTab(
             self.data_filters, 'Data Filters')
         self.tabView.addTab(self.metadataEditor, 'Metadata')
@@ -698,6 +703,15 @@ class tiff_viewer(QMainWindow):
             image = self.tiffSeq_Handler.getSlice(
                 self.pages_slider.value(), 0, 0)
 
+        varim = None
+        if self.cmos_group.active.isChecked():
+            res = self.cmos_group.getMaps()
+            if res is not None:
+                if res[0].shape == image.shape:
+                    image = image * res[0]
+                    image = image - res[1]
+                    varim = res[2]
+
         roiInfo = self.get_roi_info()
         if roiInfo is not None:
             origin, dim = roiInfo
@@ -789,26 +803,34 @@ class tiff_viewer(QMainWindow):
 
                     self.image.setImage(im_with_keypoints, autoLevels=True)
             else:
-                rois, coords = pyfit3Dcspline.get_roi_list(image, points, 13)
+                sz = self.fit_roi_size.value()
+                if varim is None:
+                    varims = None
+                    rois, coords = pyfit3Dcspline.get_roi_list(
+                        image, points, sz)
+                else:
+                    rois, varims, coords = pyfit3Dcspline.get_roi_list_CMOS(
+                        image, varim, points, sz)
                 Parameters = None
 
                 if method == FittingMethod._2D_Gauss_MLE_fixed_sigma:
                     Parameters, CRLBs, LogLikelihood = \
                         pyfit3Dcspline.CPUmleFit_LM(
-                            rois, 1, np.array([1]), None, 0)
+                            rois, 1, np.array([1]), varims, 0)
                 elif method == FittingMethod._2D_Gauss_MLE_free_sigma:
                     Parameters, CRLBs, LogLikelihood = \
                         pyfit3Dcspline.CPUmleFit_LM(
-                            rois, 2, np.array([1]), None, 0)
+                            rois, 2, np.array([1]), varims, 0)
                 elif method == FittingMethod._2D_Gauss_MLE_elliptical_sigma:
                     Parameters, CRLBs, LogLikelihood = \
                         pyfit3Dcspline.CPUmleFit_LM(
-                            rois, 4, np.array([1]), None, 0)
+                            rois, 4, np.array([1]), varims, 0)
                 elif method == FittingMethod._3D_Gauss_MLE_cspline_sigma:
                     Parameters, CRLBs, LogLikelihood = \
                         pyfit3Dcspline.CPUmleFit_LM(
                             rois, 5,
-                            np.ones((64, 4, 4, 4), dtype=np.float32), None, 0)
+                            np.ones((64, 4, 4, 4), dtype=np.float32),
+                            varims, 0)
 
                 if Parameters is not None:
                     keypoints = [cv2.KeyPoint(
@@ -1266,6 +1288,17 @@ class tiff_viewer(QMainWindow):
         roiInfo = self.get_roi_info()
         self.enableROI.setChecked(False)
 
+        # varim
+        varim = None
+        offset = 0
+        gain = 1
+        if self.cmos_group.active.isChecked():
+            res = self.cmos_group.getMaps()
+            if res:
+                gain = res[0]
+                offset = res[1]
+                varim = res[2]
+
         # uses only n_threads - 2
         threads = self._threadpool.maxThreadCount() - 2
         print('Threads', threads)
@@ -1283,6 +1316,8 @@ class tiff_viewer(QMainWindow):
                 if i + k < len(self.tiffSeq_Handler):
                     img = self.tiffSeq_Handler.getSlice(
                         i + k, 0, 0)
+                    img = img * gain
+                    img = img - offset
 
                     temp = None
                     if tempEnabled:
@@ -1295,7 +1330,7 @@ class tiff_viewer(QMainWindow):
                         i + k,
                         self.tiffSeq_Handler,
                         img,
-                        None,
+                        varim,
                         temp,
                         filter,
                         detector,
@@ -1356,7 +1391,6 @@ class tiff_viewer(QMainWindow):
         # Vars
         roiSize = self.fit_roi_size.value()
         rel_threshold = self.th_min_slider.value()
-        varim = None
         PSFparam = np.array([1.5])
 
         roi_list = []
@@ -1368,9 +1402,23 @@ class tiff_viewer(QMainWindow):
         roiInfo = self.get_roi_info()
         self.enableROI.setChecked(False)
 
+        # varim
+        varim = None
+        offset = 0
+        gain = 1
+        if self.cmos_group.active.isChecked():
+            res = self.cmos_group.getMaps()
+            if res:
+                gain = res[0]
+                offset = res[1]
+                varim = res[2]
+
         for k in range(len(self.tiffSeq_Handler)):
             cycle = QDateTime.currentDateTime()
             image = self.tiffSeq_Handler.getSlice(k, 0, 0)
+
+            image = image * gain
+            image = image - offset
 
             temp = None
             if tempEnabled:

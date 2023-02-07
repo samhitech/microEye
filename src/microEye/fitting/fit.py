@@ -232,7 +232,7 @@ def pre_localize_frame(
         index=index,
         image=image,
         filtered=filtered,
-        varim=None,
+        varim=varim,
         filter=filter,
         detector=detector,
         rel_threshold=rel_threshold,
@@ -286,21 +286,21 @@ def localize_frame(
         if varim is None:
             rois, coords = get_roi_list(image, points, roiSize)
         else:
-            rois, varim, coords = get_roi_list_CMOS(
+            rois, varims, coords = get_roi_list_CMOS(
                 image, varim, points, roiSize)
 
         if method == FittingMethod._2D_Gauss_MLE_fixed_sigma:
             params, crlbs, loglike = CPUmleFit_LM(
-                rois, 1, PSFparam, varim, 0)
+                rois, 1, PSFparam, varims, 0)
         elif method == FittingMethod._2D_Gauss_MLE_free_sigma:
             params, crlbs, loglike = CPUmleFit_LM(
-                rois, 2, PSFparam, varim, 0)
+                rois, 2, PSFparam, varims, 0)
         elif method == FittingMethod._2D_Gauss_MLE_elliptical_sigma:
             params, crlbs, loglike = CPUmleFit_LM(
-                rois, 4, PSFparam, varim, 0)
+                rois, 4, PSFparam, varims, 0)
         elif method == FittingMethod._3D_Gauss_MLE_cspline_sigma:
             params, crlbs, loglike = CPUmleFit_LM(
-                rois, 5, PSFparam, varim, 0)
+                rois, 5, PSFparam, varims, 0)
 
         params[:, :2] += coords
 
