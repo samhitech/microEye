@@ -38,12 +38,12 @@ class TiledImageSelector(QWidget):
             vb.setDefaultPadding(0.004)
             vb.setAspectLocked(True)
             vb.invertY()
-            menu: QMenu = vb.getMenu(None)
-            vb.action = QAction("Save Raw Data (.tif)")
-            menu.addAction(vb.action)
-            vb.action.triggered.connect(
-                lambda: self.save_raw_data(idx))
-            img = pg.ImageItem(tImg.uImage._view.T)
+            # menu: QMenu = vb.getMenu(None)
+            # vb.action = QAction("Save Raw Data (.tif)")
+            # menu.addAction(vb.action)
+            # vb.action.triggered.connect(
+            #     lambda: self.save_raw_data(tImg))
+            img = pg.ImageItem(tImg.uImage._view)
             vb.addItem(img)
             vb.item = tImg
 
@@ -54,16 +54,23 @@ class TiledImageSelector(QWidget):
         central_layout.addWidget(self.imgView, 4)
 
     def clicked(self, event):
-        if event.double():
-            self.positionSelected.emit(*event.currentItem.item.position)
+        if event.modifiers() == Qt.ShiftModifier and \
+                event.button() == Qt.LeftButton:
+            self.save_raw_data(event.currentItem.item)
+        elif event.modifiers() == Qt.ControlModifier and \
+                event.button() == Qt.LeftButton:
+            self.save_raw_data_all()
         else:
-            self.setWindowTitle(
-                'Tiled Image Selector ({}, {}) ({}, {})'.format(
-                    *event.currentItem.item.index,
-                    *event.currentItem.item.position))
-            self.imgView.setImage(event.currentItem.addedItems[0].image)
+            if event.double():
+                self.positionSelected.emit(*event.currentItem.item.position)
+            else:
+                self.setWindowTitle(
+                    'Tiled Image Selector ({}, {}) ({}, {})'.format(
+                        *event.currentItem.item.index,
+                        *event.currentItem.item.position))
+                self.imgView.setImage(event.currentItem.addedItems[0].image)
 
-    def save_raw_data(self, idx: int):
+    def save_raw_data(self, img: TileImage):
         filename = None
         if filename is None:
             filename, _ = QFileDialog.getSaveFileName(
@@ -72,8 +79,23 @@ class TiledImageSelector(QWidget):
         if len(filename) > 0:
             tf.imwrite(
                 filename,
-                self.images[idx].uImage._image,
+                img.uImage.image,
                 photometric='minisblack')
+
+    def save_raw_data_all(self):
+        directory = None
+        if directory is None:
+            directory = str(
+                QFileDialog.getExistingDirectory(self, "Select Directory"))
+
+        if len(directory) > 0:
+            for idx, tImg in enumerate(self.images):
+                tf.imwrite(
+                    directory + '/{:03d}_image_y{:02d}_x{:02d}.tif'.format(
+                        idx, tImg.index[0], tImg.index[1]
+                    ),
+                    tImg.uImage.image,
+                    photometric='minisblack')
 
 
 class ScanAcquisitionWidget(QGroupBox):
@@ -233,6 +255,31 @@ class ScanAcquisitionWidget(QGroupBox):
         z_buttons.addWidget(self.z_acquire_btn)
         z_buttons.addWidget(self.z_stop_btn)
         layout.addRow(z_buttons)
+
+        self._directory = ""
+        self.save_dir_edit = QLineEdit(self._directory)
+        self.save_dir_edit.setReadOnly(True)
+
+        save_browse_btn = QPushButton(
+            "...", clicked=lambda: self.save_browse_clicked())
+
+    def save_browse_clicked(self):
+        """Slot for browse clicked event"""
+        directory = QFileDialog.getExistingDirectory(
+            self, "Select Directory")
+
+        if len(directory) > 0:
+            self._directory = directory
+            self.save_dir_edit.setText(self._directory)
+
+    def get_params(self):
+        return (
+                self.x_steps.value(),
+                self.y_steps.value(),
+                self.x_stepsize.value(),
+                self.y_stepsize.value(),
+                self.delay.value(),
+                self.average.value())
 
 
 if __name__ == '__main__':

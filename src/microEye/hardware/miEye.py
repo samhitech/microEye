@@ -139,7 +139,7 @@ class miEye_module(QMainWindow):
 
         # Statues Bar Timer
         self.timer = QTimer()
-        self.timer.setInterval(10)
+        self.timer.setInterval(250)
         self.timer.timeout.connect(self.update_gui)
         self.timer.start()
 
@@ -1327,6 +1327,29 @@ class miEye_module(QMainWindow):
             )
             self.lastTile.show()
 
+    def result_scan_export(self, data: list[TileImage]):
+        self._scanning = False
+        self.scanAcqWidget.acquire_btn.setEnabled(True)
+        self.scanAcqWidget.z_acquire_btn.setEnabled(True)
+
+        if data:
+            if len(self.scanAcqWidget._directory) > 0:
+                path = self.scanAcqWidget._directory
+                index = 0
+                while (os.path.exists(path + '/{:03d}_XY/'.format(index))):
+                    index += 1
+                path = path + '/{:03d}_XY/'.format(index)
+                if not os.path.exists(path):
+                    os.makedirs(path)
+                for idx, tImg in enumerate(data):
+                    tf.imwrite(
+                        path +
+                        '{:03d}_image_y{:02d}_x{:02d}.tif'.format(
+                            idx, tImg.index[0], tImg.index[1]
+                        ),
+                        tImg.uImage.image,
+                        photometric='minisblack')
+
     def start_scan_acquisitionXY(
             self, params):
         if not self._scanning:
@@ -1465,6 +1488,8 @@ def z_stack_acquisition(
             cam_pan = miEye.vimba_panels[0]
             if cam.acquisition:
                 return
+
+            peak = miEye.stage.center_pixel
             for x in range(n):
                 if x > 0:
                     miEye.stage.autoFocusTracking()
@@ -1481,8 +1506,5 @@ def z_stack_acquisition(
     except Exception:
         traceback.print_exc()
     finally:
-        miEye.stage.autoFocusTracking()
-        miEye.scanAcqWidget.moveZ.emit(not reverse, (n-1)*step_size)
-        QThread.msleep(delay)
-        miEye.stage.autoFocusTracking()
+        miEye.stage.center_pixel = peak
         return
