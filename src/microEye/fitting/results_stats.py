@@ -9,11 +9,11 @@ from PyQt5.QtCore import *
 from PyQt5.QtWidgets import *
 
 ParametersHeaders = {
-    0: ['x', 'y', 'bg', 'I', 'ratio x/y', 'frame'],
-    1: ['x', 'y', 'bg', 'I'],
-    2: ['x', 'y', 'bg', 'I', 'sigma'],
-    4: ['x', 'y', 'bg', 'I', 'sigmax', 'sigmay'],
-    5: ['x', 'y', 'bg', 'I', 'z']
+    0: ['x', 'y', 'I', 'bg', 'ratio x/y', 'frame'],
+    1: ['x', 'y', 'I', 'bg'],
+    2: ['x', 'y', 'I', 'bg', 'sigma'],
+    4: ['x', 'y', 'I', 'bg', 'sigmax', 'sigmay'],
+    5: ['x', 'y', 'I', 'bg', 'z']
 }
 
 

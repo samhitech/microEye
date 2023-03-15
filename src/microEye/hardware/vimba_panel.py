@@ -7,6 +7,7 @@ import traceback
 from queue import Queue
 
 import json
+import math
 import cv2
 import numpy as np
 import pyqtgraph as pg
@@ -239,6 +240,22 @@ class Vimba_Panel(QGroupBox):
         self.cam_exposure_auto_cbox.currentIndexChanged[str] \
             .connect(self.cam_cbox_changed)
 
+        # Frame Rate
+        self.cam_framerate_enabled = QCheckBox('Frame Rate')
+        self.cam_framerate_enabled.setChecked(False)
+        self.cam_framerate_enabled.stateChanged.connect(
+            self.cam_framerate_changed)
+
+        self.cam_framerate_qs = QDoubleSpinBox()
+        self.cam_framerate_qs.setMinimum(self._cam.frameRate_range[0])
+        self.cam_framerate_qs.setMaximum(self._cam.frameRate_range[1])
+        self.cam_framerate_qs.setSingleStep(0.1)
+        self.cam_framerate_qs.setDecimals(5)
+        self.cam_framerate_qs.setValue(self._cam.frameRate)
+        self.cam_framerate_qs.setSuffix(self._cam.frameRate_unit)
+        self.cam_framerate_qs.valueChanged.connect(self.framerate_spin_changed)
+        self.cam_framerate_qs.setEnabled(False)
+
         # trigger mode combobox
         self.cam_trigger_mode_lbl = QLabel("Trigger Mode")
         self.cam_trigger_mode_cbox = QComboBox()
@@ -351,8 +368,21 @@ class Vimba_Panel(QGroupBox):
         self.preview_ch_box = QCheckBox("Preview")
         self.preview_ch_box.setChecked(not self.mini)
 
-        self.dual_view_bx = QCheckBox("Dual Channel (Splits the AOI in half).")
-        self.dual_view_bx.setChecked(False)
+        self.single_view_rbtn = QRadioButton("Single View")
+        self.single_view_rbtn.setChecked(True)
+        self.dual_view_rbtn = QRadioButton("Dual Channel (Side by Side).")
+        self.dual_view_overlap_rbtn = QRadioButton(
+            "Dual Channel (Overlaid).")
+        self.view_btns = QButtonGroup()
+        self.view_btns.addButton(self.single_view_rbtn)
+        self.view_btns.addButton(self.dual_view_rbtn)
+        self.view_btns.addButton(self.dual_view_overlap_rbtn)
+        self.view_btns.buttonToggled.connect(self.view_toggled)
+
+        self.view_rbtns = QHBoxLayout()
+        self.view_rbtns.addWidget(self.single_view_rbtn)
+        self.view_rbtns.addWidget(self.dual_view_rbtn)
+        self.view_rbtns.addWidget(self.dual_view_overlap_rbtn)
 
         # preview checkbox
         self.slow_lut_rbtn = QRadioButton("LUT Numpy (12bit)")
@@ -373,22 +403,45 @@ class Vimba_Panel(QGroupBox):
 
         # controls for histogram stretching and plot
         self.histogram_lbl = QLabel("Histogram")
-        self.alpha = QSlider(orientation=Qt.Orientation.Horizontal)
-        self.alpha.setMinimum(0)
-        self.alpha.setMaximum(self._nBins)
-        self.alpha.setValue(0)
-        self.beta = QSlider(orientation=Qt.Orientation.Horizontal)
-        self.beta.setMinimum(0)
-        self.beta.setMaximum(self._nBins)
-        self.beta.setValue(self._nBins)
+        # self.alpha = QSlider(orientation=Qt.Orientation.Horizontal)
+        # self.alpha.setMinimum(0)
+        # self.alpha.setMaximum(self._nBins)
+        # self.alpha.setValue(0)
+        # self.beta = QSlider(orientation=Qt.Orientation.Horizontal)
+        # self.beta.setMinimum(0)
+        # self.beta.setMaximum(self._nBins)
+        # self.beta.setValue(self._nBins)
         # autostretch checkbox
         self.auto_stretch = QCheckBox("Auto Stretch")
         self.auto_stretch.setChecked(True)
         # Hist plotWidget
         self.histogram = pg.PlotWidget()
         self.hist_cdf = pg.PlotWidget()
-        self._plot_ref = self.histogram.plot(self._bins, self._hist)
-        self._cdf_plot_ref = self.hist_cdf.plot(self._bins, self._hist)
+        greenP = pg.mkPen(color='g')
+        blueP = pg.mkPen(color='b')
+        greenB = pg.mkBrush(0, 255, 0, 32)
+        blueB = pg.mkBrush(0, 0, 255, 32)
+        self._plot_ref = self.histogram.plot(
+            self._bins, self._hist, pen=greenP)
+        self._cdf_plot_ref = self.hist_cdf.plot(
+            self._bins, self._hist, pen=greenP)
+        self._plot_ref_2 = self.histogram.plot(
+            self._bins, self._hist, pen=blueP)
+        self._cdf_plot_ref_2 = self.hist_cdf.plot(
+            self._bins, self._hist, pen=blueP)
+
+        self.lr_0 = pg.LinearRegionItem(
+            (0, self._nBins),
+            bounds=(0, self._nBins),
+            pen=greenP, brush=greenB,
+            movable=True, swapMode="push", span=(0.0, 1))
+        self.lr_1 = pg.LinearRegionItem(
+            (0, self._nBins),
+            bounds=(0, self._nBins),
+            pen=blueP, brush=blueB,
+            movable=True, swapMode="push", span=(1, 1))
+        self.histogram.addItem(self.lr_0)
+        self.histogram.addItem(self.lr_1)
 
         # Stats. info
         self.info_cap = QLabel("Capture {:d} | {:.2f} ms ".format(
@@ -537,6 +590,11 @@ class Vimba_Panel(QGroupBox):
         self.first_tab_Layout.addRow(
             self.cam_pixel_format_lbl,
             self.cam_pixel_format_cbox)
+
+        self.first_tab_Layout.addRow(
+            self.cam_framerate_enabled,
+            self.cam_framerate_qs)
+
         self.first_tab_Layout.addRow(self.config_Hlay)
         self.first_tab_Layout.addRow(self.cam_freerun_btn)
         self.first_tab_Layout.addRow(self.cam_stop_btn)
@@ -557,7 +615,8 @@ class Vimba_Panel(QGroupBox):
 
         if not self.mini:
             self.second_tab_Layout.addRow(self.preview_ch_box)
-            self.second_tab_Layout.addRow(self.dual_view_bx)
+            self.second_tab_Layout.addRow(QLabel('View Options:'))
+            self.second_tab_Layout.addRow(self.view_rbtns)
 
         self.second_tab_Layout.addRow(self.slow_lut_rbtn)
         self.second_tab_Layout.addRow(self.fast_lut_rbtn)
@@ -568,9 +627,7 @@ class Vimba_Panel(QGroupBox):
 
         self.second_tab_Layout.addRow(
             self.histogram_lbl,
-            self.alpha)
-        self.second_tab_Layout.addWidget(self.beta)
-        self.second_tab_Layout.addWidget(self.auto_stretch)
+            self.auto_stretch)
         self.second_tab_Layout.addRow(self.histogram)
         self.second_tab_Layout.addRow(self.hist_cdf)
         self.second_tab_Layout.addRow(
@@ -689,6 +746,8 @@ class Vimba_Panel(QGroupBox):
         self.AOI_width_tbox.setValue(int(self.cam.width))
         self.AOI_height_tbox.setValue(int(self.cam.height))
 
+        self.refresh_framerate()
+
     def reset_AOI(self):
         '''Resets the AOI for the slected IDS_Camera
         '''
@@ -703,6 +762,8 @@ class Vimba_Panel(QGroupBox):
         self.AOI_y_tbox.setValue(0)
         self.AOI_width_tbox.setValue(int(self.cam.width))
         self.AOI_height_tbox.setValue(int(self.cam.height))
+
+        self.refresh_framerate()
 
     def center_AOI(self):
         '''Sets the AOI for the slected vimba_cam
@@ -722,6 +783,8 @@ class Vimba_Panel(QGroupBox):
         self.AOI_width_tbox.setValue(self.cam.width)
         self.AOI_height_tbox.setValue(self.cam.height)
 
+        self.refresh_framerate()
+
     def select_AOI(self):
         if self.frame is not None:
             aoi = cv2.selectROI(self.frame._view)
@@ -732,6 +795,17 @@ class Vimba_Panel(QGroupBox):
             self.AOI_y_tbox.setValue(int(aoi[1] / z))
             self.AOI_width_tbox.setValue(int(aoi[2] / z))
             self.AOI_height_tbox.setValue(int(aoi[3] / z))
+
+    def view_toggled(self, params):
+        if self.single_view_rbtn.isChecked():
+            self.lr_0.setSpan(0, 1)
+            self.lr_1.setMovable(False)
+            self.lr_1.setRegion((0, self._nBins))
+            self.lr_1.setSpan(1.0, 1.0)
+        else:
+            self.lr_0.setSpan(0, 0.5)
+            self.lr_1.setMovable(True)
+            self.lr_1.setSpan(0.5, 1.0)
 
     @pyqtSlot()
     def save_browse_clicked(self):
@@ -785,6 +859,7 @@ class Vimba_Panel(QGroupBox):
                 self._cam.get_exposure_auto()
             elif self.sender() is self.cam_pixel_format_cbox:
                 self._cam.set_pixel_format(value)
+                self.refresh_framerate()
 
     @pyqtSlot(int, float)
     def cam_exposure_value_changed(self, index, value):
@@ -803,6 +878,7 @@ class Vimba_Panel(QGroupBox):
             self._cam.get_exposure(False)
 
         self.refresh_exposure()
+        self.refresh_framerate()
 
         self.OME_tab.exposure.setValue(self._cam.exposure_current / 1000)
         if self.master:
@@ -823,6 +899,7 @@ class Vimba_Panel(QGroupBox):
             self._cam.get_exposure(False)
 
         self.refresh_exposure()
+        self.refresh_framerate()
 
         self.OME_tab.exposure.setValue(self._cam.exposure_current / 1000)
         if self.master:
@@ -841,6 +918,29 @@ class Vimba_Panel(QGroupBox):
         self.cam_exposure_qs.setValue(self._cam.exposure_current)
         self.cam_exposure_qs.valueChanged.connect(
             self.exposure_spin_changed)
+
+    def refresh_framerate(self, value=None):
+        with self._cam.cam:
+            if value:
+                self._cam.setFrameRate(value)
+            self._cam.getFrameRate(False)
+
+        self.cam_framerate_qs.setMinimum(self._cam.frameRate_range[0])
+        self.cam_framerate_qs.setMaximum(self._cam.frameRate_range[1])
+        self.cam_framerate_qs.setValue(self._cam.frameRate)
+
+    def cam_framerate_changed(self, value):
+        with self._cam.cam:
+            self.cam.setAcquisitionFrameRateEnable(
+                self.cam_framerate_enabled.isChecked())
+
+        self.cam_framerate_qs.setEnabled(
+            self.cam_framerate_enabled.isChecked())
+        self.refresh_framerate()
+
+    @pyqtSlot(float)
+    def framerate_spin_changed(self, value: float):
+        self.refresh_framerate(value)
 
     def io_line_changed(self, value):
         with self._cam.cam:
@@ -1042,36 +1142,87 @@ class Vimba_Panel(QGroupBox):
                             self._frames.put(self.frame.image)
 
                     if self.preview_ch_box.isChecked():
-                        _range = None
-                        # image stretching
-                        if not self.auto_stretch.isChecked():
-                            _range = (self.alpha.value(), self.beta.value())
+                        if self.dual_view_overlap_rbtn.isChecked() or \
+                                self.dual_view_rbtn.isChecked():
+                            _rang_left = None
+                            _rang_right = None
 
-                        self.frame.equalizeLUT(
-                            _range, self.slow_lut_rbtn.isChecked())
-                        if self.auto_stretch.isChecked():
-                            self.alpha.setValue(self.frame._min)
-                            self.beta.setValue(self.frame._max)
-                        self.histogram.setXRange(
-                            self.frame._min, self.frame._max)
-                        self.hist_cdf.setXRange(
-                            self.frame._min, self.frame._max)
+                            # image stretching
+                            if not self.auto_stretch.isChecked():
+                                _rang_left = tuple(
+                                    map(math.ceil, self.lr_0.getRegion()))
+                                _rang_right = tuple(
+                                    map(math.ceil, self.lr_1.getRegion()))
 
-                        self._plot_ref.setData(self.frame._hist[:, 0])
-                        self._cdf_plot_ref.setData(self.frame._cdf)
+                            left, right = self.frame.hsplitView()
 
-                        if self.dual_view_bx.isChecked():
-                            BGR_img = self.frame.hsplitView(False)
+                            left.equalizeLUT(
+                                _rang_left, self.slow_lut_rbtn.isChecked())
+                            right.equalizeLUT(
+                                _rang_right, self.slow_lut_rbtn.isChecked())
+                            if self.auto_stretch.isChecked():
+                                self.lr_0.setRegion((left._min, left._max))
+                                self.lr_1.setRegion((right._min, right._max))
+                                self.histogram.setXRange(
+                                    min(left._min, right._min),
+                                    max(left._max, right._max))
+                                self.hist_cdf.setXRange(
+                                    min(left._min, right._min),
+                                    max(left._max, right._max))
 
-                            BGR_img = cv2.resize(
-                                BGR_img,
-                                (0, 0),
-                                fx=self.zoom_box.value(),
-                                fy=self.zoom_box.value(),
-                                interpolation=cv2.INTER_NEAREST)
+                            self._plot_ref.setData(left._hist[:, 0])
+                            self._cdf_plot_ref.setData(left._cdf)
+                            self._plot_ref_2.setData(right._hist[:, 0])
+                            self._cdf_plot_ref_2.setData(right._cdf)
 
-                            cv2.imshow(cam.name, BGR_img)
+                            if self.dual_view_overlap_rbtn.isChecked():
+                                _img = np.zeros(
+                                    left._view.shape[:2] + (3,),
+                                    dtype=np.uint8)
+                                _img[..., 1] = left._view
+                                _img[..., 0] = right._view
+                                _img = cv2.resize(
+                                    _img,
+                                    (0, 0),
+                                    fx=self.zoom_box.value(),
+                                    fy=self.zoom_box.value(),
+                                    interpolation=cv2.INTER_NEAREST)
+
+                                cv2.imshow(cam.name, _img)
+                            else:
+                                _img = cv2.resize(
+                                    np.concatenate(
+                                        [left._view, right._view], axis=1),
+                                    (0, 0),
+                                    fx=self.zoom_box.value(),
+                                    fy=self.zoom_box.value(),
+                                    interpolation=cv2.INTER_NEAREST)
+
+                                cv2.imshow(cam.name, _img)
                         else:
+                            _range = None
+
+                            # image stretching
+                            if not self.auto_stretch.isChecked():
+                                _range = tuple(
+                                    map(math.ceil, self.lr_0.getRegion()))
+
+                            self.frame.equalizeLUT(
+                                _range, self.slow_lut_rbtn.isChecked())
+
+                            if self.auto_stretch.isChecked():
+                                self.lr_0.setRegion(
+                                    (self.frame._min, self.frame._max))
+                                self.histogram.setXRange(
+                                    self.frame._min, self.frame._max)
+                                self.hist_cdf.setXRange(
+                                    self.frame._min, self.frame._max)
+
+                            self._plot_ref.setData(self.frame._hist[:, 0])
+                            self._cdf_plot_ref.setData(self.frame._cdf)
+                            self._plot_ref_2.setData(self._hist)
+                            self._cdf_plot_ref_2.setData(self._hist)
+
                             # resizing the image
                             self.frame._view = cv2.resize(
                                 self.frame._view, (0, 0),

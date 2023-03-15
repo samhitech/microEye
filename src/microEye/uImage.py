@@ -166,7 +166,7 @@ class uImage():
 
         return uImage(RGB_img)
 
-    def hsplitView(self, RGB=True) -> np.ndarray:
+    def hsplitViewOverlay(self, RGB=True) -> np.ndarray:
         mid = self._view.shape[1] // 2
         left_view = self._view[:, :mid]
         right_view = self._view[:, mid:]
@@ -174,12 +174,19 @@ class uImage():
         _img = np.zeros(
             left_view.shape[:2] + (3,), dtype=np.uint8)
         if RGB:
-            _img[..., 0] = left_view
-            _img[..., 1] = np.fliplr(right_view)
+            _img[..., 1] = left_view
+            _img[..., 2] = np.fliplr(right_view)
         else:
-            _img[..., 2] = left_view
-            _img[..., 1] = np.fliplr(right_view)
+            _img[..., 1] = left_view
+            _img[..., 0] = np.fliplr(right_view)
         return _img
+
+    def hsplitView(self):
+        mid = self.image.shape[1] // 2
+        left_view = self.image[:, :mid]
+        right_view = self.image[:, mid:]
+
+        return uImage(left_view), uImage(np.fliplr(right_view))
 
 
 class TiffSeqHandler:

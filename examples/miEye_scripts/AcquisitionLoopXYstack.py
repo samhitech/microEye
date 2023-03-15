@@ -10,6 +10,8 @@ def loop(mieye, iterations, delay):
             mieye._stop_scan = False
             mieye._scanning = True
 
+            params = mieye.scanAcqWidget.get_params()
+
             mieye.scan_worker = thread_worker(
                 scan_acquisition, mieye,
                 [params[0], params[1]],

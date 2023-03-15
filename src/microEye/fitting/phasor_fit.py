@@ -87,4 +87,4 @@ def intensity_estimate(roi: np.ndarray, bg_mask, sig_mask, percentile=56):
 
     intensity = np.sum(roi[sig_mask]) - (np.sum(sig_mask) * background)
 
-    return background, max(0, intensity)
+    return max(0, intensity), background

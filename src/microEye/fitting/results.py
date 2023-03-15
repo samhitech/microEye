@@ -62,11 +62,11 @@ class FittingMethod:
 
 
 ParametersHeaders = {
-    0: ['x', 'y', 'bg', 'I', 'ratio x/y', 'frame'],
-    1: ['x', 'y', 'bg', 'I', 'iteration'],
-    2: ['x', 'y', 'bg', 'I', 'sigma', 'iteration'],
-    4: ['x', 'y', 'bg', 'I', 'sigmax', 'sigmay', 'iteration'],
-    5: ['x', 'y', 'bg', 'I', 'z', 'iteration']
+    0: ['x', 'y', 'I', 'bg', 'ratio x/y', 'frame'],
+    1: ['x', 'y', 'I', 'bg', 'iteration'],
+    2: ['x', 'y', 'I', 'bg', 'sigma', 'iteration'],
+    4: ['x', 'y', 'I', 'bg', 'sigmax', 'sigmay', 'iteration'],
+    5: ['x', 'y', 'I', 'bg', 'z', 'iteration']
 }
 
 

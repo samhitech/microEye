@@ -70,6 +70,14 @@ class vimba_cam:
 
         self.exposure_auto = 'Off'
 
+        self.frameRateEnabled = False
+
+        self.frameRate = 0.0
+
+        self.frameRate_increment = 1
+        self.frameRate_unit = ''
+        self.frameRate_range = None
+
         self.trigger_source = 'Software'
 
         self.trigger_selector = 'FrameStart'
@@ -115,6 +123,8 @@ class vimba_cam:
     def initialize(self):
         with self.cam:
             self.default()
+            self.getAcquisitionFrameRateEnable()
+            self.getFrameRate()
             self.get_exposure()
             self.get_exposure_mode()
             self.get_exposure_auto()
@@ -227,6 +237,7 @@ class vimba_cam:
                 self.exposure_range[0])
             exposure.set(set_value)
             self.get_exposure()
+            self.getFrameRate()
             return 1
         except Exception:
             print("Exposure Set ERROR")
@@ -326,6 +337,62 @@ class vimba_cam:
             print("ExposureAutos Get ERROR")
 
         return [modes, displayNames, tooltips]
+
+    def setAcquisitionFrameRateEnable(self, enabled: bool = False):
+        try:
+            AcquisitionFrameRateEnable = self.cam.AcquisitionFrameRateEnable
+            AcquisitionFrameRateEnable.set(enabled)
+            self.frameRateEnabled = enabled
+        except Exception:
+            print("AcquisitionFrameRateEnable set ERROR")
+
+    def getAcquisitionFrameRateEnable(self, output: bool = True):
+        try:
+            AcquisitionFrameRateEnable = self.cam.AcquisitionFrameRateEnable
+            self.frameRateEnabled = AcquisitionFrameRateEnable.get()
+            if output:
+                print(
+                    "AcquisitionFrameRate Enabled ",
+                    self.frameRateEnabled)
+        except Exception:
+            print("AcquisitionFrameRateEnable get ERROR")
+
+    def getFrameRate(self, output: bool = True):
+        try:
+            frameRate = self.cam.AcquisitionFrameRate
+            self.frameRate = frameRate.get()
+            self.frameRate_unit = frameRate.get_unit()
+            self.frameRate_range = frameRate.get_range()
+            if output:
+                print(
+                    "Current FrameRate ",
+                    self.frameRate,
+                    self.frameRate_unit)
+            return self.frameRate
+        except Exception:
+            print("AcquisitionFrameRate get ERROR")
+            self.frameRate = 0.0
+            return self.frameRate
+
+    def setFrameRate(self, value: float):
+        if not self.frameRateEnabled:
+            return 0
+
+        try:
+            frameRate = self.cam.AcquisitionFrameRate
+            self.frameRate_unit = frameRate.get_unit()
+            self.frameRate_range = frameRate.get_range()
+
+            set_value = max(
+                min(value, self.frameRate_range[1]),
+                self.frameRate_range[0])
+            frameRate.set(set_value)
+            self.getFrameRate(False)
+            self.get_exposure(False)
+            return 1
+        except Exception:
+            print("AcquisitionFrameRate Set ERROR")
+            return 0
 
     def set_trigger_mode(self, value: str = 'On'):
         try:
