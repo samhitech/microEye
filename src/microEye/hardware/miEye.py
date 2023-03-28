@@ -33,8 +33,15 @@ from .port_config import *
 from .scan_acquisition import *
 from .thorlabs import *
 from .thorlabs_panel import Thorlabs_Panel
-from .ueye_camera import IDS_Camera
-from .ueye_panel import IDS_Panel
+
+try:
+    from pyueye import ueye
+    from .ueye_camera import IDS_Camera
+    from .ueye_panel import IDS_Panel
+except Exception:
+    ueye = None
+    IDS_Camera = None
+    IDS_Panel = None
 
 try:
     import vimba as vb

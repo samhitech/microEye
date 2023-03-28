@@ -285,6 +285,7 @@ def localize_frame(
     else:
         if varim is None:
             rois, coords = get_roi_list(image, points, roiSize)
+            varims = None
         else:
             rois, varims, coords = get_roi_list_CMOS(
                 image, varim, points, roiSize)

@@ -922,7 +922,7 @@ class IDS_Panel(QGroupBox):
             time = QDateTime.currentDateTime()
             self._nFrames = int(self.frames_tbox.text())
             # Continuous image capture
-            while(nRet == ueye.IS_SUCCESS):
+            while (nRet == ueye.IS_SUCCESS):
                 self._exec_time = time.msecsTo(QDateTime.currentDateTime())
                 time = QDateTime.currentDateTime()
 
@@ -979,7 +979,7 @@ class IDS_Panel(QGroupBox):
             counter = 0
             accumulator = None
             # Continuous image display
-            while(nRet == ueye.IS_SUCCESS):
+            while (nRet == ueye.IS_SUCCESS):
                 # for display time estimations
 
                 # proceed only if the buffer is not empty
@@ -1107,7 +1107,7 @@ class IDS_Panel(QGroupBox):
                         getFilename(index),
                         ome.to_xml())
 
-            while(nRet == ueye.IS_SUCCESS):
+            while (nRet == ueye.IS_SUCCESS):
                 # save in case frame stack is not empty
                 if not self._frames.empty():
                     # for save time estimations

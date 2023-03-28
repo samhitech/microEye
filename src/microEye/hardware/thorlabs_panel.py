@@ -11,7 +11,6 @@ import tifffile as tf
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
-from pyueye import ueye
 
 from ..qlist_slider import *
 from ..thread_worker import *
@@ -865,7 +864,7 @@ class Thorlabs_Panel(QGroupBox):
             time = QDateTime.currentDateTime()
             self._nFrames = int(self.frames_tbox.text())
             # Continuous image capture
-            while(nRet == ueye.IS_SUCCESS):
+            while(nRet == 0):
                 self._exec_time = time.msecsTo(QDateTime.currentDateTime())
                 time = QDateTime.currentDateTime()
 
@@ -919,7 +918,7 @@ class Thorlabs_Panel(QGroupBox):
         try:
             time = QDateTime.currentDateTime()
             # Continuous image display
-            while(nRet == ueye.IS_SUCCESS):
+            while(nRet == 0):
                 # for display time estimations
 
                 # proceed only if the buffer is not empty

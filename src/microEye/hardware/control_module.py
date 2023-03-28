@@ -31,8 +31,15 @@ from .piezo_concept import *
 from .port_config import *
 from .thorlabs import *
 from .thorlabs_panel import Thorlabs_Panel
-from .ueye_camera import IDS_Camera
-from .ueye_panel import IDS_Panel
+
+try:
+    from pyueye import ueye
+    from .ueye_camera import IDS_Camera
+    from .ueye_panel import IDS_Panel
+except Exception:
+    ueye = None
+    IDS_Camera = None
+    IDS_Panel = None
 
 warnings.filterwarnings("ignore", category=OptimizeWarning)
 
@@ -624,7 +631,7 @@ class control_module(QMainWindow):
         self._exec_time = 0
         time = QDateTime.currentDateTime()
         QThread.msleep(100)
-        while(self.isVisible()):
+        while (self.isVisible()):
             try:
                 # dt = Gaussian(
                 #     np.array(range(512)), 255, np.random.normal() + 256, 50)
@@ -648,7 +655,7 @@ class control_module(QMainWindow):
                         data = np.squeeze(data)
                     # self.ydata_temp = self.ydata
                     self.peak_fit(movez_callback, data.copy())
-                    if(self.file is not None):
+                    if (self.file is not None):
                         np.savetxt(self.file,
                                    np.array((self._exec_time, self.popt[1]))
                                    .reshape((1, 2)), delimiter=";")
@@ -866,7 +873,7 @@ class control_module(QMainWindow):
         '''Starts the IR peak position acquisition and
         creates a file in the current directory.
         '''
-        if(self.file is None):
+        if (self.file is None):
             filename = None
             if filename is None:
                 filename, _ = QFileDialog.getSaveFileName(
@@ -880,7 +887,7 @@ class control_module(QMainWindow):
     def stop_IR(self):
         '''Stops the IR peak position acquisition and closes the file.
         '''
-        if(self.file is not None):
+        if (self.file is not None):
             self.file.close()
             self.file = None
             self.frames_saved = 0
