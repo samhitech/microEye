@@ -864,7 +864,7 @@ class Thorlabs_Panel(QGroupBox):
             time = QDateTime.currentDateTime()
             self._nFrames = int(self.frames_tbox.text())
             # Continuous image capture
-            while(nRet == 0):
+            while (nRet == 0):
                 self._exec_time = time.msecsTo(QDateTime.currentDateTime())
                 time = QDateTime.currentDateTime()
 
@@ -918,7 +918,7 @@ class Thorlabs_Panel(QGroupBox):
         try:
             time = QDateTime.currentDateTime()
             # Continuous image display
-            while(nRet == 0):
+            while (nRet == 0):
                 # for display time estimations
 
                 # proceed only if the buffer is not empty
@@ -1020,7 +1020,7 @@ class Thorlabs_Panel(QGroupBox):
                         getFilename(index),
                         ome.to_xml())
 
-            while(nRet == CMD.IS_SUCCESS):
+            while (nRet == CMD.IS_SUCCESS):
                 # save in case frame stack is not empty
                 if not self._frames.empty():
                     # for save time estimations

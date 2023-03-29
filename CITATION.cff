@@ -1,0 +1,12 @@
+cff-version: 1.2.0
+title: microEye
+message: 'If you use this software, please cite it as below.'
+type: software
+authors:
+  - given-names: Mohammad Nour
+    family-names: Alsamsam
+    orcid: 'https://orcid.org/0000-0001-6998-9468'
+identifiers:
+  - type: url
+    value: 'https://github.com/samhitech/microEye'
+    description: Github repository

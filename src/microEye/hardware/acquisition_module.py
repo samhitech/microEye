@@ -693,7 +693,7 @@ class acquisition_module(QMainWindow):
                 # if not os.path.exists(panel._save_path):
                 #     os.makedirs(panel._save_path)
             # Continuous image display
-            while(nRet == ueye.IS_SUCCESS):
+            while (nRet == ueye.IS_SUCCESS):
                 self._exec_time = time.msecsTo(QDateTime.currentDateTime())
                 time = QDateTime.currentDateTime()
 
