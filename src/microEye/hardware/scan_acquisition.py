@@ -107,6 +107,8 @@ class ScanAcquisitionWidget(QGroupBox):
 
     moveZ = pyqtSignal(bool, int)
 
+    directoryChanged = pyqtSignal(str)
+
     def __init__(self) -> None:
         super().__init__()
 
@@ -263,6 +265,9 @@ class ScanAcquisitionWidget(QGroupBox):
         save_browse_btn = QPushButton(
             "...", clicked=lambda: self.save_browse_clicked())
 
+        layout.addRow(self.save_dir_edit)
+        layout.addWidget(save_browse_btn)
+
     def save_browse_clicked(self):
         """Slot for browse clicked event"""
         directory = QFileDialog.getExistingDirectory(
@@ -271,6 +276,7 @@ class ScanAcquisitionWidget(QGroupBox):
         if len(directory) > 0:
             self._directory = directory
             self.save_dir_edit.setText(self._directory)
+            self.directoryChanged.emit(self._directory)
 
     def get_params(self):
         return (

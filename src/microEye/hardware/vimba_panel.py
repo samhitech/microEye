@@ -23,6 +23,7 @@ from ..qlist_slider import *
 from ..thread_worker import *
 from .vimba_cam import vimba_cam
 from ..uImage import uImage
+from .line_profiler import LineProfiler
 
 try:
     import vimba as vb
@@ -93,6 +94,9 @@ class Vimba_Panel(QGroupBox):
 
         self.mini = mini
 
+        # Line Profiler
+        self.lineProfiler = LineProfiler()
+
         # main layout
         self.main_layout = QVBoxLayout()
 
@@ -116,6 +120,7 @@ class Vimba_Panel(QGroupBox):
             self._cam.cam.get_model())
         self.OME_tab.det_serial.setText(
             self._cam.cam.get_serial())
+
         # add tabs
         self.main_tab_view.addTab(self.first_tab, "Main")
         self.main_tab_view.addTab(self.second_tab, "Preview")
@@ -368,11 +373,19 @@ class Vimba_Panel(QGroupBox):
         self.preview_ch_box = QCheckBox("Preview")
         self.preview_ch_box.setChecked(not self.mini)
 
+        self.line_profiler_ch_box = QCheckBox("Line Profiler")
+        self.line_profiler_ch_box.setChecked(False)
+        self.line_profiler_ch_box.stateChanged.connect(
+            lambda: self.lineProfiler.show()
+            if self.line_profiler_ch_box.isChecked()
+            else self.lineProfiler.hide()
+        )
+
         self.single_view_rbtn = QRadioButton("Single View")
         self.single_view_rbtn.setChecked(True)
         self.dual_view_rbtn = QRadioButton("Dual Channel (Side by Side).")
         self.dual_view_overlap_rbtn = QRadioButton(
-            "Dual Channel (Overlaid).")
+            "Dual Channel (Overlapped).")
         self.view_btns = QButtonGroup()
         self.view_btns.addButton(self.single_view_rbtn)
         self.view_btns.addButton(self.dual_view_rbtn)
@@ -617,6 +630,7 @@ class Vimba_Panel(QGroupBox):
             self.second_tab_Layout.addRow(self.preview_ch_box)
             self.second_tab_Layout.addRow(QLabel('View Options:'))
             self.second_tab_Layout.addRow(self.view_rbtns)
+            self.second_tab_Layout.addRow(self.line_profiler_ch_box)
 
         self.second_tab_Layout.addRow(self.slow_lut_rbtn)
         self.second_tab_Layout.addRow(self.fast_lut_rbtn)
@@ -1142,6 +1156,9 @@ class Vimba_Panel(QGroupBox):
                             self._frames.put(self.frame.image)
 
                     if self.preview_ch_box.isChecked():
+                        if self.line_profiler_ch_box.isChecked():
+                            self.lineProfiler.setData(self.frame._image)
+
                         if self.dual_view_overlap_rbtn.isChecked() or \
                                 self.dual_view_rbtn.isChecked():
                             _rang_left = None

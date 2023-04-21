@@ -9,108 +9,84 @@ from PyQt5.QtGui import *
 # from ..uImage import uImage
 
 
-class LineProfiler(QGroupBox):
+class LineProfiler(QWidget):
 
     def __init__(self) -> None:
         super().__init__()
 
-        self.setTitle('Line Profiler')
+        self.setWindowTitle('Line Profiler')
 
         self.lineProfiles = []
+        self.image = np.random.normal(50, 2, (512, 512))
 
         layout = QFormLayout()
         self.setLayout(layout)
 
         params = QHBoxLayout()
 
-        self.x_1 = QSpinBox()
-        self.x_1.setMinimum(0)
-        self.x_1.setMaximum(10**5)
-        self.x_1.setValue(0)
-        self.x_2 = QSpinBox()
-        self.x_2.setMinimum(0)
-        self.x_2.setMaximum(10**5)
-        self.x_2.setValue(0)
-
-        self.y_1 = QSpinBox()
-        self.y_1.setMinimum(0)
-        self.y_1.setMaximum(10**5)
-        self.y_1.setValue(0)
-        self.y_2 = QSpinBox()
-        self.y_2.setMinimum(0)
-        self.y_2.setMaximum(10**5)
-        self.y_2.setValue(256)
-
-        self.lineWidth = QSpinBox()
-        self.lineWidth.setMinimum(0)
-        self.lineWidth.setMaximum(255)
-        self.lineWidth.setValue(1)
-
         self.average = QSpinBox()
         self.average.setMinimum(1)
         self.average.setMaximum(128)
         self.average.setValue(1)
 
-        self.add = QPushButton('Add', clicked=lambda: self.lineProfiles.append(
-            {
-                'P1': (self.x_1.value(), self.y_1.value()),
-                'P2': (self.x_2.value(), self.y_2.value()),
-                'Width': self.lineWidth.value()
-            }
-        ))
+        # params.addWidget(
+        #     QLabel('Average [frames]'))
+        # params.addWidget(
+        #     self.average)
 
-        self.clear = QPushButton(
-            'Clear',
-            clicked=lambda: self.lineProfiles.clear())
+        self.data = np.random.normal(
+            size=(512, 512))
+        self.remote_view = pg.RemoteGraphicsView()
+        self.remote_view.pg.setConfigOptions(
+            antialias=True, imageAxisOrder='row-major')
+        self.remote_plt = self.remote_view.pg.ViewBox(invertY=True)
+        self.remote_plt._setProxyOptions(deferGetattr=True)
+        self.remote_view.setCentralItem(self.remote_plt)
+        self.remote_plt.setAspectLocked()
+        self.remote_img = self.remote_view.pg.ImageItem(axisOrder='row-major')
+        self.remote_img.setImage(
+            self.data, _callSync='off')
 
-        params.addWidget(
-            QLabel('X 1'))
-        params.addWidget(
-            self.x_1)
-        params.addWidget(
-            QLabel('Y 1'))
-        params.addWidget(
-            self.y_1)
-        params.addWidget(
-            QLabel('X 2'))
-        params.addWidget(
-            self.x_2)
-        params.addWidget(
-            QLabel('Y 2'))
-        params.addWidget(
-            self.y_2)
-        params.addWidget(
-            QLabel('Line Width'))
-        params.addWidget(
-            self.lineWidth)
-        params.addWidget(
-            QLabel('Average [frames]'))
-        params.addWidget(
-            self.average)
+        self.roi = self.remote_view.pg.ROI(
+            [10, 10], [128, 20],
+            angle=0, pen='r')
+        self.roi.addScaleHandle([0.5, 1], [0.5, 0.5])
+        self.roi.addScaleHandle([0, 0.5], [0.5, 0.5])
+        self.roi.addRotateHandle([1, 0.5], [0.5, 0.5])
+        self.roi.setZValue(10)
 
-        self.plot = pg.PlotWidget()
-        greenP = pg.mkPen(color='g')
-        self.plot_ref = self.plot.plot(
-            np.zeros((256)), np.zeros((256)), pen=greenP)
+        self.remote_plt.addItem(self.remote_img)
+        self.remote_plt.addItem(self.roi)
 
+        self.line = pg.RemoteGraphicsView()
+        self.line.setMaximumHeight(250)
+        self.lineP = self.line.pg.PlotItem()
+        self.lineP._setProxyOptions(deferGetattr=True)
+        self.line.setCentralItem(self.lineP)
+        self.lineP_ref = self.lineP.plot()
+
+        def updatePlot(cls=None):
+            selected, _ = self.roi.getArrayRegion(
+                self.data, self.remote_img, returnMappedCoords=True)
+            self.lineP_ref.setData(selected.mean(axis=0), _callSync='off')
+
+        self.lr_proxy = pg.multiprocess.proxy(
+            updatePlot, callSync='off', autoProxy=True)
+        self.roi.sigRegionChangeFinished.connect(self.lr_proxy)
+        self.remote_img.sigImageChanged.connect(self.lr_proxy)
+
+        self.setMinimumHeight(700)
         layout.addRow(params)
-        layout.addRow(self.plot)
+        layout.addRow(self.remote_view)
+        layout.addRow(self.line)
 
-    def save_browse_clicked(self):
-        """Slot for browse clicked event"""
-        directory = QFileDialog.getExistingDirectory(
-            self, "Select Directory")
-
-        if len(directory) > 0:
-            self._directory = directory
-            self.save_dir_edit.setText(self._directory)
-
-    def get_params(self):
-        return (
-                (self.x_1.value(), self.y_1.value()),
-                (self.x_2.value(), self.y_2.value()),
-                self.lineWidth.value(),
-                self.average.value())
+    def setData(self, data: np.ndarray):
+        if self.data.shape == data.shape:
+            self.data[:, :] = data
+        else:
+            self.data = data.copy()
+        self.remote_img.setImage(
+            self.data, _callSync='off')
 
 
 if __name__ == '__main__':

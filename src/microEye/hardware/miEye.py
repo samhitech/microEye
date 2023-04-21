@@ -326,7 +326,7 @@ class miEye_module(QMainWindow):
         self._elliptec_controller.stage_type.setCurrentText('ELL6')
         self._elliptec_controller._add_btn.click()
         self._elliptec_controller.address_bx.setValue(0)
-        self._elliptec_controller.stage_type.setCurrentText('ELL9')
+        self._elliptec_controller.stage_type.setCurrentText('ELL6')
         self._elliptec_controller._add_btn.click()
         # Scan Acquisition
         self.scanAcqWidget = ScanAcquisitionWidget()
@@ -337,6 +337,8 @@ class miEye_module(QMainWindow):
         self.scanAcqWidget.stopAcquisitionXY.connect(
             self.stop_scan_acquisition)
         self.scanAcqWidget.openLastTileXY.connect(self.show_last_tile)
+
+        self.scanAcqWidget.directoryChanged.connect(self.update_directories)
 
         self.scanAcqWidget.moveZ.connect(self.movez_stage)
 
@@ -1398,6 +1400,17 @@ class miEye_module(QMainWindow):
 
     def stop_scan_acquisition(self):
         self._stop_scan = True
+
+    def update_directories(self, value: str):
+        for panel in self.vimba_panels:
+            panel._directory = value
+            panel.save_dir_edit.setText(value)
+        for panel in self.ids_panels:
+            panel._directory = value
+            panel.save_dir_edit.setText(value)
+        for panel in self.thor_panels:
+            panel._directory = value
+            panel.save_dir_edit.setText(value)
 
     def show_last_tile(self):
         if self.lastTile is not None:
