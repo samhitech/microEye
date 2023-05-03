@@ -33,6 +33,8 @@ class piezo_concept(stage):
 
     def __init__(self):
         self.pixel_slider = None
+        self.peak_position = 0.0
+        self.pixel_coeff = 0.01
 
         super().__init__()
 
@@ -92,14 +94,14 @@ class piezo_concept(stage):
     def GETZ(self):
         '''Gets the current stage position along the Z axis.
         '''
-        if(self.isOpen()):
+        if (self.isOpen()):
             self.write(b'GET_Z\n')
             self.LastCmd = "GETZ"
 
     def HOME(self):
         '''Centers the stage position along the Z axis.
         '''
-        if(self.isOpen()):
+        if (self.isOpen()):
             self.ZPosition = 50000
             self.write(b'MOVEZ 50u\n')
             self.LastCmd = "MOVRZ"
@@ -114,7 +116,7 @@ class piezo_concept(stage):
         step : int
             step in nanometers
         '''
-        if(self.isOpen()):
+        if (self.isOpen()):
             self.write(('MOVRZ +'+step+'n\n').encode('utf-8'))
             self.LastCmd = "MOVRZ"
 
@@ -128,7 +130,7 @@ class piezo_concept(stage):
         step : int
             step in micrometers
         '''
-        if(self.isOpen()):
+        if (self.isOpen()):
             self.write(('MOVRZ +'+step+'u\n').encode('utf-8'))
             self.LastCmd = "MOVRZ"
 
@@ -142,7 +144,7 @@ class piezo_concept(stage):
         step : int
             step in nanometers
         '''
-        if(self.isOpen()):
+        if (self.isOpen()):
             self.write(('MOVRZ -'+step+'n\n').encode('utf-8'))
             self.LastCmd = "MOVRZ"
 
@@ -156,11 +158,11 @@ class piezo_concept(stage):
         step : int
             step in micrometers
         '''
-        if(self.isOpen()):
+        if (self.isOpen()):
             self.write(('MOVRZ -'+step+'u\n').encode('utf-8'))
             self.LastCmd = "MOVRZ"
 
-    def UP(self, step: int):
+    def UP(self, step: int, interface=False):
         '''Moves the stage in the positive direction along the Z axis
         by the specified step in nanometers
         relative to the last position set by the user.
@@ -170,12 +172,17 @@ class piezo_concept(stage):
         step : int
             step in nanometers
         '''
-        if(self.isOpen()):
-            self.ZPosition = min(max(self.ZPosition + step, 0), 100000)
-            self.write(('MOVEZ '+str(self.ZPosition)+'n\n').encode('utf-8'))
-            self.LastCmd = "MOVEZ"
+        if (self.isOpen()):
+            if self.piezoTracking and \
+                    self.pixel_translation.isChecked() and interface:
+                self.center_pixel += self.coeff_pixel * step
+            else:
+                self.ZPosition = min(max(self.ZPosition + step, 0), 100000)
+                self.write(
+                    ('MOVEZ '+str(self.ZPosition)+'n\n').encode('utf-8'))
+                self.LastCmd = "MOVEZ"
 
-    def DOWN(self, step: int):
+    def DOWN(self, step: int, interface=False):
         '''Moves the stage in the negative direction
         along the Z axis by the specified step in nanometers
         relative to the last position set by the user.
@@ -185,16 +192,21 @@ class piezo_concept(stage):
         step : int
             step in nanometers
         '''
-        if(self.isOpen()):
-            self.ZPosition = min(max(self.ZPosition - step, 0), 100000)
-            self.write(('MOVEZ '+str(self.ZPosition)+'n\n').encode('utf-8'))
-            self.LastCmd = "MOVEZ"
+        if (self.isOpen()):
+            if self.piezoTracking and \
+                    self.pixel_translation.isChecked() and interface:
+                self.center_pixel -= self.coeff_pixel * step
+            else:
+                self.ZPosition = min(max(self.ZPosition - step, 0), 100000)
+                self.write(
+                    ('MOVEZ '+str(self.ZPosition)+'n\n').encode('utf-8'))
+                self.LastCmd = "MOVEZ"
 
     def REFRESH(self):
         '''Refresh the stage position
         to the set value in case of discrepancy.
         '''
-        if(self.isOpen()):
+        if (self.isOpen()):
             self.write(('MOVEZ '+str(self.ZPosition)+'n\n').encode('utf-8'))
             self.LastCmd = "MOVEZ"
 
@@ -219,17 +231,28 @@ class piezo_concept(stage):
 
     @property
     def center_pixel(self):
-        if self.pixel_slider is None:
-            return 0
-        else:
-            return self.pixel_slider.value()
+        return self.peak_position
 
     @center_pixel.setter
     def center_pixel(self, value):
+        self.peak_position = value
         if self.pixel_slider is None:
             return False
         else:
             self.pixel_slider.setValue(value)
+            return True
+
+    @property
+    def coeff_pixel(self):
+        return self.pixel_coeff
+
+    @coeff_pixel.setter
+    def coeff_pixel(self, value):
+        self.pixel_coeff = value
+        if self.pixel_cal is None:
+            return False
+        else:
+            self.pixel_cal.setValue(value)
             return True
 
     def getQWidget(self):
@@ -288,6 +311,16 @@ class piezo_concept(stage):
         self.pixel_slider.setSingleStep(0.005)
         self.pixel_slider.setValue(0)
 
+        self.pixel_cal = QDoubleSpinBox()
+        self.pixel_cal.setMinimum(0)
+        self.pixel_cal.setMaximum(10000)
+        self.pixel_cal.setDecimals(6)
+        self.pixel_cal.setSingleStep(0.005)
+        self.pixel_cal.setValue(0.01)
+
+        self.pixel_translation = QCheckBox('Use Calibration')
+        self.pixel_translation.setChecked(False)
+
         self.piezo_HOME_btn = QPushButton(
             "⌂",
             clicked=lambda: self.HOME()
@@ -299,22 +332,26 @@ class piezo_concept(stage):
         self.piezo_B_UP_btn = QPushButton(
             "<<",
             clicked=lambda: self.UP(
-                self.coarse_steps_slider.value() * 1000)
+                self.coarse_steps_slider.value() * 1000,
+                True)
         )
         self.piezo_S_UP_btn = QPushButton(
             "<",
             clicked=lambda: self.UP(
-                self.fine_steps_slider.value())
+                self.fine_steps_slider.value(),
+                True)
         )
         self.piezo_S_DOWN_btn = QPushButton(
             ">",
             clicked=lambda: self.DOWN(
-                self.fine_steps_slider.value())
+                self.fine_steps_slider.value(),
+                True)
         )
         self.piezo_B_DOWN_btn = QPushButton(
             ">>",
             clicked=lambda: self.DOWN(
-                self.coarse_steps_slider.value() * 1000)
+                self.coarse_steps_slider.value() * 1000,
+                True)
         )
         self.move_buttons = QHBoxLayout()
         self.move_buttons.addWidget(self.piezo_HOME_btn)
@@ -340,7 +377,10 @@ class piezo_concept(stage):
             QLabel('Tracking:'), self._tracking_conf_btn)
         layout.addRow(
             QLabel('Fit to Pixel:'), self.pixel_slider)
+        layout.addRow(
+            QLabel('Pixel Calibration:'), self.pixel_cal)
         layout.addWidget(self._tracking_btn)
         layout.addWidget(self._inverted)
+        layout.addWidget(self.pixel_translation)
 
         return group

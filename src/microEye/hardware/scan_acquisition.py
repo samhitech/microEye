@@ -103,6 +103,7 @@ class ScanAcquisitionWidget(QGroupBox):
     stopAcquisitionXY = pyqtSignal()
     openLastTileXY = pyqtSignal()
     startAcquisitionZ = pyqtSignal(tuple)
+    startCalibrationZ = pyqtSignal(tuple)
     stopAcquisitionZ = pyqtSignal()
 
     moveZ = pyqtSignal(bool, int)
@@ -141,7 +142,7 @@ class ScanAcquisitionWidget(QGroupBox):
 
         self.delay = QSpinBox()
         self.delay.setMinimum(0)
-        self.delay.setMaximum(2000)
+        self.delay.setMaximum(10000)
         self.delay.setValue(200)
 
         self.average = QSpinBox()
@@ -249,12 +250,23 @@ class ScanAcquisitionWidget(QGroupBox):
                 self.reverse.isChecked())
             )
         )
+        self.z_cal_btn = QPushButton(
+            'Z Cal.',
+            clicked=lambda: self.startCalibrationZ.emit((
+                self.z_steps.value(),
+                self.z_stepsize.value(),
+                self.delay.value(),
+                self.n_frames.value(),
+                self.reverse.isChecked())
+            )
+        )
         self.z_stop_btn = QPushButton(
             'STOP!',
             clicked=lambda: self.stopAcquisitionZ.emit()
         )
 
         z_buttons.addWidget(self.z_acquire_btn)
+        z_buttons.addWidget(self.z_cal_btn)
         z_buttons.addWidget(self.z_stop_btn)
         layout.addRow(z_buttons)
 

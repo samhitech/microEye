@@ -334,6 +334,8 @@ class miEye_module(QMainWindow):
             self.start_scan_acquisitionXY)
         self.scanAcqWidget.startAcquisitionZ.connect(
             self.start_scan_acquisitionZ)
+        self.scanAcqWidget.startCalibrationZ.connect(
+            self.start_calibration_Z)
         self.scanAcqWidget.stopAcquisitionXY.connect(
             self.stop_scan_acquisition)
         self.scanAcqWidget.openLastTileXY.connect(self.show_last_tile)
@@ -1327,6 +1329,7 @@ class miEye_module(QMainWindow):
         self._scanning = False
         self.scanAcqWidget.acquire_btn.setEnabled(True)
         self.scanAcqWidget.z_acquire_btn.setEnabled(True)
+        self.scanAcqWidget.z_cal_btn.setEnabled(True)
 
         if data:
             self.lastTile = TiledImageSelector(data)
@@ -1336,10 +1339,22 @@ class miEye_module(QMainWindow):
             )
             self.lastTile.show()
 
+    def result_z_calibration(self, data):
+        self._scanning = False
+        self.scanAcqWidget.acquire_btn.setEnabled(True)
+        self.scanAcqWidget.z_acquire_btn.setEnabled(True)
+        self.scanAcqWidget.z_cal_btn.setEnabled(True)
+
+        if data is not None:
+            coeff = np.polyfit(data[:, 0], data[:, 1], 1)
+            self.stage.coeff_pixel = coeff[0]
+            plot_z_cal(data, coeff)
+
     def result_scan_export(self, data: list[TileImage]):
         self._scanning = False
         self.scanAcqWidget.acquire_btn.setEnabled(True)
         self.scanAcqWidget.z_acquire_btn.setEnabled(True)
+        self.scanAcqWidget.z_cal_btn.setEnabled(True)
 
         if data:
             if len(self.scanAcqWidget._directory) > 0:
@@ -1378,6 +1393,7 @@ class miEye_module(QMainWindow):
 
             self.scanAcqWidget.acquire_btn.setEnabled(False)
             self.scanAcqWidget.z_acquire_btn.setEnabled(False)
+            self.scanAcqWidget.z_cal_btn.setEnabled(False)
 
     def start_scan_acquisitionZ(
             self, params):
@@ -1397,6 +1413,27 @@ class miEye_module(QMainWindow):
 
             self.scanAcqWidget.acquire_btn.setEnabled(False)
             self.scanAcqWidget.z_acquire_btn.setEnabled(False)
+            self.scanAcqWidget.z_cal_btn.setEnabled(False)
+
+    def start_calibration_Z(
+            self, params):
+        if not self._scanning:
+            self._stop_scan = False
+            self._scanning = True
+
+            self.scan_worker = thread_worker(
+                z_calibration, self,
+                params[0], params[1],
+                params[2], params[3],
+                params[4], progress=False, z_stage=False)
+            self.scan_worker.signals.result.connect(
+                self.result_z_calibration)
+            # Execute
+            self._threadpool.start(self.scan_worker)
+
+            self.scanAcqWidget.acquire_btn.setEnabled(False)
+            self.scanAcqWidget.z_acquire_btn.setEnabled(False)
+            self.scanAcqWidget.z_cal_btn.setEnabled(False)
 
     def stop_scan_acquisition(self):
         self._stop_scan = True
@@ -1512,10 +1549,19 @@ def z_stack_acquisition(
             peak = miEye.stage.center_pixel
             for x in range(n):
                 if x > 0:
-                    miEye.stage.autoFocusTracking()
-                    miEye.scanAcqWidget.moveZ.emit(reverse, step_size)
-                    QThread.msleep(delay)
-                    miEye.stage.autoFocusTracking()
+                    if miEye.stage.piezoTracking and \
+                            miEye.stage.pixel_translation.isChecked():
+                        value = miEye.stage.coeff_pixel * step_size
+                        if reverse:
+                            value *= -1
+                        miEye.stage.center_pixel += value
+                        QThread.msleep(delay)
+                    else:
+                        if miEye.stage.piezoTracking:
+                            miEye.stage.autoFocusTracking()
+                        miEye.scanAcqWidget.moveZ.emit(reverse, step_size)
+                        QThread.msleep(delay)
+                        miEye.stage.autoFocusTracking()
                 frame = None
                 cam_pan.frames_tbox.setValue(nFrames)
                 cam_pan.cam_save_temp.setChecked(True)
@@ -1528,3 +1574,79 @@ def z_stack_acquisition(
     finally:
         miEye.stage.center_pixel = peak
         return
+
+
+def z_calibration(
+        miEye: miEye_module, n,
+        step_size, delay=100, nFrames=50,
+        reverse=False):
+    '''Z-Stack Acquisition (works with Allied Vision Cams only)
+
+    Parameters
+    ----------
+    miEye : miEye_module
+        the miEye module
+    n : int
+        number of z-stacks
+    step_size : int
+        step size in nm along z-axis
+    delay : float
+        delay in ms per measurement
+    nFrames : int
+        number of frames used for each measurement
+    '''
+    positions = np.zeros((n, 2))
+    try:
+        data = []
+        if miEye.stage.isOpen():
+            if miEye.stage.piezoTracking:
+                miEye.stage.autoFocusTracking()
+            for x in range(n):
+                if x > 0:
+                    miEye.scanAcqWidget.moveZ.emit(reverse, step_size)
+                QThread.msleep(delay * nFrames)
+                positions[x, 0] = x * step_size
+                positions[x, 1] = np.mean(miEye.centerData[-nFrames:])
+    except Exception:
+        traceback.print_exc()
+        positions = None
+    finally:
+        return positions
+
+
+def plot_z_cal(data, coeff):
+
+    model = np.poly1d(coeff)
+
+    x = np.linspace(data[0, 0], data[-1, 0], 1001)
+
+    # plot results
+    plt = pg.plot()
+
+    plt.showGrid(x=True, y=True)
+    plt.addLegend()
+
+    # set properties of the label for y axis
+    plt.setLabel('left', 'Central Pixel', units='')
+
+    # set properties of the label for x axis
+    plt.setLabel('bottom', 'Z [nm]', units='')
+
+    plt.setWindowTitle(
+        "Slope: {0} | Intercept {1}".format(
+            coeff[0], coeff[1])
+        )
+
+    # setting horizontal range
+    plt.setXRange(data[0, 0], data[-1, 0])
+
+    # setting vertical range
+    plt.setYRange(data[0, 1], data[-1, 1])
+
+    line1 = plt.plot(
+        data[:, 0], data[:, 1],
+        pen='g', symbol='x', symbolPen='g',
+        symbolBrush=0.2, name='Data')
+    line2 = plt.plot(
+        x, model(x),
+        pen='b', name='Fit')
