@@ -6,7 +6,7 @@ import warnings
 from queue import Queue
 
 import numpy as np
-import pyqtgraph
+import pyqtgraph as pg
 import qdarkstyle
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
@@ -33,6 +33,7 @@ from .port_config import *
 from .scan_acquisition import *
 from .thorlabs import *
 from .thorlabs_panel import Thorlabs_Panel
+from .widgets import focusWidget
 
 try:
     from pyueye import ueye
@@ -106,6 +107,7 @@ class miEye_module(QMainWindow):
         # IR 2D Camera
         self.cam = None
         self.cam_panel = None
+        self.cam_dock = None
 
         # Serial Port Laser Relay
         self.laserRelay = QSerialPort(
@@ -174,22 +176,17 @@ class miEye_module(QMainWindow):
         '''Initializes the window layout
         '''
         Hlayout = QHBoxLayout()
-        self.VL_layout = QGridLayout()
-
-        self.rp_splitter = QSplitter(Qt.Orientation.Vertical)
-        self.rp_splitter.setHandleWidth(2)
-        self.rp_splitter.setStyleSheet(
-            "QSplitter {background-color: none;}")
-
-        self.Tab_Widget_upper = QTabWidget()
-        self.Tab_Widget_lower = QTabWidget()
-
-        self.rp_splitter.addWidget(self.Tab_Widget_upper)
-        self.rp_splitter.addWidget(self.Tab_Widget_lower)
 
         # General settings groupbox
-        LPanel_GBox = QGroupBox("Devices")
-        self.VL_layout.addWidget(LPanel_GBox, 0, 0)
+        self.devicesDock = QDockWidget('Devices', self)
+        self.devicesDock.setFeatures(
+            QDockWidget.DockWidgetFloatable |
+            QDockWidget.DockWidgetMovable)
+        LPanel_GBox = QWidget()
+        self.devicesDock.setWidget(LPanel_GBox)
+        self.addDockWidget(
+            Qt.DockWidgetArea.TopDockWidgetArea,
+            self.devicesDock)
 
         # vertical layout
         Left_Layout = QFormLayout()
@@ -260,6 +257,7 @@ class miEye_module(QMainWindow):
             clicked=self.setStage
         )
         self.stage_widget = None
+        self.stage_dock = None
         self.stage_set_btn.click()
 
         self.hid_controller = hid_controller()
@@ -270,7 +268,7 @@ class miEye_module(QMainWindow):
             self.hid_LStick_report)
         self.hid_controller_toggle = False
 
-        self.VL_layout.addWidget(self.hid_controller, 3, 0)
+        Left_Layout.addWidget(self.hid_controller)
 
         Left_Layout.addRow(
             QLabel('IR Camera:'), self.ir_cam_cbox)
@@ -307,18 +305,15 @@ class miEye_module(QMainWindow):
             QLabel('Laser Relay:'), relay_btns_0)
         Left_Layout.addRow(relay_btns_1)
 
-        # Lasers Tab
-        self.lasersLayout = QHBoxLayout()
-        self.lasersLayout.addStretch()
-        self.lasers_tab = QWidget()
-        self.lasers_tab.setLayout(self.lasersLayout)
-
-        self.laserPanels = []
-
         # Stages Tab (Elliptec + Kinesis Tab + Scan Acquisition)
+        self.stagesDock = QDockWidget('Stages', self)
+        self.stagesDock.setFeatures(
+            QDockWidget.DockWidgetFloatable |
+            QDockWidget.DockWidgetMovable)
         self.stages_Layout = QHBoxLayout()
-        self.stages_tab = QWidget()
-        self.stages_tab.setLayout(self.stages_Layout)
+        self.stagesWidget = QWidget()
+        self.stagesWidget.setLayout(self.stages_Layout)
+        self.stagesDock.setWidget(self.stagesWidget)
 
         self.stages_Layout.addWidget(self._elliptec_controller.getQWidget())
         # Elliptec init config
@@ -347,190 +342,78 @@ class miEye_module(QMainWindow):
         self.stages_Layout.addWidget(self.kinesisXY.getQWidget())
         self.stages_Layout.addWidget(self.scanAcqWidget)
 
+        # Py Script Editor
+        self.pyDock = QDockWidget('PyScript', self)
+        self.pyDock.setFeatures(
+            QDockWidget.DockWidgetFloatable |
+            QDockWidget.DockWidgetMovable)
+        self.pyEditor = pyEditor()
+        self.pyEditor.exec_btn.clicked.connect(lambda: self.scriptTest())
+        self.pyDock.setWidget(self.pyEditor)
+        self.addDockWidget(
+            Qt.DockWidgetArea.TopDockWidgetArea,
+            self.pyDock)
+        self.addDockWidget(
+            Qt.DockWidgetArea.TopDockWidgetArea,
+            self.stagesDock)
+        self.tabifyDockWidget(
+            self.pyDock, self.stagesDock)
+
+        # Lasers Tab
+        self.lasersDock = QDockWidget('Lasers', self)
+        self.lasersDock.setFeatures(
+            QDockWidget.DockWidgetFloatable |
+            QDockWidget.DockWidgetMovable)
+        self.lasersLayout = QHBoxLayout()
+        self.lasersLayout.addStretch()
+        self.lasersWidget = QWidget()
+        self.lasersWidget.setLayout(self.lasersLayout)
+
+        self.lasersDock.setWidget(self.lasersWidget)
+
+        self.laserPanels = []
+
         # cameras tab
+        self.camDock = QDockWidget('Cameras List', self)
+        self.camDock.setFeatures(
+            QDockWidget.DockWidgetFloatable |
+            QDockWidget.DockWidgetMovable)
+
         self.camListWidget = CameraListWidget()
         self.camListWidget.addCamera.connect(self.add_camera)
         self.camListWidget.removeCamera.connect(self.remove_camera)
 
+        self.camDock.setWidget(self.camListWidget)
+        self.setTabPosition(
+            Qt.DockWidgetArea.BottomDockWidgetArea,
+            QTabWidget.TabPosition.North)
+
         # display tab
         self.labelStyle = {'color': '#FFF', 'font-size': '10pt'}
-        graphs_layout = QGridLayout()
-        graphs_tab = QWidget()
+        self.focus = focusWidget()
 
-        self.ROI_x = QDoubleSpinBox()
-        self.ROI_x.setMaximum(5000)
-        self.ROI_x.setValue(25)
-        self.ROI_y = QDoubleSpinBox()
-        self.ROI_y.setMaximum(5000)
-        self.ROI_y.setValue(25)
-        self.ROI_length = QDoubleSpinBox()
-        self.ROI_length.setMaximum(5000)
-        self.ROI_length.setValue(256)
-        self.ROI_angle = QDoubleSpinBox()
-        self.ROI_angle.setMaximum(5000)
-        self.ROI_angle.setMinimum(-5000)
-        self.ROI_angle.setValue(0)
-
-        self.ROI_set_btn = QPushButton(
-            ' Set ROI ',
-            clicked=self.set_roi)
-        self.ROI_save_btn = QPushButton(
-            ' Save ',
-            clicked=self.save_config)
-        self.ROI_load_btn = QPushButton(
-            ' Load ',
-            clicked=self.load_config)
-
-        self.IR_VLayout = QVBoxLayout()
-        self.IR_HLayout = QHBoxLayout()
-        self.IR_HLayout.addWidget(QLabel('Position X/Y'))
-        self.IR_HLayout.addWidget(self.ROI_x)
-        self.IR_HLayout.addWidget(self.ROI_y)
-        self.IR_HLayout.addWidget(QLabel('Length'))
-        self.IR_HLayout.addWidget(self.ROI_length)
-        self.IR_HLayout.addWidget(QLabel('Angle'))
-        self.IR_HLayout.addWidget(self.ROI_angle)
-        self.IR_HLayout.addWidget(self.ROI_set_btn)
-        self.IR_HLayout.addWidget(self.ROI_save_btn)
-        self.IR_HLayout.addWidget(self.ROI_load_btn)
-        self.IR_HLayout.addStretch()
-
-        # IR LineROI Graph
-        self.graph_IR = PlotWidget()
-        self.graph_IR.setLabel("bottom", "Pixel", **self.labelStyle)
-        self.graph_IR.setLabel("left", "Signal", "V", **self.labelStyle)
-        # IR Peak Position Graph
-        self.graph_Peak = PlotWidget()
-        self.graph_Peak.setLabel("bottom", "Frame", **self.labelStyle)
-        self.graph_Peak.setLabel("left", "Center Pixel", **self.labelStyle)
-        # IR Camera GraphView
-        self.remote_view = RemoteGraphicsView()
-        self.remote_view.pg.setConfigOptions(
-            antialias=True, imageAxisOrder='row-major')
-        pyqtgraph.setConfigOption('imageAxisOrder', 'row-major')
-        self.remote_plt = self.remote_view.pg.ViewBox(invertY=True)
-        self.remote_plt._setProxyOptions(deferGetattr=True)
-        self.remote_view.setCentralItem(self.remote_plt)
-        self.remote_plt.setAspectLocked()
-        self.remote_img = self.remote_view.pg.ImageItem(axisOrder='row-major')
-        self.remote_img.setImage(
-            np.random.normal(size=(512, 512)), _callSync='off')
-        # IR LineROI
-        self.roi = self.remote_view.pg.ROI(
-            self.remote_view.pg.Point(25, 25),
-            size=self.remote_view.pg.Point(0.5, 256),
-            angle=0, pen='r')
-        self.roi.addTranslateHandle([0.5, 0], [0.5, 1])
-        self.roi.addScaleRotateHandle([0.5, 1], [0.5, 0])
-        self.roi.updateFlag = False
-
-        # self.roi.maxBounds = QRectF(0, 0, 513, 513)
-
-        def roiChanged(cls):
-            if not self.roi.updateFlag:
-                pos = self.roi.pos()
-                self.ROI_x.setValue(pos[0])
-                self.ROI_y.setValue(pos[1])
-                self.ROI_length.setValue(self.roi.size()[1])
-                self.ROI_angle.setValue(self.roi.angle() % 360)
-
-        self.lr_proxy = pg.multiprocess.proxy(
-            roiChanged, callSync='off', autoProxy=True)
-        self.roi.sigRegionChangeFinished.connect(self.lr_proxy)
-        self.remote_plt.addItem(self.remote_img)
-        self.remote_plt.addItem(self.roi)
-
-        graphs_layout.addWidget(self.remote_view, 0, 0, 2, 1)
-        graphs_layout.addWidget(self.graph_IR, 0, 1)
-        graphs_layout.addWidget(self.graph_Peak, 1, 1)
-
-        self.IR_VLayout.addLayout(self.IR_HLayout)
-        self.IR_VLayout.addLayout(graphs_layout)
-
-        graphs_tab.setLayout(self.IR_VLayout)
-
-        app = QApplication.instance()
-        app.aboutToQuit.connect(self.remote_view.close)
         # Tabs
-        self.Tab_Widget_lower.addTab(self.lasers_tab, 'Lasers')
-        self.Tab_Widget_upper.addTab(self.stages_tab, 'Stages')
-        self.Tab_Widget_lower.addTab(self.camListWidget, 'Cameras List')
-        self.Tab_Widget_lower.addTab(graphs_tab, 'Graphs')
-
-        self.pyEditor = pyEditor()
-        self.pyEditor.exec_btn.clicked.connect(lambda: self.scriptTest())
-        self.Tab_Widget_upper.addTab(self.pyEditor, 'PyScript')
-
-        # Create a placeholder widget to hold the controls
-        Hlayout.addLayout(self.VL_layout, 1)
-        Hlayout.addWidget(self.rp_splitter, 3)
+        self.addDockWidget(0x8, self.lasersDock)
+        self.addDockWidget(0x8, self.camDock)
+        self.tabifyDockWidget(self.lasersDock, self.camDock)
+        self.addDockWidget(0x8, self.focus)
+        self.tabifyDockWidget(self.lasersDock, self.focus)
 
         AllWidgets = QWidget()
         AllWidgets.setLayout(Hlayout)
 
-        self.setCentralWidget(AllWidgets)
+        # self.setCentralWidget(AllWidgets)
 
     def scriptTest(self):
         exec(self.pyEditor.toPlainText())
 
-    def save_config(self):
-        filename, _ = QFileDialog.getSaveFileName(
-            self, "Save config", filter="JSON Files (*.json);;")
-
-        if len(filename) > 0:
-            config = {
-                'ROI_x': self.ROI_x.value(),
-                'ROI_y': self.ROI_y.value(),
-                'ROI_length': self.ROI_length.value(),
-                'ROI_angle': self.ROI_angle.value(),
-            }
-
-            with open(filename, 'w') as file:
-                json.dump(config, file)
-
-            QMessageBox.information(
-                self, "Info", "Config saved.")
-        else:
-            QMessageBox.warning(
-                self, "Warning", "Config not saved.")
-
-    def load_config(self):
-        filename, _ = QFileDialog.getOpenFileName(
-            self, "Load config", filter="JSON Files (*.json);;")
-
-        if len(filename) > 0:
-            config: dict = None
-            keys = [
-                'ROI_x',
-                'ROI_y',
-                'ROI_length',
-                'ROI_angle',
-            ]
-            with open(filename, 'r') as file:
-                config = json.load(file)
-            if all(key in config for key in keys):
-                self.ROI_x.setValue(float(config['ROI_x']))
-                self.ROI_y.setValue(float(config['ROI_y']))
-                self.ROI_length.setValue(float(config['ROI_length']))
-                self.ROI_angle.setValue(float(config['ROI_angle']))
-                self.set_roi()
-            else:
-                QMessageBox.warning(
-                    self, "Warning", "Wrong or corrupted config file.")
-        else:
-            QMessageBox.warning(
-                self, "Warning", "No file selected.")
-
-    def set_roi(self):
-        self.roi.updateFlag = True
-        self.roi.setPos(
-            self.ROI_x.value(),
-            self.ROI_y.value())
-        self.roi.setSize(
-                [0.5, self.ROI_length.value()])
-        self.roi.setAngle(
-            self.ROI_angle.value())
-        self.roi.updateFlag = False
+    def getDockWidget(self, text: str, content: QWidget):
+        dock = QDockWidget(text, self)
+        dock.setFeatures(
+            QDockWidget.DockWidgetFloatable |
+            QDockWidget.DockWidgetMovable)
+        dock.setWidget(content)
+        return dock
 
     def add_camera(self, cam):
         res = QMessageBox.information(
@@ -592,7 +475,8 @@ class miEye_module(QMainWindow):
                 # ids_panel._directory = self.save_directory
                 ids_panel.master = False
                 self.cam_panel = ids_panel
-                self.Tab_Widget_lower.addTab(ids_panel, ids_cam.name)
+                self.cam_dock = self.getDockWidget(
+                    ids_cam.name, ids_panel)
             if 'UC480' in cam["Driver"]:
                 thor_cam = thorlabs_camera(cam["camID"])
                 nRet = thor_cam.initialize()
@@ -605,7 +489,8 @@ class miEye_module(QMainWindow):
                     # thor_panel._directory = self.save_directory
                     thor_panel.master = False
                     self.cam_panel = thor_panel
-                    self.Tab_Widget_lower.addTab(thor_panel, thor_cam.name)
+                    self.cam_dock = self.getDockWidget(
+                        thor_cam.name, thor_panel)
             if 'Vimba' in cam["Driver"]:
                 v_cam = vimba_cam(cam["camID"])
                 self.cam = v_cam
@@ -615,8 +500,15 @@ class miEye_module(QMainWindow):
                         mini=True)
                 v_panel.master = False
                 self.cam_panel = v_panel
-                self.Tab_Widget_lower.addTab(v_panel, v_cam.name)
-            self.graph_IR.setLabel(
+                self.cam_dock = self.getDockWidget(
+                    v_cam.name, v_panel)
+
+            self.addDockWidget(
+                Qt.DockWidgetArea.BottomDockWidgetArea,
+                self.cam_dock)
+            self.tabifyDockWidget(
+                self.lasersDock, self.camDock)
+            self.focus.graph_IR.setLabel(
                 "left", "Signal", "", **self.labelStyle)
         else:
             QMessageBox.warning(
@@ -634,10 +526,11 @@ class miEye_module(QMainWindow):
 
             self.cam_panel._dispose_cam = True
             self.cam_panel._stop_thread = True
-            idx = self.Tab_Widget_lower.indexOf(self.cam_panel)
-            self.Tab_Widget_lower.removeTab(idx)
+            self.removeDockWidget(self.cam_dock)
+            self.cam_dock.deleteLater()
             self.cam = None
             self.cam_panel = None
+            self.cam_dock = None
 
     def add_camera_clicked(self, cam):
         home = os.path.expanduser('~')
@@ -821,7 +714,7 @@ class miEye_module(QMainWindow):
                 # x, y = np.meshgrid(dt, dt)
                 # dt = x * y
                 # self.remote_img.setImage(dt)
-                # ax, pos = self.roi.getArrayRegion(
+                # ax, pos = self.focus.roi.getArrayRegion(
                 #     dt, self.remote_img, returnMappedCoords=True)
                 # self.IR_Cam._buffer.put(ax)
                 # proceed only if the buffer is not empty
@@ -832,9 +725,11 @@ class miEye_module(QMainWindow):
                     data = self.BufferGet()
 
                     if self.isImage():
-                        self.remote_img.setImage(data.copy(), _callSync='off')
-                        data, _ = self.roi.getArrayRegion(
-                            data, self.remote_img, returnMappedCoords=True)
+                        self.focus.remote_img.setImage(
+                            data.copy(), _callSync='off')
+                        data, _ = self.focus.roi.getArrayRegion(
+                            data, self.focus.remote_img,
+                            returnMappedCoords=True)
                         data = np.squeeze(data)
                     # self.ydata_temp = self.ydata
                     self.peak_fit(movez_callback, data.copy())
@@ -917,7 +812,7 @@ class miEye_module(QMainWindow):
         # updates the IR graph with data
         if self._plot_ref is None:
             # create plot reference when None
-            self._plot_ref = self.graph_IR.plot(self.xdata, data)
+            self._plot_ref = self.focus.graph_IR.plot(self.xdata, data)
         else:
             # use the plot reference to update the data for that line.
             self._plot_ref.setData(self.xdata, data)
@@ -925,7 +820,7 @@ class miEye_module(QMainWindow):
         # updates the IR graph with data fit
         if self._plotfit_ref is None:
             # create plot reference when None
-            self._plotfit_ref = self.graph_IR.plot(
+            self._plotfit_ref = self.focus.graph_IR.plot(
                 self.xdata,
                 GaussianOffSet(self.xdata, *self.popt))
         else:
@@ -936,7 +831,7 @@ class miEye_module(QMainWindow):
 
         if self._center_ref is None:
             # create plot reference when None
-            self._center_ref = self.graph_Peak.plot(
+            self._center_ref = self.focus.graph_Peak.plot(
                 self.centerDataX, self.centerData)
         else:
             # use the plot reference to update the data for that line.
@@ -1112,10 +1007,20 @@ class miEye_module(QMainWindow):
         if 'TSL1401' in self.ir_cam_cbox.currentText():
             self.IR_Cam = ParallaxLineScanner()
             if self.ir_widget is not None:
-                self.VL_layout.removeWidget(self.ir_widget)
-            self.ir_widget = self.IR_Cam.getQWidget()
-            self.VL_layout.addWidget(self.ir_widget, 1, 0)
-            self.graph_IR.setLabel(
+                self.removeDockWidget(self.ir_widget)
+                self.ir_widget.deleteLater()
+            self.ir_widget = QDockWidget('IR Cam')
+            self.ir_widget.setFeatures(
+                QDockWidget.DockWidgetFloatable |
+                QDockWidget.DockWidgetMovable)
+            self.ir_widget.setWidget(
+                self.IR_Cam.getQWidget())
+            self.addDockWidget(
+                Qt.DockWidgetArea.TopDockWidgetArea,
+                self.ir_widget)
+            self.tabifyDockWidget(
+                self.devicesDock, self.ir_widget)
+            self.focus.graph_IR.setLabel(
                 "left", "Signal", "V", **self.labelStyle)
 
     @pyqtSlot()
@@ -1129,8 +1034,8 @@ class miEye_module(QMainWindow):
             return
 
         if self.ir_widget is not None:
-            self.VL_layout.removeWidget(self.ir_widget)
-        self.ir_widget.deleteLater()
+            self.removeDockWidget(self.ir_widget)
+            self.ir_widget.deleteLater()
         self.ir_widget = None
         self.IR_Cam = IR_Cam()
 
@@ -1139,10 +1044,20 @@ class miEye_module(QMainWindow):
         if 'FOC100' in self.stage_cbox.currentText():
             if not self.stage.isOpen():
                 self.stage = piezo_concept()
-                if self.stage_widget is not None:
-                    self.VL_layout.removeWidget(self.stage_widget)
+                if self.stage_dock is not None:
+                    self.removeDockWidget(self.stage_dock)
+                    self.stage_dock.deleteLater()
                 self.stage_widget = self.stage.getQWidget()
-                self.VL_layout.addWidget(self.stage_widget, 2, 0)
+                self.stage_dock = QDockWidget('Z-Stage', self)
+                self.stage_dock.setFeatures(
+                    QDockWidget.DockWidgetFloatable |
+                    QDockWidget.DockWidgetMovable)
+                self.stage_dock.setWidget(self.stage_widget)
+                self.addDockWidget(
+                    Qt.DockWidgetArea.TopDockWidgetArea,
+                    self.stage_dock)
+                self.tabifyDockWidget(
+                    self.devicesDock, self.stage_dock)
 
     def hid_report(self, reportedEvent: Buttons):
         if type(self.stage) is piezo_concept:

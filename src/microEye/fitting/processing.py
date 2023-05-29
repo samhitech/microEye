@@ -25,12 +25,17 @@ def nn_trajectories(
                 n_neighbors=max(1, min(neighbors, nextFrame.shape[0])))
             nNeighbors.fit(nextFrame[:, 1:])
             foundnn = nNeighbors.kneighbors(currentFrame[:, 1:])
-            foundnn = np.asarray(foundnn, dtype=np.float64)[..., 0]
+            foundnn = np.asarray(foundnn, dtype=np.float64)
+            # print(foundnn.shape)
 
             dist_mask = np.logical_and(
-                foundnn[0] >= minDistance,
-                foundnn[0] <= maxDistance
-            )
+                foundnn[0, ...] >= minDistance,
+                foundnn[0, ...] <= maxDistance)
+            # print(dist_mask.shape)
+            arg = np.argmax(dist_mask, axis=1)
+            dist_mask = dist_mask[np.arange(len(arg)), arg]
+            foundnn = foundnn[:, np.arange(len(arg)), arg]
+            # print(dist_mask.shape)
 
         currentIDs = np.where(dist_mask)[0].astype(np.int64)
 
