@@ -137,10 +137,10 @@ class focusWidget(QDockWidget):
 
         if len(filename) > 0:
             config = {
-                'ROI_x': self.focus.ROI_x.value(),
-                'ROI_y': self.focus.ROI_y.value(),
-                'ROI_length': self.focus.ROI_length.value(),
-                'ROI_angle': self.focus.ROI_angle.value(),
+                'ROI_x': self.ROI_x.value(),
+                'ROI_y': self.ROI_y.value(),
+                'ROI_length': self.ROI_length.value(),
+                'ROI_angle': self.ROI_angle.value(),
             }
 
             with open(filename, 'w') as file:
@@ -167,10 +167,10 @@ class focusWidget(QDockWidget):
             with open(filename, 'r') as file:
                 config = json.load(file)
             if all(key in config for key in keys):
-                self.focus.ROI_x.setValue(float(config['ROI_x']))
-                self.focus.ROI_y.setValue(float(config['ROI_y']))
-                self.focus.ROI_length.setValue(float(config['ROI_length']))
-                self.focus.ROI_angle.setValue(float(config['ROI_angle']))
+                self.ROI_x.setValue(float(config['ROI_x']))
+                self.ROI_y.setValue(float(config['ROI_y']))
+                self.ROI_length.setValue(float(config['ROI_length']))
+                self.ROI_angle.setValue(float(config['ROI_angle']))
                 self.set_roi()
             else:
                 QMessageBox.warning(

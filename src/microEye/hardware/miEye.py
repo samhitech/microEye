@@ -3,6 +3,7 @@ import os
 import sys
 import traceback
 import warnings
+import webbrowser
 from queue import Queue
 
 import numpy as np
@@ -37,6 +38,7 @@ from .widgets import focusWidget
 
 try:
     from pyueye import ueye
+
     from .ueye_camera import IDS_Camera
     from .ueye_panel import IDS_Panel
 except Exception:
@@ -172,9 +174,31 @@ class miEye_module(QMainWindow):
         qtRectangle.moveCenter(centerPoint)
         self.move(qtRectangle.topLeft())
 
+    def eventFilter(self, source, event):
+        if qApp.activePopupWidget() is None:
+            if event.type() == QEvent.MouseMove:
+                if self.menuBar().isHidden():
+                    rect = self.geometry()
+                    rect.setHeight(40)
+
+                    if rect.contains(event.globalPos()):
+                        self.menuBar().show()
+                else:
+                    rect = QRect(
+                        self.menuBar().mapToGlobal(QPoint(0, 0)),
+                        self.menuBar().size()
+                    )
+
+                    if not rect.contains(event.globalPos()):
+                        self.menuBar().hide()
+            elif event.type() == QEvent.Leave and source is self:
+                self.menuBar().hide()
+        return super().eventFilter(source, event)
+
     def LayoutInit(self):
         '''Initializes the window layout
         '''
+
         Hlayout = QHBoxLayout()
 
         # General settings groupbox
@@ -404,6 +428,60 @@ class miEye_module(QMainWindow):
 
         # self.setCentralWidget(AllWidgets)
 
+        # Create menu bar
+        menu_bar = self.menuBar()
+
+        # Create file menu
+        file_menu = menu_bar.addMenu('File')
+        view_menu = menu_bar.addMenu('View')
+        help_menu = menu_bar.addMenu('Help')
+
+        # Create exit action
+        save_config = QAction('Save Config.', self)
+        save_config.triggered.connect(lambda: generateConfig(self))
+        load_config = QAction('Load Config.', self)
+        load_config.triggered.connect(lambda: loadConfig(self))
+
+        devices_act = self.devicesDock.toggleViewAction()
+        devices_act.setEnabled(True)
+        pyDock_act = self.pyDock.toggleViewAction()
+        pyDock_act.setEnabled(True)
+        stage_act = self.stage_dock.toggleViewAction()
+        stage_act.setEnabled(True)
+        stages_act = self.stagesDock.toggleViewAction()
+        stages_act.setEnabled(True)
+        cams_act = self.camDock.toggleViewAction()
+        cams_act.setEnabled(True)
+        lasers_act = self.lasersDock.toggleViewAction()
+        lasers_act.setEnabled(True)
+        focus_act = self.focus.toggleViewAction()
+        focus_act.setEnabled(True)
+
+        github = QAction('microEye Github', self)
+        github.triggered.connect(
+            lambda: webbrowser.open('https://github.com/samhitech/microEye'))
+        pypi = QAction('microEye PYPI', self)
+        pypi.triggered.connect(
+            lambda: webbrowser.open('https://pypi.org/project/microEye/'))
+
+        # Add exit action to file menu
+        file_menu.addAction(save_config)
+        file_menu.addAction(load_config)
+        view_menu.addAction(devices_act)
+        view_menu.addAction(stage_act)
+        view_menu.addAction(pyDock_act)
+        view_menu.addAction(stages_act)
+        view_menu.addAction(lasers_act)
+        view_menu.addAction(cams_act)
+        view_menu.addAction(focus_act)
+
+        help_menu.addAction(github)
+        help_menu.addAction(pypi)
+
+        qApp.installEventFilter(self)
+
+        self.menuBar().hide()
+
     def scriptTest(self):
         exec(self.pyEditor.toPlainText())
 
@@ -507,7 +585,7 @@ class miEye_module(QMainWindow):
                 Qt.DockWidgetArea.BottomDockWidgetArea,
                 self.cam_dock)
             self.tabifyDockWidget(
-                self.lasersDock, self.camDock)
+                self.lasersDock, self.cam_dock)
             self.focus.graph_IR.setLabel(
                 "left", "Signal", "", **self.labelStyle)
         else:
@@ -1565,3 +1643,99 @@ def plot_z_cal(data, coeff):
     line2 = plt.plot(
         x, model(x),
         pen='b', name='Fit')
+
+
+def generateConfig(mieye: miEye_module):
+    filename = 'config.json'
+    config = {
+            'ROI_x': mieye.focus.ROI_x.value(),
+            'ROI_y': mieye.focus.ROI_y.value(),
+            'ROI_length': mieye.focus.ROI_length.value(),
+            'ROI_angle': mieye.focus.ROI_angle.value(),
+            'LaserRelay': (mieye.laserRelay.portName(),
+                           mieye.laserRelay.baudRate()),
+            'Elliptic': (mieye._elliptec_controller.serial.portName(),
+                         mieye._elliptec_controller.serial.baudRate()),
+            'PiezoStage': (mieye.stage.serial.portName(),
+                           mieye.stage.serial.baudRate()),
+            'KinesisX': (mieye.kinesisXY.X_Kinesis.serial.port,
+                         mieye.kinesisXY.X_Kinesis.serial.baudrate),
+            'KinesisY': (mieye.kinesisXY.Y_Kinesis.serial.port,
+                         mieye.kinesisXY.Y_Kinesis.serial.baudrate)
+        }
+
+    config['LaserPanels'] = [
+        (panel.Laser.portName(),
+         panel.Laser.baudRate(),
+         type(panel) is CombinerLaserWidget)
+        for panel in mieye.laserPanels]
+
+    with open(filename, 'w') as file:
+        json.dump(config, file)
+
+    print('Config.json file generated!')
+
+
+def loadConfig(mieye: miEye_module):
+    filename = 'config.json'
+
+    if not os.path.exists(filename):
+        print('Config.json not found!')
+        return
+
+    config: dict = None
+
+    with open(filename, 'r') as file:
+        config = json.load(file)
+
+    if 'ROI_x' in config:
+        mieye.focus.ROI_x.setValue(float(config['ROI_x']))
+    if 'ROI_y' in config:
+        mieye.focus.ROI_y.setValue(float(config['ROI_y']))
+    if 'ROI_length' in config:
+        mieye.focus.ROI_length.setValue(float(config['ROI_length']))
+    if 'ROI_angle' in config:
+        mieye.focus.ROI_angle.setValue(float(config['ROI_angle']))
+    if 'ROI_x' in config:
+        mieye.focus.ROI_x.setValue(float(config['ROI_x']))
+    mieye.focus.set_roi()
+
+    if 'LaserRelay' in config:
+        mieye.laserRelay.setPortName(str(config['LaserRelay'][0]))
+        mieye.laserRelay.setBaudRate(int(config['LaserRelay'][1]))
+    if 'Elliptic' in config:
+        mieye._elliptec_controller.serial.setPortName(
+            (config['Elliptic'][0]))
+        mieye._elliptec_controller.serial.setBaudRate(
+            int(config['Elliptic'][1]))
+    if 'PiezoStage' in config:
+        mieye.stage.serial.setPortName(str(config['PiezoStage'][0]))
+        mieye.stage.serial.setBaudRate(int(config['PiezoStage'][1]))
+    if 'KinesisX' in config:
+        mieye.kinesisXY.X_Kinesis.serial.port = str(config['KinesisX'][0])
+        mieye.kinesisXY.X_Kinesis.serial.baudrate = int(config['KinesisX'][1])
+    if 'KinesisY' in config:
+        mieye.kinesisXY.Y_Kinesis.serial.port = str(config['KinesisY'][0])
+        mieye.kinesisXY.Y_Kinesis.serial.baudrate = int(config['KinesisY'][1])
+
+    if 'LaserPanels' in config:
+        if config['LaserPanels'] is not None:
+            for panel in mieye.laserPanels:
+                mieye.lasersLayout.removeWidget(panel)
+                panel.Laser.CloseCOM()
+
+            for panel in config['LaserPanels']:
+                if bool(panel[2]):
+                    combiner = CombinerLaserWidget()
+                    mieye.laserPanels.append(combiner)
+                    mieye.lasersLayout.insertWidget(0, combiner)
+                    combiner.Laser.setPortName(str(panel[0]))
+                    combiner.Laser.setBaudRate(int(panel[1]))
+                else:
+                    laser = SingleLaserWidget()
+                    mieye.laserPanels.append(laser)
+                    mieye.lasersLayout.insertWidget(0, laser)
+                    laser.Laser.setPortName(str(panel[0]))
+                    laser.Laser.setBaudRate(int(panel[1]))
+
+    print('Config.json file loaded!')
