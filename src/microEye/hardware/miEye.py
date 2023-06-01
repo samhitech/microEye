@@ -1657,7 +1657,12 @@ def generateConfig(mieye: miEye_module):
             'Elliptic': (mieye._elliptec_controller.serial.portName(),
                          mieye._elliptec_controller.serial.baudRate()),
             'PiezoStage': (mieye.stage.serial.portName(),
-                           mieye.stage.serial.baudRate()),
+                           mieye.stage.serial.baudRate(),
+                           mieye.stage.pConst,
+                           mieye.stage.iConst,
+                           mieye.stage.dConst,
+                           mieye.stage.tau,
+                           mieye.stage.threshold),
             'KinesisX': (mieye.kinesisXY.X_Kinesis.serial.port,
                          mieye.kinesisXY.X_Kinesis.serial.baudrate),
             'KinesisY': (mieye.kinesisXY.Y_Kinesis.serial.port,
@@ -1670,8 +1675,58 @@ def generateConfig(mieye: miEye_module):
          type(panel) is CombinerLaserWidget)
         for panel in mieye.laserPanels]
 
+    config['LasersDock'] = (
+        mieye.lasersDock.isFloating(),
+        (mieye.lasersDock.mapToGlobal(QPoint(0, 0)).x(),
+         mieye.lasersDock.mapToGlobal(QPoint(0, 0)).y()),
+        (mieye.lasersDock.geometry().width(),
+         mieye.lasersDock.geometry().height()),
+        mieye.lasersDock.isVisible())
+    config['devicesDock'] = (
+        mieye.devicesDock.isFloating(),
+        (mieye.devicesDock.mapToGlobal(QPoint(0, 0)).x(),
+         mieye.devicesDock.mapToGlobal(QPoint(0, 0)).y()),
+        (mieye.devicesDock.geometry().width(),
+         mieye.devicesDock.geometry().height()),
+        mieye.devicesDock.isVisible())
+    config['stage_dock'] = (
+        mieye.stage_dock.isFloating(),
+        (mieye.stage_dock.mapToGlobal(QPoint(0, 0)).x(),
+         mieye.stage_dock.mapToGlobal(QPoint(0, 0)).y()),
+        (mieye.stage_dock.geometry().width(),
+         mieye.stage_dock.geometry().height()),
+        mieye.stage_dock.isVisible())
+    config['stagesDock'] = (
+        mieye.stagesDock.isFloating(),
+        (mieye.stagesDock.mapToGlobal(QPoint(0, 0)).x(),
+         mieye.stagesDock.mapToGlobal(QPoint(0, 0)).y()),
+        (mieye.stagesDock.geometry().width(),
+         mieye.stagesDock.geometry().height()),
+        mieye.stagesDock.isVisible())
+    config['focus'] = (
+        mieye.focus.isFloating(),
+        (mieye.focus.mapToGlobal(QPoint(0, 0)).x(),
+         mieye.focus.mapToGlobal(QPoint(0, 0)).y()),
+        (mieye.focus.geometry().width(),
+         mieye.focus.geometry().height()),
+        mieye.focus.isVisible())
+    config['camDock'] = (
+        mieye.camDock.isFloating(),
+        (mieye.camDock.mapToGlobal(QPoint(0, 0)).x(),
+         mieye.camDock.mapToGlobal(QPoint(0, 0)).y()),
+        (mieye.camDock.geometry().width(),
+         mieye.camDock.geometry().height()),
+        mieye.camDock.isVisible())
+    config['pyDock'] = (
+        mieye.pyDock.isFloating(),
+        (mieye.pyDock.mapToGlobal(QPoint(0, 0)).x(),
+         mieye.pyDock.mapToGlobal(QPoint(0, 0)).y()),
+        (mieye.pyDock.geometry().width(),
+         mieye.pyDock.geometry().height()),
+        mieye.pyDock.isVisible())
+
     with open(filename, 'w') as file:
-        json.dump(config, file)
+        json.dump(config, file, indent=2)
 
     print('Config.json file generated!')
 
@@ -1711,6 +1766,12 @@ def loadConfig(mieye: miEye_module):
     if 'PiezoStage' in config:
         mieye.stage.serial.setPortName(str(config['PiezoStage'][0]))
         mieye.stage.serial.setBaudRate(int(config['PiezoStage'][1]))
+        if len(config['PiezoStage']) > 2:
+            mieye.stage.pConst = float(config['PiezoStage'][2])
+            mieye.stage.iConst = float(config['PiezoStage'][3])
+            mieye.stage.dConst = float(config['PiezoStage'][4])
+            mieye.stage.tau = float(config['PiezoStage'][5])
+            mieye.stage.threshold = float(config['PiezoStage'][6])
     if 'KinesisX' in config:
         mieye.kinesisXY.X_Kinesis.serial.port = str(config['KinesisX'][0])
         mieye.kinesisXY.X_Kinesis.serial.baudrate = int(config['KinesisX'][1])
@@ -1737,5 +1798,90 @@ def loadConfig(mieye: miEye_module):
                     mieye.lasersLayout.insertWidget(0, laser)
                     laser.Laser.setPortName(str(panel[0]))
                     laser.Laser.setBaudRate(int(panel[1]))
+
+    if 'LasersDock' in config:
+        mieye.lasersDock.setVisible(
+            bool(config['LasersDock'][3]))
+        if bool(config['LasersDock'][0]):
+            mieye.lasersDock.setFloating(True)
+            mieye.lasersDock.setGeometry(
+                config['LasersDock'][1][0],
+                config['LasersDock'][1][1],
+                config['LasersDock'][2][0],
+                config['LasersDock'][2][1])
+        else:
+            mieye.lasersDock.setFloating(False)
+    if 'devicesDock' in config:
+        mieye.devicesDock.setVisible(
+            bool(config['devicesDock'][3]))
+        if bool(config['devicesDock'][0]):
+            mieye.devicesDock.setFloating(True)
+            mieye.devicesDock.setGeometry(
+                config['devicesDock'][1][0],
+                config['devicesDock'][1][1],
+                config['devicesDock'][2][0],
+                config['devicesDock'][2][1])
+        else:
+            mieye.devicesDock.setFloating(False)
+    if 'stage_dock' in config:
+        mieye.stage_dock.setVisible(
+            bool(config['stage_dock'][3]))
+        if bool(config['stage_dock'][0]):
+            mieye.stage_dock.setFloating(True)
+            mieye.stage_dock.setGeometry(
+                config['stage_dock'][1][0],
+                config['stage_dock'][1][1],
+                config['stage_dock'][2][0],
+                config['stage_dock'][2][1])
+        else:
+            mieye.stage_dock.setFloating(False)
+    if 'stagesDock' in config:
+        mieye.stagesDock.setVisible(
+            bool(config['stagesDock'][3]))
+        if bool(config['stagesDock'][0]):
+            mieye.stagesDock.setFloating(True)
+            mieye.stagesDock.setGeometry(
+                config['stagesDock'][1][0],
+                config['stagesDock'][1][1],
+                config['stagesDock'][2][0],
+                config['stagesDock'][2][1])
+        else:
+            mieye.stagesDock.setFloating(False)
+    if 'focus' in config:
+        mieye.focus.setVisible(
+            bool(config['focus'][3]))
+        if bool(config['focus'][0]):
+            mieye.focus.setFloating(True)
+            mieye.focus.setGeometry(
+                config['focus'][1][0],
+                config['focus'][1][1],
+                config['focus'][2][0],
+                config['focus'][2][1])
+        else:
+            mieye.focus.setFloating(False)
+    if 'camDock' in config:
+        mieye.camDock.setVisible(
+            bool(config['camDock'][3]))
+        if bool(config['camDock'][0]):
+            mieye.camDock.setFloating(True)
+            mieye.camDock.setGeometry(
+                config['camDock'][1][0],
+                config['camDock'][1][1],
+                config['camDock'][2][0],
+                config['camDock'][2][1])
+        else:
+            mieye.camDock.setFloating(False)
+    if 'pyDock' in config:
+        mieye.pyDock.setVisible(
+            bool(config['pyDock'][3]))
+        if bool(config['pyDock'][0]):
+            mieye.pyDock.setFloating(True)
+            mieye.pyDock.setGeometry(
+                config['pyDock'][1][0],
+                config['pyDock'][1][1],
+                config['pyDock'][2][0],
+                config['pyDock'][2][1])
+        else:
+            mieye.pyDock.setFloating(False)
 
     print('Config.json file loaded!')
