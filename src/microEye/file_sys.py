@@ -1,8 +1,9 @@
+import json
 import os
 import sys
+import webbrowser
 
 import cv2
-from numba import cuda
 import numpy as np
 import pandas as pd
 import pyqtgraph as pg
@@ -21,7 +22,10 @@ else:
     def GPUmleFit_LM(*args):
         pass
 
+from microEye import fitting
+
 from .checklist_dialog import Checklist
+from .cmosMaps import cmosMaps
 from .Filters import *
 from .fitting import pyfit3Dcspline
 from .fitting.fit import *
@@ -31,8 +35,6 @@ from .metadata import MetadataEditor
 from .Rendering import *
 from .thread_worker import *
 from .uImage import *
-from .cmosMaps import cmosMaps
-from microEye import fitting
 
 
 class tiff_viewer(QMainWindow):
@@ -42,8 +44,8 @@ class tiff_viewer(QMainWindow):
         self.title = 'microEye tiff viewer'
         self.left = 0
         self.top = 0
-        self.width = 1280
-        self.height = 512
+        self._width = 1280
+        self._height = 512
         self._zoom = 1  # display resize
         self._n_levels = 4096
 
@@ -71,10 +73,31 @@ class tiff_viewer(QMainWindow):
         self.timer.timeout.connect(self.status)
         self.timer.start()
 
+    def eventFilter(self, source, event):
+        if qApp.activePopupWidget() is None:
+            if event.type() == QEvent.MouseMove:
+                if self.menuBar().isHidden():
+                    rect = self.geometry()
+                    rect.setHeight(40)
+
+                    if rect.contains(event.globalPos()):
+                        self.menuBar().show()
+                else:
+                    rect = QRect(
+                        self.menuBar().mapToGlobal(QPoint(0, 0)),
+                        self.menuBar().size()
+                    )
+
+                    if not rect.contains(event.globalPos()):
+                        self.menuBar().hide()
+            elif event.type() == QEvent.Leave and source is self:
+                self.menuBar().hide()
+        return super().eventFilter(source, event)
+
     def initialize(self, path):
         # Set Title / Dimensions / Center Window
         self.setWindowTitle(self.title)
-        self.setGeometry(self.left, self.top, self.width, self.height)
+        self.setGeometry(self.left, self.top, self._width, self._height)
 
         # Define main window layout
         self.main_widget = QWidget()
@@ -108,52 +131,102 @@ class tiff_viewer(QMainWindow):
         self.tree.setWindowTitle("Dir View")
         self.tree.resize(512, 256)
 
-        # Metadata Viewer / Editor
-        self.metadataEditor = MetadataEditor()
-
-        # Side TabView
-        self.tabView = QTabWidget()
-        self.tabView.setMinimumWidth(350)
-        self.tabView.setMaximumWidth(450)
-
         # Graphical layout
         self.g_layout_widget = QTabWidget()
 
         # Add the two sub-main layouts
-        self.main_layout.addWidget(self.tabView, 3)
-        self.main_layout.addWidget(self.g_layout_widget, 4)
+        self.main_layout.addWidget(self.g_layout_widget, 1)
 
         # Tiff File system tree viewer tab
         self.file_tree = QWidget()
         self.file_tree_layout = QVBoxLayout()
         self.file_tree.setLayout(self.file_tree_layout)
 
+        self.file_dock = QDockWidget('File System', self)
+        self.file_dock.setFeatures(
+            QDockWidget.DockWidgetFloatable |
+            QDockWidget.DockWidgetMovable)
+        self.file_dock.setWidget(self.file_tree)
+        self.addDockWidget(
+            Qt.DockWidgetArea.LeftDockWidgetArea,
+            self.file_dock)
+
         # Tiff Options tab layout
         self.controls_group = QWidget()
         self.controls_layout = QVBoxLayout()
         self.controls_group.setLayout(self.controls_layout)
+
+        self.cont_dock = QDockWidget('Prefit Options', self)
+        self.cont_dock.setFeatures(
+            QDockWidget.DockWidgetFloatable |
+            QDockWidget.DockWidgetMovable)
+        self.cont_dock.setWidget(self.controls_group)
+        self.addDockWidget(
+            Qt.DockWidgetArea.LeftDockWidgetArea,
+            self.cont_dock)
 
         # Localization / Render tab layout
         self.loc_group = QWidget()
         self.loc_form = QFormLayout()
         self.loc_group.setLayout(self.loc_form)
 
+        self.loc_dock = QDockWidget('SMLM Fitting', self)
+        self.loc_dock.setFeatures(
+            QDockWidget.DockWidgetFloatable |
+            QDockWidget.DockWidgetMovable)
+        self.loc_dock.setWidget(self.loc_group)
+        self.addDockWidget(
+            Qt.DockWidgetArea.LeftDockWidgetArea,
+            self.loc_dock)
+
         # CMOS maps tab
         self.cmos_group = cmosMaps()
+
+        self.cmos_dock = QDockWidget('CMOS Maps', self)
+        self.cmos_dock.setFeatures(
+            QDockWidget.DockWidgetFloatable |
+            QDockWidget.DockWidgetMovable)
+        self.cmos_dock.setWidget(self.cmos_group)
+        self.addDockWidget(
+            Qt.DockWidgetArea.LeftDockWidgetArea,
+            self.cmos_dock)
 
         # results stats tab layout
         self.data_filters = QWidget()
         self.data_filters_layout = QVBoxLayout()
         self.data_filters.setLayout(self.data_filters_layout)
 
-        # Add Tabs
-        self.tabView.addTab(self.file_tree, 'File system')
-        self.tabView.addTab(self.controls_group, 'Prefit Options')
-        self.tabView.addTab(self.loc_group, 'Fitting')
-        self.tabView.addTab(self.cmos_group, 'CMOS')
-        self.tabView.addTab(
-            self.data_filters, 'Data Filters')
-        self.tabView.addTab(self.metadataEditor, 'Metadata')
+        self.filters_dock = QDockWidget('Data Filters', self)
+        self.filters_dock.setFeatures(
+            QDockWidget.DockWidgetFloatable |
+            QDockWidget.DockWidgetMovable)
+        self.filters_dock.setWidget(self.data_filters)
+        self.addDockWidget(
+            Qt.DockWidgetArea.LeftDockWidgetArea,
+            self.filters_dock)
+
+        # Metadata Viewer / Editor
+        self.metadataEditor = MetadataEditor()
+
+        self.meta_dock = QDockWidget('Metadata', self)
+        self.meta_dock.setFeatures(
+            QDockWidget.DockWidgetFloatable |
+            QDockWidget.DockWidgetMovable)
+        self.meta_dock.setWidget(self.metadataEditor)
+        self.meta_dock.setVisible(False)
+        self.addDockWidget(
+            Qt.DockWidgetArea.LeftDockWidgetArea,
+            self.meta_dock)
+
+        self.tabifyDockWidget(self.file_dock, self.cont_dock)
+        self.tabifyDockWidget(self.file_dock, self.loc_dock)
+        self.tabifyDockWidget(self.file_dock, self.cmos_dock)
+        self.tabifyDockWidget(self.file_dock, self.filters_dock)
+        self.tabifyDockWidget(self.file_dock, self.meta_dock)
+        self.setTabPosition(
+            Qt.DockWidgetArea.LeftDockWidgetArea,
+            QTabWidget.TabPosition.East)
+        self.file_dock.raise_()
 
         # Add the File system tab contents
         self.imsq_pattern = QLineEdit('/image_0*.ome.tif')
@@ -498,6 +571,57 @@ class tiff_viewer(QMainWindow):
         # self.image_plot.setColorMap(pg.colormap.getFromMatplotlib('jet'))
         self.g_layout_widget.addTab(self.image_plot, 'Image Preview')
         # Item for displaying image data
+
+        # Create menu bar
+        menu_bar = self.menuBar()
+
+        # Create file menu
+        file_menu = menu_bar.addMenu('File')
+        view_menu = menu_bar.addMenu('View')
+        help_menu = menu_bar.addMenu('Help')
+
+        # Create exit action
+        save_config = QAction('Save Config.', self)
+        save_config.triggered.connect(lambda: generateConfig(self))
+        load_config = QAction('Load Config.', self)
+        load_config.triggered.connect(lambda: loadConfig(self))
+
+        files_act = self.file_dock.toggleViewAction()
+        files_act.setEnabled(True)
+        cont_act = self.cont_dock.toggleViewAction()
+        cont_act.setEnabled(True)
+        loc_act = self.loc_dock.toggleViewAction()
+        loc_act.setEnabled(True)
+        cmos_act = self.cmos_dock.toggleViewAction()
+        cmos_act.setEnabled(True)
+        filters_act = self.filters_dock.toggleViewAction()
+        filters_act.setEnabled(True)
+        meta_act = self.meta_dock.toggleViewAction()
+        meta_act.setEnabled(True)
+
+        github = QAction('microEye Github', self)
+        github.triggered.connect(
+            lambda: webbrowser.open('https://github.com/samhitech/microEye'))
+        pypi = QAction('microEye PYPI', self)
+        pypi.triggered.connect(
+            lambda: webbrowser.open('https://pypi.org/project/microEye/'))
+
+        # Add exit action to file menu
+        file_menu.addAction(save_config)
+        file_menu.addAction(load_config)
+        view_menu.addAction(files_act)
+        view_menu.addAction(cont_act)
+        view_menu.addAction(loc_act)
+        view_menu.addAction(cmos_act)
+        view_menu.addAction(filters_act)
+        view_menu.addAction(meta_act)
+
+        help_menu.addAction(github)
+        help_menu.addAction(pypi)
+
+        qApp.installEventFilter(self)
+
+        self.menuBar().hide()
 
         self.show()
         self.center()
@@ -1574,6 +1698,164 @@ class tiff_viewer(QMainWindow):
 
         window = tiff_viewer(path)
         return app, window
+
+
+def generateConfig(window: tiff_viewer):
+    filename = 'config_tiff.json'
+    config = dict()
+
+    config['tiff_viewer'] = (
+        (window.mapToGlobal(QPoint(0, 0)).x(),
+         window.mapToGlobal(QPoint(0, 0)).y()),
+        (window.geometry().width(),
+         window.geometry().height()),
+        window.isMaximized())
+
+    config['file_dock'] = (
+        window.file_dock.isFloating(),
+        (window.file_dock.mapToGlobal(QPoint(0, 0)).x(),
+         window.file_dock.mapToGlobal(QPoint(0, 0)).y()),
+        (window.file_dock.geometry().width(),
+         window.file_dock.geometry().height()),
+        window.file_dock.isVisible())
+    config['cont_dock'] = (
+        window.cont_dock.isFloating(),
+        (window.cont_dock.mapToGlobal(QPoint(0, 0)).x(),
+         window.cont_dock.mapToGlobal(QPoint(0, 0)).y()),
+        (window.cont_dock.geometry().width(),
+         window.cont_dock.geometry().height()),
+        window.cont_dock.isVisible())
+    config['loc_dock'] = (
+        window.loc_dock.isFloating(),
+        (window.loc_dock.mapToGlobal(QPoint(0, 0)).x(),
+         window.loc_dock.mapToGlobal(QPoint(0, 0)).y()),
+        (window.loc_dock.geometry().width(),
+         window.loc_dock.geometry().height()),
+        window.loc_dock.isVisible())
+    config['cmos_dock'] = (
+        window.cmos_dock.isFloating(),
+        (window.cmos_dock.mapToGlobal(QPoint(0, 0)).x(),
+         window.cmos_dock.mapToGlobal(QPoint(0, 0)).y()),
+        (window.cmos_dock.geometry().width(),
+         window.cmos_dock.geometry().height()),
+        window.cmos_dock.isVisible())
+    config['filters_dock'] = (
+        window.filters_dock.isFloating(),
+        (window.filters_dock.mapToGlobal(QPoint(0, 0)).x(),
+         window.filters_dock.mapToGlobal(QPoint(0, 0)).y()),
+        (window.filters_dock.geometry().width(),
+         window.filters_dock.geometry().height()),
+        window.filters_dock.isVisible())
+    config['camDock'] = (
+        window.meta_dock.isFloating(),
+        (window.meta_dock.mapToGlobal(QPoint(0, 0)).x(),
+         window.meta_dock.mapToGlobal(QPoint(0, 0)).y()),
+        (window.meta_dock.geometry().width(),
+         window.meta_dock.geometry().height()),
+        window.meta_dock.isVisible())
+
+    with open(filename, 'w') as file:
+        json.dump(config, file, indent=2)
+
+    print('Config.json file generated!')
+
+
+def loadConfig(window: tiff_viewer):
+    filename = 'config_tiff.json'
+
+    if not os.path.exists(filename):
+        print('Config.json not found!')
+        return
+
+    config: dict = None
+
+    with open(filename, 'r') as file:
+        config = json.load(file)
+
+    if 'tiff_viewer' in config:
+        if bool(config['tiff_viewer'][2]):
+            window.showMaximized()
+        else:
+            window.setGeometry(
+                config['tiff_viewer'][0][0],
+                config['tiff_viewer'][0][1],
+                config['tiff_viewer'][1][0],
+                config['tiff_viewer'][1][1])
+
+    if 'file_dock' in config:
+        window.file_dock.setVisible(
+            bool(config['file_dock'][3]))
+        if bool(config['file_dock'][0]):
+            window.file_dock.setFloating(True)
+            window.file_dock.setGeometry(
+                config['file_dock'][1][0],
+                config['file_dock'][1][1],
+                config['file_dock'][2][0],
+                config['file_dock'][2][1])
+        else:
+            window.file_dock.setFloating(False)
+    if 'cont_dock' in config:
+        window.cont_dock.setVisible(
+            bool(config['cont_dock'][3]))
+        if bool(config['cont_dock'][0]):
+            window.cont_dock.setFloating(True)
+            window.cont_dock.setGeometry(
+                config['cont_dock'][1][0],
+                config['cont_dock'][1][1],
+                config['cont_dock'][2][0],
+                config['cont_dock'][2][1])
+        else:
+            window.cont_dock.setFloating(False)
+    if 'loc_dock' in config:
+        window.loc_dock.setVisible(
+            bool(config['loc_dock'][3]))
+        if bool(config['loc_dock'][0]):
+            window.loc_dock.setFloating(True)
+            window.loc_dock.setGeometry(
+                config['loc_dock'][1][0],
+                config['loc_dock'][1][1],
+                config['loc_dock'][2][0],
+                config['loc_dock'][2][1])
+        else:
+            window.loc_dock.setFloating(False)
+    if 'cmos_dock' in config:
+        window.cmos_dock.setVisible(
+            bool(config['cmos_dock'][3]))
+        if bool(config['cmos_dock'][0]):
+            window.cmos_dock.setFloating(True)
+            window.cmos_dock.setGeometry(
+                config['cmos_dock'][1][0],
+                config['cmos_dock'][1][1],
+                config['cmos_dock'][2][0],
+                config['cmos_dock'][2][1])
+        else:
+            window.cmos_dock.setFloating(False)
+    if 'filters_dock' in config:
+        window.filters_dock.setVisible(
+            bool(config['filters_dock'][3]))
+        if bool(config['filters_dock'][0]):
+            window.filters_dock.setFloating(True)
+            window.filters_dock.setGeometry(
+                config['filters_dock'][1][0],
+                config['filters_dock'][1][1],
+                config['filters_dock'][2][0],
+                config['filters_dock'][2][1])
+        else:
+            window.filters_dock.setFloating(False)
+    if 'meta_dock' in config:
+        window.meta_dock.setVisible(
+            bool(config['meta_dock'][3]))
+        if bool(config['meta_dock'][0]):
+            window.meta_dock.setFloating(True)
+            window.meta_dock.setGeometry(
+                config['meta_dock'][1][0],
+                config['meta_dock'][1][1],
+                config['meta_dock'][2][0],
+                config['meta_dock'][2][1])
+        else:
+            window.meta_dock.setFloating(False)
+
+    print('Config.json file loaded!')
 
 
 if __name__ == '__main__':

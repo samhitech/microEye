@@ -23,6 +23,7 @@ class MetadataEditor(QWidget):
         super().__init__(parent=parent)
 
         # self.setTitle('OME-XML Metadata')
+        self.setMinimumWidth(50)
 
         self.InitLayout()
 

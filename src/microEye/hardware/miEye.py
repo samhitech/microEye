@@ -718,7 +718,7 @@ class miEye_module(QMainWindow):
 
     def BufferGet(self) -> Queue:
         if self.cam is not None:
-            return self.cam_panel.get()
+            return self.cam_panel.get(True)
         elif not self.IR_Cam.isDummy():
             return self.IR_Cam.buffer.get()
         else:
@@ -1503,6 +1503,8 @@ def scan_acquisition(miEye: miEye_module, steps, step_size, delay, average=1):
                     Y = (x % 2) * (steps[1] - 1) + ((-1)**x) * y
                     data.append(
                         TileImage(frame, [Y, x], miEye.kinesisXY.position))
+                    cv2.imshow(cam.name, frame._view)
+                    cv2.waitKey(1)
 
             miEye.kinesisXY.update()
 
@@ -1669,6 +1671,13 @@ def generateConfig(mieye: miEye_module):
                          mieye.kinesisXY.Y_Kinesis.serial.baudrate)
         }
 
+    config['miEye_module'] = (
+        (mieye.mapToGlobal(QPoint(0, 0)).x(),
+         mieye.mapToGlobal(QPoint(0, 0)).y()),
+        (mieye.geometry().width(),
+         mieye.geometry().height()),
+        mieye.isMaximized())
+
     config['LaserPanels'] = [
         (panel.Laser.portName(),
          panel.Laser.baudRate(),
@@ -1742,6 +1751,16 @@ def loadConfig(mieye: miEye_module):
 
     with open(filename, 'r') as file:
         config = json.load(file)
+
+    if 'miEye_module' in config:
+        if bool(config['miEye_module'][2]):
+            mieye.showMaximized()
+        else:
+            mieye.setGeometry(
+                config['miEye_module'][0][0],
+                config['miEye_module'][0][1],
+                config['miEye_module'][1][0],
+                config['miEye_module'][1][1])
 
     if 'ROI_x' in config:
         mieye.focus.ROI_x.setValue(float(config['ROI_x']))

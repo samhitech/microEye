@@ -4,7 +4,7 @@ import os
 import threading
 import time
 import traceback
-from queue import Queue
+from queue import Queue, LifoQueue
 
 import json
 import math
@@ -732,9 +732,16 @@ class Vimba_Panel(QGroupBox):
     def isEmpty(self) -> bool:
         return self.buffer.empty()
 
-    def get(self) -> np.ndarray:
+    def get(self, last=False) -> np.ndarray:
+        res = None
         if not self.isEmpty:
-            return self._frames.get()
+            if last:
+                while not self.isEmpty:
+                    res = self._frames.get()
+            else:
+                return self._frames.get()
+        else:
+            return None
 
     @property
     def isOpen(self) -> bool:
