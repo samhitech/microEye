@@ -22,20 +22,16 @@ from ..hid_controller import *
 from ..pyscripting import *
 from ..qlist_slider import *
 from ..thread_worker import *
-from .CameraListWidget import *
-from .elliptec import *
-from .io_matchbox import *
-from .io_single_laser import *
-from .IR_Cam import *
-from .piezo_concept import *
+from .cams import *
+from .lasers import *
 from .port_config import *
-from .thorlabs import *
-from .thorlabs_panel import Thorlabs_Panel
+from .stages import *
 
 try:
     from pyueye import ueye
-    from .ueye_camera import IDS_Camera
-    from .ueye_panel import IDS_Panel
+
+    from .cams import IDS_Camera
+    from .cams.ueye_panel import IDS_Panel
 except Exception:
     ueye = None
     IDS_Camera = None
@@ -505,8 +501,7 @@ class control_module(QMainWindow):
                 self.cam = ids_cam
                 ids_panel = IDS_Panel(
                     self._threadpool,
-                    ids_cam, cam["Model"] + " " + cam["Serial"],
-                    mini=True)
+                    ids_cam, True, cam["Model"] + " " + cam["Serial"])
                 # ids_panel._directory = self.save_directory
                 ids_panel.master = False
                 self.cam_panel = ids_panel
@@ -518,8 +513,7 @@ class control_module(QMainWindow):
                     self.cam = thor_cam
                     thor_panel = Thorlabs_Panel(
                         self._threadpool,
-                        thor_cam, cam["Model"] + " " + cam["Serial"],
-                        mini=True)
+                        thor_cam, True, cam["Model"] + " " + cam["Serial"])
                     # thor_panel._directory = self.save_directory
                     thor_panel.master = False
                     self.cam_panel = thor_panel

@@ -3,7 +3,7 @@ from PyQt5.QtGui import *
 from PyQt5.QtSerialPort import *
 from PyQt5.QtWidgets import *
 
-from .port_config import port_config, tracking_config
+from ..port_config import port_config, tracking_config
 
 
 class stage():

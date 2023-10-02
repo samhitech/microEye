@@ -68,7 +68,8 @@ class focusWidget(QDockWidget):
         # IR Peak Position Graph
         self.graph_Peak = PlotWidget()
         self.graph_Peak.setLabel("bottom", "Frame", **self.labelStyle)
-        self.graph_Peak.setLabel("left", "Center Pixel", **self.labelStyle)
+        self.graph_Peak.setLabel(
+            "left", "Center Pixel Error", **self.labelStyle)
         # IR Camera GraphView
         self.remote_view = RemoteGraphicsView()
         self.remote_view.pg.setConfigOptions(

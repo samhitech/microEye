@@ -2,6 +2,8 @@
 from typing import Optional
 import numpy as np
 
+from .micam import miCamera
+
 try:
     import vimba as vb
 
@@ -49,16 +51,17 @@ except Exception:
         return None
 
 
-class vimba_cam:
+class vimba_cam(miCamera):
     '''A class to handle an Allied Vision camera.'''
 
     def __init__(self, camera_id=None):
+        super().__init__(camera_id)
 
         self.vimba = vb.Vimba.get_instance()
         self.cam = get_camera(camera_id)
         self.Cam_ID = self.cam.get_id()
         self.name = self.cam.get_name()
-        self.name_no_space = self.name.replace(' ', '_').replace('-', '_')
+        self.name = self.name.replace(' ', '_').replace('-', '_')
 
         self.temperature = -127
 

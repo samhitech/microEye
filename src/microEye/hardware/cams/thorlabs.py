@@ -1,8 +1,10 @@
-import numpy as np
-import os.path
 import logging
-
+import os.path
 from ctypes import *
+
+import numpy as np
+
+from .micam import miCamera
 
 
 class IS_SIZE_2D(Structure):
@@ -577,12 +579,13 @@ IS_GET_STATUS = 0x8000
 IS_GET_COLOR_MODE = 0x8000
 
 
-class thorlabs_camera():
+class thorlabs_camera(miCamera):
 
     uc480_file = 'C:\\Program Files\\Thorlabs\\Scientific' + \
         ' Imaging\\ThorCam\\uc480_64.dll'
 
     def __init__(self, hCam=0):
+        super().__init__(hCam)
         if os.path.isfile(thorlabs_camera.uc480_file):
             self.bit_depth = int(8)
             self.supported_bit_depth = c_uint(0)

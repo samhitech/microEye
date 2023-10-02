@@ -23,24 +23,17 @@ from ..hid_controller import *
 from ..pyscripting import *
 from ..qlist_slider import *
 from ..thread_worker import *
-from .CameraListWidget import *
-from .elliptec import *
-from .io_matchbox import *
-from .io_single_laser import *
-from .IR_Cam import *
-from .kinesis import *
-from .piezo_concept import *
+from .cams import *
+from .lasers import *
 from .port_config import *
-from .scan_acquisition import *
-from .thorlabs import *
-from .thorlabs_panel import Thorlabs_Panel
-from .widgets import focusWidget
+from .stages import *
+from .widgets import *
 
 try:
     from pyueye import ueye
 
-    from .ueye_camera import IDS_Camera
-    from .ueye_panel import IDS_Panel
+    from .cams import IDS_Camera
+    from .cams.ueye_panel import IDS_Panel
 except Exception:
     ueye = None
     IDS_Camera = None
@@ -49,8 +42,8 @@ except Exception:
 try:
     import vimba as vb
 
-    from .vimba_cam import *
-    from .vimba_panel import *
+    from .cams import vimba_cam
+    from .cams.vimba_panel import *
 except Exception:
     vb = None
 
@@ -548,8 +541,8 @@ class miEye_module(QMainWindow):
                 self.cam = ids_cam
                 ids_panel = IDS_Panel(
                     self._threadpool,
-                    ids_cam, cam["Model"] + " " + cam["Serial"],
-                    mini=True)
+                    ids_cam, True,
+                    cam["Model"] + " " + cam["Serial"])
                 # ids_panel._directory = self.save_directory
                 ids_panel.master = False
                 self.cam_panel = ids_panel
@@ -562,8 +555,8 @@ class miEye_module(QMainWindow):
                     self.cam = thor_cam
                     thor_panel = Thorlabs_Panel(
                         self._threadpool,
-                        thor_cam, cam["Model"] + " " + cam["Serial"],
-                        mini=True)
+                        thor_cam, True,
+                        cam["Model"] + " " + cam["Serial"])
                     # thor_panel._directory = self.save_directory
                     thor_panel.master = False
                     self.cam_panel = thor_panel
@@ -574,8 +567,7 @@ class miEye_module(QMainWindow):
                 self.cam = v_cam
                 v_panel = Vimba_Panel(
                         self._threadpool,
-                        v_cam, cam["Model"] + " " + cam["Serial"],
-                        mini=True)
+                        v_cam, True, cam["Model"] + " " + cam["Serial"])
                 v_panel.master = False
                 self.cam_panel = v_panel
                 self.cam_dock = self.getDockWidget(
@@ -621,7 +613,7 @@ class miEye_module(QMainWindow):
                 self.ids_cams.append(ids_cam)
                 ids_panel = IDS_Panel(
                     self._threadpool,
-                    ids_cam, cam["Model"] + " " + cam["Serial"])
+                    ids_cam, False, cam["Model"] + " " + cam["Serial"])
                 ids_panel._directory = _directory
                 ids_panel.master = False
                 ids_panel.show()
@@ -633,7 +625,7 @@ class miEye_module(QMainWindow):
                     self.thorlabs_cams.append(thor_cam)
                     thor_panel = Thorlabs_Panel(
                         self._threadpool,
-                        thor_cam, cam["Model"] + " " + cam["Serial"])
+                        thor_cam, False, cam["Model"] + " " + cam["Serial"])
                     thor_panel._directory = _directory
                     thor_panel.master = False
                     thor_panel.show()
@@ -643,7 +635,7 @@ class miEye_module(QMainWindow):
                 self.vimba_cams.append(v_cam)
                 v_panel = Vimba_Panel(
                         self._threadpool,
-                        v_cam, cam["Model"] + " " + cam["Serial"])
+                        v_cam, False, cam["Model"] + " " + cam["Serial"])
                 v_panel._directory = _directory
                 v_panel.master = False
                 v_panel.show()
@@ -691,9 +683,9 @@ class miEye_module(QMainWindow):
                 with pan.cam.cam:
                     if pan.cam.cam.get_serial() == cam["Serial"]:
                         if not pan.cam.acquisition:
-
                             pan._dispose_cam = True
-                            pan._stop_thread = True
+                            if pan.acq_job is not None:
+                                pan.acq_job.stop_threads = True
                             self.vimba_cams.remove(pan.cam)
                             self.vimba_panels.remove(pan)
                             pan.close()
@@ -973,34 +965,14 @@ class miEye_module(QMainWindow):
             self.send_laser_relay_btn.setStyleSheet("")
 
         if self.cam_panel is not None:
-            self.cam_panel.info_temp.setText(
-                " T {:.2f} °C".format(self.cam_panel.cam.temperature))
-            self.cam_panel.info_cap.setText(
-                " Capture {:d} | {:.2f} ms ".format(
-                    self.cam_panel._counter,
-                    self.cam_panel._exec_time))
-            self.cam_panel.info_disp.setText(
-                " Display {:d} | {:.2f} ms ".format(
-                    self.cam_panel._buffer.qsize(), self.cam_panel._dis_time))
-            self.cam_panel.info_save.setText(
-                " Save {:d} | {:.2f} ms ".format(
-                    self.cam_panel._frames.qsize(), self.cam_panel._save_time))
+            self.cam_panel.updateInfo()
 
         for panel in self.vimba_panels:
-            panel.info_temp.setText(
-                " T {:.2f} °C".format(panel.cam.temperature))
-            panel.info_cap.setText(
-                " Capture {:d}/{:d} {:.2%} | {:.2f} ms ".format(
-                    panel._counter,
-                    panel._nFrames,
-                    panel._counter / panel._nFrames,
-                    panel._exec_time))
-            panel.info_disp.setText(
-                " Display {:d} | {:.2f} ms ".format(
-                    panel._buffer.qsize(), panel._dis_time))
-            panel.info_save.setText(
-                " Save {:d} | {:.2f} ms ".format(
-                    panel._frames.qsize(), panel._save_time))
+            panel.updateInfo()
+        for panel in self.ids_panels:
+            panel.updateInfo()
+        for panel in self.thor_panels:
+            panel.updateInfo()
 
     @pyqtSlot()
     def open_dialog(self, serial: QSerialPort):
@@ -1559,9 +1531,9 @@ def z_stack_acquisition(
                         miEye.stage.autoFocusTracking()
                 frame = None
                 cam_pan.frames_tbox.setValue(nFrames)
-                cam_pan.cam_save_temp.setChecked(True)
+                cam_pan.save_data_chbx.setChecked(True)
                 prefix = 'Z_{:04d}_'.format(x)
-                cam_pan.start_free_run(cam, prefix)
+                cam_pan.start_free_run(prefix)
 
                 cam_pan.s_event.wait()
     except Exception:
@@ -1803,6 +1775,8 @@ def loadConfig(mieye: miEye_module):
             for panel in mieye.laserPanels:
                 mieye.lasersLayout.removeWidget(panel)
                 panel.Laser.CloseCOM()
+
+            mieye.laserPanels.clear()
 
             for panel in config['LaserPanels']:
                 if bool(panel[2]):

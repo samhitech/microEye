@@ -2,6 +2,8 @@ from ctypes import *
 import logging
 import numpy as np
 
+from .micam import miCamera
+
 try:
     from pyueye import ueye
 except Exception:
@@ -89,7 +91,7 @@ color_modes_ = {
     ueye.IS_COLORMODE_JPEG: 'IS_COLORMODE_JPEG'}
 
 
-class IDS_Camera:
+class IDS_Camera(miCamera):
     '''A class to handle an IDS uEye camera.'''
 
     TRIGGER_MODES = {
@@ -135,7 +137,7 @@ class IDS_Camera:
             1-254: The camera with the specified camera ID
         '''
         # Variables
-        self.Cam_ID = Cam_ID
+        super().__init__(Cam_ID)
         # 0: first available camera;
         # 1-254: The camera with the specified camera ID
         self.hCam = ueye.HIDS(Cam_ID)

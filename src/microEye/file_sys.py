@@ -1587,16 +1587,17 @@ class tiff_viewer(QMainWindow):
 
             points: np.ndarray = detector.find_peaks(th_img)
 
-            if varim is None:
-                rois, coords = get_roi_list(image, points, roiSize)
-            else:
-                rois, varims, coords = get_roi_list_CMOS(
-                    image, varim, points, roiSize)
-                varim_list += [varims]
+            if len(points) > 0:
+                if varim is None:
+                    rois, coords = get_roi_list(image, points, roiSize)
+                else:
+                    rois, varims, coords = get_roi_list_CMOS(
+                        image, varim, points, roiSize)
+                    varim_list += [varims]
 
-            roi_list += [rois]
-            coord_list += [coords]
-            frames_list += [k + 1] * rois.shape[0]
+                roi_list += [rois]
+                coord_list += [coords]
+                frames_list += [k + 1] * rois.shape[0]
 
             print(
                 'index: {:.2f}% {:d} ms    '.format(

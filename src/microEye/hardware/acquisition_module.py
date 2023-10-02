@@ -14,19 +14,18 @@ from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 
-from .CameraListWidget import CameraListWidget
-from ..pyscripting import *
-from .thorlabs import *
-from .thorlabs_panel import Thorlabs_Panel
-from ..thread_worker import *
-from .kinesis import *
-from .scan_acquisition import *
 from ..hid_controller import *
+from ..pyscripting import *
+from ..thread_worker import *
+from .cams import CMD, CameraListWidget, thorlabs_camera, Thorlabs_Panel
+from .stages import *
+from .widgets import *
 
 try:
     from pyueye import ueye
-    from .ueye_camera import IDS_Camera
-    from .ueye_panel import IDS_Panel
+
+    from .cams import IDS_Camera
+    from .cams.ueye_panel import IDS_Panel
 except Exception:
     ueye = None
     IDS_Camera = None
@@ -34,8 +33,9 @@ except Exception:
 
 try:
     import vimba as vb
-    from .vimba_cam import *
-    from .vimba_panel import *
+
+    from .cams import vimba_cam
+    from .cams.vimba_panel import *
 except Exception:
     vb = None
 
@@ -537,7 +537,8 @@ class acquisition_module(QMainWindow):
                         if not pan.cam.acquisition:
 
                             pan._dispose_cam = True
-                            pan._stop_thread = True
+                            if pan.acq_job is not None:
+                                pan.acq_job.stop_threads = True
                             self.vimba_cams.remove(pan.cam)
                             self.vimba_panels.remove(pan)
                             self.Hlayout.removeWidget(pan)
@@ -561,7 +562,7 @@ class acquisition_module(QMainWindow):
                 self.ids_cams.append(ids_cam)
                 ids_panel = IDS_Panel(
                     self.threadpool,
-                    ids_cam, cam["Model"] + " " + cam["Serial"])
+                    ids_cam, False, cam["Model"] + " " + cam["Serial"])
                 ids_panel._directory = self.save_directory
                 if len(self.ids_panels) == 0:
                     ids_panel.master = True
@@ -578,7 +579,7 @@ class acquisition_module(QMainWindow):
                     self.thorlabs_cams.append(thor_cam)
                     thor_panel = Thorlabs_Panel(
                         self.threadpool,
-                        thor_cam, cam["Model"] + " " + cam["Serial"])
+                        thor_cam, False, cam["Model"] + " " + cam["Serial"])
                     thor_panel._directory = self.save_directory
                     thor_panel.master = False
                     thor_panel.exposureChanged.connect(
@@ -590,7 +591,7 @@ class acquisition_module(QMainWindow):
                 self.vimba_cams.append(v_cam)
                 v_panel = Vimba_Panel(
                         self.threadpool,
-                        v_cam, cam["Model"] + " " + cam["Serial"])
+                        v_cam, False, cam["Model"] + " " + cam["Serial"])
                 v_panel._directory = self.save_directory
                 v_panel.master = False
                 v_panel.exposureChanged.connect(

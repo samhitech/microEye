@@ -12,7 +12,7 @@ from pyqtgraph.widgets.PlotWidget import PlotWidget
 
 import qdarkstyle
 
-from .port_config import *
+from ..port_config import *
 
 
 class temperature_monitor(QMainWindow):
@@ -131,7 +131,7 @@ class temperature_monitor(QMainWindow):
         self.move(qtRectangle.topLeft())
 
     def receive(self):
-        while(self.serial.canReadLine()):
+        while (self.serial.canReadLine()):
             line = self.serial.readLine().data().decode('utf-8')
             temp = line.rstrip('\r\n')
             try:

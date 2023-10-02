@@ -3,7 +3,7 @@ from PyQt5.QtGui import *
 from PyQt5.QtSerialPort import *
 from PyQt5.QtWidgets import *
 
-from .port_config import port_config
+from ..port_config import port_config
 
 
 class elliptec_controller():
@@ -57,25 +57,25 @@ class elliptec_controller():
 
     def HOME(self, address):
         '''Homes the stage at a specific address'''
-        if(self.isOpen()):
+        if (self.isOpen()):
             self.LastCmd = '{}ho0'.format(address)
             self.write(self.LastCmd.encode('utf-8'))
 
     def FORWARD(self, address):
         '''Moves the stage at a specific address one step FORWARD'''
-        if(self.isOpen()):
+        if (self.isOpen()):
             self.LastCmd = '{}fw'.format(address)
             self.write(self.LastCmd.encode('utf-8'))
 
     def BACKWARD(self, address):
         '''Moves the stage at a specific address one step BACKWARD'''
-        if(self.isOpen()):
+        if (self.isOpen()):
             self.LastCmd = '{}bw'.format(address)
             self.write(self.LastCmd.encode('utf-8'))
 
     def setSLOT(self, address, slot):
         '''Moves the stage at a specific address one step BACKWARD'''
-        if(self.isOpen()):
+        if (self.isOpen()):
             self.LastCmd = '{}ma000000{}0'.format(address, slot * 2)
             self.write(self.LastCmd.encode('utf-8'))
 

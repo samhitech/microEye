@@ -5,6 +5,7 @@ import numpy as np
 import tifffile as tf
 import zarr
 from PyQt5.QtCore import *
+from numba import cuda
 
 
 class uImage():
@@ -58,6 +59,45 @@ class uImage():
     @property
     def channels(self):
         return self._channels
+
+    def calcHist_GPU(self):
+        self.n_bins = 2**16 if self._image.dtype == np.uint16 else 256
+        # Calculate the range of the input image
+        min_value = np.min(self.image)
+        max_value = np.max(self.image)
+        value_range = max_value - min_value
+
+        # Compute the bin width
+        bin_width = value_range / self.n_bins
+
+        # Allocate memory for the LUT on the GPU
+        lut_device = cuda.to_device(np.zeros((self.n_bins,), dtype=np.int32))
+
+        # Configure kernel launch parameters
+        threads_per_block = (16, 16)
+        blocks_per_grid_x = (
+            self.image.shape[0] + threads_per_block[0] - 1
+            ) // threads_per_block[0]
+        blocks_per_grid_y = (
+            self.image.shape[1] + threads_per_block[1] - 1
+            ) // threads_per_block[1]
+        blocks_per_grid = (blocks_per_grid_x, blocks_per_grid_y)
+
+        # Launch the generate LUT kernel
+        generate_lut_kernel[blocks_per_grid, threads_per_block](
+            self.image, lut_device, min_value, bin_width, self.n_bins)
+
+        # Copy the LUT from GPU device to host memory
+        self._hist = lut_device.copy_to_host().astype(np.float64)
+
+        # Normalize the LUT values
+        self._hist = self._hist / np.sum(self._hist)
+
+        # calculate the cdf
+        self._cdf = self._hist.cumsum()
+
+        self._min = np.where(self._cdf >= 0.00001)[0][0]
+        self._max = np.where(self._cdf >= 0.9999)[0][0]
 
     def calcHist(self):
         self.n_bins = 2**16 if self._image.dtype == np.uint16 else 256
@@ -189,6 +229,18 @@ class uImage():
         return uImage(left_view), uImage(np.fliplr(right_view))
 
 
+@cuda.jit
+def generate_lut_kernel(image, lut, min_value, bin_width, num_bins):
+    row, col = cuda.grid(2)
+
+    if row < image.shape[0] and col < image.shape[1]:
+        # Calculate the bin index for the pixel value
+        bin_index = int((image[row, col] - min_value) / bin_width)
+        if bin_index >= num_bins:
+            bin_index = num_bins - 1
+        cuda.atomic.add(lut, bin_index, 1)
+
+
 class TiffSeqHandler:
 
     def __init__(self, tiffSeq: tf.TiffSequence) -> None:
@@ -296,9 +348,13 @@ class ZarrImageSequence:
     def getSlice(
             self, timeSlice=slice(None), channelSlice=slice(None),
             zSlice=slice(None), ySlice=slice(None), xSlice=slice(None)):
-
-        return zarr.open(
-            self.path, 'r')[timeSlice, channelSlice, zSlice, ySlice, xSlice]
+        za = zarr.open(self.path, 'r')
+        if len(za.shape) == 5:
+            return za[timeSlice, channelSlice, zSlice, ySlice, xSlice]
+        elif len(za.shape) == 4:
+            return za[timeSlice, zSlice, ySlice, xSlice]
+        else:
+            return za[timeSlice, ySlice, xSlice]
 
     def open(self):
         self.data = zarr.open(self.path, 'r')

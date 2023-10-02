@@ -6,8 +6,8 @@ from PyQt5.QtSerialPort import *
 from PyQt5.QtWidgets import *
 
 
-from .port_config import port_config
-from ..thread_worker import *
+from ..port_config import port_config
+from ...thread_worker import *
 
 
 class KinesisDevice:
