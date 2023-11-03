@@ -50,7 +50,7 @@ class Camera_Panel(QGroupBox):
         self.c_worker = None  # worker for capturing
         self.d_worker = None  # worker for display
         self.s_worker = None  # worker for saving
-        
+
         self.c_event = None
         self.s_event = None
 

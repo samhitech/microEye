@@ -13,8 +13,8 @@ from sklearn.neighbors import NearestNeighbors
 def nn_trajectories(
         currentFrame: np.ndarray, nextFrame: np.ndarray,
         c_trackID: np.ndarray, n_trackID: np.ndarray,
-        nn_dist: np.ndarray, counter: int = 0, minDistance=0,
-        maxDistance=30, neighbors=1):
+        nn_dist: np.ndarray, counter: int = 0, minDistance: float = 0,
+        maxDistance: float = 30, neighbors=1):
 
     currentIDs = None
 

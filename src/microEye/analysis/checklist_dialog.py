@@ -31,6 +31,8 @@ class ChecklistDialog(QDialog):
 
         self.listView.setModel(self.model)
 
+        self.export_precision = QLineEdit('%10.5f')
+
         self.okButton = QPushButton('OK')
         self.cancelButton = QPushButton('Cancel')
         self.selectButton = QPushButton('Select All')
@@ -43,10 +45,11 @@ class ChecklistDialog(QDialog):
         hbox.addWidget(self.selectButton)
         hbox.addWidget(self.unselectButton)
 
-        vbox = QVBoxLayout(self)
-        vbox.addWidget(self.listView)
-        vbox.addStretch(1)
-        vbox.addLayout(hbox)
+        vbox = QFormLayout(self)
+        vbox.addRow(self.listView)
+        vbox.addRow(
+            QLabel('Format:'), self.export_precision)
+        vbox.addRow(hbox)
 
         self.setWindowTitle(self.name)
         if self.icon:
@@ -58,10 +61,7 @@ class ChecklistDialog(QDialog):
         self.unselectButton.clicked.connect(self.unselect)
 
     def onAccepted(self):
-        self.choices = [self.model.item(i).text() for i in
-                        range(self.model.rowCount())
-                        if self.model.item(i).checkState()
-                        == Qt.Checked]
+        self.choices = self.toList()
         self.accept()
 
     def select(self):
@@ -73,6 +73,12 @@ class ChecklistDialog(QDialog):
         for i in range(self.model.rowCount()):
             item = self.model.item(i)
             item.setCheckState(Qt.Unchecked)
+
+    def toList(self):
+        return [self.model.item(i).text() for i in
+                range(self.model.rowCount())
+                if self.model.item(i).checkState()
+                == Qt.Checked]
 
 
 class Checklist(QGroupBox):

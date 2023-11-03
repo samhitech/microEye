@@ -1,7 +1,7 @@
 
 import numpy as np
 
-from ..Rendering import radial_cordinate
+from ..rendering import radial_cordinate
 
 
 def phasor_fit(image: np.ndarray, points: np.ndarray,

@@ -22,19 +22,18 @@ else:
     def GPUmleFit_LM(*args):
         pass
 
-from microEye import fitting
-
-from .checklist_dialog import Checklist
+from .checklist_dialog import Checklist, ChecklistDialog
 from .cmosMaps import cmosMaps
-from .Filters import *
+from .filters import *
 from .fitting import pyfit3Dcspline
 from .fitting.fit import *
 from .fitting.results import *
 from .fitting.results_stats import resultsStatsWidget
-from .metadata import MetadataEditor
-from .Rendering import *
-from .thread_worker import *
-from .uImage import *
+from .fitting.nena import NeNA_Widget
+from ..metadata import MetadataEditor
+from .rendering import *
+from ..thread_worker import *
+from ..uImage import *
 
 
 class tiff_viewer(QMainWindow):
@@ -44,8 +43,8 @@ class tiff_viewer(QMainWindow):
         self.title = 'microEye tiff viewer'
         self.left = 0
         self.top = 0
-        self._width = 1280
-        self._height = 512
+        self._width = 1300
+        self._height = 650
         self._zoom = 1  # display resize
         self._n_levels = 4096
 
@@ -170,13 +169,13 @@ class tiff_viewer(QMainWindow):
         self.loc_form = QFormLayout()
         self.loc_group.setLayout(self.loc_form)
 
-        self.loc_dock = QDockWidget('SMLM Fitting', self)
+        self.loc_dock = QDockWidget('SMLM Analysis', self)
         self.loc_dock.setFeatures(
             QDockWidget.DockWidgetFloatable |
             QDockWidget.DockWidgetMovable)
         self.loc_dock.setWidget(self.loc_group)
         self.addDockWidget(
-            Qt.DockWidgetArea.LeftDockWidgetArea,
+            Qt.DockWidgetArea.RightDockWidgetArea,
             self.loc_dock)
 
         # CMOS maps tab
@@ -188,7 +187,7 @@ class tiff_viewer(QMainWindow):
             QDockWidget.DockWidgetMovable)
         self.cmos_dock.setWidget(self.cmos_group)
         self.addDockWidget(
-            Qt.DockWidgetArea.LeftDockWidgetArea,
+            Qt.DockWidgetArea.RightDockWidgetArea,
             self.cmos_dock)
 
         # results stats tab layout
@@ -202,7 +201,7 @@ class tiff_viewer(QMainWindow):
             QDockWidget.DockWidgetMovable)
         self.filters_dock.setWidget(self.data_filters)
         self.addDockWidget(
-            Qt.DockWidgetArea.LeftDockWidgetArea,
+            Qt.DockWidgetArea.RightDockWidgetArea,
             self.filters_dock)
 
         # Metadata Viewer / Editor
@@ -215,18 +214,21 @@ class tiff_viewer(QMainWindow):
         self.meta_dock.setWidget(self.metadataEditor)
         self.meta_dock.setVisible(False)
         self.addDockWidget(
-            Qt.DockWidgetArea.LeftDockWidgetArea,
+            Qt.DockWidgetArea.RightDockWidgetArea,
             self.meta_dock)
 
         self.tabifyDockWidget(self.file_dock, self.cont_dock)
-        self.tabifyDockWidget(self.file_dock, self.loc_dock)
-        self.tabifyDockWidget(self.file_dock, self.cmos_dock)
-        self.tabifyDockWidget(self.file_dock, self.filters_dock)
-        self.tabifyDockWidget(self.file_dock, self.meta_dock)
+        self.tabifyDockWidget(self.loc_dock, self.cmos_dock)
+        self.tabifyDockWidget(self.loc_dock, self.filters_dock)
+        self.tabifyDockWidget(self.loc_dock, self.meta_dock)
         self.setTabPosition(
             Qt.DockWidgetArea.LeftDockWidgetArea,
             QTabWidget.TabPosition.East)
+        self.setTabPosition(
+            Qt.DockWidgetArea.RightDockWidgetArea,
+            QTabWidget.TabPosition.West)
         self.file_dock.raise_()
+        self.loc_dock.raise_()
 
         # Add the File system tab contents
         self.imsq_pattern = QLineEdit('/image_0*.ome.tif')
@@ -242,18 +244,22 @@ class tiff_viewer(QMainWindow):
         self.pages_slider.setMinimum(0)
         self.pages_slider.setMaximum(0)
 
-        self.min_label = QLabel('Min level:')
-        self.min_slider = QSlider(Qt.Horizontal)
-        self.min_slider.setMinimum(0)
-        self.min_slider.setMaximum(self._n_levels - 1)
-        self.min_slider.valueChanged.emit(0)
+        # Hist plotWidget
+        self.histogram = pg.PlotWidget()
+        self.hist_cdf = pg.PlotWidget()
+        greenP = pg.mkPen(color='g')
+        blueP = pg.mkPen(color='b')
+        greenB = pg.mkBrush(0, 255, 0, 32)
+        _bins = np.arange(self._n_levels - 1)
+        self._plot_ref = self.histogram.plot(
+            _bins, np.ones_like(_bins), pen=blueP)
 
-        self.max_label = QLabel('Max level:')
-        self.max_slider = QSlider(Qt.Horizontal)
-        self.max_slider.setMinimum(0)
-        self.max_slider.setMaximum(self._n_levels - 1)
-        self.max_slider.setValue(self._n_levels - 1)
-        self.max_slider.valueChanged.emit(self._n_levels - 1)
+        self.lr_0 = pg.LinearRegionItem(
+            (0, self._n_levels - 1),
+            bounds=(0, self._n_levels - 1),
+            pen=greenP, brush=greenB,
+            movable=True, swapMode="push", span=(0.0, 1))
+        self.histogram.addItem(self.lr_0)
 
         self.autostretch = QCheckBox('Auto-Stretch')
         self.autostretch.setChecked(True)
@@ -262,8 +268,10 @@ class tiff_viewer(QMainWindow):
         self.enableROI.setChecked(False)
         self.enableROI.stateChanged.connect(self.enableROI_changed)
 
-        self.detection = QCheckBox('Enable Realtime localization.')
+        self.detection = QCheckBox('Realtime localization.')
         self.detection.setChecked(False)
+
+        checkBoxesL = QHBoxLayout()
 
         self.saveCropped = QPushButton(
             'Save Cropped Image',
@@ -273,14 +281,11 @@ class tiff_viewer(QMainWindow):
             self.pages_label,
             self.pages_slider)
         self.image_control_layout.addRow(
-            self.min_label,
-            self.min_slider)
-        self.image_control_layout.addRow(
-            self.max_label,
-            self.max_slider)
-        self.image_control_layout.addWidget(self.autostretch)
-        self.image_control_layout.addWidget(self.enableROI)
-        self.image_control_layout.addWidget(self.detection)
+            self.histogram)
+        checkBoxesL.addWidget(self.autostretch)
+        checkBoxesL.addWidget(self.enableROI)
+        checkBoxesL.addWidget(self.detection)
+        self.image_control_layout.addRow(checkBoxesL)
         self.image_control_layout.addWidget(self.saveCropped)
 
         self.controls_layout.addLayout(
@@ -331,18 +336,27 @@ class tiff_viewer(QMainWindow):
             QLabel('Image filter:'),
             self.image_filter)
 
-        self.th_min_label = QLabel('Relative threshold:')
+        self.th_min_label = QLabel('Relative threshold (min/max):')
         self.th_min_slider = QDoubleSpinBox()
         self.th_min_slider.setMinimum(0)
-        self.th_min_slider.setMaximum(100)
+        self.th_min_slider.setMaximum(1)
         self.th_min_slider.setSingleStep(0.01)
         self.th_min_slider.setDecimals(3)
-        self.th_min_slider.setValue(0.2)
+        self.th_min_slider.setValue(0.4)
         self.th_min_slider.valueChanged.connect(self.slider_changed)
+        self.th_max_slider = QDoubleSpinBox()
+        self.th_max_slider.setMinimum(0)
+        self.th_max_slider.setMaximum(1)
+        self.th_max_slider.setSingleStep(0.01)
+        self.th_max_slider.setDecimals(3)
+        self.th_max_slider.setValue(1)
+        self.th_max_slider.valueChanged.connect(self.slider_changed)
 
         self.image_control_layout.addRow(
             self.th_min_label,
             self.th_min_slider)
+        self.image_control_layout.addWidget(
+            self.th_max_slider)
 
         self.tempMedianFilter = TemporalMedianFilterWidget()
         self.tempMedianFilter.update.connect(lambda: self.update_display())
@@ -353,8 +367,7 @@ class tiff_viewer(QMainWindow):
         self.controls_layout.addWidget(self.bandpassFilterWidget)
 
         self.pages_slider.valueChanged.connect(self.slider_changed)
-        self.min_slider.valueChanged.connect(self.slider_changed)
-        self.max_slider.valueChanged.connect(self.slider_changed)
+        self.lr_0.sigRegionChangeFinished.connect(self.region_changed)
         self.autostretch.stateChanged.connect(self.slider_changed)
         self.detection.stateChanged.connect(self.slider_changed)
 
@@ -382,17 +395,6 @@ class tiff_viewer(QMainWindow):
         self.render_cbox.addItem('2D Histogram', 0)
         self.render_cbox.addItem('2D Gaussian Histogram', 1)
 
-        self.frc_cbox = QComboBox()
-        self.frc_cbox.addItem('Binomial')
-        self.frc_cbox.addItem('Check Pattern')
-
-        self.export_options = Checklist(
-                'Exported Columns',
-                ['Super-res image', ] + FittingResults.uniqueKeys(None),
-                checked=True)
-
-        self.export_precision = QLineEdit('%10.5f')
-
         self.px_size = QDoubleSpinBox()
         self.px_size.setMinimum(0)
         self.px_size.setMaximum(20000)
@@ -410,6 +412,44 @@ class tiff_viewer(QMainWindow):
         self.fit_roi_size.lineEdit().setReadOnly(True)
         self.fit_roi_size.setValue(13)
 
+        self.loc_btn = QPushButton(
+            'Localize',
+            clicked=lambda: self.localize())
+        self.refresh_btn = QPushButton(
+            'Refresh SuperRes Image',
+            clicked=lambda: self.renderLoc())
+        self.loc_ref_lay = QHBoxLayout()
+        self.loc_ref_lay.addWidget(self.loc_btn)
+        self.loc_ref_lay.addWidget(self.refresh_btn)
+
+        # Localization GroupBox
+        localization = QGroupBox('Localization')
+        flocalization = QFormLayout()
+        localization.setLayout(flocalization)
+
+        flocalization.addRow(
+            QLabel('Fitting:'),
+            self.fitting_cbox
+        )
+        flocalization.addRow(
+            QLabel('Rendering Method:'),
+            self.render_cbox
+        )
+        flocalization.addRow(
+            QLabel('Fitting roi-size [pixel]:'),
+            self.fit_roi_size
+        )
+        flocalization.addRow(
+            QLabel('Pixel-size [nm]:'),
+            self.px_size
+        )
+        flocalization.addRow(
+            QLabel('S-res pixel-size [nm]:'),
+            self.super_px_size
+        )
+        flocalization.addRow(self.loc_ref_lay)
+        # End Localization GroupBox
+
         self.drift_cross_args = QHBoxLayout()
         self.drift_cross_bins = QSpinBox()
         self.drift_cross_bins.setValue(10)
@@ -421,6 +461,51 @@ class tiff_viewer(QMainWindow):
         self.drift_cross_args.addWidget(self.drift_cross_bins)
         self.drift_cross_args.addWidget(self.drift_cross_px)
         self.drift_cross_args.addWidget(self.drift_cross_up)
+
+        self.drift_cross_btn = QPushButton(
+            'Drift cross-correlation',
+            clicked=lambda: self.drift_cross())
+        self.drift_fdm_btn = QPushButton(
+            'Fiducial marker drift correction',
+            clicked=lambda: self.drift_fdm())
+
+        # Drift GroupBox
+        drift = QGroupBox('Drift Correction')
+        fdrift = QFormLayout()
+        drift.setLayout(fdrift)
+
+        fdrift.addRow(
+            QLabel('Drift X-Corr. (bins, pixelSize, upsampling):'))
+        fdrift.addRow(self.drift_cross_args)
+        fdrift.addRow(self.drift_cross_btn)
+        fdrift.addRow(self.drift_fdm_btn)
+        # End Drift GroupBox
+
+        self.frc_cbox = QComboBox()
+        self.frc_cbox.addItem('Binomial')
+        self.frc_cbox.addItem('Odd/Even')
+        self.frc_cbox.addItem('Halves')
+        self.frc_res_btn = QPushButton(
+            'FRC Resolution',
+            clicked=lambda: self.FRC_estimate())
+
+        self.NeNA_widget = None
+        self.NeNA_btn = QPushButton(
+            'NeNA Loc. Prec. Estimate',
+            clicked=lambda: self.NeNA_estimate())
+
+        # Precision GroupBox
+        precision = QGroupBox('Loc. Precision')
+        fprecision = QFormLayout()
+        precision.setLayout(fprecision)
+
+        fprecision.addRow(
+            QLabel('FRC Method:'),
+            self.frc_cbox
+        )
+        fprecision.addWidget(self.frc_res_btn)
+        fprecision.addWidget(self.NeNA_btn)
+        # End Precision GroupBox
 
         self.nneigh_merge_args = QHBoxLayout()
         self.nn_neighbors = QSpinBox()
@@ -442,19 +527,6 @@ class tiff_viewer(QMainWindow):
         self.nneigh_merge_args.addWidget(self.nn_max_off)
         self.nneigh_merge_args.addWidget(self.nn_max_length)
 
-        self.loc_btn = QPushButton(
-            'Localize',
-            clicked=lambda: self.localize())
-        self.refresh_btn = QPushButton(
-            'Refresh SuperRes Image',
-            clicked=lambda: self.renderLoc())
-        self.frc_res_btn = QPushButton(
-            'FRC Resolution',
-            clicked=lambda: self.FRC_estimate())
-        self.drift_cross_btn = QPushButton(
-            'Drift cross-correlation',
-            clicked=lambda: self.drift_cross())
-
         self.nn_layout = QHBoxLayout()
         self.nneigh_btn = QPushButton(
             'Nearest-neighbour',
@@ -466,13 +538,25 @@ class tiff_viewer(QMainWindow):
             'NM + Merging',
             clicked=lambda: self.nneigh_merge())
 
-        self.drift_fdm_btn = QPushButton(
-            'Fiducial marker drift correction',
-            clicked=lambda: self.drift_fdm())
-
         self.nn_layout.addWidget(self.nneigh_btn)
         self.nn_layout.addWidget(self.merge_btn)
         self.nn_layout.addWidget(self.nneigh_merge_btn)
+
+        # Precision GroupBox
+        nearestN = QGroupBox('NN Analysis')
+        fnearestN = QFormLayout()
+        nearestN.setLayout(fnearestN)
+
+        fnearestN.addRow(
+            QLabel('NN (n-neighbor, min, max-distance, max-off, max-len):'))
+        fnearestN.addRow(self.nneigh_merge_args)
+        fnearestN.addRow(self.nn_layout)
+        # End Precision GroupBox
+
+        self.export_options = ChecklistDialog(
+                'Exported Columns',
+                ['Super-res image', ] + FittingResults.uniqueKeys(None),
+                checked=True, parent=self)
 
         self.im_exp_layout = QHBoxLayout()
         self.import_loc_btn = QPushButton(
@@ -485,66 +569,37 @@ class tiff_viewer(QMainWindow):
         self.im_exp_layout.addWidget(self.import_loc_btn)
         self.im_exp_layout.addWidget(self.export_loc_btn)
 
-        self.loc_form.addRow(
-            QLabel('Fitting:'),
-            self.fitting_cbox
-        )
-        self.loc_form.addRow(
-            QLabel('Rendering Method:'),
-            self.render_cbox
-        )
-        self.loc_form.addRow(
-            QLabel('Fitting roi-size [pixel]:'),
-            self.fit_roi_size
-        )
-        self.loc_form.addRow(
-            QLabel('Pixel-size [nm]:'),
-            self.px_size
-        )
-        self.loc_form.addRow(
-            QLabel('S-res pixel-size [nm]:'),
-            self.super_px_size
-        )
-        self.loc_ref_lay = QHBoxLayout()
-        self.loc_ref_lay.addWidget(self.loc_btn)
-        self.loc_ref_lay.addWidget(self.refresh_btn)
-        self.loc_form.addRow(self.loc_ref_lay)
-        self.loc_form.addRow(
-            QLabel('FRC Method:'),
-            self.frc_cbox
-        )
-        self.loc_form.addRow(self.frc_res_btn)
+        self.loc_form.addRow(localization)
+        self.loc_form.addRow(drift)
+        self.loc_form.addRow(precision)
+        self.loc_form.addRow(nearestN)
 
-        self.loc_form.addRow(
-            QLabel('Drift X-Corr. (bins, pixelSize, upsampling):'))
-        self.loc_form.addRow(self.drift_cross_args)
-        self.loc_form.addRow(self.drift_cross_btn)
-        self.loc_form.addRow(
-            QLabel('NN (n-neighbor, min, max-distance, max-off, max-len):'))
-        self.loc_form.addRow(self.nneigh_merge_args)
-        self.loc_form.addRow(self.nn_layout)
-        self.loc_form.addRow(self.drift_fdm_btn)
-        self.loc_form.addRow(self.export_options)
-        self.loc_form.addRow(
-            QLabel('Format:'),
-            self.export_precision)
         self.loc_form.addRow(self.im_exp_layout)
 
         # graphics layout
         # A plot area (ViewBox + axes) for displaying the image
         self.uImage = None
         self.image = pg.ImageItem(np.zeros((256, 256)), axisOrder='row-major')
-        self.image_plot = pg.ImageView(imageItem=self.image)
-        self.image_plot.setLevels(0, 255)
-        self.image_plot.setMinimumWidth(600)
-        self.image_plot.ui.roiBtn.deleteLater()
-        self.image_plot.ui.menuBtn.deleteLater()
+        self.imageWidget = pg.GraphicsLayoutWidget()
+        self.imageWidget.setMinimumWidth(600)
+        self.vb = self.imageWidget.addViewBox(row=0, col=0)
+        self.vb.addItem(self.image)
+        self.vb.setAspectLocked(True)
+        self.hist = pg.HistogramLUTItem(
+            gradientPosition='bottom', orientation='horizontal')
+        self.hist.setImageItem(self.image)
+        self.imageWidget.addItem(self.hist, row=1, col=0)
+        # self.image_plot = pg.ImageView(imageItem=self.image)
+        # self.image_plot.setLevels(0, 255)
+        # self.image_plot.ui.histogram.hide()
+        # self.image_plot.ui.roiBtn.deleteLater()
+        # self.image_plot.ui.menuBtn.deleteLater()
         self.roi = pg.RectROI(
             [-8, 14], [6, 5],
             scaleSnap=True, translateSnap=True,
             movable=False)
         self.roi.addTranslateHandle([0, 0], [0.5, 0.5])
-        self.image_plot.addItem(self.roi)
+        self.vb.addItem(self.roi)
         self.roi.setZValue(100)
         self.roi.sigRegionChangeFinished.connect(self.slider_changed)
         self.roi.setVisible(False)
@@ -569,7 +624,7 @@ class tiff_viewer(QMainWindow):
         self.data_filters_layout.addWidget(self.apply_filters_btn)
 
         # self.image_plot.setColorMap(pg.colormap.getFromMatplotlib('jet'))
-        self.g_layout_widget.addTab(self.image_plot, 'Image Preview')
+        self.g_layout_widget.addTab(self.imageWidget, 'Image Preview')
         # Item for displaying image data
 
         # Create menu bar
@@ -802,6 +857,10 @@ class tiff_viewer(QMainWindow):
             #     ome.to_xml())
             # print(om.OME.from_tiff(self.tiff.filename))
 
+    def region_changed(self, value):
+        if self.tiffSeq_Handler is not None:
+            self.update_display()
+
     def slider_changed(self, value):
         if self.tiffSeq_Handler is not None:
             self.update_display()
@@ -811,16 +870,6 @@ class tiff_viewer(QMainWindow):
                 'Page: {:d}/{:d}'.format(
                     self.pages_slider.value() + 1,
                     self.pages_slider.maximum() + 1))
-        if self.min_slider is not None:
-            self.min_label.setText(
-                'Min: {:d}/{:d}'.format(
-                    self.min_slider.value(),
-                    self.min_slider.maximum()))
-        if self.max_slider is not None:
-            self.max_label.setText(
-                'Max: {:d}/{:d}'.format(
-                    self.max_slider.value(),
-                    self.max_slider.maximum()))
 
     def update_display(self, image=None):
         if image is None:
@@ -850,22 +899,22 @@ class tiff_viewer(QMainWindow):
 
         self.uImage = uImage(image)
 
-        self.max_slider.setMaximum(self.uImage._max)
-        self.min_slider.setMaximum(self.uImage._max)
+        self.lr_0.setBounds([0, self.uImage._max])
 
         min_max = None
         if not self.autostretch.isChecked():
-            min_max = (self.min_slider.value(), self.max_slider.value())
+            min_max = tuple(map(math.ceil, self.lr_0.getRegion()))
 
         self.uImage.equalizeLUT(min_max, True)
 
+        self._plot_ref.setData(self.uImage._hist[:, 0])
+
         if self.autostretch.isChecked():
-            self.min_slider.valueChanged.disconnect(self.slider_changed)
-            self.max_slider.valueChanged.disconnect(self.slider_changed)
-            self.min_slider.setValue(self.uImage._min)
-            self.max_slider.setValue(self.uImage._max)
-            self.min_slider.valueChanged.connect(self.slider_changed)
-            self.max_slider.valueChanged.connect(self.slider_changed)
+            self.lr_0.sigRegionChangeFinished.disconnect(self.region_changed)
+            self.lr_0.setRegion([self.uImage._min, self.uImage._max])
+            self.histogram.setXRange(
+                self.uImage._min, self.uImage._max)
+            self.lr_0.sigRegionChangeFinished.connect(self.region_changed)
 
         # cv2.imshow(self.path, image)
         self.image.setImage(self.uImage._view, autoLevels=True)
@@ -891,18 +940,27 @@ class tiff_viewer(QMainWindow):
                 np.quantile(img, 1-1e-4) * self.th_min_slider.value(),
                 255,
                 cv2.THRESH_BINARY)
+            if self.th_max_slider.value() < 1.0:
+                _, th2 = cv2.threshold(
+                    img,
+                    np.max(img) * self.th_max_slider.value(),
+                    1,
+                    cv2.THRESH_BINARY_INV)
+                th_img = th_img * th2
 
-            cv2.namedWindow("Thresholded filtered Img.", cv2.WINDOW_NORMAL)
-            cv2.imshow("Thresholded filtered Img.", th_img)
-            # print(ex, end='\r')
+            if self.image_filter.currentData().filter._show_filter:
+                cv2.namedWindow("Thresholded filtered Img.", cv2.WINDOW_NORMAL)
+                cv2.imshow("Thresholded filtered Img.", th_img)
+
             # Detect blobs.
 
             points, im_with_keypoints = self.detection_method.currentData()\
                 .detector.find_peaks_preview(th_img, img)
 
             # Show keypoints
-            cv2.namedWindow("Approx. Loc.", cv2.WINDOW_NORMAL)
-            cv2.imshow("Approx. Loc.", im_with_keypoints)
+            if self.image_filter.currentData().filter._show_filter:
+                cv2.namedWindow("Approx. Loc.", cv2.WINDOW_NORMAL)
+                cv2.imshow("Approx. Loc.", im_with_keypoints)
 
             if len(points) > 0 and origin is not None:
                 points[:, 0] += origin[0]
@@ -972,47 +1030,43 @@ class tiff_viewer(QMainWindow):
 
     def FRC_estimate(self):
         frc_method = self.frc_cbox.currentText()
-        time = QDateTime.currentDateTime()
-        if 'Check' in frc_method:
-            img = self.renderLoc()
+        # if 'Check' in frc_method:
+        #     img = self.renderLoc()
 
-            if img is not None:
-                def work_func():
-                    try:
-                        return FRC_resolution_check_pattern(
-                            img, self.super_px_size.value())
-                    except Exception:
-                        traceback.print_exc()
-                        return None
+        #     if img is not None:
+        #         def work_func():
+        #             try:
+        #                 return FRC_resolution_check_pattern(
+        #                     img, self.super_px_size.value())
+        #             except Exception:
+        #                 traceback.print_exc()
+        #                 return None
 
-                def done(results):
-                    self.frc_res_btn.setDisabled(False)
-                    if results is not None:
-                        plotFRC_(*results)
-            else:
-                return
-        elif 'Binomial' in frc_method:
-            if self.fittingResults is None:
-                return
-            elif len(self.fittingResults) > 0:
-                data = self.fittingResults.toRender()
+        #         def done(results):
+        #             self.frc_res_btn.setDisabled(False)
+        #             if results is not None:
+        #                 plotFRC_(*results)
+        #     else:
+        #         return
+        if self.fittingResults is None:
+            return
+        elif len(self.fittingResults) > 0:
+            data = self.fittingResults.toRender()
 
-                def work_func():
-                    try:
-                        return FRC_resolution_binomial(
-                            np.c_[data[0], data[1], data[2]],
-                            self.super_px_size.value()
-                        )
-                    except Exception:
-                        traceback.print_exc()
-                        return None
+            def work_func():
+                try:
+                    return FRC_resolution_binomial(
+                        np.c_[data[0], data[1], data[2]],
+                        self.super_px_size.value(),
+                        frc_method)
+                except Exception:
+                    traceback.print_exc()
+                    return None
 
-                def done(results):
-                    self.frc_res_btn.setDisabled(False)
-                    if results is not None:
-                        plotFRC(*results)
-            else:
-                return
+            def done(results):
+                self.frc_res_btn.setDisabled(False)
+                if results is not None:
+                    plotFRC(*results)
         else:
             return
 
@@ -1023,6 +1077,40 @@ class tiff_viewer(QMainWindow):
         # Execute
         self.frc_res_btn.setDisabled(True)
         self._threadpool.start(self.worker)
+
+    def NeNA_estimate(self):
+        if self.fittingResults is None:
+            return
+        elif len(self.fittingResults) > 0:
+            def work_func():
+                try:
+                    return self.fittingResults.nn_trajectories(
+                        0, 200, 0, 1)
+                except Exception:
+                    traceback.print_exc()
+                    return None
+
+            def done(results):
+                self.NeNA_btn.setDisabled(False)
+                if results is not None:
+                    self.fittingResults = results
+                    self.results_plot.setData(
+                        self.fittingResults.dataFrame())
+
+                    self.NeNA_widget = NeNA_Widget(
+                        self.fittingResults.neighbour_dist,
+                        self.fittingResults.trackID
+                    )
+
+                    res = self.NeNA_widget.exec_()
+
+            self.worker = thread_worker(
+                work_func,
+                progress=False, z_stage=False)
+            self.worker.signals.result.connect(done)
+            # Execute
+            self.NeNA_btn.setDisabled(True)
+            self._threadpool.start(self.worker)
 
     def drift_cross(self):
         if self.fittingResults is None:
@@ -1186,10 +1274,11 @@ class tiff_viewer(QMainWindow):
             return
 
     def import_loc(self):
-        '''Imports fitting results from a (*.tsv) file.
+        '''Imports fitting results from a file.
         '''
         filename, _ = QFileDialog.getOpenFileName(
-            self, "Import localizations", filter="TSV Files (*.tsv)")
+            self, "Import localizations",
+            filter="HDF5 files (*.h5);;TSV Files (*.tsv)")
 
         if len(filename) > 0:
 
@@ -1206,7 +1295,7 @@ class tiff_viewer(QMainWindow):
                 print('Error importing results.')
 
     def export_loc(self, filename=None):
-        '''Exports the fitting results into a (*.tsv) file.
+        '''Exports the fitting results into a file.
 
         Parameters
         ----------
@@ -1217,8 +1306,12 @@ class tiff_viewer(QMainWindow):
             return
 
         if filename is None:
+            if not self.export_options.exec_():
+                return
+
             filename, _ = QFileDialog.getSaveFileName(
-                self, "Export localizations", filter="TSV Files (*.tsv)")
+                self, "Export localizations",
+                filter="HDF5 files (*.h5);;TSV Files (*.tsv)")
 
         if len(filename) > 0:
             options = self.export_options.toList()
@@ -1229,12 +1322,17 @@ class tiff_viewer(QMainWindow):
                 if col in options:
                     exp_columns.append(col)
 
-            dataFrame.to_csv(
-                filename, index=False,
-                columns=exp_columns,
-                float_format=self.export_precision.text(),
-                sep='\t',
-                encoding='utf-8')
+            if '.tsv' in filename:
+                dataFrame.to_csv(
+                    filename, index=False,
+                    columns=exp_columns,
+                    float_format=self.export_options.export_precision.text(),
+                    sep='\t',
+                    encoding='utf-8')
+            elif '.h5' in filename:
+                dataFrame[exp_columns].to_hdf(
+                    filename, key='microEye', index=False,
+                    complevel=0)
 
             if 'Super-res image' in options:
                 sres_img = self.renderLoc()
@@ -1260,8 +1358,12 @@ class tiff_viewer(QMainWindow):
         if self.tiffSeq_Handler is None:
             return
 
+        if not self.export_options.exec_():
+            return
+
         filename, _ = QFileDialog.getSaveFileName(
-            self, "Save localizations", filter="TSV Files (*.tsv)")
+            self, "Save localizations",
+            filter="HDF5 files (*.h5);;TSV Files (*.tsv)")
 
         if len(filename) > 0:
 
@@ -1412,6 +1514,10 @@ class tiff_viewer(QMainWindow):
         roiInfo = self.get_roi_info()
         self.enableROI.setChecked(False)
 
+        min_max = None
+        if not self.autostretch.isChecked():
+            min_max = tuple(map(math.ceil, self.lr_0.getRegion()))
+
         # varim
         varim = None
         offset = 0
@@ -1459,7 +1565,9 @@ class tiff_viewer(QMainWindow):
                         filter,
                         detector,
                         roiInfo,
+                        min_max,
                         self.th_min_slider.value(),
+                        self.th_max_slider.value(),
                         self.fit_roi_size.value(),
                         method,
                         progress=False, z_stage=False)
@@ -1515,7 +1623,12 @@ class tiff_viewer(QMainWindow):
         # Vars
         roiSize = self.fit_roi_size.value()
         rel_threshold = self.th_min_slider.value()
+        max_threshold = self.th_max_slider.value()
         PSFparam = np.array([1.5])
+
+        min_max = None
+        if not self.autostretch.isChecked():
+            min_max = tuple(map(math.ceil, self.lr_0.getRegion()))
 
         roi_list = []
         varim_list = []
@@ -1570,7 +1683,7 @@ class tiff_viewer(QMainWindow):
 
             uImg = uImage(filtered)
 
-            uImg.equalizeLUT(None, True)
+            uImg.equalizeLUT(min_max, True)
 
             if filter is BandpassFilter:
                 filter._show_filter = False
@@ -1584,8 +1697,17 @@ class tiff_viewer(QMainWindow):
                     np.quantile(img, 1-1e-4) * rel_threshold,
                     255,
                     cv2.THRESH_BINARY)
+            if max_threshold < 1.0:
+                _, th2 = cv2.threshold(
+                    img,
+                    np.max(img) * max_threshold,
+                    1,
+                    cv2.THRESH_BINARY_INV)
+                th_img = th_img * th2
 
             points: np.ndarray = detector.find_peaks(th_img)
+
+            print(len(points))
 
             if len(points) > 0:
                 if varim is None:
@@ -1673,21 +1795,21 @@ class tiff_viewer(QMainWindow):
         dirname = os.path.dirname(os.path.abspath(__file__))
         app_icon = QIcon()
         app_icon.addFile(
-            os.path.join(dirname, 'icons/16.png'), QSize(16, 16))
+            os.path.join(dirname, '../icons/16.png'), QSize(16, 16))
         app_icon.addFile(
-            os.path.join(dirname, 'icons/24.png'), QSize(24, 24))
+            os.path.join(dirname, '../icons/24.png'), QSize(24, 24))
         app_icon.addFile(
-            os.path.join(dirname, 'icons/32.png'), QSize(32, 32))
+            os.path.join(dirname, '../icons/32.png'), QSize(32, 32))
         app_icon.addFile(
-            os.path.join(dirname, 'icons/48.png'), QSize(48, 48))
+            os.path.join(dirname, '../icons/48.png'), QSize(48, 48))
         app_icon.addFile(
-            os.path.join(dirname, 'icons/64.png'), QSize(64, 64))
+            os.path.join(dirname, '../icons/64.png'), QSize(64, 64))
         app_icon.addFile(
-            os.path.join(dirname, 'icons/128.png'), QSize(128, 128))
+            os.path.join(dirname, '../icons/128.png'), QSize(128, 128))
         app_icon.addFile(
-            os.path.join(dirname, 'icons/256.png'), QSize(256, 256))
+            os.path.join(dirname, '../icons/256.png'), QSize(256, 256))
         app_icon.addFile(
-            os.path.join(dirname, 'icons/512.png'), QSize(512, 512))
+            os.path.join(dirname, '../icons/512.png'), QSize(512, 512))
 
         app.setWindowIcon(app_icon)
 

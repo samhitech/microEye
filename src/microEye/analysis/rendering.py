@@ -6,7 +6,7 @@ import numba
 import numpy as np
 import pyqtgraph as pg
 from PyQt5.QtCore import *
-from scipy.interpolate import interp1d, UnivariateSpline
+from scipy.interpolate import interp1d, splrep, BSpline
 
 
 def model(xc, yc, sigma_x, sigma_y, flux, offset, X, Y):
@@ -233,7 +233,7 @@ def render_compute(data, step, gauss_2d, out_img):
             Intensity * gauss_2d
 
 
-def FRC_resolution_binomial(data: np.ndarray, pixelSize=10):
+def FRC_resolution_binomial(data: np.ndarray, pixelSize=10, method='Binomial'):
     '''Fourier Ring Correlation based on
     https://www.frontiersin.org/articles/10.3389/fbinf.2021.817254/
 
@@ -244,15 +244,20 @@ def FRC_resolution_binomial(data: np.ndarray, pixelSize=10):
     pixelSize : int, optional
         super resolution image pixel size in nanometers, by default 10
     '''
+    all = QDateTime.currentDateTime()
     print('Initialization ... ')
 
     n_points = data.shape[0]
 
-    coin = np.random.binomial(1, 0.5, (n_points, 1))
-    data = np.hstack((data, coin))
+    if 'Binomial' in method:
+        coin = np.random.binomial(1, 0.5, (n_points))
 
-    # Two separate datsets based on the value of the last column are generated.
-    data1, data2 = data[data[:, -1] == 0], data[data[:, -1] == 1]
+        # Two separate datsets based on coin flip
+        data1, data2 = data[coin == 0], data[coin == 1]
+    elif 'Odd/Even' in method:
+        data1, data2 = data[::2], data[1::2]
+    elif 'Halves' in method:
+        data1, data2 = data[:data.shape[0]//2], data[data.shape[0]//2:]
 
     gaussHist = hist2D_render(pixelSize)
 
@@ -289,35 +294,30 @@ def FRC_resolution_binomial(data: np.ndarray, pixelSize=10):
     R, _ = radial_cordinate(image_1.shape)
     R = np.round(R)
 
-    # Get the Nyquist frequency
-    # freq_nyq = int(np.floor(R.shape[0] / 2.0))
-    # R_max = int(np.max(R))
-
     frequencies = np.fft.rfftfreq(R.shape[0], d=pixelSize)
     freq_nyq = frequencies.max()
     R_max = frequencies.shape[0]
 
-    FRC_res = np.zeros((R_max, 5))
+    FRC_res = np.zeros((R_max))
 
-    print(
-        start.msecsTo(QDateTime.currentDateTime()) * 1e-3,
-        ' s')
+    print('{:.3f} s'.format(
+        start.msecsTo(QDateTime.currentDateTime()) * 1e-3))
 
     start = QDateTime.currentDateTime()
     print('FRC ... ')
     FRC_compute(fft_12, fft_11, fft_22, FRC_res, R, R_max)
 
-    print(
-        start.msecsTo(QDateTime.currentDateTime()) * 1e-3,
-        ' s')
+    print('{:.3f} s'.format(
+        start.msecsTo(QDateTime.currentDateTime()) * 1e-3))
 
     print('Interpolation ... ')
     interpy = interp1d(
-            frequencies, FRC_res[:, 3],
-            kind='quadratic', fill_value='extrapolate')
+            frequencies, FRC_res,
+            kind='cubic', fill_value='extrapolate')
     FRC = interpy(frequencies)
-    interpy = UnivariateSpline(frequencies, FRC_res[:, 3], k=5)
-    smoothed = interpy(frequencies)
+    tck = splrep(frequencies, FRC_res, s=1/pixelSize)
+    bspline = BSpline(*tck)
+    smoothed = bspline(frequencies)
 
     idx = np.where(smoothed <= (1/7))[0]
     if idx is not None:
@@ -327,25 +327,26 @@ def FRC_resolution_binomial(data: np.ndarray, pixelSize=10):
         FRC_res = np.nan
 
     print(
-        'Done ...               ',
-        end="\r")
-
+        'Done ... {:.3f} s'.format(
+         all.msecsTo(QDateTime.currentDateTime()) * 1e-3))
     return frequencies, FRC, smoothed, FRC_res
 
 
-@numba.jit(nopython=True, parallel=True)
-def FRC_compute(fft_12, fft_11, fft_22, FRC_res, R, R_max):
-    for idx in numba.prange(1, R_max + 1):
-        rMask = (R == idx)
-        # rMask = np.where(rMask.flatten())[0]
-        for x in numba.prange(R.shape[0]):
-            for y in numba.prange(R.shape[1]):
-                if rMask[x, y]:
-                    FRC_res[idx-1, 0] += fft_12[x, y]
-                    FRC_res[idx-1, 1] += fft_11[x, y]
-                    FRC_res[idx-1, 2] += fft_22[x, y]
-        FRC_res[idx-1, 3] = (FRC_res[idx-1, 0] / np.sqrt(
-            FRC_res[idx-1, 1] * FRC_res[idx-1, 2]))
+def FRC_compute(
+        fft_12: np.ndarray, fft_11: np.ndarray, fft_22: np.ndarray,
+        FRC_res: np.ndarray, R: np.ndarray, R_max):
+    R = R.reshape(-1)
+    argsort = np.argsort(R)
+    R = R[argsort]
+    fft_12 = fft_12.reshape(-1)[argsort]
+    fft_11 = fft_11.reshape(-1)[argsort]
+    fft_22 = fft_22.reshape(-1)[argsort]
+    ids = np.cumsum(np.bincount(R.astype(np.int64)))
+    for idx in range(1, R_max + 1):
+        a = np.sum(fft_12[ids[idx-1]:ids[idx]])
+        b = np.sum(fft_11[ids[idx-1]:ids[idx]])
+        c = np.sum(fft_22[ids[idx-1]:ids[idx]])
+        FRC_res[idx-1] = (a / np.sqrt(b * c))
 
 
 @numba.jit(nopython=True, parallel=True)
@@ -357,9 +358,9 @@ def masked_sum(array: np.ndarray, mask: np.ndarray):
 
 def plotFRC(frequencies, FRC, smoothed, FRC_res):
 
-    print(
-        'Plot ...               ',
-        end="\r")
+    # print(
+    #     'Plot ...               ',
+    #     end="\r")
     # plot results
     plt = pg.plot()
 
@@ -392,7 +393,7 @@ def plotFRC(frequencies, FRC, smoothed, FRC_res):
     line1 = plt.plot(
         frequencies, smoothed,
         pen=pg.mkPen('b', width=2), symbol=None, symbolPen='b',
-        symbolBrush=0, name='FRC cspline')
+        symbolBrush=0, name='FRC smoothed')
     line2 = plt.plotItem.addLine(y=1/7, pen='y')
 
 
@@ -607,17 +608,3 @@ def match_shape(image1: np.ndarray, image2: np.ndarray):
 def hamming_2Dwindow(size: int):
     window1d = np.hamming(size)
     return np.sqrt(np.outer(window1d, window1d))
-
-# g = gauss_hist_render(10)
-# img = cv2.normalize(g._gauss_2d, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
-# img = cv2.resize(
-#     img, (0, 0), fx=100, fy=100, interpolation=cv2.INTER_NEAREST)
-# cv2.imshow("k", img)
-# cv2.waitKey(0)
-
-# H, _, _ = np.histogram2d(
-#     np.array(self.locX).copy() * 11.5,
-#     np.array(self.locY).copy() * 11.5,
-#     np.array(shape).copy() * 12)
-# cv2.imshow('localization', H)
-# cv2.waitKey(1)

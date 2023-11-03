@@ -3,8 +3,9 @@ import numpy as np
 import pandas as pd
 from PyQt5.QtCore import *
 from scipy.interpolate import interp1d
+from scipy.stats import rayleigh
 
-from ..Rendering import gauss_hist_render
+from ..rendering import gauss_hist_render
 from .processing import *
 
 from enum import Enum
@@ -429,10 +430,19 @@ class FittingResults:
         FittingResults
             FittingResults with imported data
         '''
-        dataFrame = pd.read_csv(
-                filename,
-                sep='\t',
-                engine='python')
+        if '.tsv' in filename:
+            dataFrame = pd.read_csv(
+                    filename,
+                    sep='\t',
+                    engine='python')
+        elif '.h5' in filename:
+            dataFrame = pd.read_hdf(
+                    filename,
+                    mode='r')
+        else:
+            raise Exception(
+                'Supported file types are dataframes ' +
+                'stored as .tsv or .h5 files.')
 
         return FittingResults.fromDataFrame(dataFrame, pixelSize)
 
@@ -650,22 +660,30 @@ class FittingResults:
             (frames_new, interpx, interpy)
 
     def nn_trajectories(
-            self, minDistance=0, maxDistance=30, maxOff=1, neighbors=1):
+            self, minDistance: float = 0, maxDistance: float = 30,
+            maxOff=1, neighbors=1):
         self.trackID = np.zeros(self.__len__(), dtype=np.int64)
         self.neighbour_dist = np.zeros(self.__len__(), dtype=np.float64)
         # data = self.dataFrame().to_numpy()
         data = np.c_[self.frames, self.locX, self.locY]
 
+        ids = np.cumsum(
+            np.bincount(self.frames.astype(np.int64)))
+
         counter = 0
         min_frame = np.min(self.frames)
         max_frame = np.max(self.frames)
 
-        for frameID in np.arange(min_frame, max_frame + 1):
-            for offset in np.arange(0, maxOff + 1):
+        for frameID in np.arange(min_frame, max_frame, dtype=np.int64):
+            for offset in np.arange(0, maxOff + 1, dtype=np.int64):
                 nextID = frameID + offset + 1
 
-                currentMask = data[:, 0] == frameID
-                nextMask = data[:, 0] == nextID
+                if nextID > max_frame:
+                    continue
+
+                currentMask = slice(
+                    ids[frameID-1] if frameID > 0 else 0, ids[frameID])
+                nextMask = slice(ids[nextID-1], ids[nextID])
 
                 counter, self.trackID[currentMask], \
                     self.trackID[nextMask], \

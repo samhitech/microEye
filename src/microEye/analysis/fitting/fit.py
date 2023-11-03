@@ -3,13 +3,11 @@ from typing import Union
 import cv2
 import numpy as np
 
-from microEye.fitting.pyfit3Dcspline.mainfunctions import get_roi_list_CMOS
-
-from ..Filters import *
-from ..uImage import TiffSeqHandler, uImage
+from ..filters import *
+from ...uImage import TiffSeqHandler, uImage, ZarrImageSequence
 from .phasor_fit import *
 from .results import *
-from .pyfit3Dcspline import CPUmleFit_LM, get_roi_list
+from .pyfit3Dcspline import CPUmleFit_LM, get_roi_list, get_roi_list_CMOS
 
 
 def get_blob_detector(
@@ -141,7 +139,7 @@ class BlobDetectionWidget(QGroupBox):
 
         self.detector = CV_BlobDetector()
 
-        self._layout = QFormLayout()
+        self._layout = QHBoxLayout()
         self.setTitle('OpenCV Blob Approx. Localization')
         self.setLayout(self._layout)
 
@@ -180,12 +178,10 @@ class BlobDetectionWidget(QGroupBox):
         self.minInertiaRatio.setValue(0)
         self.minInertiaRatio.valueChanged.connect(self.value_changed)
 
-        self._layout.addRow(
-            QLabel('Min area:'),
-            self.minArea)
-        self._layout.addRow(
-            QLabel('Max area:'),
-            self.maxArea)
+        self._layout.addWidget(QLabel('Min area:'))
+        self._layout.addWidget(self.minArea)
+        self._layout.addWidget(QLabel('Max area:'))
+        self._layout.addWidget(self.maxArea)
         # self.controls_layout.addWidget(self.minCircularity)
         # self.controls_layout.addWidget(self.minConvexity)
         # self.controls_layout.addWidget(self.minInertiaRatio)
@@ -206,7 +202,9 @@ def pre_localize_frame(
         filter: AbstractFilter,
         detector: AbstractDetector,
         roiInfo,
+        irange=None,
         rel_threshold=0.4,
+        max_threshold=1.0,
         roiSize=13,
         method=FittingMethod._2D_Phasor_CPU):
 
@@ -235,7 +233,9 @@ def pre_localize_frame(
         varim=varim,
         filter=filter,
         detector=detector,
+        irange=irange,
         rel_threshold=rel_threshold,
+        max_threshold=max_threshold,
         method=method,
         roiSize=roiSize
     )
@@ -255,14 +255,16 @@ def localize_frame(
             varim: np.ndarray,
             filter: AbstractFilter,
             detector: AbstractDetector,
+            irange=None,
             rel_threshold=0.4,
+            max_threshold=1.0,
             PSFparam=np.array([1.5]),
             roiSize=13,
             method=FittingMethod._2D_Phasor_CPU):
 
     uImg = uImage(filtered)
 
-    uImg.equalizeLUT(None, True)
+    uImg.equalizeLUT(irange, True)
 
     if filter is BandpassFilter:
         filter._show_filter = False
@@ -276,6 +278,13 @@ def localize_frame(
             np.quantile(img, 1-1e-4) * rel_threshold,
             255,
             cv2.THRESH_BINARY)
+    if max_threshold < 1.0:
+        _, th2 = cv2.threshold(
+            img,
+            np.max(img) * max_threshold,
+            1,
+            cv2.THRESH_BINARY_INV)
+        th_img = th_img * th2
 
     points: np.ndarray = detector.find_peaks(th_img)
 

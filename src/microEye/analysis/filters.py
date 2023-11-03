@@ -9,7 +9,7 @@ from PyQt5.QtWidgets import QWidget
 from scipy import signal
 from scipy.fftpack import fft2, fftshift, ifft2, ifftshift
 
-from .uImage import ZarrImageSequence
+from ..uImage import ZarrImageSequence
 
 
 class AbstractFilter:
@@ -469,7 +469,7 @@ class TemporalMedianFilterWidget(QGroupBox):
         self.enabled.stateChanged.connect(self.value_changed)
 
         self._layout.addRow(
-            QLabel('Temporal Window Size:'),
+            QLabel('Window Size:'),
             self.window_size)
         self._layout.addWidget(self.enabled)
 

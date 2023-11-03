@@ -11,7 +11,17 @@ from numba import cuda
 class uImage():
 
     def __init__(self, image: np.ndarray):
-        self._image = image
+        self._isfloat = (image.dtype == np.float16
+                         or image.dtype == np.float32
+                         or image.dtype == np.float64)
+        if self._isfloat:
+            self._image = image.astype(np.float32)
+            self._norm = (
+                (2**16 - 1) * self._image / self._image.max()
+                ).astype(np.uint16)
+        else:
+            self._image = image
+            self._norm = None
         self._height = image.shape[0]
         self._width = image.shape[1]
         if len(image.shape) > 2:
@@ -20,9 +30,6 @@ class uImage():
             self._channels = 1
         self._min = 0
         self._max = 255 if image.dtype == np.uint8 else 2**16 - 1
-        self._isfloat = (image.dtype == np.float16
-                         or image.dtype == np.float32
-                         or image.dtype == np.float64)
         self._view = np.zeros(image.shape, dtype=np.uint8)
         self._hist = None
         self.n_bins = None
@@ -61,7 +68,7 @@ class uImage():
         return self._channels
 
     def calcHist_GPU(self):
-        self.n_bins = 2**16 if self._image.dtype == np.uint16 else 256
+        self.n_bins = 256 if self._image.dtype == np.uint8 else 2**16
         # Calculate the range of the input image
         min_value = np.min(self.image)
         max_value = np.max(self.image)
@@ -100,19 +107,21 @@ class uImage():
         self._max = np.where(self._cdf >= 0.9999)[0][0]
 
     def calcHist(self):
-        self.n_bins = 2**16 if self._image.dtype == np.uint16 else 256
+        self.n_bins = 256 if self._image.dtype == np.uint8 else 2**16
         # calculate image histogram
         self._hist = cv2.calcHist(
             [self.image], [0], None,
-            [self.n_bins], [0, self.n_bins]) / float(np.prod(self.image.shape))
+            [self.n_bins],
+            [0, int(self._image.max()) if self._isfloat else self.n_bins]
+            ) / float(np.prod(self.image.shape))
         # calculate the cdf
         self._cdf = self._hist[:, 0].cumsum()
 
         self._min = np.where(self._cdf >= 0.00001)[0][0]
-        self._max = np.where(self._cdf >= 0.9999)[0][0]
+        self._max = np.where(self._cdf >= 0.999)[0][0]
 
     def fastHIST(self):
-        self.n_bins = 2**16 if self._image.dtype == np.uint16 else 256
+        self.n_bins = 256 if self._image.dtype == np.uint8 else 2**16
         cv2.normalize(
             src=self._image, dst=self._view,
             alpha=0, beta=255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
@@ -127,7 +136,7 @@ class uImage():
         self._max = np.where(self._cdf >= 0.9999)[0][0]
 
     def equalizeLUT(self, range=None, nLUT=False):
-        if nLUT and not self._isfloat:
+        if nLUT:
             self.calcHist()
 
             if range is not None:
@@ -138,8 +147,10 @@ class uImage():
             self._LUT[self._min:self._max] = np.linspace(
                 0, 255, self._max - self._min, dtype=np.uint8)
             self._LUT[self._max:] = 255
-
-            self._view = self._LUT[self._image]
+            if not self._isfloat:
+                self._view = self._LUT[self._image]
+            else:
+                self._view = self._LUT[self._norm]
         else:
             self.fastHIST()
 
