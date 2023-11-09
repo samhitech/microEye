@@ -301,7 +301,7 @@ class BandpassFilter(AbstractFilter):
             filter = self._filter
 
         if self._show_filter:
-            cv2.namedWindow("BandpassFilter", cv2.WINDOW_NORMAL)
+            cv2.namedWindow('BandpassFilter', cv2.WINDOW_NORMAL)
             cv2.imshow('BandpassFilter', (filter*255).astype(np.uint8))
 
         img = np.zeros(nimg.shape, dtype=np.uint8)

@@ -1,15 +1,10 @@
-import numpy as np
 import numba as nb
-from scipy.optimize import minimize
-from scipy.stats import norm, rayleigh, ncx2, chi2
-import matplotlib.pyplot as plt
-import pandas as pd
-import math
-import os
+import numpy as np
 import pyqtgraph as pg
-
 from PyQt5.QtCore import *
 from PyQt5.QtWidgets import *
+from scipy.optimize import minimize
+from scipy.stats import norm
 
 
 @nb.njit()
@@ -171,12 +166,12 @@ def get_bincenters(edges: np.ndarray):
 
 def NeNA_resolution_estimate(
         distances: np.ndarray, trackIDs: np.ndarray,
-        minDist=0.5, range=[0, 200], bins=500,
+        minDist=0.5, range=None, bins=500,
         a_ray=0.5, a_gauss=0.25, a_lin=1, xc_gauss=15,
         sig_ray=None, sig_gauss=30, sd_fit=1e-4):
+    if range is None:
+        range = [0, 200]
     dist = distances[np.logical_and(trackIDs > 0, distances > minDist)]
-
-    x = np.linspace(*range, bins)
 
     n, bin_edges = np.histogram(dist, density=True, range=range, bins=bins)
 
@@ -188,10 +183,9 @@ def NeNA_resolution_estimate(
         [a_ray, a_gauss, a_lin, xc_gauss, sig_ray, sig_gauss, sd_fit])
 
     print('NeNA resolution estimate')
-    print('A0 {:.5f} Loc0 {:.5f} Sig0 {:.5f}'.format(res.x[0], 0, res.x[4]))
-    print('A1 {:.5f} Loc1 {:.5f} Sig1 {:.5f}'.format(
-        res.x[1], res.x[3], res.x[5]))
-    print('A2 {:e} SD {:e}'.format(res.x[2], res.x[6]))
+    print(f'A0 {res.x[0]:.5f} Loc0 {0:.5f} Sig0 {res.x[4]:.5f}')
+    print(f'A1 {res.x[1]:.5f} Loc1 {res.x[3]:.5f} Sig1 {res.x[5]:.5f}')
+    print(f'A2 {res.x[2]:e} SD {res.x[6]:e}')
 
     return res, (bin_edges, n, get_bincenters(bin_edges))
 
@@ -204,7 +198,7 @@ class NeNA_Widget(QDialog):
             trackIDs: np.ndarray,
             parent=None,
             ):
-        super(NeNA_Widget, self).__init__(parent)
+        super().__init__(parent)
 
         self.setWindowTitle('NeNA localization precision estimate')
         self.nDists = neighbourDists
@@ -374,10 +368,8 @@ class NeNA_Widget(QDialog):
         self.log.appendPlainText(
             '    NeNA resolution estimate \n')
         self.log.appendPlainText(
-            '    A0 {:.5f} Loc0 {:.5f} Sig0 {:.5f}\n'.format(
-                res.x[0], 0, res.x[4]))
+            f'    A0 {res.x[0]:.5f} Loc0 {0:.5f} Sig0 {res.x[4]:.5f}\n')
         self.log.appendPlainText(
-            '    A1 {:.5f} Loc1 {:.5f} Sig1 {:.5f}\n'.format(
-                res.x[1], res.x[3], res.x[5]))
+            f'    A1 {res.x[1]:.5f} Loc1 {res.x[3]:.5f} Sig1 {res.x[5]:.5f}\n')
         self.log.appendPlainText(
-            '    A2 {:e} SD {:e}\n'.format(res.x[2], res.x[6]))
+            f'    A2 {res.x[2]:e} SD {res.x[6]:e}\n')

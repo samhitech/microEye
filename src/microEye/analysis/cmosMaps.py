@@ -1,7 +1,7 @@
-import numpy as np
-import tifffile as tf
 import typing
 
+import numpy as np
+import tifffile as tf
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
@@ -153,7 +153,7 @@ class cmosMaps(QWidget):
 
     def browseImg(self, index):
         filename, _ = QFileDialog.getOpenFileName(
-            self, "Load Image", filter="Tiff Image Files (*.tif);")
+            self, 'Load Image', filter='Tiff Image Files (*.tif);')
 
         if len(filename) > 0:
             img = tf.imread(filename)
@@ -231,18 +231,16 @@ class cmosMaps(QWidget):
             return True
 
         _directory = str(
-                QFileDialog.getExistingDirectory(self, "Select Directory"))
+                QFileDialog.getExistingDirectory(self, 'Select Directory'))
 
         if len(_directory) < 1:
             return
 
         tf.imwrite(
-            _directory + '/offset_{:.5f}ms'.format(
-                self.expTime).replace('.', '_') + '.tif',
+            _directory + f'/offset_{self.expTime:.5f}ms'.replace('.', '_') + '.tif',
             self.offsetMap)
         tf.imwrite(
-            _directory + '/var_{:.5f}ms'.format(
-                self.expTime).replace('.', '_') + '.tif',
+            _directory + f'/var_{self.expTime:.5f}ms'.replace('.', '_') + '.tif',
             self.varMap)
 
         return True

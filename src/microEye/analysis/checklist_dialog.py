@@ -14,7 +14,7 @@ class ChecklistDialog(QDialog):
             icon=None,
             parent=None,
             ):
-        super(ChecklistDialog, self).__init__(parent)
+        super().__init__(parent)
 
         self.name = name
         self.icon = icon
@@ -96,7 +96,7 @@ class Checklist(QGroupBox):
         self.model = QStandardItemModel()
         self.listView = QListView()
 
-        for idx, string in enumerate(stringlist):
+        for _, string in enumerate(stringlist):
             item = QStandardItem(string)
             item.setCheckable(True)
             check = \

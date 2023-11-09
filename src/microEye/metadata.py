@@ -33,7 +33,8 @@ class MetadataEditor(QWidget):
         # self.qscroll = QScrollArea()
 
         # self.qscroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        # self.qscroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        # self.qscroll.setHorizontalScrollBarPolicy(
+        #     Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         # self.qscroll.setWidgetResizable(True)
 
         self.TabView = QTabWidget()

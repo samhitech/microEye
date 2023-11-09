@@ -1,9 +1,7 @@
 
 import numpy as np
 import pandas as pd
-from PyQt5.QtCore import *
 from scipy.interpolate import interp1d
-from scipy.stats import rayleigh
 
 from ..rendering import gauss_hist_render
 from .processing import *
@@ -702,6 +700,7 @@ class FittingResults:
         print('Done ...                         ')
 
         return self
+
 
     def merge_tracks(self, maxLength=500):
         self.n_merged = np.zeros(self.__len__(), dtype=np.int64)

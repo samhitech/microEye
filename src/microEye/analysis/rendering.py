@@ -6,7 +6,7 @@ import numba
 import numpy as np
 import pyqtgraph as pg
 from PyQt5.QtCore import *
-from scipy.interpolate import interp1d, splrep, BSpline
+from scipy.interpolate import BSpline, interp1d, splrep
 
 
 def model(xc, yc, sigma_x, sigma_y, flux, offset, X, Y):
@@ -193,7 +193,7 @@ class hist2D_render:
             y_max = shape[0]
         n_max = max(x_max, y_max)
 
-        step = int(2)
+        step = 2
 
         self._image = np.zeros([n_max, n_max])
 
@@ -298,17 +298,15 @@ def FRC_resolution_binomial(data: np.ndarray, pixelSize=10, method='Binomial'):
     freq_nyq = frequencies.max()
     R_max = frequencies.shape[0]
 
-    FRC_res = np.zeros((R_max))
+    FRC_res = np.zeros(R_max)
 
-    print('{:.3f} s'.format(
-        start.msecsTo(QDateTime.currentDateTime()) * 1e-3))
+    print(f'{start.msecsTo(QDateTime.currentDateTime()) * 1e-3:.3f} s')
 
     start = QDateTime.currentDateTime()
     print('FRC ... ')
     FRC_compute(fft_12, fft_11, fft_22, FRC_res, R, R_max)
 
-    print('{:.3f} s'.format(
-        start.msecsTo(QDateTime.currentDateTime()) * 1e-3))
+    print(f'{start.msecsTo(QDateTime.currentDateTime()) * 1e-3:.3f} s')
 
     print('Interpolation ... ')
     interpy = interp1d(
@@ -327,8 +325,7 @@ def FRC_resolution_binomial(data: np.ndarray, pixelSize=10, method='Binomial'):
         FRC_res = np.nan
 
     print(
-        'Done ... {:.3f} s'.format(
-         all.msecsTo(QDateTime.currentDateTime()) * 1e-3))
+        f'Done ... {all.msecsTo(QDateTime.currentDateTime()) * 1e-3:.3f} s')
     return frequencies, FRC, smoothed, FRC_res
 
 
@@ -376,8 +373,7 @@ def plotFRC(frequencies, FRC, smoothed, FRC_res):
     plt.setLabel('bottom', 'Spatial Frequency [1/nm]', units='')
 
     plt.setWindowTitle(
-        "FRC resolution: {0} nm".format(
-            np.round(FRC_res, 1))
+        f'FRC resolution: {np.round(FRC_res, 1)} nm'
         )
 
     # setting horizontal range
@@ -411,7 +407,7 @@ def FRC_resolution_check_pattern(image, pixelSize=10):
     '''
     print(
         'Initialization ...               ',
-        end="\r")
+        end='\r')
     odd, even, oddeven, evenodd = checker_pairs(image)
 
     window = hamming_2Dwindow(odd.shape[0])
@@ -428,7 +424,7 @@ def FRC_resolution_check_pattern(image, pixelSize=10):
 
     print(
         'FFT ...               ',
-        end="\r")
+        end='\r')
     odd_fft, even_fft, oddeven_fft, evenodd_fft = \
         np.fft.fft2(odd), np.fft.fft2(even), \
         np.fft.fft2(oddeven), np.fft.fft2(evenodd)
@@ -461,7 +457,7 @@ def FRC_resolution_check_pattern(image, pixelSize=10):
 
     print(
         'FRC ...               ',
-        end="\r")
+        end='\r')
     FRC_compute(
         odd_even, odd_sq, even_sq, FRC_res_1, R, R_max)
     FRC_compute(
@@ -487,7 +483,7 @@ def FRC_resolution_check_pattern(image, pixelSize=10):
 
     print(
         'Interpolation ...               ',
-        end="\r")
+        end='\r')
     interpy = interp1d(
             frequencies, FRC_res_1[:, 3],
             kind='quadratic', fill_value='extrapolate')
@@ -503,8 +499,8 @@ def FRC_resolution_check_pattern(image, pixelSize=10):
             kind='quadratic', fill_value='extrapolate')
     FRC_avg = interpy(frequencies)
 
-    idxmax_1 = np.where(FRC_1 <= (1/7))[0].min()
-    idxmax_2 = np.where(FRC_2 <= (1/7))[0].min()
+    idxmax_1 = np.where((1/7) >= FRC_1)[0].min()
+    idxmax_2 = np.where((1/7) >= FRC_2)[0].min()
     idxmax_avg = np.where(FRC_avg <= (1/7))[0].min()
     FRC_freq = np.array([
         frequencies[idxmax_1],
@@ -538,7 +534,7 @@ def plotFRC_(frequencies, FRC, FRC_res, cut_off_corrections):
     plt.setLabel('bottom', 'Spatial Frequency [1/nm]', units='')
 
     plt.setWindowTitle(
-        "FRC resolution (1st, 2nd, avg): {0} | {1} | {2} nm".format(
+        'FRC resolution (1st, 2nd, avg): {} | {} | {} nm'.format(
             *np.round(FRC_res, 1))
         )
 

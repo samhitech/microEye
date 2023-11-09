@@ -9,11 +9,10 @@ import pandas as pd
 import pyqtgraph as pg
 import qdarkstyle
 import tifffile as tf
-import zarr
 from numba import cuda
 from ome_types.model.ome import OME
 from PyQt5.QtCore import *
-from PyQt5.QtGui import QFont, QIcon
+from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import *
 
 if cuda.is_available():
@@ -22,23 +21,24 @@ else:
     def GPUmleFit_LM(*args):
         pass
 
-from .checklist_dialog import Checklist, ChecklistDialog
+from ..metadata import MetadataEditor
+from ..thread_worker import *
+from ..uImage import *
+from .checklist_dialog import ChecklistDialog
 from .cmosMaps import cmosMaps
 from .filters import *
 from .fitting import pyfit3Dcspline
 from .fitting.fit import *
+from .fitting.nena import NeNA_Widget
 from .fitting.results import *
 from .fitting.results_stats import resultsStatsWidget
-from .fitting.nena import NeNA_Widget
-from ..metadata import MetadataEditor
+from .fitting.tardis import TARDIS_Widget
 from .rendering import *
-from ..thread_worker import *
-from ..uImage import *
 
 
 class tiff_viewer(QMainWindow):
 
-    def __init__(self, path=os.path.dirname(os.path.abspath(__package__))):
+    def __init__(self, path=None):
         super().__init__()
         self.title = 'microEye tiff viewer'
         self.left = 0
@@ -59,9 +59,11 @@ class tiff_viewer(QMainWindow):
 
         # Threading
         self._threadpool = QThreadPool()
-        print("Multithreading with maximum %d threads"
+        print('Multithreading with maximum %d threads'
               % self._threadpool.maxThreadCount())
 
+        if path is None:
+            path = os.path.dirname(os.path.abspath(__package__))
         self.initialize(path)
 
         self.status()
@@ -127,7 +129,7 @@ class tiff_viewer(QMainWindow):
         self.tree.hideColumn(2)
         self.tree.hideColumn(3)
 
-        self.tree.setWindowTitle("Dir View")
+        self.tree.setWindowTitle('Dir View')
         self.tree.resize(512, 256)
 
         # Graphical layout
@@ -258,7 +260,7 @@ class tiff_viewer(QMainWindow):
             (0, self._n_levels - 1),
             bounds=(0, self._n_levels - 1),
             pen=greenP, brush=greenB,
-            movable=True, swapMode="push", span=(0.0, 1))
+            movable=True, swapMode='push', span=(0.0, 1))
         self.histogram.addItem(self.lr_0)
 
         self.autostretch = QCheckBox('Auto-Stretch')
@@ -493,6 +495,9 @@ class tiff_viewer(QMainWindow):
         self.NeNA_btn = QPushButton(
             'NeNA Loc. Prec. Estimate',
             clicked=lambda: self.NeNA_estimate())
+        self.tardis_btn = QPushButton(
+            'TARDIS',
+            clicked=lambda: self.TARDIS_analysis())
 
         # Precision GroupBox
         precision = QGroupBox('Loc. Precision')
@@ -505,6 +510,7 @@ class tiff_viewer(QMainWindow):
         )
         fprecision.addWidget(self.frc_res_btn)
         fprecision.addWidget(self.NeNA_btn)
+        fprecision.addWidget(self.tardis_btn)
         # End Precision GroupBox
 
         self.nneigh_merge_args = QHBoxLayout()
@@ -804,9 +810,9 @@ class tiff_viewer(QMainWindow):
             return
 
         filename, _ = QFileDialog.getSaveFileName(
-            self, "Save Cropped Image",
+            self, 'Save Cropped Image',
             directory=self.path,
-            filter="Zarr Files (*.zarr)")
+            filter='Zarr Files (*.zarr)')
 
         roiInfo = self.get_roi_info()
 
@@ -949,8 +955,8 @@ class tiff_viewer(QMainWindow):
                 th_img = th_img * th2
 
             if self.image_filter.currentData().filter._show_filter:
-                cv2.namedWindow("Thresholded filtered Img.", cv2.WINDOW_NORMAL)
-                cv2.imshow("Thresholded filtered Img.", th_img)
+                cv2.namedWindow('Thresholded filtered Img.', cv2.WINDOW_NORMAL)
+                cv2.imshow('Thresholded filtered Img.', th_img)
 
             # Detect blobs.
 
@@ -959,8 +965,8 @@ class tiff_viewer(QMainWindow):
 
             # Show keypoints
             if self.image_filter.currentData().filter._show_filter:
-                cv2.namedWindow("Approx. Loc.", cv2.WINDOW_NORMAL)
-                cv2.imshow("Approx. Loc.", im_with_keypoints)
+                cv2.namedWindow('Approx. Loc.', cv2.WINDOW_NORMAL)
+                cv2.imshow('Approx. Loc.', im_with_keypoints)
 
             if len(points) > 0 and origin is not None:
                 points[:, 0] += origin[0]
@@ -1111,6 +1117,20 @@ class tiff_viewer(QMainWindow):
             # Execute
             self.NeNA_btn.setDisabled(True)
             self._threadpool.start(self.worker)
+
+    def TARDIS_analysis(self):
+        if self.fittingResults is None:
+            return
+        elif len(self.fittingResults) > 0:
+            self.tardis = TARDIS_Widget(
+                self.fittingResults.frames,
+                self.fittingResults.locX,
+                self.fittingResults.locY,
+                self.fittingResults.locZ,
+            )
+            self.tardis.startWorker.connect(
+                lambda worker: self._threadpool.start(worker))
+            self.tardis.show()
 
     def drift_cross(self):
         if self.fittingResults is None:
@@ -1277,8 +1297,8 @@ class tiff_viewer(QMainWindow):
         '''Imports fitting results from a file.
         '''
         filename, _ = QFileDialog.getOpenFileName(
-            self, "Import localizations",
-            filter="HDF5 files (*.h5);;TSV Files (*.tsv)")
+            self, 'Import localizations',
+            filter='HDF5 files (*.h5);;TSV Files (*.tsv)')
 
         if len(filename) > 0:
 
@@ -1310,8 +1330,8 @@ class tiff_viewer(QMainWindow):
                 return
 
             filename, _ = QFileDialog.getSaveFileName(
-                self, "Export localizations",
-                filter="HDF5 files (*.h5);;TSV Files (*.tsv)")
+                self, 'Export localizations',
+                filter='HDF5 files (*.h5);;TSV Files (*.tsv)')
 
         if len(filename) > 0:
             options = self.export_options.toList()
@@ -1362,8 +1382,8 @@ class tiff_viewer(QMainWindow):
             return
 
         filename, _ = QFileDialog.getSaveFileName(
-            self, "Save localizations",
-            filter="HDF5 files (*.h5);;TSV Files (*.tsv)")
+            self, 'Save localizations',
+            filter='HDF5 files (*.h5);;TSV Files (*.tsv)')
 
         if len(filename) > 0:
 
@@ -1584,7 +1604,7 @@ class tiff_viewer(QMainWindow):
             print(
                 'index: {:d}/{:d}, Time: {:d}  '.format(
                     i + len(workers), self.tiffSeq_Handler.shape[0], exex),
-                end="\r")
+                end='\r')
             if (i // threads) % 40 == 0:
                 progress_callback.emit(self)
 
@@ -1725,14 +1745,11 @@ class tiff_viewer(QMainWindow):
                 'index: {:.2f}% {:d} ms    '.format(
                     100*(k+1)/len(self.tiffSeq_Handler),
                     cycle.msecsTo(QDateTime.currentDateTime())),
-                end="\r")
+                end='\r')
 
         roi_list = np.vstack(roi_list)
         coord_list = np.vstack(coord_list)
-        if varim is None:
-            varim_list = None
-        else:
-            varim_list = np.vstack(varim_list)
+        varim_list = None if varim is None else np.vstack(varim_list)
 
         print(
             '\n',
@@ -1815,7 +1832,7 @@ class tiff_viewer(QMainWindow):
 
         if sys.platform.startswith('win'):
             import ctypes
-            myappid = u'samhitech.mircoEye.tiff_viewer'  # appid
+            myappid = 'samhitech.mircoEye.tiff_viewer'  # appid
             ctypes.windll.shell32.\
                 SetCurrentProcessExplicitAppUserModelID(myappid)
 
@@ -1892,7 +1909,7 @@ def loadConfig(window: tiff_viewer):
 
     config: dict = None
 
-    with open(filename, 'r') as file:
+    with open(filename) as file:
         config = json.load(file)
 
     if 'tiff_viewer' in config:

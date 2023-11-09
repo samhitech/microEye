@@ -1,6 +1,9 @@
 
-import numpy as np
+import math
+import time
+
 import numba as nb
+import numpy as np
 import pyqtgraph as pg
 from skimage.registration import phase_cross_correlation
 from sklearn.neighbors import NearestNeighbors
@@ -43,7 +46,7 @@ def nn_trajectories(
         distance = foundnn[0]
 
         if np.isnan(distance).any():
-            print("Nan!\n\n")
+            print('Nan!\n\n')
 
         for idx in range(len(currentIDs)):
             if n_trackID[neighbourIDs[idx]] == 0:
@@ -60,6 +63,91 @@ def nn_trajectories(
     # counter += 0 if currentIDs is None else len(currentIDs)
 
     return counter, c_trackID, n_trackID, nn_dist
+
+
+# @nb.njit(parallel=True)
+def tardis_data(
+        frames: np.ndarray,
+        locX: np.ndarray, locY: np.ndarray, locZ: np.ndarray = None,
+        dts=None, range=1500, bins=1500):
+    if dts is None:
+        dts = [1]
+    result = np.zeros((len(dts), bins), np.float64)
+    edges = np.linspace(0, range, bins+1)
+    if locZ is not None:
+        data: np.ndarray = np.column_stack((locX, locY, locZ))
+    else:
+        data: np.ndarray = np.column_stack((locX, locY))
+    data = data[np.argsort(frames)]
+
+    ids = np.cumsum(
+        np.bincount(frames.astype(np.int64)))
+
+    min_frame = int(np.min(frames))
+    max_frame = int(np.max(frames))
+
+    for idx, dt in enumerate(dts):
+        timer = []
+        for t in nb.prange(min_frame, max_frame - dt + 1):
+            # next_frame = current_frame + delta_t
+            nt = t + dt
+
+            if nt > max_frame:
+                continue
+
+            # with nb.objmode(dist='float64[:]'):
+            start = time.perf_counter_ns()
+            dist = calc_dist(
+                data[slice(ids[t-1] if t > 0 else 0, ids[t])],
+                data[slice(ids[nt-1], ids[nt])])
+            stop = time.perf_counter_ns()
+            timer.append((stop - start)/1e6)
+
+            result[idx] += histogram(dist, 0, range, bins)
+
+            print(
+                '{:d}/{:d} TARDIS {:.2%} ...               '.format(
+                    idx + 1,
+                    len(dts),
+                    (t + 1) / (max_frame - dt + 1)),
+                end='\r')
+
+        result[idx] /= np.sum(result[idx])
+        print(
+            '{:d}/{:d} TARDIS {:.2%} ... {:.3f}ms | {:.3f}ms     '.format(
+                idx + 1,
+                len(dts),
+                1.0, np.mean(timer), np.sum(timer)))
+    return result, edges
+
+
+@nb.vectorize([nb.int64(nb.float64, nb.float64, nb.float64, nb.float64)])
+def f(x, min_val, max_val, num_bins):
+    c = num_bins / (max_val - min_val)
+    return (x - min_val) * c
+
+
+def histogram(data, min_val, max_val, num_bins):
+    c = f(
+        data[(data >= min_val) & (data < max_val)],
+        min_val, max_val, num_bins)
+    counts = np.bincount(c, minlength=num_bins)
+    return counts
+
+
+@nb.vectorize([nb.float64(nb.float64, nb.float64)])
+def diff_sq(x, y):
+    return (x - y)**2
+
+
+@nb.njit(parallel=True)
+def calc_dist(origin: np.ndarray, dest: np.ndarray):
+    res = np.zeros((origin.shape[0] * dest.shape[0]), np.float64)
+    for i in nb.prange(origin.shape[0]):
+        for j in nb.prange(dest.shape[0]):
+            res[i*dest.shape[0] + j] = math.sqrt(
+                np.sum((dest[j, :] - origin[i, :])**2))
+    return res
 
 
 @nb.njit(nb.float64[:, :](nb.float64[:, :], nb.int32[:], nb.int64),
@@ -103,7 +191,7 @@ def merge_localizations(data: np.ndarray, columns: np.ndarray, maxLength):
         #     'Merging ', (idx + 1), ' / ', len(trackIDs))
 
     if np.isnan(mergedData).any():
-        print("Nan!\n\n")
+        print('Nan!\n\n')
 
     # with nb.objmode(leftData='float64[:,:]'):
     leftIndices = np.where(data[:, track_idx] == 0)[0]
@@ -137,7 +225,7 @@ def plot_drift(
         title='Drift Cross-Correlation'):
     print(
         'Shift Plot ...',
-        end="\r")
+        end='\r')
 
     # plot results
     plt = pg.plot()
@@ -159,15 +247,15 @@ def plot_drift(
     # setting vertical range
     plt.setYRange(0, 1)
 
-    line1 = plt.plot(
+    plt.plot(
         frames_new, interpx,
         pen='r', symbol=None,
         symbolBrush=0.2, name='x-drift')
-    line1 = plt.plot(
+    plt.plot(
         frames_new, interpy,
         pen='y', symbol=None,
         symbolBrush=0.2, name='y-drift')
 
     print(
         'Done ...',
-        end="\r")
+        end='\r')
