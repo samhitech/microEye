@@ -18,98 +18,98 @@ class IS_POINT_2D(Structure):
 class IS_RECT(Structure):
     _pack_ = 8
     _fields_ = [
-        ("s32X", c_int),
-        ("s32Y", c_int),
-        ("s32Width", c_int),
-        ("s32Height", c_int),
+        ('s32X', c_int),
+        ('s32Y', c_int),
+        ('s32Width', c_int),
+        ('s32Height', c_int),
     ]
 
 
 class UC480_CAMERA_INFO(Structure):
     _pack_ = 8
     _fields_ = [
-        ("dwCameraID", c_uint),
-        ("dwDeviceID", c_uint),
-        ("dwSensorID", c_uint),
-        ("dwInUse", c_uint),
-        ("SerNo", (c_char * 16)),
-        ("Model", (c_char * 16)),
-        ("dwStatus", c_uint),
-        ("dwReserved", (c_uint * 2)),
-        ("FullModelName", (c_char * 32)),
-        ("dwReserved2", (c_uint * 5)),
+        ('dwCameraID', c_uint),
+        ('dwDeviceID', c_uint),
+        ('dwSensorID', c_uint),
+        ('dwInUse', c_uint),
+        ('SerNo', (c_char * 16)),
+        ('Model', (c_char * 16)),
+        ('dwStatus', c_uint),
+        ('dwReserved', (c_uint * 2)),
+        ('FullModelName', (c_char * 32)),
+        ('dwReserved2', (c_uint * 5)),
     ]
 
 
 class BOARDINFO(Structure):
     _pack_ = 8
     _fields_ = [
-        ("SerNo", (c_char * 12)),
-        ("ID", (c_char * 20)),
-        ("Version", (c_char * 10)),
-        ("Date", (c_char * 12)),
-        ("Select", c_ubyte),
-        ("Type", c_ubyte),
-        ("Reserved", (c_char * 8)),
+        ('SerNo', (c_char * 12)),
+        ('ID', (c_char * 20)),
+        ('Version', (c_char * 10)),
+        ('Date', (c_char * 12)),
+        ('Select', c_ubyte),
+        ('Type', c_ubyte),
+        ('Reserved', (c_char * 8)),
     ]
 
 
 class SENSORINFO(Structure):
     _pack_ = 8
     _fields_ = [
-        ("SensorID", c_ushort),
-        ("strSensorName", (c_char * 32)),
-        ("nColorMode", c_char),
-        ("nMaxWidth", c_uint),
-        ("nMaxHeight", c_uint),
-        ("bMasterGain", c_int),
-        ("bRGain", c_int),
-        ("bGGain", c_int),
-        ("bBGain", c_int),
-        ("bGlobShutter", c_int),
-        ("wPixelSize", c_ushort),
-        ("nUpperLeftBayerPixel", c_char),
-        ("Reserved", (c_char * 13)),
+        ('SensorID', c_ushort),
+        ('strSensorName', (c_char * 32)),
+        ('nColorMode', c_char),
+        ('nMaxWidth', c_uint),
+        ('nMaxHeight', c_uint),
+        ('bMasterGain', c_int),
+        ('bRGain', c_int),
+        ('bGGain', c_int),
+        ('bBGain', c_int),
+        ('bGlobShutter', c_int),
+        ('wPixelSize', c_ushort),
+        ('nUpperLeftBayerPixel', c_char),
+        ('Reserved', (c_char * 13)),
     ]
 
 
 class IS_DEVICE_INFO_HEARTBEAT(Structure):
     _pack_ = 1
     _fields_ = [
-        ("reserved_1", (c_ubyte * 24)),
-        ("dwRuntimeFirmwareVersion", c_uint),
-        ("reserved_2", (c_ubyte * 8)),
-        ("wTemperature", c_ushort),
-        ("wLinkSpeed_Mb", c_ushort),
-        ("reserved_3", (c_ubyte * 6)),
-        ("wComportOffset", c_ushort),
-        ("reserved", (c_ubyte * 200)),
+        ('reserved_1', (c_ubyte * 24)),
+        ('dwRuntimeFirmwareVersion', c_uint),
+        ('reserved_2', (c_ubyte * 8)),
+        ('wTemperature', c_ushort),
+        ('wLinkSpeed_Mb', c_ushort),
+        ('reserved_3', (c_ubyte * 6)),
+        ('wComportOffset', c_ushort),
+        ('reserved', (c_ubyte * 200)),
     ]
 
 
 class IS_DEVICE_INFO_CONTROL(Structure):
     _pack_ = 1
     _fields_ = [
-        ("dwDeviceId", c_uint),
-        ("reserved", (c_ubyte * 148)),
+        ('dwDeviceId', c_uint),
+        ('reserved', (c_ubyte * 148)),
     ]
 
 
 class IS_DEVICE_INFO(Structure):
     _pack_ = 1
     _fields_ = [
-        ("infoDevHeartbeat", IS_DEVICE_INFO_HEARTBEAT),
-        ("infoDevControl", IS_DEVICE_INFO_CONTROL),
-        ("reserved", (c_ubyte * 240)),
+        ('infoDevHeartbeat', IS_DEVICE_INFO_HEARTBEAT),
+        ('infoDevControl', IS_DEVICE_INFO_CONTROL),
+        ('reserved', (c_ubyte * 240)),
     ]
 
 
 class UC480_CAPTURE_STATUS_INFO(Structure):
     _pack_ = 8
     _fields_ = [
-        ("dwCapStatusCnt_Total", c_uint),
-        ("reserved", (c_ubyte * 60)),
-        ("adwCapStatusCnt_Detail", (c_uint * 256)),
+        ('dwCapStatusCnt_Total', c_uint),
+        ('reserved', (c_ubyte * 60)),
+        ('adwCapStatusCnt_Detail', (c_uint * 256)),
     ]
 
 
@@ -133,8 +133,8 @@ def UC480_CAMERA_LIST(uci=(UC480_CAMERA_INFO * 1)):
     class UC480_CAMERA_LIST(Structure):
         _pack_ = 8
         _fields_ = [
-            ("dwCount", c_uint),
-            ("uci", _uci),
+            ('dwCount', c_uint),
+            ('uci', _uci),
         ]
 
     uc480_camera_list = UC480_CAMERA_LIST()
@@ -212,8 +212,8 @@ class _EXP:
 class IO_FLASH_PARAMS(Structure):
     _pack_ = 8
     _fields_ = [
-        ("s32Delay", c_int),
-        ("u32Duration", c_uint),
+        ('s32Delay', c_int),
+        ('u32Duration', c_uint),
     ]
 
 
@@ -227,13 +227,13 @@ class FLASH_MODE:
     IO_FLASH_MODE_FREERUN_HI_ACTIVE = 6
 
     FLASH_MODES = {
-        "Flash Off": IO_FLASH_MODE_OFF,
-        "Flash Trigger Low Active": IO_FLASH_MODE_TRIGGER_LO_ACTIVE,
-        "Flash Trigger High Active": IO_FLASH_MODE_TRIGGER_HI_ACTIVE,
-        "Flash Constant High": IO_FLASH_MODE_CONSTANT_HIGH,
-        "Flash Constant Low": IO_FLASH_MODE_CONSTANT_LOW,
-        "Flash Freerun Low Active": IO_FLASH_MODE_FREERUN_LO_ACTIVE,
-        "Flash Freerun High Active": IO_FLASH_MODE_FREERUN_HI_ACTIVE}
+        'Flash Off': IO_FLASH_MODE_OFF,
+        'Flash Trigger Low Active': IO_FLASH_MODE_TRIGGER_LO_ACTIVE,
+        'Flash Trigger High Active': IO_FLASH_MODE_TRIGGER_HI_ACTIVE,
+        'Flash Constant High': IO_FLASH_MODE_CONSTANT_HIGH,
+        'Flash Constant Low': IO_FLASH_MODE_CONSTANT_LOW,
+        'Flash Freerun Low Active': IO_FLASH_MODE_FREERUN_LO_ACTIVE,
+        'Flash Freerun High Active': IO_FLASH_MODE_FREERUN_HI_ACTIVE}
     '''Flash modes supported by Thorlabs cameras.
 
     Returns
@@ -370,10 +370,10 @@ class TRIGGER:
     IS_SET_TRIGGER_PRE_LO_HI = (IS_SET_TRIGGER_CONTINUOUS | 0x0080)
 
     TRIGGER_MODES = {
-        "Trigger Off": IS_SET_TRIGGER_OFF,
-        "Software Trigger": IS_SET_TRIGGER_SOFTWARE,
-        "Falling edge external trigger": IS_SET_TRIGGER_HI_LO,
-        "Rising edge external trigger": IS_SET_TRIGGER_LO_HI}
+        'Trigger Off': IS_SET_TRIGGER_OFF,
+        'Software Trigger': IS_SET_TRIGGER_SOFTWARE,
+        'Falling edge external trigger': IS_SET_TRIGGER_HI_LO,
+        'Rising edge external trigger': IS_SET_TRIGGER_LO_HI}
     '''Tigger modes supported by Thorlabs cameras.
 
     Returns
@@ -511,41 +511,41 @@ formats_ = {_ColorModes.IS_CM_SENSOR_RAW8: 8,
             _ColorModes.IS_CM_CBYCRY_PACKED: 16
             }
 
-formats_strs = {_ColorModes.IS_CM_SENSOR_RAW8: "IS_CM_SENSOR_RAW8",
-                _ColorModes.IS_CM_SENSOR_RAW10: "IS_CM_SENSOR_RAW10",
-                _ColorModes.IS_CM_SENSOR_RAW12: "IS_CM_SENSOR_RAW12",
-                _ColorModes.IS_CM_SENSOR_RAW16: "IS_CM_SENSOR_RAW16",
+formats_strs = {_ColorModes.IS_CM_SENSOR_RAW8: 'IS_CM_SENSOR_RAW8',
+                _ColorModes.IS_CM_SENSOR_RAW10: 'IS_CM_SENSOR_RAW10',
+                _ColorModes.IS_CM_SENSOR_RAW12: 'IS_CM_SENSOR_RAW12',
+                _ColorModes.IS_CM_SENSOR_RAW16: 'IS_CM_SENSOR_RAW16',
 
-                _ColorModes.IS_CM_MONO8: "IS_CM_MONO8",
-                _ColorModes.IS_CM_MONO10: "IS_CM_MONO10",
-                _ColorModes.IS_CM_MONO12: "IS_CM_MONO12",
-                _ColorModes.IS_CM_MONO16: "IS_CM_MONO16",
+                _ColorModes.IS_CM_MONO8: 'IS_CM_MONO8',
+                _ColorModes.IS_CM_MONO10: 'IS_CM_MONO10',
+                _ColorModes.IS_CM_MONO12: 'IS_CM_MONO12',
+                _ColorModes.IS_CM_MONO16: 'IS_CM_MONO16',
 
-                _ColorModes.IS_CM_RGB8_PLANAR: "IS_CM_RGB8_PLANAR",
-                _ColorModes.IS_CM_RGB8_PACKED: "IS_CM_RGB8_PACKED",
-                _ColorModes.IS_CM_RGBA8_PACKED: "IS_CM_RGB8_PACKED",
-                _ColorModes.IS_CM_RGBY8_PACKED: "IS_CM_RGBY8_PACKED",
-                _ColorModes.IS_CM_RGB10_PACKED: "IS_CM_RGB10_PACKED",
+                _ColorModes.IS_CM_RGB8_PLANAR: 'IS_CM_RGB8_PLANAR',
+                _ColorModes.IS_CM_RGB8_PACKED: 'IS_CM_RGB8_PACKED',
+                _ColorModes.IS_CM_RGBA8_PACKED: 'IS_CM_RGB8_PACKED',
+                _ColorModes.IS_CM_RGBY8_PACKED: 'IS_CM_RGBY8_PACKED',
+                _ColorModes.IS_CM_RGB10_PACKED: 'IS_CM_RGB10_PACKED',
 
-                _ColorModes.IS_CM_RGB10_UNPACKED: "IS_CM_RGB10_UNPACKED",
-                _ColorModes.IS_CM_RGB12_UNPACKED: "IS_CM_RGB12_UNPACKED",
-                _ColorModes.IS_CM_RGBA12_UNPACKED: "IS_CM_RGBA12_UNPACKED",
+                _ColorModes.IS_CM_RGB10_UNPACKED: 'IS_CM_RGB10_UNPACKED',
+                _ColorModes.IS_CM_RGB12_UNPACKED: 'IS_CM_RGB12_UNPACKED',
+                _ColorModes.IS_CM_RGBA12_UNPACKED: 'IS_CM_RGBA12_UNPACKED',
 
-                _ColorModes.IS_CM_BGR5_PACKED: "IS_CM_BGR5_PACKED",
-                _ColorModes.IS_CM_BGR565_PACKED: "IS_CM_BGR565_PACKED",
-                _ColorModes.IS_CM_BGR8_PACKED: "IS_CM_BGR8_PACKED",
-                _ColorModes.IS_CM_BGRA8_PACKED: "IS_CM_BGRA8_PACKED",
-                _ColorModes.IS_CM_BGRY8_PACKED: "IS_CM_BGRY8_PACKED",
-                _ColorModes.IS_CM_BGR10_PACKED: "IS_CM_BGR10_PACKED",
+                _ColorModes.IS_CM_BGR5_PACKED: 'IS_CM_BGR5_PACKED',
+                _ColorModes.IS_CM_BGR565_PACKED: 'IS_CM_BGR565_PACKED',
+                _ColorModes.IS_CM_BGR8_PACKED: 'IS_CM_BGR8_PACKED',
+                _ColorModes.IS_CM_BGRA8_PACKED: 'IS_CM_BGRA8_PACKED',
+                _ColorModes.IS_CM_BGRY8_PACKED: 'IS_CM_BGRY8_PACKED',
+                _ColorModes.IS_CM_BGR10_PACKED: 'IS_CM_BGR10_PACKED',
 
-                _ColorModes.IS_CM_BGR10_UNPACKED: "IS_CM_BGR10_UNPACKED",
-                _ColorModes.IS_CM_BGR12_UNPACKED: "IS_CM_BGR12_UNPACKED",
-                _ColorModes.IS_CM_BGRA12_UNPACKED: "IS_CM_BGRA12_UNPACKED",
+                _ColorModes.IS_CM_BGR10_UNPACKED: 'IS_CM_BGR10_UNPACKED',
+                _ColorModes.IS_CM_BGR12_UNPACKED: 'IS_CM_BGR12_UNPACKED',
+                _ColorModes.IS_CM_BGRA12_UNPACKED: 'IS_CM_BGRA12_UNPACKED',
 
-                _ColorModes.IS_CM_UYVY_PACKED: "IS_CM_UYVY_PACKED",
-                _ColorModes.IS_CM_UYVY_MONO_PACKED: "IS_CM_UYVY_MONO_PACKED",
-                _ColorModes.IS_CM_UYVY_BAYER_PACKED: "IS_CM_UYVY_BAYER_PACKED",
-                _ColorModes.IS_CM_CBYCRY_PACKED: "IS_CM_CBYCRY_PACKED"
+                _ColorModes.IS_CM_UYVY_PACKED: 'IS_CM_UYVY_PACKED',
+                _ColorModes.IS_CM_UYVY_MONO_PACKED: 'IS_CM_UYVY_MONO_PACKED',
+                _ColorModes.IS_CM_UYVY_BAYER_PACKED: 'IS_CM_UYVY_BAYER_PACKED',
+                _ColorModes.IS_CM_CBYCRY_PACKED: 'IS_CM_CBYCRY_PACKED'
                 }
 
 
@@ -587,7 +587,7 @@ class thorlabs_camera(miCamera):
     def __init__(self, hCam=0):
         super().__init__(hCam)
         if os.path.isfile(thorlabs_camera.uc480_file):
-            self.bit_depth = int(8)
+            self.bit_depth = 8
             self.supported_bit_depth = c_uint(0)
             self.bytes_per_pixel = int(self.bit_depth / 8)
             self.color_mode = c_int(0)
@@ -634,7 +634,7 @@ class thorlabs_camera(miCamera):
             self.temperature = -127
             self.uc480 = windll.LoadLibrary(thorlabs_camera.uc480_file)
         else:
-            raise Exception("Please install ThorCam drivers.")
+            raise Exception('Please install ThorCam drivers.')
 
     @staticmethod
     def get_camera_list(output=False):
@@ -662,14 +662,14 @@ class thorlabs_camera(miCamera):
             if (uc480.is_GetCameraList(byref(pucl)) == CMD.IS_SUCCESS):
                 for index in range(cam_count.value):
                     cam_list.append({
-                        "camID": pucl.uci[index].dwCameraID,
-                        "devID": pucl.uci[index].dwDeviceID,
-                        "senID": pucl.uci[index].dwSensorID,
-                        "Status": pucl.uci[index].dwStatus,
-                        "InUse": pucl.uci[index].dwInUse,
-                        "Model": pucl.uci[index].Model.decode('utf-8'),
-                        "Serial": pucl.uci[index].SerNo.decode('utf-8'),
-                        "Driver": 'Thorlabs DCx UC480'})
+                        'camID': pucl.uci[index].dwCameraID,
+                        'devID': pucl.uci[index].dwDeviceID,
+                        'senID': pucl.uci[index].dwSensorID,
+                        'Status': pucl.uci[index].dwStatus,
+                        'InUse': pucl.uci[index].dwInUse,
+                        'Model': pucl.uci[index].Model.decode('utf-8'),
+                        'Serial': pucl.uci[index].SerNo.decode('utf-8'),
+                        'Driver': 'Thorlabs DCx UC480'})
                 if output:
                     print(cam_list)
         return cam_list
@@ -680,7 +680,7 @@ class thorlabs_camera(miCamera):
         '''
         nRet = self.uc480.is_GetCameraInfo(self.hCam, byref(self.cInfo))
         if nRet != CMD.IS_SUCCESS:
-            print("is_GetCameraInfo ERROR")
+            print('is_GetCameraInfo ERROR')
 
     def get_device_info(self):
         '''Gets the device info, used to get the sensor temp.
@@ -694,7 +694,7 @@ class thorlabs_camera(miCamera):
 
             if nRet != CMD.IS_SUCCESS:
                 self.dInfo_not_supported = True
-                print("is_DeviceInfo ERROR", nRet)
+                print('is_DeviceInfo ERROR', nRet)
 
             return nRet
         else:
@@ -722,7 +722,7 @@ class thorlabs_camera(miCamera):
         '''
         nRet = self.uc480.is_GetSensorInfo(self.hCam, byref(self.sInfo))
         if nRet != CMD.IS_SUCCESS:
-            print("is_GetSensorInfo ERROR")
+            print('is_GetSensorInfo ERROR')
 
     def resetToDefault(self):
         '''Resets all parameters to the camera-specific defaults
@@ -733,7 +733,7 @@ class thorlabs_camera(miCamera):
         '''
         nRet = self.uc480.is_ResetToDefault(self.hCam)
         if nRet != CMD.IS_SUCCESS:
-            print("is_ResetToDefault ERROR")
+            print('is_ResetToDefault ERROR')
 
     def initialize(self):
 
@@ -742,7 +742,7 @@ class thorlabs_camera(miCamera):
         i = is_InitCamera(byref(self.hCam))
 
         if i == 0:
-            print("Camera initialized successfully.")
+            print('Camera initialized successfully.')
 
             self.get_coded_info()
             self.get_sensor_info()
@@ -762,14 +762,14 @@ class thorlabs_camera(miCamera):
             self.get_flash_range()
             self.print_cam_info()
 
-            self.name = self.sInfo.strSensorName.decode('utf-8') + "_" + \
+            self.name = self.sInfo.strSensorName.decode('utf-8') + '_' + \
                 self.cInfo.SerNo.decode('utf-8')
-            self.name = str.replace(self.name, "-", "_")
+            self.name = str.replace(self.name, '-', '_')
 
             return CMD.IS_SUCCESS
         else:
             print(
-                "Camera initialization failed with error code "+str(i))
+                'Camera initialization failed with error code '+str(i))
             return i
 
     def refresh_info(self, output=False):
@@ -792,10 +792,10 @@ class thorlabs_camera(miCamera):
 
     # Prints out some information about the camera and the sensor
     def print_cam_info(self):
-        print("Camera model:\t\t", self.sInfo.strSensorName.decode('utf-8'))
-        print("Camera serial no.:\t", self.cInfo.SerNo.decode('utf-8'))
-        print("Maximum image width:\t", self.width)
-        print("Maximum image height:\t", self.height)
+        print('Camera model:\t\t', self.sInfo.strSensorName.decode('utf-8'))
+        print('Camera serial no.:\t', self.cInfo.SerNo.decode('utf-8'))
+        print('Maximum image width:\t', self.width)
+        print('Maximum image height:\t', self.height)
         print()
 
     def close(self):
@@ -803,9 +803,9 @@ class thorlabs_camera(miCamera):
             self.stop_live_capture()
             i = self.uc480.is_ExitCamera(self.hCam)
             if i == 0:
-                print("Camera closed successfully.")
+                print('Camera closed successfully.')
             else:
-                print("Closing the camera failed with error code "+str(i))
+                print('Closing the camera failed with error code '+str(i))
         else:
             return
 
@@ -831,22 +831,22 @@ class thorlabs_camera(miCamera):
                 byref(self.bit_depth),
                 byref(self.color_mode))
             self.bytes_per_pixel = int(np.ceil(self.bit_depth / 8))
-            print(ColorModeStr[nCmode], ": ", )
-            print("\tcolor_mode: \t\t", formats_strs[self.color_mode])
-            print("\tbit_depth: \t\t", self.bit_depth)
-            print("\tbytes_per_pixel: \t\t", self.bytes_per_pixel)
+            print(ColorModeStr[nCmode], ': ', )
+            print('\tcolor_mode: \t\t', formats_strs[self.color_mode])
+            print('\tbit_depth: \t\t', self.bit_depth)
+            print('\tbytes_per_pixel: \t\t', self.bytes_per_pixel)
             print()
 
         elif nCmode ==\
                 ColorMode.IS_COLORMODE_CBYCRY:
             # for color camera models use RGB32 mode
             self.color_mode = _ColorModes.IS_CM_BGRA8_PACKED
-            self.bit_depth = int(32)
+            self.bit_depth = 32
             self.bytes_per_pixel = int(np.ceil(self.bit_depth / 8))
-            print(ColorModeStr[nCmode], ": ", )
-            print("\tcolor_mode: \t\t", formats_strs[self.color_mode])
-            print("\tbit_depth: \t\t", self.bit_depth)
-            print("\tbytes_per_pixel: \t\t", self.bytes_per_pixel)
+            print(ColorModeStr[nCmode], ': ', )
+            print('\tcolor_mode: \t\t', formats_strs[self.color_mode])
+            print('\tbit_depth: \t\t', self.bit_depth)
+            print('\tbytes_per_pixel: \t\t', self.bytes_per_pixel)
             print()
 
         elif nCmode ==\
@@ -857,37 +857,37 @@ class thorlabs_camera(miCamera):
                 if (self.supported_bit_depth and
                         SENSOR_BIT_DEPTH.IS_SENSOR_BIT_DEPTH_12_BIT) != 0:
                     self.color_mode = _ColorModes.IS_CM_MONO12
-                    self.bit_depth = int(12)
+                    self.bit_depth = 12
                     self.bytes_per_pixel = int(np.ceil(self.bit_depth / 8))
                 elif (self.supported_bit_depth and
                         SENSOR_BIT_DEPTH.IS_SENSOR_BIT_DEPTH_10_BIT) != 0:
                     self.color_mode = _ColorModes.IS_CM_MONO10
-                    self.bit_depth = int(10)
+                    self.bit_depth = 10
                     self.bytes_per_pixel = int(np.ceil(self.bit_depth / 8))
                 elif (self.supported_bit_depth and
                         SENSOR_BIT_DEPTH.IS_SENSOR_BIT_DEPTH_8_BIT) != 0:
                     self.color_mode = _ColorModes.IS_CM_MONO8
-                    self.bit_depth = int(8)
+                    self.bit_depth = 8
                     self.bytes_per_pixel = int(np.ceil(self.bit_depth / 8))
             else:
                 self.color_mode = _ColorModes.IS_CM_MONO8
-                self.bit_depth = int(8)
+                self.bit_depth = 8
                 self.bytes_per_pixel = int(np.ceil(self.bit_depth / 8))
-            print(ColorModeStr[nCmode], ": ", )
-            print("\tcolor_mode: \t\t", formats_strs[self.color_mode])
-            print("\tbit_depth: \t\t", self.bit_depth)
-            print("\tbytes_per_pixel: \t\t", self.bytes_per_pixel)
+            print(ColorModeStr[nCmode], ': ', )
+            print('\tcolor_mode: \t\t', formats_strs[self.color_mode])
+            print('\tbit_depth: \t\t', self.bit_depth)
+            print('\tbytes_per_pixel: \t\t', self.bytes_per_pixel)
             print()
 
         else:
             # for monochrome camera models use Y8 mode
             self.color_mode = _ColorModes.IS_CM_MONO8
-            self.bit_depth = int(8)
+            self.bit_depth = 8
             self.bytes_per_pixel = int(np.ceil(self.bit_depth / 8))
-            print("Else: ", )
-            print("\tcolor_mode: \t\t", formats_strs[self.color_mode])
-            print("\tbit_depth: \t\t", self.bit_depth)
-            print("\tbytes_per_pixel: \t\t", self.bytes_per_pixel)
+            print('Else: ', )
+            print('\tcolor_mode: \t\t', formats_strs[self.color_mode])
+            print('\tbit_depth: \t\t', self.bit_depth)
+            print('\tbytes_per_pixel: \t\t', self.bytes_per_pixel)
 
         nRet = self.uc480.is_SetColorMode(
             self.hCam, self.color_mode)
@@ -942,9 +942,9 @@ class thorlabs_camera(miCamera):
             sizeof(self.pixel_clock))
 
         if nRet != 0:
-            print("is_PixelClock ERROR")
+            print('is_PixelClock ERROR')
         elif output:
-            print("Pixel Clock %d MHz" % self.pixel_clock.value)
+            print('Pixel Clock %d MHz' % self.pixel_clock.value)
         return self.pixel_clock.value
 
     def set_pixel_clock(self, value):
@@ -970,7 +970,7 @@ class thorlabs_camera(miCamera):
             sizeof(set))
 
         if nRet != CMD.IS_SUCCESS:
-            print("is_PixelClock ERROR")
+            print('is_PixelClock ERROR')
 
         return nRet
 
@@ -992,10 +992,10 @@ class thorlabs_camera(miCamera):
             sizeof(self.pixel_clock_count))
 
         if nRet != 0:
-            print("is_PixelClock Count ERROR")
+            print('is_PixelClock Count ERROR')
         else:
             if output:
-                print("Count " + str(self.pixel_clock_count.value))
+                print('Count ' + str(self.pixel_clock_count.value))
 
             self.pixel_clock_list = (c_uint *
                                      self.pixel_clock_count.value)()
@@ -1007,10 +1007,10 @@ class thorlabs_camera(miCamera):
                 self.pixel_clock_count.value * sizeof(c_uint))
 
             if nRet != 0:
-                print("is_PixelClock List ERROR")
+                print('is_PixelClock List ERROR')
             elif output:
                 for clk in self.pixel_clock_list:
-                    print("List " + str(clk))
+                    print('List ' + str(clk))
                 print()
 
     def get_AOI(self):
@@ -1031,7 +1031,7 @@ class thorlabs_camera(miCamera):
             sizeof(self.rectAOI))
 
         if nRet != CMD.IS_SUCCESS:
-            print("is_AOI GET ERROR")
+            print('is_AOI GET ERROR')
 
         self.width = self.rectAOI.s32Width
         self.height = self.rectAOI.s32Height
@@ -1052,7 +1052,7 @@ class thorlabs_camera(miCamera):
             byref(self.minAOI),
             sizeof(self.minAOI))
         if nRet != CMD.IS_SUCCESS:
-            print("is_AOI GET MIN SIZE ERROR")
+            print('is_AOI GET MIN SIZE ERROR')
         return nRet
 
     def set_AOI(self, x, y, width, height):
@@ -1087,7 +1087,7 @@ class thorlabs_camera(miCamera):
             sizeof(self.set_rectAOI))
 
         if nRet != CMD.IS_SUCCESS:
-            print("is_AOI SET ERROR")
+            print('is_AOI SET ERROR')
 
         self.width = self.set_rectAOI.s32Width
         self.height = self.set_rectAOI.s32Height
@@ -1109,7 +1109,7 @@ class thorlabs_camera(miCamera):
             sizeof(self.rectAOI))
 
         if nRet != CMD.IS_SUCCESS:
-            print("is_AOI RESET ERROR")
+            print('is_AOI RESET ERROR')
 
         self.width = self.rectAOI.s32Width
         self.height = self.rectAOI.s32Height
@@ -1127,9 +1127,9 @@ class thorlabs_camera(miCamera):
                 min(value, self.exposure_range[1]), self.exposure_range[0])),
             sizeof(c_double))
         if nRet != CMD.IS_SUCCESS:
-            print("is_Exposure Set ERROR")
+            print('is_Exposure Set ERROR')
         else:
-            print("Exposure set to " + str(self.get_exposure(False)))
+            print('Exposure set to ' + str(self.get_exposure(False)))
             print()
         return nRet
 
@@ -1146,12 +1146,12 @@ class thorlabs_camera(miCamera):
             _EXP.IS_EXPOSURE_CMD_GET_EXPOSURE_RANGE,
             self.exposure_range, sizeof(self.exposure_range))
         if nRet != CMD.IS_SUCCESS:
-            print("is_Exposure Range ERROR")
+            print('is_Exposure Range ERROR')
         elif output:
-            print("Exposure")
-            print("Min " + str(self.exposure_range[0]))
-            print("Max " + str(self.exposure_range[1]))
-            print("Inc " + str(self.exposure_range[2]))
+            print('Exposure')
+            print('Min ' + str(self.exposure_range[0]))
+            print('Max ' + str(self.exposure_range[1]))
+            print('Inc ' + str(self.exposure_range[2]))
             print()
 
     # Get exposure
@@ -1161,9 +1161,9 @@ class thorlabs_camera(miCamera):
             _EXP.IS_EXPOSURE_CMD_GET_EXPOSURE,
             byref(self.exposure_current), sizeof(self.exposure_current))
         if nRet != CMD.IS_SUCCESS:
-            print("is_Exposure Current ERROR")
+            print('is_Exposure Current ERROR')
         elif output:
-            print("Current Exposure " + str(self.exposure_current.value))
+            print('Current Exposure ' + str(self.exposure_current.value))
             print()
         return self.exposure_current.value
 
@@ -1175,15 +1175,15 @@ class thorlabs_camera(miCamera):
             byref(self.maxFrameRate),
             byref(self.incFrameRate))
         if nRet != CMD.IS_SUCCESS:
-            print("is_GetFrameTimeRange ERROR")
+            print('is_GetFrameTimeRange ERROR')
         else:
             temp = self.maxFrameRate.value
             self.maxFrameRate.value = 1/self.minFrameRate.value
             self.minFrameRate.value = 1/temp
             if output:
-                print("FrameRate")
-                print("Min " + str(self.minFrameRate.value))
-                print("Max " + str(self.maxFrameRate.value))
+                print('FrameRate')
+                print('Min ' + str(self.minFrameRate.value))
+                print('Max ' + str(self.maxFrameRate.value))
                 print()
         return np.array([self.minFrameRate.value, self.maxFrameRate.value])
 
@@ -1192,9 +1192,9 @@ class thorlabs_camera(miCamera):
         nRet = self.uc480.is_GetFramesPerSecond(
             self.hCam, byref(self.currentFrameRate))
         if nRet != CMD.IS_SUCCESS:
-            print("is_GetFramesPerSecond ERROR")
+            print('is_GetFramesPerSecond ERROR')
         elif output:
-            print("Current FrameRate " + str(self.currentFrameRate.value))
+            print('Current FrameRate ' + str(self.currentFrameRate.value))
             print()
         return self.currentFrameRate.value
 
@@ -1206,9 +1206,9 @@ class thorlabs_camera(miCamera):
                 min(value, self.maxFrameRate.value), self.minFrameRate.value)),
             byref(self.currentFrameRate))
         if nRet != CMD.IS_SUCCESS:
-            print("is_SetFrameRate ERROR")
+            print('is_SetFrameRate ERROR')
         else:
-            print("FrameRate set to " + str(self.currentFrameRate.value))
+            print('FrameRate set to ' + str(self.currentFrameRate.value))
             print()
         return nRet
 
@@ -1218,15 +1218,15 @@ class thorlabs_camera(miCamera):
             self.hCam,
             TRIGGER.IS_GET_EXTERNALTRIGGER)
         if nRet == TRIGGER.IS_SET_TRIGGER_OFF:
-            print("Trigger Off")
+            print('Trigger Off')
         elif nRet == TRIGGER.IS_SET_TRIGGER_SOFTWARE:
-            print("Software Trigger")
+            print('Software Trigger')
         elif nRet == TRIGGER.IS_SET_TRIGGER_HI_LO:
-            print("Falling edge external trigger")
+            print('Falling edge external trigger')
         elif nRet == TRIGGER.IS_SET_TRIGGER_LO_HI:
-            print("Rising  edge external trigger")
+            print('Rising  edge external trigger')
         else:
-            print("NA")
+            print('NA')
         self.trigger_mode = nRet
         return nRet
 
@@ -1241,11 +1241,11 @@ class thorlabs_camera(miCamera):
             byref(self.flash_min),
             sizeof(self.flash_min))
         if nRet != CMD.IS_SUCCESS:
-            print("is_IO Flash Min ERROR")
+            print('is_IO Flash Min ERROR')
         elif output:
-            print("Flash Output")
-            print("Min Delay (us) " + str(self.flash_min.s32Delay))
-            print("Min Duration (us) " + str(self.flash_min.u32Duration))
+            print('Flash Output')
+            print('Min Delay (us) ' + str(self.flash_min.s32Delay))
+            print('Min Duration (us) ' + str(self.flash_min.u32Duration))
             print()
 
         nRet = self.uc480.is_IO(
@@ -1254,10 +1254,10 @@ class thorlabs_camera(miCamera):
             byref(self.flash_max),
             sizeof(self.flash_max))
         if nRet != CMD.IS_SUCCESS:
-            print("is_IO Flash Max ERROR")
+            print('is_IO Flash Max ERROR')
         elif output:
-            print("Max Delay (us) " + str(self.flash_max.s32Delay))
-            print("Max Duration (us) " + str(self.flash_max.u32Duration))
+            print('Max Delay (us) ' + str(self.flash_max.s32Delay))
+            print('Max Duration (us) ' + str(self.flash_max.u32Duration))
             print()
 
         nRet = self.uc480.is_IO(
@@ -1266,11 +1266,11 @@ class thorlabs_camera(miCamera):
             byref(self.flash_inc),
             sizeof(self.flash_inc))
         if nRet != CMD.IS_SUCCESS:
-            print("is_IO Flash Inc. ERROR")
+            print('is_IO Flash Inc. ERROR')
         elif output:
-            print("Inc. Delay (us) " + str(self.flash_inc.s32Delay))
+            print('Inc. Delay (us) ' + str(self.flash_inc.s32Delay))
             print(
-                "Inc. Duration (us) " + str(self.flash_inc.u32Duration))
+                'Inc. Duration (us) ' + str(self.flash_inc.u32Duration))
             print()
 
         self.get_flash_params(output)
@@ -1282,10 +1282,10 @@ class thorlabs_camera(miCamera):
             byref(self.flash_cur),
             sizeof(self.flash_cur))
         if nRet != CMD.IS_SUCCESS:
-            print("is_IO Flash Current ERROR")
+            print('is_IO Flash Current ERROR')
         elif output:
-            print("Current Delay (us) " + str(self.flash_cur.s32Delay))
-            print("Current Duration (us) " + str(
+            print('Current Delay (us) ' + str(self.flash_cur.s32Delay))
+            print('Current Duration (us) ' + str(
                 self.flash_cur.u32Duration))
             print()
 
@@ -1309,7 +1309,7 @@ class thorlabs_camera(miCamera):
             params,
             sizeof(params))
         if nRet != CMD.IS_SUCCESS:
-            print("set_flash_params ERROR", nRet)
+            print('set_flash_params ERROR', nRet)
         else:
             self.get_flash_params()
         return nRet
@@ -1322,7 +1322,7 @@ class thorlabs_camera(miCamera):
             IO_CMD.IS_IO_CMD_FLASH_SET_MODE,
             byref(mode), sizeof(mode))
         if nRet != CMD.IS_SUCCESS:
-            print("is_IO Set Flash Mode ERROR", nRet)
+            print('is_IO Set Flash Mode ERROR', nRet)
         return nRet
 
     # Get current flash mode
@@ -1332,7 +1332,7 @@ class thorlabs_camera(miCamera):
             IO_CMD.IS_IO_CMD_FLASH_GET_MODE,
             byref(self.flash_mode), sizeof(self.flash_mode))
         if nRet != CMD.IS_SUCCESS:
-            print("is_IO Get Flash Mode ERROR")
+            print('is_IO Get Flash Mode ERROR')
         else:
             print(list(FLASH_MODE.FLASH_MODES.keys())[list(
                 FLASH_MODE.FLASH_MODES.values()).index(
@@ -1361,7 +1361,7 @@ class thorlabs_camera(miCamera):
     def start_live_capture(self):
         nRet = self.uc480.is_CaptureVideo(self.hCam, IS_DONT_WAIT)
         if nRet != CMD.IS_SUCCESS:
-            print("is_CaptureVideo ERROR")
+            print('is_CaptureVideo ERROR')
         else:
             self.capture_video = True
         return nRet
@@ -1370,7 +1370,7 @@ class thorlabs_camera(miCamera):
     def stop_live_capture(self):
         nRet = self.uc480.is_StopLiveVideo(self.hCam, IS_FORCE_VIDEO_STOP)
         if nRet != CMD.IS_SUCCESS:
-            print("is_StopLiveVideo ERROR")
+            print('is_StopLiveVideo ERROR')
         else:
             self.capture_video = False
         return nRet
@@ -1406,16 +1406,16 @@ class thorlabs_camera(miCamera):
             byref(self.current_buffer), byref(self.current_id))
         if nret == CMD.IS_SUCCESS:
             if log:
-                logging.debug("is_WaitForNextImage, IS_SUCCESS: {}"
-                              .format(nret))
+                logging.debug(f'is_WaitForNextImage, IS_SUCCESS: {nret}'
+                              )
         elif nret == IS_TIMED_OUT:
             if log:
-                logging.debug("is_WaitForNextImage, IS_TIMED_OUT: {}"
-                              .format(nret))
+                logging.debug(f'is_WaitForNextImage, IS_TIMED_OUT: {nret}'
+                              )
         elif nret == IS_CAPTURE_STATUS:
             if log:
-                logging.debug("is_WaitForNextImage, IS_CAPTURE_STATUS: {}"
-                              .format(nret))
+                logging.debug(f'is_WaitForNextImage, IS_CAPTURE_STATUS: {nret}'
+                              )
             self.CaptureStatusInfo = UC480_CAPTURE_STATUS_INFO()
             nRet = self.uc480.is_CaptureStatus(
                 self.hCam, CS_CMD.IS_CAPTURE_STATUS_INFO_CMD_GET,

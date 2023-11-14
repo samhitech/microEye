@@ -1,10 +1,10 @@
+import numpy as np
 import pyqtgraph as pg
 import qdarkstyle
-import numpy as np
 from PyQt5.QtCore import *
-from PyQt5.QtWidgets import *
-from PyQt5.QtSerialPort import *
 from PyQt5.QtGui import *
+from PyQt5.QtSerialPort import *
+from PyQt5.QtWidgets import *
 
 
 class AcquisitionView(QWidget):
@@ -32,7 +32,7 @@ class AcquisitionView(QWidget):
         layout.addWidget(self.view, 0, 0, 1, 3)
 
         self.hist = pg.HistogramLUTWidget(
-            gradientPosition="top",
+            gradientPosition='top',
             orientation='horizontal')
         layout.addWidget(self.hist, 1, 0)
 

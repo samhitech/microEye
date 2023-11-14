@@ -1,7 +1,7 @@
+import numpy as np
+from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
-from PyQt5.QtCore import *
-import numpy as np
 
 
 class qlist_slider(QSlider):
@@ -66,7 +66,7 @@ class qlist_slider(QSlider):
         self.elementChanged[int, float].emit(index, value)
 
     def find_nearest(self, array, value):
-        """
+        '''
         find nearest value in array to the supplied one
 
         Parameters
@@ -75,7 +75,7 @@ class qlist_slider(QSlider):
             numpy array searching in
         value : type of ndarray.dtype
             value to find nearest to in the array
-        """
+        '''
         array = np.asarray(array)
         return (np.abs(array - value)).argmin()
 

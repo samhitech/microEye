@@ -23,15 +23,15 @@ from .micam import *
 
 
 class Camera_Panel(QGroupBox):
-    """
+    '''
     A Qt Widget base class for controlling a camera | Inherits QGroupBox
-    """
+    '''
 
     exposureChanged = pyqtSignal()
 
     def __init__(self, threadpool: QThreadPool, cam: miCamera, mini=False,
                  *args, **kwargs):
-        """
+        '''
         Initializes a new Vimba_Panel Qt widget
         | Inherits QGroupBox
 
@@ -41,7 +41,7 @@ class Camera_Panel(QGroupBox):
             The threadpool for multithreading
         cam : miCamera
             Camera python adapter
-        """
+        '''
         super().__init__(*args, **kwargs)
         self._cam = cam  # miCamera
         # flag true if master (always the first added camera is master)
@@ -69,9 +69,9 @@ class Camera_Panel(QGroupBox):
         self.frame = None
         self._frames = Queue()
         # reserved for saving
-        self._directory = ""  # save directory
-        self._save_path = ""  # save path
-        self._save_prefix = ""  # save prefix
+        self._directory = ''  # save directory
+        self._save_path = ''  # save path
+        self._save_prefix = ''  # save prefix
 
         # acquisition job info class
         self.acq_job = None
@@ -100,12 +100,12 @@ class Camera_Panel(QGroupBox):
         self.OME_tab = MetadataEditor()
 
         # add tabs
-        self.main_tab_view.addTab(self.first_tab, "Main")
-        self.main_tab_view.addTab(self.second_tab, "Preview")
-        self.main_tab_view.addTab(self.third_tab, "Area of Interest (AOI)")
-        self.main_tab_view.addTab(self.fourth_tab, "GPIOs / Timers")
+        self.main_tab_view.addTab(self.first_tab, 'Main')
+        self.main_tab_view.addTab(self.second_tab, 'Preview')
+        self.main_tab_view.addTab(self.third_tab, 'Area of Interest (AOI)')
+        self.main_tab_view.addTab(self.fourth_tab, 'GPIOs / Timers')
         if not self.mini:
-            self.main_tab_view.addTab(self.OME_tab, "OME-XML metadata")
+            self.main_tab_view.addTab(self.OME_tab, 'OME-XML metadata')
 
         # first tab vertical layout
         self.first_tab_Layout = QFormLayout()
@@ -188,7 +188,7 @@ class Camera_Panel(QGroupBox):
                 clicked=lambda: self.setExposure(1000))
         )
 
-        self.experiment_name = QLineEdit("Experiment_001")
+        self.experiment_name = QLineEdit('Experiment_001')
         self.experiment_name.textChanged.connect(
             lambda x: self.OME_tab.experiment.setText(x))
 
@@ -199,7 +199,7 @@ class Camera_Panel(QGroupBox):
         self.save_dir_edit.setReadOnly(True)
 
         self.save_browse_btn = QPushButton(
-            "...", clicked=lambda: self.save_browse_clicked())
+            '...', clicked=lambda: self.save_browse_clicked())
 
         self.save_dir_layout.addWidget(self.save_dir_edit)
         self.save_dir_layout.addWidget(self.save_browse_btn)
@@ -210,9 +210,9 @@ class Camera_Panel(QGroupBox):
         self.frames_tbox.setValue(1e6)
 
         # save to hard drive checkbox
-        self.save_data_chbx = QCheckBox("Save Data")
+        self.save_data_chbx = QCheckBox('Save Data')
         self.save_data_chbx.setChecked(self.mini)
-        self.dark_cal = QCheckBox("Dark Calibration")
+        self.dark_cal = QCheckBox('Dark Calibration')
         self.dark_cal.setToolTip('Generates mean and variance images')
         self.dark_cal.setChecked(False)
         self.save_formats_layout = QHBoxLayout()
@@ -224,16 +224,16 @@ class Camera_Panel(QGroupBox):
         self.save_formats_layout.addWidget(self.save_as_tiff)
         self.save_formats_layout.addWidget(self.save_as_zarr)
         self.save_as_tiff.setChecked(True)
-        self.save_bigg_tiff = QCheckBox("BiggTiff")
+        self.save_bigg_tiff = QCheckBox('BiggTiff')
         self.save_bigg_tiff.setChecked(True)
-        self.cam_save_meta = QCheckBox("Full OME-XML")
+        self.cam_save_meta = QCheckBox('Full OME-XML')
         self.cam_save_meta.setChecked(self.mini)
 
         # preview checkbox
-        self.preview_ch_box = QCheckBox("Preview")
+        self.preview_ch_box = QCheckBox('Preview')
         self.preview_ch_box.setChecked(not self.mini)
 
-        self.line_profiler_ch_box = QCheckBox("Line Profiler")
+        self.line_profiler_ch_box = QCheckBox('Line Profiler')
         self.line_profiler_ch_box.setChecked(False)
         self.line_profiler_ch_box.stateChanged.connect(
             lambda: self.lineProfiler.show()
@@ -241,11 +241,11 @@ class Camera_Panel(QGroupBox):
             else self.lineProfiler.hide()
         )
 
-        self.single_view_rbtn = QRadioButton("Single View")
+        self.single_view_rbtn = QRadioButton('Single View')
         self.single_view_rbtn.setChecked(True)
-        self.dual_view_rbtn = QRadioButton("Dual Channel (Side by Side).")
+        self.dual_view_rbtn = QRadioButton('Dual Channel (Side by Side).')
         self.dual_view_overlap_rbtn = QRadioButton(
-            "Dual Channel (Overlapped).")
+            'Dual Channel (Overlapped).')
         self.view_btns = QButtonGroup()
         self.view_btns.addButton(self.single_view_rbtn)
         self.view_btns.addButton(self.dual_view_rbtn)
@@ -258,15 +258,15 @@ class Camera_Panel(QGroupBox):
         self.view_rbtns.addWidget(self.dual_view_overlap_rbtn)
 
         # preview checkbox
-        self.slow_lut_rbtn = QRadioButton("LUT Numpy (12bit)")
+        self.slow_lut_rbtn = QRadioButton('LUT Numpy (12bit)')
         self.slow_lut_rbtn.setChecked(True)
-        self.fast_lut_rbtn = QRadioButton("LUT Opencv (8bit)")
+        self.fast_lut_rbtn = QRadioButton('LUT Opencv (8bit)')
         self.lut_btns = QButtonGroup()
         self.lut_btns.addButton(self.slow_lut_rbtn)
         self.lut_btns.addButton(self.fast_lut_rbtn)
 
         # display size
-        self.zoom_lbl = QLabel("Resize Display:")
+        self.zoom_lbl = QLabel('Resize Display:')
         self.zoom_box = QDoubleSpinBox()
         self.zoom_box.setSingleStep(0.02)
         self.zoom_box.setMinimum(0.1)
@@ -275,9 +275,9 @@ class Camera_Panel(QGroupBox):
         self.zoom_box.setValue(0.5)
 
         # controls for histogram stretching and plot
-        self.histogram_lbl = QLabel("Histogram")
+        self.histogram_lbl = QLabel('Histogram')
         # autostretch checkbox
-        self.auto_stretch = QCheckBox("Auto Stretch")
+        self.auto_stretch = QCheckBox('Auto Stretch')
         self.auto_stretch.setChecked(True)
         # Hist plotWidget
         self.histogram = pg.PlotWidget()
@@ -299,24 +299,21 @@ class Camera_Panel(QGroupBox):
             (0, self._nBins),
             bounds=(0, self._nBins),
             pen=greenP, brush=greenB,
-            movable=True, swapMode="push", span=(0.0, 1))
+            movable=True, swapMode='push', span=(0.0, 1))
         self.lr_1 = pg.LinearRegionItem(
             (0, self._nBins),
             bounds=(0, self._nBins),
             pen=blueP, brush=blueB,
-            movable=True, swapMode="push", span=(1, 1))
+            movable=True, swapMode='push', span=(1, 1))
         self.histogram.addItem(self.lr_0)
         self.histogram.addItem(self.lr_1)
 
         # Stats. info
-        self.info_cap = QLabel("Capture {:d} | {:.2f} ms ".format(
-            0, 0))
-        self.info_disp = QLabel("Display {:d} | {:.2f} ms ".format(
-            self._buffer.qsize(), 0))
-        self.info_save = QLabel("Save {:d} | {:.2f} ms ".format(
-            self._frames.qsize(), 0))
+        self.info_cap = QLabel(f'Capture {0:d} | {0:.2f} ms ')
+        self.info_disp = QLabel(f'Display {self._buffer.qsize():d} | {0:.2f} ms ')
+        self.info_save = QLabel(f'Save {self._frames.qsize():d} | {0:.2f} ms ')
         self.info_temp = QLabel(
-            " T {:.2f} °C".format(-127))
+            f' T {-127:.2f} °C')
 
         # AOI controls
         self.AOI_x_tbox = QSpinBox()
@@ -325,19 +322,19 @@ class Camera_Panel(QGroupBox):
         self.AOI_height_tbox = QSpinBox()
 
         self.AOI_set_btn = QPushButton(
-            "Set AOI",
+            'Set AOI',
             clicked=lambda: self.set_AOI()
         )
         self.AOI_reset_btn = QPushButton(
-            "Reset AOI",
+            'Reset AOI',
             clicked=lambda: self.reset_AOI()
         )
         self.AOI_center_btn = QPushButton(
-            "Center AOI",
+            'Center AOI',
             clicked=lambda: self.center_AOI()
         )
         self.AOI_select_btn = QPushButton(
-            "Select AOI",
+            'Select AOI',
             clicked=lambda: self.select_AOI()
         )
 
@@ -362,22 +359,22 @@ class Camera_Panel(QGroupBox):
         self.second_tab_Layout.addRow(self.histogram)
         self.second_tab_Layout.addRow(self.hist_cdf)
         self.second_tab_Layout.addRow(
-            QLabel("Stats:"), self.info_temp)
+            QLabel('Stats:'), self.info_temp)
         self.second_tab_Layout.addWidget(self.info_cap)
         self.second_tab_Layout.addWidget(self.info_disp)
         self.second_tab_Layout.addWidget(self.info_save)
 
         self.third_tab_Layout.addRow(
-            QLabel("X:"),
+            QLabel('X:'),
             self.AOI_x_tbox)
         self.third_tab_Layout.addRow(
-            QLabel("Y:"),
+            QLabel('Y:'),
             self.AOI_y_tbox)
         self.third_tab_Layout.addRow(
-            QLabel("Width:"),
+            QLabel('Width:'),
             self.AOI_width_tbox)
         self.third_tab_Layout.addRow(
-            QLabel("Height:"),
+            QLabel('Height:'),
             self.AOI_height_tbox)
         self.third_tab_Layout.addRow(self.AOI_set_btn)
         self.third_tab_Layout.addRow(self.AOI_reset_btn)
@@ -387,17 +384,17 @@ class Camera_Panel(QGroupBox):
     def addFirstTabItems(self):
         if not self.mini:
             self.first_tab_Layout.addRow(
-                QLabel("Experiment:"),
+                QLabel('Experiment:'),
                 self.experiment_name)
             self.first_tab_Layout.addRow(
-                QLabel("Save Directory:"),
+                QLabel('Save Directory:'),
                 self.save_dir_layout)
             self.first_tab_Layout.addRow(
                 QLabel('Frames:'),
                 self.frames_tbox)
             self.first_tab_Layout.addWidget(self.save_data_chbx)
             self.first_tab_Layout.addRow(
-                QLabel("Format:"),
+                QLabel('Format:'),
                 self.save_formats_layout)
             self.first_tab_Layout.addWidget(self.dark_cal)
             self.first_tab_Layout.addWidget(self.save_bigg_tiff)
@@ -485,8 +482,8 @@ class Camera_Panel(QGroupBox):
         return meta
 
     def getAcquisitionJob(self) -> AcquisitionJob:
-        self._save_path = (self._directory + "/"
-                           + self.experiment_name.text() + "/")
+        self._save_path = (self._directory + '/'
+                           + self.experiment_name.text() + '/')
         return AcquisitionJob(
             self._temps, self._buffer, self._frames,
             self._save_path, self._cam.getHeight(),
@@ -518,24 +515,24 @@ class Camera_Panel(QGroupBox):
 
     @pyqtSlot()
     def save_browse_clicked(self):
-        """Slot for browse clicked event"""
-        self._directory = ""
+        '''Slot for browse clicked event'''
+        self._directory = ''
 
         while len(self._directory) == 0:
             self._directory = str(
-                QFileDialog.getExistingDirectory(self, "Select Directory"))
+                QFileDialog.getExistingDirectory(self, 'Select Directory'))
 
         self.save_dir_edit.setText(self._directory)
 
     def start_free_run(self, Prefix=''):
-        """
+        '''
         Starts free run acquisition mode
 
         Parameters
         ----------
         Prefix : str
             an extra prefix added to the image stack file name
-        """
+        '''
         if self._cam.acquisition:
             return  # if acquisition is already going on
 
@@ -555,9 +552,9 @@ class Camera_Panel(QGroupBox):
             self.acq_job.stop_threads = True
 
     def start_all_workers(self):
-        """
+        '''
         Starts all workers
-        """
+        '''
 
         self._buffer.queue.clear()
         self._temps.queue.clear()
@@ -608,19 +605,18 @@ class Camera_Panel(QGroupBox):
     def updateInfo(self):
         if isinstance(self.acq_job, AcquisitionJob):
             self.info_temp.setText(
-                    " T {:.2f} °C".format(self._cam.temperature))
+                    f' T {self._cam.temperature:.2f} °C')
             self.info_cap.setText(
-                " Capture {:d}/{:d} {:.2%} | {:.2f} ms ".format(
+                ' Capture {:d}/{:d} {:.2%} | {:.2f} ms '.format(
                     self.acq_job.frames_captured,
                     self.acq_job.frames,
                     self.acq_job.frames_captured / self.acq_job.frames,
                     self.acq_job.capture_time))
             self.info_disp.setText(
-                " Display {:d} | {:.2f} ms ".format(
+                ' Display {:d} | {:.2f} ms '.format(
                     self._buffer.qsize(), self.acq_job.display_time))
             self.info_save.setText(
-                " Save {:d} | {:.2f} ms ".format(
-                    self._frames.qsize(), self.acq_job.save_time))
+                f' Save {self._frames.qsize():d} | {self.acq_job.save_time:.2f} ms ')
 
     def getCaptureArgs(self) -> list:
         '''User specific arguments to be passed to the parallelized
@@ -643,7 +639,7 @@ class Camera_Panel(QGroupBox):
         '''
         args = []
         raise NotImplementedError(
-            "The getCaptureArgs function is not implemented yet.")
+            'The getCaptureArgs function is not implemented yet.')
 
     def cam_capture(self, *args):
         '''User specific implemented logic for frame capture
@@ -659,7 +655,7 @@ class Camera_Panel(QGroupBox):
             Has to be implemented by the use in child class.
         '''
         raise NotImplementedError(
-            "The cam_capture function is not implemented yet.")
+            'The cam_capture function is not implemented yet.')
 
 
 def cam_save(params: AcquisitionJob):

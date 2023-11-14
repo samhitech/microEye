@@ -1,6 +1,6 @@
 import sys
-import typing
 import traceback
+import typing
 
 import numpy as np
 import pandas as pd
@@ -39,7 +39,7 @@ class resultsStatsWidget(QWidget):
 
         self.df = df
 
-        for idx, column in enumerate(df.columns):
+        for _idx, column in enumerate(df.columns):
             # row = idx // 2
             # col = idx % 2
 
@@ -92,7 +92,7 @@ class resultsStatsWidget(QWidget):
                         bins=min(counts+1, 1024))
 
                     pw.plot(
-                        bins, hist / np.max(hist), stepMode="center",
+                        bins, hist / np.max(hist), stepMode='center',
                         fillLevel=0, fillOutline=True, brush=(0, 0, 255, 150))
                 except Exception:
                     traceback.print_exc()

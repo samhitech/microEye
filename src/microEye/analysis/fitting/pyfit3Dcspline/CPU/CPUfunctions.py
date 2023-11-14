@@ -1,7 +1,8 @@
 
-import numpy as np
-import numba as nb
 import math
+
+import numba as nb
+import numpy as np
 
 from ..constants import *
 
@@ -592,10 +593,7 @@ def kernel_MatInvN(M, Minv, DiagMinv, sz):
             yy[0] = 0
 
         for ii in range(1, sz, 1):
-            if (ii == num):
-                b = 1
-            else:
-                b = 0
+            b = 1 if ii == num else 0
             for jj in range(ii):
                 tmp1 += M[ii+jj*sz]*yy[jj]
             yy[ii] = b-tmp1

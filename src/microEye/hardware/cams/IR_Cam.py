@@ -11,7 +11,7 @@ from PyQt5.QtWidgets import *
 from ..port_config import *
 
 
-class IR_Cam():
+class IR_Cam:
     '''An abstract class for IR cameras.'''
 
     def __init__(self) -> None:
@@ -84,8 +84,8 @@ class ParallaxLineScanner(IR_Cam):
         '''
         if self.serial.bytesAvailable() >= 260:
             barray = self.serial.read(260)
-            temp = np.array((np.array(struct.unpack(
-                'h'*(len(barray)//2), barray)) * 5.0 / 1023.0))
+            temp = np.array(np.array(struct.unpack(
+                'h'*(len(barray)//2), barray)) * 5.0 / 1023.0)
             # array realignment
             if (temp[0] != 0 or temp[-1] != 0) and \
                self.serial.bytesAvailable() >= 2:
@@ -115,16 +115,16 @@ class ParallaxLineScanner(IR_Cam):
 
         # IR CCD array arduino buttons
         self._connect_btn = QPushButton(
-            "Connect",
+            'Connect',
             parent,
             clicked=lambda: self.open()
         )
         disconnect_btn = QPushButton(
-            "Disconnect",
+            'Disconnect',
             clicked=lambda: self.close()
         )
         config_btn = QPushButton(
-            "Port Config.",
+            'Port Config.',
             clicked=lambda: self.open_dialog()
         )
 

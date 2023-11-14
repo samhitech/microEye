@@ -1,9 +1,10 @@
-import numpy as np
 import os
+
+import numpy as np
 import tifffile as tf
 
 
-class dark_calibration():
+class dark_calibration:
     '''A class holder for pixelwise average and variance.
 
     Intended to be used for photon-free calibration:
@@ -70,13 +71,14 @@ class dark_calibration():
 
         def getFilename(index: int):
             return path + \
-                    '\\image_{:05d}.ome.tif'.format(index)
+                    f'\\image_{index:05d}.ome.tif'
 
         mean, variance = self.getResults()
 
         with tf.TiffWriter(
-                path + prefix + '_image_mean_{:.5f}_ms'.format(
-                    self._exposure).replace('.', '_') + '.ome.tif',
+                path + prefix + \
+                    f'_image_mean_{self._exposure:.5f}_ms'.replace('.', '_') + \
+                    '.ome.tif',
                 append=False,
                 bigtiff=False,
                 ome=False) as writer:
@@ -85,8 +87,9 @@ class dark_calibration():
                 photometric='minisblack')
 
         with tf.TiffWriter(
-                path + prefix + '_image_var_{:.5f}_ms'.format(
-                    self._exposure).replace('.', '_') + '.ome.tif',
+                path + prefix + \
+                    f'_image_var_{self._exposure:.5f}_ms'.replace('.', '_') + \
+                    '.ome.tif',
                 append=False,
                 bigtiff=False,
                 ome=False) as writer:

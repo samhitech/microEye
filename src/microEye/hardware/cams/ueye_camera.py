@@ -1,5 +1,6 @@
-from ctypes import *
 import logging
+from ctypes import *
+
 import numpy as np
 
 from .micam import miCamera
@@ -46,41 +47,41 @@ formats_ = {ueye.IS_CM_SENSOR_RAW8: 8,
             ueye.IS_CM_CBYCRY_PACKED: 16
             }
 
-formats_strs = {ueye.IS_CM_SENSOR_RAW8: "IS_CM_SENSOR_RAW8",
-                ueye.IS_CM_SENSOR_RAW10: "IS_CM_SENSOR_RAW10",
-                ueye.IS_CM_SENSOR_RAW12: "IS_CM_SENSOR_RAW12",
-                ueye.IS_CM_SENSOR_RAW16: "IS_CM_SENSOR_RAW16",
+formats_strs = {ueye.IS_CM_SENSOR_RAW8: 'IS_CM_SENSOR_RAW8',
+                ueye.IS_CM_SENSOR_RAW10: 'IS_CM_SENSOR_RAW10',
+                ueye.IS_CM_SENSOR_RAW12: 'IS_CM_SENSOR_RAW12',
+                ueye.IS_CM_SENSOR_RAW16: 'IS_CM_SENSOR_RAW16',
 
-                ueye.IS_CM_MONO8: "IS_CM_MONO8",
-                ueye.IS_CM_MONO10: "IS_CM_MONO10",
-                ueye.IS_CM_MONO12: "IS_CM_MONO12",
-                ueye.IS_CM_MONO16: "IS_CM_MONO16",
+                ueye.IS_CM_MONO8: 'IS_CM_MONO8',
+                ueye.IS_CM_MONO10: 'IS_CM_MONO10',
+                ueye.IS_CM_MONO12: 'IS_CM_MONO12',
+                ueye.IS_CM_MONO16: 'IS_CM_MONO16',
 
-                ueye.IS_CM_RGB8_PLANAR: "IS_CM_RGB8_PLANAR",
-                ueye.IS_CM_RGB8_PACKED: "IS_CM_RGB8_PACKED",
-                ueye.IS_CM_RGBA8_PACKED: "IS_CM_RGB8_PACKED",
-                ueye.IS_CM_RGBY8_PACKED: "IS_CM_RGBY8_PACKED",
-                ueye.IS_CM_RGB10_PACKED: "IS_CM_RGB10_PACKED",
+                ueye.IS_CM_RGB8_PLANAR: 'IS_CM_RGB8_PLANAR',
+                ueye.IS_CM_RGB8_PACKED: 'IS_CM_RGB8_PACKED',
+                ueye.IS_CM_RGBA8_PACKED: 'IS_CM_RGB8_PACKED',
+                ueye.IS_CM_RGBY8_PACKED: 'IS_CM_RGBY8_PACKED',
+                ueye.IS_CM_RGB10_PACKED: 'IS_CM_RGB10_PACKED',
 
-                ueye.IS_CM_RGB10_UNPACKED: "IS_CM_RGB10_UNPACKED",
-                ueye.IS_CM_RGB12_UNPACKED: "IS_CM_RGB12_UNPACKED",
-                ueye.IS_CM_RGBA12_UNPACKED: "IS_CM_RGBA12_UNPACKED",
+                ueye.IS_CM_RGB10_UNPACKED: 'IS_CM_RGB10_UNPACKED',
+                ueye.IS_CM_RGB12_UNPACKED: 'IS_CM_RGB12_UNPACKED',
+                ueye.IS_CM_RGBA12_UNPACKED: 'IS_CM_RGBA12_UNPACKED',
 
-                ueye.IS_CM_BGR5_PACKED: "IS_CM_BGR5_PACKED",
-                ueye.IS_CM_BGR565_PACKED: "IS_CM_BGR565_PACKED",
-                ueye.IS_CM_BGR8_PACKED: "IS_CM_BGR8_PACKED",
-                ueye.IS_CM_BGRA8_PACKED: "IS_CM_BGRA8_PACKED",
-                ueye.IS_CM_BGRY8_PACKED: "IS_CM_BGRY8_PACKED",
-                ueye.IS_CM_BGR10_PACKED: "IS_CM_BGR10_PACKED",
+                ueye.IS_CM_BGR5_PACKED: 'IS_CM_BGR5_PACKED',
+                ueye.IS_CM_BGR565_PACKED: 'IS_CM_BGR565_PACKED',
+                ueye.IS_CM_BGR8_PACKED: 'IS_CM_BGR8_PACKED',
+                ueye.IS_CM_BGRA8_PACKED: 'IS_CM_BGRA8_PACKED',
+                ueye.IS_CM_BGRY8_PACKED: 'IS_CM_BGRY8_PACKED',
+                ueye.IS_CM_BGR10_PACKED: 'IS_CM_BGR10_PACKED',
 
-                ueye.IS_CM_BGR10_UNPACKED: "IS_CM_BGR10_UNPACKED",
-                ueye.IS_CM_BGR12_UNPACKED: "IS_CM_BGR12_UNPACKED",
-                ueye.IS_CM_BGRA12_UNPACKED: "IS_CM_BGRA12_UNPACKED",
+                ueye.IS_CM_BGR10_UNPACKED: 'IS_CM_BGR10_UNPACKED',
+                ueye.IS_CM_BGR12_UNPACKED: 'IS_CM_BGR12_UNPACKED',
+                ueye.IS_CM_BGRA12_UNPACKED: 'IS_CM_BGRA12_UNPACKED',
 
-                ueye.IS_CM_UYVY_PACKED: "IS_CM_UYVY_PACKED",
-                ueye.IS_CM_UYVY_MONO_PACKED: "IS_CM_UYVY_MONO_PACKED",
-                ueye.IS_CM_UYVY_BAYER_PACKED: "IS_CM_UYVY_BAYER_PACKED",
-                ueye.IS_CM_CBYCRY_PACKED: "IS_CM_CBYCRY_PACKED"
+                ueye.IS_CM_UYVY_PACKED: 'IS_CM_UYVY_PACKED',
+                ueye.IS_CM_UYVY_MONO_PACKED: 'IS_CM_UYVY_MONO_PACKED',
+                ueye.IS_CM_UYVY_BAYER_PACKED: 'IS_CM_UYVY_BAYER_PACKED',
+                ueye.IS_CM_CBYCRY_PACKED: 'IS_CM_CBYCRY_PACKED'
                 }
 
 color_modes_ = {
@@ -95,10 +96,10 @@ class IDS_Camera(miCamera):
     '''A class to handle an IDS uEye camera.'''
 
     TRIGGER_MODES = {
-        "Trigger Off": ueye.IS_SET_TRIGGER_OFF,
-        "Software Trigger": ueye.IS_SET_TRIGGER_SOFTWARE,
-        "Falling edge external trigger": ueye.IS_SET_TRIGGER_HI_LO,
-        "Rising edge external trigger": ueye.IS_SET_TRIGGER_LO_HI}
+        'Trigger Off': ueye.IS_SET_TRIGGER_OFF,
+        'Software Trigger': ueye.IS_SET_TRIGGER_SOFTWARE,
+        'Falling edge external trigger': ueye.IS_SET_TRIGGER_HI_LO,
+        'Rising edge external trigger': ueye.IS_SET_TRIGGER_LO_HI}
     '''Tigger modes supported by IDS uEye cameras.
 
     Returns
@@ -108,13 +109,13 @@ class IDS_Camera(miCamera):
     '''
 
     FLASH_MODES = {
-        "Flash Off": ueye.IO_FLASH_MODE_OFF,
-        "Flash Trigger Low Active": ueye.IO_FLASH_MODE_TRIGGER_LO_ACTIVE,
-        "Flash Trigger High Active": ueye.IO_FLASH_MODE_TRIGGER_HI_ACTIVE,
-        "Flash Constant High": ueye.IO_FLASH_MODE_CONSTANT_HIGH,
-        "Flash Constant Low": ueye.IO_FLASH_MODE_CONSTANT_LOW,
-        "Flash Freerun Low Active": ueye.IO_FLASH_MODE_FREERUN_LO_ACTIVE,
-        "Flash Freerun High Active": ueye.IO_FLASH_MODE_FREERUN_HI_ACTIVE}
+        'Flash Off': ueye.IO_FLASH_MODE_OFF,
+        'Flash Trigger Low Active': ueye.IO_FLASH_MODE_TRIGGER_LO_ACTIVE,
+        'Flash Trigger High Active': ueye.IO_FLASH_MODE_TRIGGER_HI_ACTIVE,
+        'Flash Constant High': ueye.IO_FLASH_MODE_CONSTANT_HIGH,
+        'Flash Constant Low': ueye.IO_FLASH_MODE_CONSTANT_LOW,
+        'Flash Freerun Low Active': ueye.IO_FLASH_MODE_FREERUN_LO_ACTIVE,
+        'Flash Freerun High Active': ueye.IO_FLASH_MODE_FREERUN_HI_ACTIVE}
     '''Flash modes supported by IDS uEye cameras.
 
     Returns
@@ -195,7 +196,7 @@ class IDS_Camera(miCamera):
         '''Starts the driver and establishes the connection to the camera'''
         nRet = ueye.is_InitCamera(self.hCam, None)
         if nRet != ueye.IS_SUCCESS:
-            print("is_InitCamera " + str(self.Cam_ID) + " ERROR")
+            print('is_InitCamera ' + str(self.Cam_ID) + ' ERROR')
 
         self.get_coded_info()
         self.get_sensor_info()
@@ -205,9 +206,9 @@ class IDS_Camera(miCamera):
         self.get_AOI()
         self.print_cam_info()
 
-        self.name = self.sInfo.strSensorName.decode('utf-8') + "_" + \
+        self.name = self.sInfo.strSensorName.decode('utf-8') + '_' + \
             self.cInfo.SerNo.decode('utf-8')
-        self.name = str.replace(self.name, "-", "_")
+        self.name = str.replace(self.name, '-', '_')
 
         self.refresh_info()
 
@@ -254,14 +255,14 @@ class IDS_Camera(miCamera):
             if (ueye.is_GetCameraList(pucl) == ueye.IS_SUCCESS):
                 for index in range(cam_count.value):
                     cam_list.append({
-                        "camID": pucl.uci[index].dwCameraID.value,
-                        "devID": pucl.uci[index].dwDeviceID.value,
-                        "senID": pucl.uci[index].dwSensorID.value,
-                        "Status": pucl.uci[index].dwStatus.value,
-                        "InUse": pucl.uci[index].dwInUse.value,
-                        "Model": pucl.uci[index].Model.decode('utf-8'),
-                        "Serial": pucl.uci[index].SerNo.decode('utf-8'),
-                        "Driver": 'uEye'})
+                        'camID': pucl.uci[index].dwCameraID.value,
+                        'devID': pucl.uci[index].dwDeviceID.value,
+                        'senID': pucl.uci[index].dwSensorID.value,
+                        'Status': pucl.uci[index].dwStatus.value,
+                        'InUse': pucl.uci[index].dwInUse.value,
+                        'Model': pucl.uci[index].Model.decode('utf-8'),
+                        'Serial': pucl.uci[index].SerNo.decode('utf-8'),
+                        'Driver': 'uEye'})
                 if output:
                     print(cam_list)
         return cam_list
@@ -272,7 +273,7 @@ class IDS_Camera(miCamera):
         '''
         nRet = ueye.is_GetCameraInfo(self.hCam, self.cInfo)
         if nRet != ueye.IS_SUCCESS:
-            print("is_GetCameraInfo ERROR")
+            print('is_GetCameraInfo ERROR')
 
     def get_device_info(self):
         '''Gets the device info, used to get the sensor temp.
@@ -284,7 +285,7 @@ class IDS_Camera(miCamera):
             ueye.sizeof(self.dInfo))
 
         if nRet != ueye.IS_SUCCESS:
-            print("is_DeviceInfo ERROR")
+            print('is_DeviceInfo ERROR')
 
     def get_temperature(self):
         '''Reads out the sensor temperature value
@@ -306,7 +307,7 @@ class IDS_Camera(miCamera):
         '''
         nRet = ueye.is_GetSensorInfo(self.hCam, self.sInfo)
         if nRet != ueye.IS_SUCCESS:
-            print("is_GetSensorInfo ERROR")
+            print('is_GetSensorInfo ERROR')
 
     def resetToDefault(self):
         '''Resets all parameters to the camera-specific defaults
@@ -317,7 +318,7 @@ class IDS_Camera(miCamera):
         '''
         nRet = ueye.is_ResetToDefault(self.hCam)
         if nRet != ueye.IS_SUCCESS:
-            print("is_ResetToDefault ERROR")
+            print('is_ResetToDefault ERROR')
 
     def setDisplayMode(self, mode=ueye.IS_SET_DM_DIB):
         '''Captures an image in system memory (RAM).
@@ -357,11 +358,11 @@ class IDS_Camera(miCamera):
                 self.bit_depth,
                 self.color_mode)
             self.bytes_per_pixel = int(np.ceil(self.bit_depth / 8))
-            print(color_modes_[nCmode], ": ", )
+            print(color_modes_[nCmode], ': ', )
             print(
-                "\tcolor_mode: \t\t", formats_strs[self.color_mode.value])
-            print("\tbit_depth: \t\t", self.bit_depth)
-            print("\tbytes_per_pixel: \t\t", self.bytes_per_pixel)
+                '\tcolor_mode: \t\t', formats_strs[self.color_mode.value])
+            print('\tbit_depth: \t\t', self.bit_depth)
+            print('\tbytes_per_pixel: \t\t', self.bytes_per_pixel)
             print()
 
         elif nCmode ==\
@@ -370,10 +371,10 @@ class IDS_Camera(miCamera):
             self.color_mode = ueye.IS_CM_BGRA8_PACKED
             self.bit_depth = ueye.INT(32)
             self.bytes_per_pixel = int(np.ceil(self.bit_depth / 8))
-            print(color_modes_[nCmode], ": ", )
-            print("\tcolor_mode: \t\t", formats_strs[self.color_mode])
-            print("\tbit_depth: \t\t", self.bit_depth)
-            print("\tbytes_per_pixel: \t\t", self.bytes_per_pixel)
+            print(color_modes_[nCmode], ': ', )
+            print('\tcolor_mode: \t\t', formats_strs[self.color_mode])
+            print('\tbit_depth: \t\t', self.bit_depth)
+            print('\tbytes_per_pixel: \t\t', self.bytes_per_pixel)
             print()
 
         elif nCmode ==\
@@ -401,10 +402,10 @@ class IDS_Camera(miCamera):
                 self.bit_depth = ueye.INT(8)
                 self.bytes_per_pixel = int(np.ceil(self.bit_depth / 8))
 
-            print(color_modes_[nCmode], ": ", )
-            print("\tcolor_mode: \t\t", formats_strs[self.color_mode])
-            print("\tbit_depth: \t\t", self.bit_depth)
-            print("\tbytes_per_pixel: \t\t", self.bytes_per_pixel)
+            print(color_modes_[nCmode], ': ', )
+            print('\tcolor_mode: \t\t', formats_strs[self.color_mode])
+            print('\tbit_depth: \t\t', self.bit_depth)
+            print('\tbytes_per_pixel: \t\t', self.bytes_per_pixel)
             print()
 
         else:
@@ -412,10 +413,10 @@ class IDS_Camera(miCamera):
             self.color_mode = ueye.IS_CM_MONO8
             self.bit_depth = ueye.INT(8)
             self.bytes_per_pixel = int(np.ceil(self.bit_depth / 8))
-            print("Else: ", )
-            print("\tcolor_mode: \t\t", formats_strs[self.color_mode])
-            print("\tbit_depth: \t\t", self.bit_depth)
-            print("\tbytes_per_pixel: \t\t", self.bytes_per_pixel)
+            print('Else: ', )
+            print('\tcolor_mode: \t\t', formats_strs[self.color_mode])
+            print('\tbit_depth: \t\t', self.bit_depth)
+            print('\tbytes_per_pixel: \t\t', self.bytes_per_pixel)
 
         nRet = ueye.is_SetColorMode(self.hCam, self.color_mode)
 
@@ -437,7 +438,7 @@ class IDS_Camera(miCamera):
             ueye.sizeof(self.rectAOI))
 
         if nRet != ueye.IS_SUCCESS:
-            print("is_AOI GET ERROR")
+            print('is_AOI GET ERROR')
 
         self.width = self.rectAOI.s32Width
         self.height = self.rectAOI.s32Height
@@ -475,7 +476,7 @@ class IDS_Camera(miCamera):
             ueye.sizeof(self.set_rectAOI))
 
         if nRet != ueye.IS_SUCCESS:
-            print("is_AOI SET ERROR")
+            print('is_AOI SET ERROR')
 
         self.width = self.set_rectAOI.s32Width
         self.height = self.set_rectAOI.s32Height
@@ -497,7 +498,7 @@ class IDS_Camera(miCamera):
             ueye.sizeof(self.rectAOI))
 
         if nRet != ueye.IS_SUCCESS:
-            print("is_AOI RESET ERROR")
+            print('is_AOI RESET ERROR')
 
         self.width = self.rectAOI.s32Width
         self.height = self.rectAOI.s32Height
@@ -525,7 +526,7 @@ class IDS_Camera(miCamera):
             ueye.sizeof(set))
 
         if nRet != ueye.IS_SUCCESS:
-            print("is_PixelClock ERROR")
+            print('is_PixelClock ERROR')
 
         return nRet
 
@@ -549,9 +550,9 @@ class IDS_Camera(miCamera):
             ueye.sizeof(self.pixel_clock_default))
 
         if nRet != ueye.IS_SUCCESS:
-            print("is_PixelClock Default ERROR")
+            print('is_PixelClock Default ERROR')
         elif output:
-            print("Default " + str(self.pixel_clock_default.value))
+            print('Default ' + str(self.pixel_clock_default.value))
 
         nRet = ueye.is_PixelClock(
             self.hCam,
@@ -560,10 +561,10 @@ class IDS_Camera(miCamera):
             ueye.sizeof(self.pixel_clock_range))
 
         if nRet != ueye.IS_SUCCESS:
-            print("is_PixelClock Range ERROR")
+            print('is_PixelClock Range ERROR')
         elif output:
-            print("Min " + str(self.pixel_clock_range[0].value))
-            print("Max " + str(self.pixel_clock_range[1].value))
+            print('Min ' + str(self.pixel_clock_range[0].value))
+            print('Max ' + str(self.pixel_clock_range[1].value))
 
         nRet = ueye.is_PixelClock(
             self.hCam,
@@ -572,10 +573,10 @@ class IDS_Camera(miCamera):
             ueye.sizeof(self.pixel_clock_count))
 
         if nRet != ueye.IS_SUCCESS:
-            print("is_PixelClock Count ERROR")
+            print('is_PixelClock Count ERROR')
         else:
             if output:
-                print("Count " + str(self.pixel_clock_count.value))
+                print('Count ' + str(self.pixel_clock_count.value))
 
             self.pixel_clock_list = (ueye.c_uint *
                                      self.pixel_clock_count.value)()
@@ -586,10 +587,10 @@ class IDS_Camera(miCamera):
                 self.pixel_clock_count * ueye.sizeof(c_uint))
 
             if nRet != ueye.IS_SUCCESS:
-                print("is_PixelClock List ERROR")
+                print('is_PixelClock List ERROR')
             elif output:
                 for clk in self.pixel_clock_list:
-                    print("List " + str(clk.value))
+                    print('List ' + str(clk.value))
                 print()
 
     def get_pixel_clock(self, output=True):
@@ -612,9 +613,9 @@ class IDS_Camera(miCamera):
             ueye.sizeof(self.pixel_clock))
 
         if nRet != ueye.IS_SUCCESS:
-            print("is_PixelClock ERROR")
+            print('is_PixelClock ERROR')
         elif output:
-            print("Pixel Clock %d MHz" % self.pixel_clock.value)
+            print('Pixel Clock %d MHz' % self.pixel_clock.value)
         return self.pixel_clock.value
 
     def get_exposure_range(self, output=True):
@@ -630,12 +631,12 @@ class IDS_Camera(miCamera):
             ueye.IS_EXPOSURE_CMD_GET_EXPOSURE_RANGE,
             self.exposure_range, ueye.sizeof(self.exposure_range))
         if nRet != ueye.IS_SUCCESS:
-            print("is_Exposure Range ERROR")
+            print('is_Exposure Range ERROR')
         elif output:
-            print("Exposure")
-            print("Min " + str(self.exposure_range[0].value))
-            print("Max " + str(self.exposure_range[1].value))
-            print("Inc " + str(self.exposure_range[2].value))
+            print('Exposure')
+            print('Min ' + str(self.exposure_range[0].value))
+            print('Max ' + str(self.exposure_range[1].value))
+            print('Inc ' + str(self.exposure_range[2].value))
             print()
 
     # Get exposure
@@ -645,9 +646,9 @@ class IDS_Camera(miCamera):
             ueye.IS_EXPOSURE_CMD_GET_EXPOSURE,
             self.exposure_current, ueye.sizeof(self.exposure_current))
         if nRet != ueye.IS_SUCCESS:
-            print("is_Exposure Current ERROR")
+            print('is_Exposure Current ERROR')
         elif output:
-            print("Current Exposure " + str(self.exposure_current.value))
+            print('Current Exposure ' + str(self.exposure_current.value))
             print()
         return self.exposure_current.value
 
@@ -659,9 +660,9 @@ class IDS_Camera(miCamera):
             ueye.c_double(max(min(value, self.exposure_range[1].value), 0)),
             ueye.sizeof(ueye.c_double))
         if nRet != ueye.IS_SUCCESS:
-            print("is_Exposure Set ERROR")
+            print('is_Exposure Set ERROR')
         else:
-            print("Exposure set to " + str(self.get_exposure(False)))
+            print('Exposure set to ' + str(self.get_exposure(False)))
             print()
         return nRet
 
@@ -673,11 +674,11 @@ class IDS_Camera(miCamera):
             self.flash_min,
             ueye.sizeof(self.flash_min))
         if nRet != ueye.IS_SUCCESS:
-            print("is_IO Flash Min ERROR")
+            print('is_IO Flash Min ERROR')
         elif output:
-            print("Flash Output")
-            print("Min Delay (us) " + str(self.flash_min.s32Delay.value))
-            print("Min Duration (us) " + str(self.flash_min.u32Duration.value))
+            print('Flash Output')
+            print('Min Delay (us) ' + str(self.flash_min.s32Delay.value))
+            print('Min Duration (us) ' + str(self.flash_min.u32Duration.value))
             print()
 
         nRet = ueye.is_IO(
@@ -686,10 +687,10 @@ class IDS_Camera(miCamera):
             self.flash_max,
             ueye.sizeof(self.flash_max))
         if nRet != ueye.IS_SUCCESS:
-            print("is_IO Flash Max ERROR")
+            print('is_IO Flash Max ERROR')
         elif output:
-            print("Max Delay (us) " + str(self.flash_max.s32Delay.value))
-            print("Max Duration (us) " + str(self.flash_max.u32Duration.value))
+            print('Max Delay (us) ' + str(self.flash_max.s32Delay.value))
+            print('Max Duration (us) ' + str(self.flash_max.u32Duration.value))
             print()
 
         nRet = ueye.is_IO(
@@ -698,11 +699,11 @@ class IDS_Camera(miCamera):
             self.flash_inc,
             ueye.sizeof(self.flash_inc))
         if nRet != ueye.IS_SUCCESS:
-            print("is_IO Flash Inc. ERROR")
+            print('is_IO Flash Inc. ERROR')
         elif output:
-            print("Inc. Delay (us) " + str(self.flash_inc.s32Delay.value))
+            print('Inc. Delay (us) ' + str(self.flash_inc.s32Delay.value))
             print(
-                "Inc. Duration (us) " + str(self.flash_inc.u32Duration.value))
+                'Inc. Duration (us) ' + str(self.flash_inc.u32Duration.value))
             print()
 
         self.get_flash_params(output)
@@ -714,10 +715,10 @@ class IDS_Camera(miCamera):
             self.flash_cur,
             ueye.sizeof(self.flash_cur))
         if nRet != ueye.IS_SUCCESS:
-            print("is_IO Flash Current ERROR")
+            print('is_IO Flash Current ERROR')
         elif output:
-            print("Current Delay (us) " + str(self.flash_cur.s32Delay.value))
-            print("Current Duration (us) " + str(
+            print('Current Delay (us) ' + str(self.flash_cur.s32Delay.value))
+            print('Current Duration (us) ' + str(
                 self.flash_cur.u32Duration.value))
             print()
 
@@ -741,7 +742,7 @@ class IDS_Camera(miCamera):
             params,
             ueye.sizeof(params))
         if nRet != ueye.IS_SUCCESS:
-            print("set_flash_params ERROR")
+            print('set_flash_params ERROR')
         else:
             self.get_flash_params()
         return nRet
@@ -754,7 +755,7 @@ class IDS_Camera(miCamera):
             ueye.IS_IO_CMD_FLASH_SET_MODE,
             mode, ueye.sizeof(mode))
         if nRet != ueye.IS_SUCCESS:
-            print("is_IO Set Flash Mode ERROR")
+            print('is_IO Set Flash Mode ERROR')
         return nRet
 
     # Get current flash mode
@@ -764,7 +765,7 @@ class IDS_Camera(miCamera):
             ueye.IS_IO_CMD_FLASH_GET_MODE,
             self.flash_mode, ueye.sizeof(self.flash_mode))
         if nRet != ueye.IS_SUCCESS:
-            print("is_IO Get Flash Mode ERROR")
+            print('is_IO Get Flash Mode ERROR')
         else:
             print(list(self.FLASH_MODES.keys())[list(
                 self.FLASH_MODES.values()).index(self.flash_mode.value)])
@@ -777,15 +778,15 @@ class IDS_Camera(miCamera):
             self.maxFrameRate,
             self.incFrameRate)
         if nRet != ueye.IS_SUCCESS:
-            print("is_GetFrameTimeRange ERROR")
+            print('is_GetFrameTimeRange ERROR')
         else:
             temp = self.maxFrameRate.value
             self.maxFrameRate.value = 1/self.minFrameRate.value
             self.minFrameRate.value = 1/temp
             if output:
-                print("FrameRate")
-                print("Min " + str(self.minFrameRate.value))
-                print("Max " + str(self.maxFrameRate.value))
+                print('FrameRate')
+                print('Min ' + str(self.minFrameRate.value))
+                print('Max ' + str(self.maxFrameRate.value))
                 print()
         return np.array([self.minFrameRate.value, self.maxFrameRate.value])
 
@@ -793,9 +794,9 @@ class IDS_Camera(miCamera):
     def get_framerate(self, output=True):
         nRet = ueye.is_GetFramesPerSecond(self.hCam, self.currentFrameRate)
         if nRet != ueye.IS_SUCCESS:
-            print("is_GetFramesPerSecond ERROR")
+            print('is_GetFramesPerSecond ERROR')
         elif output:
-            print("Current FrameRate " + str(self.currentFrameRate.value))
+            print('Current FrameRate ' + str(self.currentFrameRate.value))
             print()
         return self.currentFrameRate.value
 
@@ -807,9 +808,9 @@ class IDS_Camera(miCamera):
                 min(value, self.maxFrameRate.value), self.minFrameRate.value)),
             self.currentFrameRate)
         if nRet != ueye.IS_SUCCESS:
-            print("is_SetFrameRate ERROR")
+            print('is_SetFrameRate ERROR')
         else:
-            print("FrameRate set to " + str(self.currentFrameRate.value))
+            print('FrameRate set to ' + str(self.currentFrameRate.value))
             print()
         return nRet
 
@@ -819,15 +820,15 @@ class IDS_Camera(miCamera):
             self.hCam,
             ueye.IS_GET_EXTERNALTRIGGER)
         if nRet == ueye.IS_SET_TRIGGER_OFF:
-            print("Trigger Off")
+            print('Trigger Off')
         elif nRet == ueye.IS_SET_TRIGGER_SOFTWARE:
-            print("Software Trigger")
+            print('Software Trigger')
         elif nRet == ueye.IS_SET_TRIGGER_HI_LO:
-            print("Falling edge external trigger")
+            print('Falling edge external trigger')
         elif nRet == ueye.IS_SET_TRIGGER_LO_HI:
-            print("Rising  edge external trigger")
+            print('Rising  edge external trigger')
         else:
-            print("NA")
+            print('NA')
         self.trigger_mode = nRet
         return nRet
 
@@ -836,10 +837,10 @@ class IDS_Camera(miCamera):
 
     # Prints out some information about the camera and the sensor
     def print_cam_info(self):
-        print("Camera model:\t\t", self.sInfo.strSensorName.decode('utf-8'))
-        print("Camera serial no.:\t", self.cInfo.SerNo.decode('utf-8'))
-        print("Maximum image width:\t", self.width)
-        print("Maximum image height:\t", self.height)
+        print('Camera model:\t\t', self.sInfo.strSensorName.decode('utf-8'))
+        print('Camera serial no.:\t', self.cInfo.SerNo.decode('utf-8'))
+        print('Maximum image width:\t', self.width)
+        print('Maximum image height:\t', self.height)
         print()
 
     # Allocates an image memory for an image having its dimensions defined by
@@ -859,7 +860,7 @@ class IDS_Camera(miCamera):
             self.pcImageMemory,
             self.MemID)
         if nRet != ueye.IS_SUCCESS:
-            print("is_AllocImageMem ERROR")
+            print('is_AllocImageMem ERROR')
         else:
             # Makes the specified image memory the active memory
             nRet = ueye.is_SetImageMem(
@@ -867,7 +868,7 @@ class IDS_Camera(miCamera):
                 self.pcImageMemory,
                 self.MemID)
             if nRet != ueye.IS_SUCCESS:
-                print("is_SetImageMem ERROR")
+                print('is_SetImageMem ERROR')
             else:
                 self.memory_allocated = True
 
@@ -875,7 +876,7 @@ class IDS_Camera(miCamera):
     def start_live_capture(self):
         nRet = ueye.is_CaptureVideo(self.hCam, ueye.IS_DONT_WAIT)
         if nRet != ueye.IS_SUCCESS:
-            print("is_CaptureVideo ERROR")
+            print('is_CaptureVideo ERROR')
         else:
             self.capture_video = True
         return nRet
@@ -884,7 +885,7 @@ class IDS_Camera(miCamera):
     def stop_live_capture(self):
         nRet = ueye.is_StopLiveVideo(self.hCam, ueye.IS_FORCE_VIDEO_STOP)
         if nRet != ueye.IS_SUCCESS:
-            print("is_StopLiveVideo ERROR")
+            print('is_StopLiveVideo ERROR')
         else:
             self.capture_video = False
         return nRet
@@ -939,16 +940,16 @@ class IDS_Camera(miCamera):
             self.current_buffer, self.current_id)
         if nret == ueye.IS_SUCCESS:
             if log:
-                logging.debug("is_WaitForNextImage, IS_SUCCESS: {}"
-                              .format(nret))
+                logging.debug(f'is_WaitForNextImage, IS_SUCCESS: {nret}'
+                              )
         elif nret == ueye.IS_TIMED_OUT:
             if log:
-                logging.debug("is_WaitForNextImage, IS_TIMED_OUT: {}"
-                              .format(nret))
+                logging.debug(f'is_WaitForNextImage, IS_TIMED_OUT: {nret}'
+                              )
         elif nret == ueye.IS_CAPTURE_STATUS:
             if log:
-                logging.debug("is_WaitForNextImage, IS_CAPTURE_STATUS: {}"
-                              .format(nret))
+                logging.debug(f'is_WaitForNextImage, IS_CAPTURE_STATUS: {nret}'
+                              )
             self.CaptureStatusInfo = ueye.UEYE_CAPTURE_STATUS_INFO()
             nRet = ueye.is_CaptureStatus(
                 self.hCam, ueye.IS_CAPTURE_STATUS_INFO_CMD_GET,
@@ -966,7 +967,7 @@ class IDS_Camera(miCamera):
             self.MemID, self.width,
             self.height, self.bit_depth, self.pitch)
         if nRet != ueye.IS_SUCCESS:
-            print("is_InquireImageMem ERROR")
+            print('is_InquireImageMem ERROR')
 
         return nRet
 

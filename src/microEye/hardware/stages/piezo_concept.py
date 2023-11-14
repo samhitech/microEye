@@ -6,7 +6,7 @@ from PyQt5.QtWidgets import *
 from ..port_config import port_config, tracking_config
 
 
-class stage():
+class stage:
 
     def __init__(self) -> None:
 
@@ -96,7 +96,7 @@ class piezo_concept(stage):
         '''
         if (self.isOpen()):
             self.write(b'GET_Z\n')
-            self.LastCmd = "GETZ"
+            self.LastCmd = 'GETZ'
 
     def HOME(self):
         '''Centers the stage position along the Z axis.
@@ -104,7 +104,7 @@ class piezo_concept(stage):
         if (self.isOpen()):
             self.ZPosition = 50000
             self.write(b'MOVEZ 50u\n')
-            self.LastCmd = "MOVRZ"
+            self.LastCmd = 'MOVRZ'
 
     def NANO_UP(self, step: int):
         '''Moves the stage in the positive direction along the Z axis
@@ -118,7 +118,7 @@ class piezo_concept(stage):
         '''
         if (self.isOpen()):
             self.write(('MOVRZ +'+step+'n\n').encode('utf-8'))
-            self.LastCmd = "MOVRZ"
+            self.LastCmd = 'MOVRZ'
 
     def MICRO_UP(self, step: int):
         '''Moves the stage in the positive direction along the Z axis
@@ -132,7 +132,7 @@ class piezo_concept(stage):
         '''
         if (self.isOpen()):
             self.write(('MOVRZ +'+step+'u\n').encode('utf-8'))
-            self.LastCmd = "MOVRZ"
+            self.LastCmd = 'MOVRZ'
 
     def NANO_DOWN(self, step: int):
         '''Moves the stage in the negative direction along the Z axis
@@ -146,7 +146,7 @@ class piezo_concept(stage):
         '''
         if (self.isOpen()):
             self.write(('MOVRZ -'+step+'n\n').encode('utf-8'))
-            self.LastCmd = "MOVRZ"
+            self.LastCmd = 'MOVRZ'
 
     def MICRO_DOWN(self, step: int):
         '''Moves the stage in the negative direction along the Z axis
@@ -160,7 +160,7 @@ class piezo_concept(stage):
         '''
         if (self.isOpen()):
             self.write(('MOVRZ -'+step+'u\n').encode('utf-8'))
-            self.LastCmd = "MOVRZ"
+            self.LastCmd = 'MOVRZ'
 
     def UP(self, step: int, interface=False):
         '''Moves the stage in the positive direction along the Z axis
@@ -180,7 +180,7 @@ class piezo_concept(stage):
                 self.ZPosition = min(max(self.ZPosition + step, 0), 100000)
                 self.write(
                     ('MOVEZ '+str(self.ZPosition)+'n\n').encode('utf-8'))
-                self.LastCmd = "MOVEZ"
+                self.LastCmd = 'MOVEZ'
 
     def DOWN(self, step: int, interface=False):
         '''Moves the stage in the negative direction
@@ -200,7 +200,7 @@ class piezo_concept(stage):
                 self.ZPosition = min(max(self.ZPosition - step, 0), 100000)
                 self.write(
                     ('MOVEZ '+str(self.ZPosition)+'n\n').encode('utf-8'))
-                self.LastCmd = "MOVEZ"
+                self.LastCmd = 'MOVEZ'
 
     def REFRESH(self):
         '''Refresh the stage position
@@ -208,7 +208,7 @@ class piezo_concept(stage):
         '''
         if (self.isOpen()):
             self.write(('MOVEZ '+str(self.ZPosition)+'n\n').encode('utf-8'))
-            self.LastCmd = "MOVEZ"
+            self.LastCmd = 'MOVEZ'
 
     def rx_piezo(self):
         '''PiezoConcept stage dataReady signal.
@@ -216,7 +216,7 @@ class piezo_concept(stage):
         self.Received = str(
             self.serial.readAll(),
             encoding='utf8')
-        if self.LastCmd != "GETZ":
+        if self.LastCmd != 'GETZ':
             self.GETZ()
 
     def autoFocusTracking(self):
@@ -224,10 +224,10 @@ class piezo_concept(stage):
         '''
         if self.piezoTracking:
             self.piezoTracking = False
-            self._tracking_btn.setText("Focus Tracking Off")
+            self._tracking_btn.setText('Focus Tracking Off')
         else:
             self.piezoTracking = True
-            self._tracking_btn.setText("Focus Tracking On")
+            self._tracking_btn.setText('Focus Tracking On')
 
     @property
     def center_pixel(self):
@@ -264,23 +264,23 @@ class piezo_concept(stage):
 
         # Piezostage controls
         self._connect_btn = QPushButton(
-            "Connect",
+            'Connect',
             clicked=lambda: self.open()
         )
         self._disconnect_btn = QPushButton(
-            "Disconnect",
+            'Disconnect',
             clicked=lambda: self.close()
         )
         self._config_btn = QPushButton(
-            "Config.",
+            'Config.',
             clicked=lambda: self.open_dialog()
         )
         self._tracking_conf_btn = QPushButton(
-            "Tracking Config.",
+            'Tracking Config.',
             clicked=lambda: self.track_dialog()
         )
         self._tracking_btn = QPushButton(
-            "Focus Tracking Off",
+            'Focus Tracking Off',
             clicked=lambda: self.autoFocusTracking()
         )
 
@@ -289,7 +289,7 @@ class piezo_concept(stage):
 
         fine_step = 100
         coarse_step = 1
-        self.fine_steps_label = QLabel("Fine step [nm]")
+        self.fine_steps_label = QLabel('Fine step [nm]')
         self.fine_steps_slider = QSpinBox()
         self.fine_steps_slider.setMinimum(1)
         self.fine_steps_slider.setMaximum(1000)
@@ -298,7 +298,7 @@ class piezo_concept(stage):
             'background-color: green')
 
         self.coarse_steps_label = QLabel(
-            "Coarse step [um]")
+            'Coarse step [um]')
         self.coarse_steps_slider = QSpinBox()
         self.coarse_steps_slider.setMinimum(1)
         self.coarse_steps_slider.setMaximum(20)
@@ -322,33 +322,33 @@ class piezo_concept(stage):
         self.pixel_translation.setChecked(False)
 
         self.piezo_HOME_btn = QPushButton(
-            "⌂",
+            '⌂',
             clicked=lambda: self.HOME()
         )
         self.piezo_REFRESH_btn = QPushButton(
-            "R",
+            'R',
             clicked=lambda: self.REFRESH()
         )
         self.piezo_B_UP_btn = QPushButton(
-            "<<",
+            '<<',
             clicked=lambda: self.UP(
                 self.coarse_steps_slider.value() * 1000,
                 True)
         )
         self.piezo_S_UP_btn = QPushButton(
-            "<",
+            '<',
             clicked=lambda: self.UP(
                 self.fine_steps_slider.value(),
                 True)
         )
         self.piezo_S_DOWN_btn = QPushButton(
-            ">",
+            '>',
             clicked=lambda: self.DOWN(
                 self.fine_steps_slider.value(),
                 True)
         )
         self.piezo_B_DOWN_btn = QPushButton(
-            ">>",
+            '>>',
             clicked=lambda: self.DOWN(
                 self.coarse_steps_slider.value() * 1000,
                 True)

@@ -1,14 +1,13 @@
-import time
-import numpy as np
-import numba as nb
 import math
-from scipy import ndimage
+import time
+
+import numba as nb
+import numpy as np
 from numba import cuda
+from scipy import ndimage
 
 from . import CPU
-
 from .constants import *
-
 
 if cuda.is_available():
 
@@ -111,10 +110,8 @@ if cuda.is_available():
             spline_ysize = PSFparam.shape[2]
             spline_zsize = PSFparam.shape[3]
 
-        if varim is None:
-            cameratype = 0  # EMCCD
-        else:
-            cameratype = 1  # sCMOS
+        # EMCCD = 0, sCMOS = 1
+        cameratype = 0 if varim is None else 1
 
         # query GPUs
         assert cuda.is_available(), 'No GPU is available.'
@@ -198,8 +195,7 @@ if cuda.is_available():
 
         stop = time.perf_counter_ns()
         togpu = stop - start
-        print('Data copied to GPU in {:.3f}ms.\n'.format(
-            togpu/1e6))
+        print(f'Data copied to GPU in {togpu/1e6:.3f}ms.\n')
         start = time.perf_counter_ns()
 
         # setup kernel
@@ -254,9 +250,7 @@ if cuda.is_available():
 
         stop = time.perf_counter_ns()
         fit = stop - start
-        print('Fitted {:d} localizations in {:.3f}ms.\n'.format(
-            Nfitraw,
-            fit/1e6))
+        print(f'Fitted {Nfitraw:d} localizations in {fit/1e6:.3f}ms.\n')
         start = time.perf_counter_ns()
 
         # copy to matlab output
@@ -277,8 +271,7 @@ if cuda.is_available():
 
         stop = time.perf_counter_ns()
         fromgpu = stop - start
-        print('Data copied to Host in {:.3f}ms.\n'.format(
-            fromgpu/1e6))
+        print(f'Data copied to Host in {fromgpu/1e6:.3f}ms.\n')
         start = time.perf_counter_ns()
 
         # cleanup
@@ -390,10 +383,8 @@ def CPUmleFit_LM(
         spline_ysize = PSFparam.shape[2]
         spline_zsize = PSFparam.shape[3]
 
-    if varim is None:
-        cameratype = 0  # EMCCD
-    else:
-        cameratype = 1  # sCMOS
+    # EMCCD = 0, sCMOS = 1
+    cameratype = 0 if varim is None else 1
 
     # create output for parameters and CRLBs
     if fittype == 1:  # (x,y,bg,I)
@@ -493,7 +484,7 @@ def init_numba_CPU():
     CRLBs = np.zeros((1, NV_PS), np.float32)
     CPU_parallel_fit_3D_scpline(
         z, varim, np.ones((64, 4, 4, 4), dtype=np.float32).flatten(),
-        int(4), int(4), int(4), int(n), 1, 0, 30,
+        4, 4, 4, int(n), 1, 0, 30,
         Parameters, CRLBs, LogLikelihood)
     # varim not None
     Parameters = np.zeros((1, (NV_P + 1)), np.float32)
@@ -515,7 +506,7 @@ def init_numba_CPU():
     CRLBs = np.zeros((1, NV_PS), np.float32)
     CPU_parallel_fit_3D_scpline(
         z, varim, np.ones((64, 4, 4, 4), dtype=np.float32).flatten(),
-        int(4), int(4), int(4), int(n), 1, 0, 30,
+        4, 4, 4, int(n), 1, 0, 30,
         Parameters, CRLBs, LogLikelihood)
 
 

@@ -2,10 +2,9 @@
 import numba as nb
 from numba import cuda
 
+from ..constants import *
 from .GPUfunctions import *
 from .GPUsplineLib import *
-
-from ..constants import *
 
 
 @cuda.jit
@@ -136,7 +135,7 @@ def kernel_MLEFit_LM_EMCCD(
                     hessian[ll*NV + mm] += t2 * newDudt[ll] * newDudt[mm]
                     hessian[mm*NV + ll] = hessian[ll*NV + mm]
 
-    for kk in range(iterations):  # main iterative loop
+    for kk in range(iterations):  # main iterative loop  # noqa: B007
         if(abs((newErr-oldErr)/newErr) < TOLERANCE):
             break  # CONVERGED
         else:
@@ -389,7 +388,7 @@ def kernel_MLEFit_LM_Sigma_EMCCD(
                     hessian[ll*NV + mm] += t2 * newDudt[ll] * newDudt[mm]
                     hessian[mm*NV + ll] = hessian[ll*NV + mm]
 
-    for kk in range(iterations):  # main iterative loop
+    for kk in range(iterations):  # main iterative loop  # noqa: B007
         if(abs((newErr-oldErr)/newErr) < TOLERANCE):
             break  # CONVERGED
         else:
@@ -663,7 +662,7 @@ def kernel_MLEFit_LM_z_EMCCD(
                     hessian[ll*NV + mm] += t2 * newDudt[ll] * newDudt[mm]
                     hessian[mm*NV + ll] = hessian[ll*NV + mm]
 
-    for kk in range(iterations):  # main iterative loop
+    for kk in range(iterations):  # main iterative loop  # noqa: B007
         if(abs((newErr-oldErr)/newErr) < TOLERANCE):
             break  # CONVERGED
         else:
@@ -924,7 +923,7 @@ def kernel_MLEFit_LM_sigmaxy_EMCCD(
                     hessian[ll*NV + mm] += t2 * newDudt[ll] * newDudt[mm]
                     hessian[mm*NV + ll] = hessian[ll*NV + mm]
 
-    for kk in range(iterations):  # main iterative loop
+    for kk in range(iterations):  # main iterative loop  # noqa: B007
         if(abs((newErr-oldErr)/newErr) < TOLERANCE):
             break  # CONVERGED
         else:
@@ -1231,7 +1230,7 @@ def kernel_splineMLEFit_z_EMCCD(
                     hessian[ll*NV + mm] += t2 * newDudt[ll] * newDudt[mm]
                     hessian[mm*NV + ll] = hessian[ll*NV + mm]
 
-    for kk in range(iterations):  # main iterative loop
+    for kk in range(iterations):  # main iterative loop  # noqa: B007
         if(abs((newErr-oldErr)/newErr) < TOLERANCE):
             break  # CONVERGED
         else:

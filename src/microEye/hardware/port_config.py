@@ -8,7 +8,7 @@ class port_config(QDialog):
     '''A dialog for setting the serial port config | Inherits QDialog
     '''
     def __init__(self, parent=None, title='Serial Port Config.'):
-        super(port_config, self).__init__(parent)
+        super().__init__(parent)
 
         self.setWindowTitle(title)
         self.portname_comboBox = QComboBox()    # port name combobox
@@ -35,8 +35,8 @@ class port_config(QDialog):
 
         # dialog layout
         lay = QFormLayout(self)
-        lay.addRow("Port Name:", self.portname_comboBox)
-        lay.addRow("BaudRate:", self.baudrate_comboBox)
+        lay.addRow('Port Name:', self.portname_comboBox)
+        lay.addRow('BaudRate:', self.baudrate_comboBox)
         lay.addRow(buttonBox)
         self.setFixedSize(
             self.sizeHint().width() + 50, self.sizeHint().height())
@@ -58,19 +58,19 @@ class tracking_config(QDialog):
     '''A dialog for setting the stage tracking config | Inherits QDialog
     '''
     def __init__(self, *args, parent=None):
-        super(tracking_config, self).__init__(parent)
+        super().__init__(parent)
 
         self.setWindowTitle('Tracking Config.')
         valid = QDoubleValidator(0, 1e6, 3)
-        self.pConst = QLineEdit('{:.3f}'.format(args[0]))
+        self.pConst = QLineEdit(f'{args[0]:.3f}')
         self.pConst.setValidator(valid)
-        self.iConst = QLineEdit('{:.3f}'.format(args[1]))
+        self.iConst = QLineEdit(f'{args[1]:.3f}')
         self.iConst.setValidator(valid)
-        self.dConst = QLineEdit('{:.3f}'.format(args[2]))
+        self.dConst = QLineEdit(f'{args[2]:.3f}')
         self.dConst.setValidator(valid)
-        self.tau = QLineEdit('{:.3f}'.format(args[3]))
+        self.tau = QLineEdit(f'{args[3]:.3f}')
         self.tau.setValidator(valid)
-        self.thresh = QLineEdit('{:.3f}'.format(args[4]))
+        self.thresh = QLineEdit(f'{args[4]:.3f}')
         self.thresh.setValidator(valid)
 
         # dialog buttons
@@ -83,11 +83,11 @@ class tracking_config(QDialog):
 
         # dialog layout
         lay = QFormLayout(self)
-        lay.addRow("P:", self.pConst)
-        lay.addRow("I:", self.iConst)
-        lay.addRow("D:", self.dConst)
-        lay.addRow("tau:", self.tau)
-        lay.addRow("Error Threshold:", self.thresh)
+        lay.addRow('P:', self.pConst)
+        lay.addRow('I:', self.iConst)
+        lay.addRow('D:', self.dConst)
+        lay.addRow('tau:', self.tau)
+        lay.addRow('Error Threshold:', self.thresh)
         lay.addRow(buttonBox)
         self.setFixedSize(
             self.sizeHint().width() + 50, self.sizeHint().height())

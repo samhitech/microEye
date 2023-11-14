@@ -6,7 +6,7 @@ from PyQt5.QtWidgets import *
 from ..port_config import port_config
 
 
-class elliptec_controller():
+class elliptec_controller:
     '''Thorlabs Elliptec stage controller
     '''
 
@@ -58,25 +58,25 @@ class elliptec_controller():
     def HOME(self, address):
         '''Homes the stage at a specific address'''
         if (self.isOpen()):
-            self.LastCmd = '{}ho0'.format(address)
+            self.LastCmd = f'{address}ho0'
             self.write(self.LastCmd.encode('utf-8'))
 
     def FORWARD(self, address):
         '''Moves the stage at a specific address one step FORWARD'''
         if (self.isOpen()):
-            self.LastCmd = '{}fw'.format(address)
+            self.LastCmd = f'{address}fw'
             self.write(self.LastCmd.encode('utf-8'))
 
     def BACKWARD(self, address):
         '''Moves the stage at a specific address one step BACKWARD'''
         if (self.isOpen()):
-            self.LastCmd = '{}bw'.format(address)
+            self.LastCmd = f'{address}bw'
             self.write(self.LastCmd.encode('utf-8'))
 
     def setSLOT(self, address, slot):
         '''Moves the stage at a specific address one step BACKWARD'''
         if (self.isOpen()):
-            self.LastCmd = '{}ma000000{}0'.format(address, slot * 2)
+            self.LastCmd = f'{address}ma000000{slot * 2}0'
             self.write(self.LastCmd.encode('utf-8'))
 
     def rx_piezo(self):
@@ -94,15 +94,15 @@ class elliptec_controller():
         group.setLayout(layout)
 
         self._connect_btn = QPushButton(
-            "Connect",
+            'Connect',
             clicked=lambda: self.open()
         )
         self._disconnect_btn = QPushButton(
-            "Disconnect",
+            'Disconnect',
             clicked=lambda: self.close()
         )
         self._config_btn = QPushButton(
-            "Config.",
+            'Config.',
             clicked=lambda: self.open_dialog()
         )
 
@@ -117,18 +117,18 @@ class elliptec_controller():
         self.address_bx.setMaximum(9)
 
         layout.addRow(
-            QLabel("Address:"),
+            QLabel('Address:'),
             self.address_bx)
 
         self.stage_type = QComboBox()
         self.stage_type.addItems(['ELL6', 'ELL9'])
 
         layout.addRow(
-            QLabel("Stage Type:"),
+            QLabel('Stage Type:'),
             self.stage_type)
 
         self._add_btn = QPushButton(
-            "Add stage",
+            'Add stage',
             clicked=lambda: self.add_stage(
                 self.stage_type.currentText(), self.address_bx.value(), layout)
         )
@@ -144,24 +144,24 @@ class elliptec_controller():
             self.getELL9(address, layout)
 
     def getELL6(self, address, layout: QFormLayout):
-        group = QGroupBox('Ell6 (2 SLOTS) Address {}'.format(address))
+        group = QGroupBox(f'Ell6 (2 SLOTS) Address {address}')
         move_buttons = QHBoxLayout()
         group.setLayout(move_buttons)
         # controls
         HOME_btn = QPushButton(
-            "⌂",
+            '⌂',
             clicked=lambda: self.HOME(address)
         )
         BW_btn = QPushButton(
-            "<<",
+            '<<',
             clicked=lambda: self.BACKWARD(address)
         )
         FW_btn = QPushButton(
-            ">>",
+            '>>',
             clicked=lambda: self.FORWARD(address)
         )
         remove_btn = QPushButton(
-            "x",
+            'x',
             clicked=lambda: layout.removeRow(group)
         )
 
@@ -181,40 +181,40 @@ class elliptec_controller():
         layout.addRow(group)
 
     def getELL9(self, address, layout: QFormLayout):
-        group = QGroupBox('Ell9 (4 SLOTS) Address {}'.format(address))
+        group = QGroupBox(f'Ell9 (4 SLOTS) Address {address}')
         move_buttons = QHBoxLayout()
         group.setLayout(move_buttons)
         # controls
         HOME_btn = QPushButton(
-            "⌂",
+            '⌂',
             clicked=lambda: self.HOME(address)
         )
         BW_btn = QPushButton(
-            "<<",
+            '<<',
             clicked=lambda: self.BACKWARD(address)
         )
         FW_btn = QPushButton(
-            ">>",
+            '>>',
             clicked=lambda: self.FORWARD(address)
         )
         remove_btn = QPushButton(
-            "x",
+            'x',
             clicked=lambda: layout.removeRow(group)
         )
         first_btn = QPushButton(
-            "1st",
+            '1st',
             clicked=lambda: self.setSLOT(address, 0)
         )
         second_btn = QPushButton(
-            "2nd",
+            '2nd',
             clicked=lambda: self.setSLOT(address, 1)
         )
         third_btn = QPushButton(
-            "3rd",
+            '3rd',
             clicked=lambda: self.setSLOT(address, 2)
         )
         fourth_btn = QPushButton(
-            "4th",
+            '4th',
             clicked=lambda: self.setSLOT(address, 3)
         )
 

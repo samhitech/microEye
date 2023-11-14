@@ -1,11 +1,11 @@
 
-import numba as nb
 import math
+
+import numba as nb
 from numba import cuda
 
-from .GPUfunctions import *
-
 from ..constants import NV_PSP
+from .GPUfunctions import *
 
 
 @cuda.jit(device=True)

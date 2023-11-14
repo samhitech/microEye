@@ -50,7 +50,7 @@ class AcquisitionJob:
         self.prefix = prefix
         self.save_queue = save_queue
         self.temp_queue = temp_queue
-        self.timestamp = time.strftime("_%Y_%m_%d_%H%M%S")
+        self.timestamp = time.strftime('_%Y_%m_%d_%H%M%S')
         self.width = width
         self.zarr = Zarr
         self.zarr_array = None
@@ -86,12 +86,11 @@ class AcquisitionJob:
 
     def getFilename(self) -> str:
         return self.path + \
-            '{:02d}_{}_image_{:05d}.{}'.format(
-             self.major, self.prefix, self.index, self.getExt())
+            f'{self.major:02d}_{self.prefix}_image_{self.index:05d}.{self.getExt()}'
 
     def getTempFilename(self) -> str:
         return self.path + self.prefix + \
-            '{:02d}_{}_temp_log.csv'.format(self.major, self.prefix)
+            f'{self.major:02d}_{self.prefix}_temp_log.csv'
 
     def addDarkFrame(self, frame: np.ndarray):
         if self.is_dark_cal:
@@ -128,17 +127,17 @@ class AcquisitionJob:
     def addTemp(self, temp: float):
         # open csv file and append sensor temp and close
         if self.tempFile is None:
-            self.tempFile = open(self.getTempFilename(), 'ab')
+            with open(self.getTempFilename(), 'ab') as f:
+                self.tempFile = f
 
-        np.savetxt(self.tempFile, [temp], delimiter=";")
+        np.savetxt(self.tempFile, [temp], delimiter=';')
 
     def getMetaFilename(self) -> str:
         return self.path + self.name + self.timestamp + '.txt'
 
     def writeMetaFile(self):
-        metaFile = open(self.getMetaFilename(), 'w+')
-        json.dump(self.meta_file, metaFile)
-        metaFile.close()
+        with open(self.getMetaFilename(), 'w+') as metaFile:
+            json.dump(self.meta_file, metaFile)
 
     def getTiffWriter(self) -> tf.TiffWriter:
         return tf.TiffWriter(
@@ -170,7 +169,7 @@ class AcquisitionJob:
             if self.dark_cal._counter > 1:
                 self.dark_cal.saveResults(
                     self.path,
-                    '{:02d}_{}'.format(self.major, self.prefix))
+                    f'{self.major:02d}_{self.prefix}')
 
         if self.save and not self.zarr:
             self.saveMetadata()

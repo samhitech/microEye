@@ -11,6 +11,7 @@ from .thorlabs import *
 
 try:
     from pyueye import ueye
+
     from .ueye_camera import IDS_Camera
 except Exception:
     ueye = None
@@ -18,6 +19,7 @@ except Exception:
 
 try:
     import vimba as vb
+
     from .vimba_cam import get_camera_list
 except Exception:
     vb = None
@@ -59,13 +61,13 @@ class CameraListWidget(QWidget):
         self.HL_buttons = QHBoxLayout()
 
         self.add_cam = QPushButton(
-            "Add Camera", clicked=lambda: self.add_camera())
+            'Add Camera', clicked=lambda: self.add_camera())
 
         self.remove_cam = QPushButton(
-            "Remove Camera", clicked=lambda: self.remove_camera())
+            'Remove Camera', clicked=lambda: self.remove_camera())
 
         self.refresh = QPushButton(
-            "Refresh List", clicked=lambda: self.refresh_list())
+            'Refresh List', clicked=lambda: self.refresh_list())
 
         self.HL_buttons.addWidget(self.add_cam)
         self.HL_buttons.addWidget(self.remove_cam)
@@ -86,8 +88,8 @@ class CameraListWidget(QWidget):
         else:
             QMessageBox.warning(
                 self,
-                "Warning",
-                "Please select a device.",
+                'Warning',
+                'Please select a device.',
                 QMessageBox.StandardButton.Ok)
 
     def remove_camera(self):
@@ -98,8 +100,8 @@ class CameraListWidget(QWidget):
         else:
             QMessageBox.warning(
                 self,
-                "Warning",
-                "Please select a device.",
+                'Warning',
+                'Please select a device.',
                 QMessageBox.StandardButton.Ok)
 
     def refresh_list(self):
@@ -121,33 +123,33 @@ class CameraListWidget(QWidget):
         self.item_model = QStandardItemModel(len(self.cam_list), 8)
 
         self.item_model.setHorizontalHeaderLabels(
-            ["In Use", "Camera ID", "Device ID",
-             "Model", "Serial", "Status", "Sensor ID", 'Driver'])
+            ['In Use', 'Camera ID', 'Device ID',
+             'Model', 'Serial', 'Status', 'Sensor ID', 'Driver'])
 
         for i in range(len(self.cam_list)):
             self.item_model.setItem(
                 i, 0,
-                QStandardItem(str(self.cam_list[i]["InUse"])))
+                QStandardItem(str(self.cam_list[i]['InUse'])))
             self.item_model.setItem(
                 i, 1,
-                QStandardItem(str(self.cam_list[i]["camID"])))
+                QStandardItem(str(self.cam_list[i]['camID'])))
             self.item_model.setItem(
                 i, 2,
-                QStandardItem(str(self.cam_list[i]["devID"])))
+                QStandardItem(str(self.cam_list[i]['devID'])))
             self.item_model.setItem(
                 i, 3,
-                QStandardItem(self.cam_list[i]["Model"]))
+                QStandardItem(self.cam_list[i]['Model']))
             self.item_model.setItem(
                 i, 4,
-                QStandardItem(self.cam_list[i]["Serial"]))
+                QStandardItem(self.cam_list[i]['Serial']))
             self.item_model.setItem(
                 i, 5,
-                QStandardItem(str(self.cam_list[i]["Status"])))
+                QStandardItem(str(self.cam_list[i]['Status'])))
             self.item_model.setItem(
                 i, 6,
-                QStandardItem(str(self.cam_list[i]["senID"])))
+                QStandardItem(str(self.cam_list[i]['senID'])))
             self.item_model.setItem(
                 i, 7,
-                QStandardItem(str(self.cam_list[i]["Driver"])))
+                QStandardItem(str(self.cam_list[i]['Driver'])))
 
         self.cam_table.setModel(self.item_model)

@@ -1,7 +1,7 @@
 
-import ome_types.model as om
 import typing
 
+import ome_types.model as om
 from ome_types.model.channel import *
 from ome_types.model.detector import Detector, Type
 from ome_types.model.dichroic import Dichroic
@@ -11,7 +11,6 @@ from ome_types.model.microscope import Microscope
 from ome_types.model.objective import Correction, Immersion, Objective
 from ome_types.model.ome import OME
 from ome_types.model.simple_types import PixelType, UnitsLength, UnitsTime
-
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
@@ -282,7 +281,7 @@ class MetadataEditor(QWidget):
 
     def saveAs(self):
         filename, _ = QFileDialog.getSaveFileName(
-            self, "Save metadata", filter="OME-XML Files (*.ome.xml);;")
+            self, 'Save metadata', filter='OME-XML Files (*.ome.xml);;')
 
         if len(filename) > 0:
             ome_obj = self.gen_OME_XML(1, 512, 512)
@@ -291,11 +290,11 @@ class MetadataEditor(QWidget):
 
     def loadXML(self):
         filename, _ = QFileDialog.getOpenFileName(
-            self, "Load metadata", filter="OME-XML Files (*.ome.xml);;")
+            self, 'Load metadata', filter='OME-XML Files (*.ome.xml);;')
 
         if len(filename) > 0:
             xml = ''
-            with open(filename, 'r') as f:
+            with open(filename) as f:
                 xml = f.read()
             self.pop_OME_XML(OME.from_xml(xml))
 

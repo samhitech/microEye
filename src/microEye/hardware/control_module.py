@@ -37,7 +37,7 @@ except Exception:
     IDS_Camera = None
     IDS_Panel = None
 
-warnings.filterwarnings("ignore", category=OptimizeWarning)
+warnings.filterwarnings('ignore', category=OptimizeWarning)
 
 
 class control_module(QMainWindow):
@@ -51,19 +51,19 @@ class control_module(QMainWindow):
     '''
 
     def __init__(self, *args, **kwargs):
-        super(control_module, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
         # setting title
         self.setWindowTitle(
-            "microEye control module \
-            (https://github.com/samhitech/microEye)")
+            'microEye control module \
+            (https://github.com/samhitech/microEye)')
 
         # setting geometry
         self.setGeometry(0, 0, 1200, 600)
 
         # Statusbar time
         self.statusBar().showMessage(
-            "Time: " + QDateTime.currentDateTime().toString("hh:mm:ss,zzz"))
+            'Time: ' + QDateTime.currentDateTime().toString('hh:mm:ss,zzz'))
 
         # PiezoConcept
         self.stage = stage()
@@ -80,8 +80,8 @@ class control_module(QMainWindow):
             self)
         self.laserRelay.setBaudRate(115200)
         self.laserRelay.setPortName('COM6')
-        self.laserRelay_last = ""
-        self.laserRelay_curr = ""
+        self.laserRelay_last = ''
+        self.laserRelay_curr = ''
 
         # Elliptec controller
         self._elliptec_controller = elliptec_controller()
@@ -120,7 +120,7 @@ class control_module(QMainWindow):
 
         # Threading
         self._threadpool = QThreadPool()
-        print("Multithreading with maximum %d threads"
+        print('Multithreading with maximum %d threads'
               % self._threadpool.maxThreadCount())
 
         # Any other args, kwargs are passed to the run function
@@ -152,7 +152,7 @@ class control_module(QMainWindow):
         self.Tab_Widget = QTabWidget()
 
         # General settings groupbox
-        LPanel_GBox = QGroupBox("Devices")
+        LPanel_GBox = QGroupBox('Devices')
         self.VL_layout.addWidget(LPanel_GBox, 0, 0)
 
         # vertical layout
@@ -163,29 +163,29 @@ class control_module(QMainWindow):
         self.ir_cam_cbox = QComboBox()
         self.ir_cam_cbox.addItem('Parallax CCD (TSL1401)')
         self.ir_cam_set_btn = QPushButton(
-            "Set",
+            'Set',
             clicked=self.setIRcam
         )
         self.ir_cam_reset_btn = QPushButton(
-            "Reset",
+            'Reset',
             clicked=self.resetIRcam
         )
         self.ir_widget = None
 
         # ALEX checkbox
-        self.ALEX = QCheckBox("ALEX")
-        self.ALEX.state = "ALEX"
+        self.ALEX = QCheckBox('ALEX')
+        self.ALEX.state = 'ALEX'
         self.ALEX.setChecked(False)
 
         # IR CCD array arduino buttons
 
         # records IR peak-fit position
         self.start_IR_btn = QPushButton(
-            "Start IR Acquisition",
+            'Start IR Acquisition',
             clicked=self.start_IR
         )
         self.stop_IR_btn = QPushButton(
-            "Stop IR Acquisition",
+            'Stop IR Acquisition',
             clicked=self.stop_IR
         )
 
@@ -194,25 +194,25 @@ class control_module(QMainWindow):
         self.lasers_cbox.addItem('IO MatchBox Single Laser')
         self.lasers_cbox.addItem('IO MatchBox Laser Combiner')
         self.add_laser_btn = QPushButton(
-            "Add Laser",
+            'Add Laser',
             clicked=lambda: self.add_laser_panel()
         )
 
         # Arduino RelayBox controls
         self.laser_relay_connect_btn = QPushButton(
-            "Connect",
+            'Connect',
             clicked=lambda: self.connectToPort(self.laserRelay)
         )
         self.laser_relay_disconnect_btn = QPushButton(
-            "Disconnect",
+            'Disconnect',
             clicked=lambda: self.disconnectFromPort(self.laserRelay)
         )
         self.laser_relay_btn = QPushButton(
-            "Config.",
+            'Config.',
             clicked=lambda: self.open_dialog(self.laserRelay)
         )
         self.send_laser_relay_btn = QPushButton(
-            "Send Setting",
+            'Send Setting',
             clicked=lambda: self.sendConfig(self.laserRelay)
         )
 
@@ -220,7 +220,7 @@ class control_module(QMainWindow):
         self.stage_cbox = QComboBox()
         self.stage_cbox.addItem('PiezoConcept FOC100')
         self.stage_set_btn = QPushButton(
-            "Set",
+            'Set',
             clicked=self.setStage
         )
         self.stage_widget = None
@@ -341,12 +341,12 @@ class control_module(QMainWindow):
 
         # IR LineROI Graph
         self.graph_IR = PlotWidget()
-        self.graph_IR.setLabel("bottom", "Pixel", **self.labelStyle)
-        self.graph_IR.setLabel("left", "Signal", "V", **self.labelStyle)
+        self.graph_IR.setLabel('bottom', 'Pixel', **self.labelStyle)
+        self.graph_IR.setLabel('left', 'Signal', 'V', **self.labelStyle)
         # IR Peak Position Graph
         self.graph_Peak = PlotWidget()
-        self.graph_Peak.setLabel("bottom", "Frame", **self.labelStyle)
-        self.graph_Peak.setLabel("left", "Center Pixel", **self.labelStyle)
+        self.graph_Peak.setLabel('bottom', 'Frame', **self.labelStyle)
+        self.graph_Peak.setLabel('left', 'Center Pixel', **self.labelStyle)
         # IR Camera GraphView
         self.remote_view = RemoteGraphicsView()
         self.remote_view.pg.setConfigOptions(
@@ -419,7 +419,7 @@ class control_module(QMainWindow):
 
     def save_config(self):
         filename, _ = QFileDialog.getSaveFileName(
-            self, "Save config", filter="JSON Files (*.json);;")
+            self, 'Save config', filter='JSON Files (*.json);;')
 
         if len(filename) > 0:
             config = {
@@ -433,14 +433,14 @@ class control_module(QMainWindow):
                 json.dump(config, file)
 
             QMessageBox.information(
-                self, "Info", "Config saved.")
+                self, 'Info', 'Config saved.')
         else:
             QMessageBox.warning(
-                self, "Warning", "Config not saved.")
+                self, 'Warning', 'Config not saved.')
 
     def load_config(self):
         filename, _ = QFileDialog.getOpenFileName(
-            self, "Load config", filter="JSON Files (*.json);;")
+            self, 'Load config', filter='JSON Files (*.json);;')
 
         if len(filename) > 0:
             config: dict = None
@@ -450,7 +450,7 @@ class control_module(QMainWindow):
                 'ROI_length',
                 'ROI_angle',
             ]
-            with open(filename, 'r') as file:
+            with open(filename) as file:
                 config = json.load(file)
             if all(key in config for key in keys):
                 self.ROI_x.setValue(float(config['ROI_x']))
@@ -460,10 +460,10 @@ class control_module(QMainWindow):
                 self.set_roi()
             else:
                 QMessageBox.warning(
-                    self, "Warning", "Wrong or corrupted config file.")
+                    self, 'Warning', 'Wrong or corrupted config file.')
         else:
             QMessageBox.warning(
-                self, "Warning", "No file selected.")
+                self, 'Warning', 'No file selected.')
 
     def set_roi(self):
         self.roi.updateFlag = True
@@ -480,55 +480,55 @@ class control_module(QMainWindow):
         if self.cam is not None:
             QMessageBox.warning(
                 self,
-                "Warning",
-                "Please remove {}.".format(self.cam.name),
+                'Warning',
+                f'Please remove {self.cam.name}.',
                 QMessageBox.StandardButton.Ok)
             return
 
         if not self.IR_Cam.isDummy():
             QMessageBox.warning(
                 self,
-                "Warning",
-                "Please remove {}.".format(self.IR_Cam.name),
+                'Warning',
+                f'Please remove {self.IR_Cam.name}.',
                 QMessageBox.StandardButton.Ok)
             return
 
         # print(cam)
-        if cam["InUse"] == 0:
-            if 'uEye' in cam["Driver"]:
-                ids_cam = IDS_Camera(cam["camID"])
+        if cam['InUse'] == 0:
+            if 'uEye' in cam['Driver']:
+                ids_cam = IDS_Camera(cam['camID'])
                 nRet = ids_cam.initialize()
                 self.cam = ids_cam
                 ids_panel = IDS_Panel(
                     self._threadpool,
-                    ids_cam, True, cam["Model"] + " " + cam["Serial"])
+                    ids_cam, True, cam['Model'] + ' ' + cam['Serial'])
                 # ids_panel._directory = self.save_directory
                 ids_panel.master = False
                 self.cam_panel = ids_panel
                 self.Tab_Widget.addTab(ids_panel, ids_cam.name)
-            if 'UC480' in cam["Driver"]:
-                thor_cam = thorlabs_camera(cam["camID"])
+            if 'UC480' in cam['Driver']:
+                thor_cam = thorlabs_camera(cam['camID'])
                 nRet = thor_cam.initialize()
                 if nRet == CMD.IS_SUCCESS:
                     self.cam = thor_cam
                     thor_panel = Thorlabs_Panel(
                         self._threadpool,
-                        thor_cam, True, cam["Model"] + " " + cam["Serial"])
+                        thor_cam, True, cam['Model'] + ' ' + cam['Serial'])
                     # thor_panel._directory = self.save_directory
                     thor_panel.master = False
                     self.cam_panel = thor_panel
                     self.Tab_Widget.addTab(thor_panel, thor_cam.name)
             self.graph_IR.setLabel(
-                "left", "Signal", "", **self.labelStyle)
+                'left', 'Signal', '', **self.labelStyle)
         else:
             QMessageBox.warning(
                 self,
-                "Warning",
-                "Device is in use or already added.",
+                'Warning',
+                'Device is in use or already added.',
                 QMessageBox.StandardButton.Ok)
 
     def remove_camera(self, cam):
-        if self.cam.cInfo.SerNo.decode('utf-8') == cam["Serial"]:
+        if self.cam.cInfo.SerNo.decode('utf-8') == cam['Serial']:
             if not self.cam.acquisition:
                 self.cam.free_memory()
                 self.cam.dispose()
@@ -584,7 +584,7 @@ class control_module(QMainWindow):
         for panel in self.laserPanels:
             settings += panel.GetRelayState()
         return settings + \
-            ("ALEXON" if self.ALEX.isChecked() else "ALEXOFF") + "\r"
+            ('ALEXON' if self.ALEX.isChecked() else 'ALEXOFF') + '\r'
 
     def sendConfig(self, serial: QSerialPort):
         '''Sends the RelayBox setting command.
@@ -600,7 +600,7 @@ class control_module(QMainWindow):
 
             serial.write(message.encode('utf-8'))
             self.laserRelay_last = message
-            print(str(serial.readAll(), encoding="utf-8"))
+            print(str(serial.readAll(), encoding='utf-8'))
         except Exception as e:
             print('Failed Laser Relay Send Config: ' + str(e))
 
@@ -652,7 +652,7 @@ class control_module(QMainWindow):
                     if (self.file is not None):
                         np.savetxt(self.file,
                                    np.array((self._exec_time, self.popt[1]))
-                                   .reshape((1, 2)), delimiter=";")
+                                   .reshape((1, 2)), delimiter=';')
                         self.frames_saved = 1 + self.frames_saved
                     counter = counter + 1
                     progress_callback.emit(data)
@@ -757,71 +757,71 @@ class control_module(QMainWindow):
     def update_gui(self):
         '''Recurring timer updates the status bar and GUI
         '''
-        IR = ("    |  IR Cam " +
+        IR = ('    |  IR Cam ' +
               ('connected' if self.IR_Cam.isOpen else 'disconnected'))
 
-        RelayBox = ("    |  Relay " + ('connected' if self.laserRelay.isOpen()
+        RelayBox = ('    |  Relay ' + ('connected' if self.laserRelay.isOpen()
                     else 'disconnected'))
-        Piezo = ("    |  Piezo " + ('connected' if self.stage.isOpen()
+        Piezo = ('    |  Piezo ' + ('connected' if self.stage.isOpen()
                  else 'disconnected'))
 
         Position = ''
         if self.stage.isOpen():
             # self.piezoConcept.GETZ()
-            Position = "    |  Position " + self.stage.Received
-        Frames = "    | Frames Saved: " + str(self.frames_saved)
+            Position = '    |  Position ' + self.stage.Received
+        Frames = '    | Frames Saved: ' + str(self.frames_saved)
 
-        Worker = "    | Execution time: {:d}".format(self._exec_time)
+        Worker = f'    | Execution time: {self._exec_time:d}'
         if self.cam is not None:
-            Worker += "    | Frames Buffer: {:d}".format(self.BufferSize())
+            Worker += f'    | Frames Buffer: {self.BufferSize():d}'
         self.statusBar().showMessage(
-            "Time: " + QDateTime.currentDateTime().toString("hh:mm:ss,zzz")
+            'Time: ' + QDateTime.currentDateTime().toString('hh:mm:ss,zzz')
             + IR + RelayBox
             + Piezo + Position + Frames + Worker)
 
         # update indicators
         if self.IR_Cam.isOpen:
-            self.IR_Cam._connect_btn.setStyleSheet("background-color: green")
+            self.IR_Cam._connect_btn.setStyleSheet('background-color: green')
         else:
-            self.IR_Cam._connect_btn.setStyleSheet("background-color: red")
+            self.IR_Cam._connect_btn.setStyleSheet('background-color: red')
         if self.stage.isOpen():
-            self.stage._connect_btn.setStyleSheet("background-color: green")
+            self.stage._connect_btn.setStyleSheet('background-color: green')
         else:
-            self.stage._connect_btn.setStyleSheet("background-color: red")
+            self.stage._connect_btn.setStyleSheet('background-color: red')
         if self.laserRelay.isOpen():
             self.laser_relay_connect_btn.setStyleSheet(
-                "background-color: green")
+                'background-color: green')
         else:
-            self.laser_relay_connect_btn.setStyleSheet("background-color: red")
+            self.laser_relay_connect_btn.setStyleSheet('background-color: red')
         if self._elliptec_controller.isOpen():
             self._elliptec_controller._connect_btn.setStyleSheet(
-                "background-color: green")
+                'background-color: green')
         else:
             self._elliptec_controller._connect_btn.setStyleSheet(
-                "background-color: red")
+                'background-color: red')
 
         if self.laserRelay.isOpen():
             if self.laserRelay_last == self.relaySettings():
                 self.send_laser_relay_btn.setStyleSheet(
-                    "background-color: green")
+                    'background-color: green')
             else:
                 self.send_laser_relay_btn.setStyleSheet(
-                    "background-color: red")
+                    'background-color: red')
         else:
-            self.send_laser_relay_btn.setStyleSheet("")
+            self.send_laser_relay_btn.setStyleSheet('')
 
         if self.cam_panel is not None:
             self.cam_panel.info_temp.setText(
-                " T {:.2f} °C".format(self.cam_panel.cam.temperature))
+                f' T {self.cam_panel.cam.temperature:.2f} °C')
             self.cam_panel.info_cap.setText(
-                " Capture {:d} | {:.2f} ms ".format(
+                ' Capture {:d} | {:.2f} ms '.format(
                     self.cam_panel._counter,
                     self.cam_panel._exec_time))
             self.cam_panel.info_disp.setText(
-                " Display {:d} | {:.2f} ms ".format(
+                ' Display {:d} | {:.2f} ms '.format(
                     self.cam_panel._buffer.qsize(), self.cam_panel._dis_time))
             self.cam_panel.info_save.setText(
-                " Save {:d} | {:.2f} ms ".format(
+                ' Save {:d} | {:.2f} ms '.format(
                     self.cam_panel._frames.qsize(), self.cam_panel._save_time))
 
     @pyqtSlot()
@@ -871,11 +871,11 @@ class control_module(QMainWindow):
             filename = None
             if filename is None:
                 filename, _ = QFileDialog.getSaveFileName(
-                    self, "Save IR Track Data", filter="CSV Files (*.csv)")
+                    self, 'Save IR Track Data', filter='CSV Files (*.csv)')
 
                 if len(filename) > 0:
-                    self.file = open(
-                        filename, 'ab')
+                    with open(filename, 'ab') as f:
+                        self.file = f
 
     @pyqtSlot()
     def stop_IR(self):
@@ -891,16 +891,16 @@ class control_module(QMainWindow):
         if self.cam is not None:
             QMessageBox.warning(
                 self,
-                "Warning",
-                "Please remove {}.".format(self.cam.name),
+                'Warning',
+                f'Please remove {self.cam.name}.',
                 QMessageBox.StandardButton.Ok)
             return
 
         if self.IR_Cam.isOpen:
             QMessageBox.warning(
                 self,
-                "Warning",
-                "Please disconnect {}.".format(self.IR_Cam.name),
+                'Warning',
+                f'Please disconnect {self.IR_Cam.name}.',
                 QMessageBox.StandardButton.Ok)
             return
 
@@ -911,15 +911,15 @@ class control_module(QMainWindow):
             self.ir_widget = self.IR_Cam.getQWidget()
             self.VL_layout.addWidget(self.ir_widget, 1, 0)
             self.graph_IR.setLabel(
-                "left", "Signal", "V", **self.labelStyle)
+                'left', 'Signal', 'V', **self.labelStyle)
 
     @pyqtSlot()
     def resetIRcam(self):
         if self.IR_Cam.isOpen:
             QMessageBox.warning(
                 self,
-                "Warning",
-                "Please disconnect {}.".format(self.IR_Cam.name),
+                'Warning',
+                f'Please disconnect {self.IR_Cam.name}.',
                 QMessageBox.StandardButton.Ok)
             return
 
@@ -1027,7 +1027,7 @@ class control_module(QMainWindow):
 
         if sys.platform.startswith('win'):
             import ctypes
-            myappid = u'samhitech.mircoEye.control_module'  # appid
+            myappid = 'samhitech.mircoEye.control_module'  # appid
             ctypes.windll.shell32.\
                 SetCurrentProcessExplicitAppUserModelID(myappid)
 

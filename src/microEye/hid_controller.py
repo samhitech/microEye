@@ -1,6 +1,6 @@
 import sys
-
 from enum import Enum
+
 import hid
 import numpy as np
 from PyQt5.QtCore import *

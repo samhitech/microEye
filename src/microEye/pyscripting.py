@@ -36,15 +36,15 @@ class pyEditor(QWidget):
 
     def openScript(self):
         filename, _ = QFileDialog.getOpenFileName(
-            self, "Load Script", filter="Python Files (*.py);;")
+            self, 'Load Script', filter='Python Files (*.py);;')
 
         if len(filename) > 0:
-            with open(filename, 'r', encoding='utf-8') as file:
+            with open(filename, encoding='utf-8') as file:
                 self.pyEditor.setPlainText(file.read())
 
     def saveScript(self):
         filename, _ = QFileDialog.getSaveFileName(
-            self, "Save Script", filter="Python Files (*.py);;")
+            self, 'Save Script', filter='Python Files (*.py);;')
 
         if len(filename) > 0:
             with open(filename, 'w', encoding='utf-8') as file:

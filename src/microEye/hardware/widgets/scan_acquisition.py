@@ -1,11 +1,12 @@
+import numpy as np
 import pyqtgraph as pg
 import qdarkstyle
-import numpy as np
 import tifffile as tf
 from PyQt5.QtCore import *
-from PyQt5.QtWidgets import *
-from PyQt5.QtSerialPort import *
 from PyQt5.QtGui import *
+from PyQt5.QtSerialPort import *
+from PyQt5.QtWidgets import *
+
 from ...uImage import uImage
 
 
@@ -32,7 +33,7 @@ class TiledImageSelector(QWidget):
         imageWidget.ci.setSpacing(0)
         imageWidget.sceneObj.sigMouseClicked.connect(self.clicked)
 
-        for idx, tImg in enumerate(images):
+        for _idx, tImg in enumerate(images):
             vb: pg.ViewBox = imageWidget.addViewBox(*tImg.index)
             vb.setMouseEnabled(False, False)
             vb.setDefaultPadding(0.004)
@@ -74,7 +75,7 @@ class TiledImageSelector(QWidget):
         filename = None
         if filename is None:
             filename, _ = QFileDialog.getSaveFileName(
-                self, "Save Raw Data", filter="Tiff Files (*.tif)")
+                self, 'Save Raw Data', filter='Tiff Files (*.tif)')
 
         if len(filename) > 0:
             tf.imwrite(
@@ -86,7 +87,7 @@ class TiledImageSelector(QWidget):
         directory = None
         if directory is None:
             directory = str(
-                QFileDialog.getExistingDirectory(self, "Select Directory"))
+                QFileDialog.getExistingDirectory(self, 'Select Directory'))
 
         if len(directory) > 0:
             for idx, tImg in enumerate(self.images):
@@ -270,20 +271,20 @@ class ScanAcquisitionWidget(QGroupBox):
         z_buttons.addWidget(self.z_stop_btn)
         layout.addRow(z_buttons)
 
-        self._directory = ""
+        self._directory = ''
         self.save_dir_edit = QLineEdit(self._directory)
         self.save_dir_edit.setReadOnly(True)
 
         save_browse_btn = QPushButton(
-            "...", clicked=lambda: self.save_browse_clicked())
+            '...', clicked=lambda: self.save_browse_clicked())
 
         layout.addRow(self.save_dir_edit)
         layout.addWidget(save_browse_btn)
 
     def save_browse_clicked(self):
-        """Slot for browse clicked event"""
+        '''Slot for browse clicked event'''
         directory = QFileDialog.getExistingDirectory(
-            self, "Select Directory")
+            self, 'Select Directory')
 
         if len(directory) > 0:
             self._directory = directory

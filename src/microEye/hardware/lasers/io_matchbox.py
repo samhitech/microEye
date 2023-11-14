@@ -1,11 +1,11 @@
-from PyQt5.QtCore import *
-from PyQt5.QtWidgets import *
-from PyQt5.QtSerialPort import *
-from PyQt5.QtGui import *
-
 import os
 import sys
+
 import qdarkstyle
+from PyQt5.QtCore import *
+from PyQt5.QtGui import *
+from PyQt5.QtSerialPort import *
+from PyQt5.QtWidgets import *
 
 
 class io_combiner(QSerialPort):
@@ -260,32 +260,23 @@ class io_combiner(QSerialPort):
     def SetCurrent(self, index: int, value: int) -> bool:
         if (self.isOpen()):
             res = self.SendCommand(
-                'Lc{:.0f} {:.0f}'.format(index, value).encode('utf-8'))
+                f'Lc{index:.0f} {value:.0f}'.encode())
 
-            if '<ACK>' in res:
-                return True
-            else:
-                return False
+            return '<ACK>' in res
 
     def SetDisabled(self, index: int) -> bool:
         if (self.isOpen()):
             res = self.SendCommand(
-                'L{:.0f}D'.format(index).encode('utf-8'))
+                f'L{index:.0f}D'.encode())
 
-            if '<ACK>' in res:
-                return True
-            else:
-                return False
+            return '<ACK>' in res
 
     def SetEnabled(self, index: int) -> bool:
         if (self.isOpen()):
             res = self.SendCommand(
-                'L{:.0f}E'.format(index).encode('utf-8'))
+                f'L{index:.0f}E'.encode())
 
-            if '<ACK>' in res:
-                return True
-            else:
-                return False
+            return '<ACK>' in res
 
     def GetInfo(self):
         if (self.isOpen()):
@@ -317,24 +308,24 @@ class LaserSwitches(QGroupBox):
         L_Layout = QVBoxLayout()
 
         # on with cam 1 flash
-        self.CAM1 = QRadioButton("CAM 1")
-        self.CAM1.state = "L{:d}F1".format(wavelength)
+        self.CAM1 = QRadioButton('CAM 1')
+        self.CAM1.state = f'L{wavelength:d}F1'
         L_Layout.addWidget(self.CAM1)
 
         # on with cam 2 flash
-        self.CAM2 = QRadioButton("CAM 2")
-        self.CAM2.state = "L{:d}F2".format(wavelength)
+        self.CAM2 = QRadioButton('CAM 2')
+        self.CAM2.state = f'L{wavelength:d}F2'
         L_Layout.addWidget(self.CAM2)
 
         # off regardless
-        self.OFF = QRadioButton("OFF")
-        self.OFF.state = "L{:d}OFF".format(wavelength)
+        self.OFF = QRadioButton('OFF')
+        self.OFF.state = f'L{wavelength:d}OFF'
         self.OFF.setChecked(True)
         L_Layout.addWidget(self.OFF)
 
         # on regardless
-        self.ON = QRadioButton("ON")
-        self.ON.state = "L{:d}ON".format(wavelength)
+        self.ON = QRadioButton('ON')
+        self.ON.state = f'L{wavelength:d}ON'
         L_Layout.addWidget(self.ON)
 
         # Create a button group for radio buttons
@@ -352,7 +343,7 @@ class LaserSwitches(QGroupBox):
         self.L_current.setMaximum(Laser.Max[index - 1])
         self.L_current.setValue(0)
         self.L_set_curr_btn = QPushButton(
-            "Set [mA]",
+            'Set [mA]',
             clicked=lambda:
             self.Laser.SetCurrent(
                 self.index,
@@ -372,7 +363,7 @@ class LaserSwitches(QGroupBox):
         object : [QRadioButton]
             the radio button toggled
         '''
-        if ("OFF" in object.state):
+        if ('OFF' in object.state):
             self.Laser.SetDisabled(self.index)
         else:
             self.Laser.SetEnabled(self.index)
@@ -409,11 +400,11 @@ class CombinerLaserWidget(QGroupBox):
 
         # IO MatchBox controls
         self.mbox_connect_btn = QPushButton(
-            "Connect",
+            'Connect',
             clicked=lambda: self.laser_connect()
         )
         self.mbox_disconnect_btn = QPushButton(
-            "Disconnect",
+            'Disconnect',
             clicked=lambda: self.Laser.CloseCOM()
         )
 
@@ -429,11 +420,11 @@ class CombinerLaserWidget(QGroupBox):
         self.V_Layout.addRow(
             self.Switches_Layout)
 
-        self.S_Current_Label = QLabel("NA")
-        self.R_Current_Label = QLabel("NA")
-        self.R_Temps_Label = QLabel("NA")
-        self.S_Temps_Label = QLabel("NA")
-        self.R_TEC_Label = QLabel("NA")
+        self.S_Current_Label = QLabel('NA')
+        self.R_Current_Label = QLabel('NA')
+        self.R_Temps_Label = QLabel('NA')
+        self.S_Temps_Label = QLabel('NA')
+        self.R_TEC_Label = QLabel('NA')
 
         self.V_Layout.addRow(
             QLabel('Currents Read:'), self.R_Current_Label)
@@ -478,27 +469,25 @@ class CombinerLaserWidget(QGroupBox):
             self.Laser.GetCurrent()
 
             self.R_Current_Label.setText(
-                "{:.2f} mA, {:.2f} mA, {:.2f} mA, {:.2f} mA".format(
+                '{:.2f} mA, {:.2f} mA, {:.2f} mA, {:.2f} mA'.format(
                     *self.Laser.Current))
             self.R_Temps_Label.setText(
-                "{:.2f} C, {:.2f} C, {:.2f} C".format(
+                '{:.2f} C, {:.2f} C, {:.2f} C'.format(
                     self.Laser.R_Diode_Temp,
                     self.Laser.R_Crystal_Temp,
                     self.Laser.R_Body_Temp))
             self.S_Temps_Label.setText(
-                "{:.2f} C, {:.2f} C, {:.2f} C".format(
+                '{:.2f} C, {:.2f} C, {:.2f} C'.format(
                     self.Laser.S_Diode_Temp,
                     self.Laser.S_Crystal_Temp,
                     self.Laser.S_Fan_Temp))
             self.R_TEC_Label.setText(
-                "{} , {}".format(
-                    self.Laser.R_LD_TEC_Load,
-                    self.Laser.R_Crystal_TEC_Load))
+                f'{self.Laser.R_LD_TEC_Load} , {self.Laser.R_Crystal_TEC_Load}')
 
             self.setTitle(self.Laser.Model)
-            self.mbox_connect_btn.setStyleSheet("background-color: green")
+            self.mbox_connect_btn.setStyleSheet('background-color: green')
         else:
-            self.mbox_connect_btn.setStyleSheet("background-color: red")
+            self.mbox_connect_btn.setStyleSheet('background-color: red')
 
         self.RefreshPorts()
 
@@ -561,7 +550,7 @@ class CombinerLaserWidget(QGroupBox):
 
         if sys.platform.startswith('win'):
             import ctypes
-            myappid = u'samhitech.mircoEye.control_module'  # appid
+            myappid = 'samhitech.mircoEye.control_module'  # appid
             ctypes.windll.shell32.\
                 SetCurrentProcessExplicitAppUserModelID(myappid)
 

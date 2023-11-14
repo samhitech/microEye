@@ -1,14 +1,15 @@
 
 from typing import Union
+
 import cv2
 import numpy as np
 import tifffile as tf
 import zarr
-from PyQt5.QtCore import *
 from numba import cuda
+from PyQt5.QtCore import *
 
 
-class uImage():
+class uImage:
 
     def __init__(self, image: np.ndarray):
         self._isfloat = (image.dtype == np.float16
@@ -200,10 +201,13 @@ class uImage():
         return uImage(res)
 
     def fromBuffer(buffer, height, width, bytes_per_pixel):
-        if bytes_per_pixel == 1:
-            return uImage.fromUINT8(buffer, height, width)
+        if buffer is not None:
+            if bytes_per_pixel == 1:
+                return uImage.fromUINT8(buffer, height, width)
+            else:
+                return uImage.fromUINT16(buffer, height, width)
         else:
-            return uImage.fromUINT16(buffer, height, width)
+            return np.zeros((height, width), dtype=np.uint16)
 
     def hsplitData(self):
         mid = self._image.shape[1] // 2

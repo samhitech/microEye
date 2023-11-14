@@ -73,7 +73,7 @@ class RegloDigital(QSerialPort):
     _foot_switch_ = 'C'
 
     def __init__(self, Port: str, Address: int, *args, **kwargs):
-        super(RegloDigital, self).__init__(Port)
+        super().__init__(Port)
         self.Address = str(Address)
         # self.setPortName(Port)
         self.setBaudRate(9600)
@@ -345,17 +345,17 @@ class reglo_digital_module(QMainWindow):
     '''
 
     def __init__(self, *args, **kwargs):
-        super(reglo_digital_module, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
         # setting title
-        self.setWindowTitle("microEye RegloDigital module")
+        self.setWindowTitle('microEye RegloDigital module')
 
         # setting geometry
         self.setGeometry(0, 0, 800, 600)
 
         # Statusbar time
         self.statusBar().showMessage(
-            "Time: " + QDateTime.currentDateTime().toString("hh:mm:ss,zzz"))
+            'Time: ' + QDateTime.currentDateTime().toString('hh:mm:ss,zzz'))
 
         # RegloDigital
         self.regloDigital = RegloDigital(Port='COM8', Address=1)
@@ -377,7 +377,7 @@ class reglo_digital_module(QMainWindow):
 
         # Threading
         self._threadpool = QThreadPool()
-        print("Multithreading with maximum %d threads"
+        print('Multithreading with maximum %d threads'
               % self._threadpool.maxThreadCount())
 
         self.show()
@@ -622,14 +622,14 @@ class reglo_digital_module(QMainWindow):
                 self.regloDigital.start()
 
     def cycles_changed(self, value):
-        self.cycle_label.setText('Number of Cycles: {:d}'.format(value))
+        self.cycle_label.setText(f'Number of Cycles: {value:d}')
         self.cycles_table.setRowCount(value)
         for r in range(value):
             self.cycles_table.setItem(
                 r, 0, QTableWidgetItem(str(self.inc_slider.value())))
 
     def inc_changed(self, value):
-        self.inc_label.setText('Speed Increment: {:d}'.format(value))
+        self.inc_label.setText(f'Speed Increment: {value:d}')
         self.cycles_table.setRowCount(self.cycle_slider.value())
         for r in range(self.cycle_slider.value()):
             self.cycles_table.setItem(
@@ -670,15 +670,15 @@ class reglo_digital_module(QMainWindow):
                     self.cycle['incr'][self.cycle['index']]
                 speed = min(max(speed, 0), 160.0)
                 self.regloDigital.set_speed(speed)
-                self.speed_box.setText('{:.2f}'.format(speed))
+                self.speed_box.setText(f'{speed:.2f}')
                 self.flowrate_box.setText(
                     self.regloDigital.get_flowrate_mlmin())
                 self.cycle['index'] = self.cycle['index'] + 1
 
         self.statusBar().showMessage(
-            "Time: {0} | Rx: {1} | Status {2} | Direction {3} | Cycle {4} sec"
+            'Time: {} | Rx: {} | Status {} | Direction {} | Cycle {} sec'
             .format(
-                QDateTime.currentDateTime().toString("hh:mm:ss,zzz"),
+                QDateTime.currentDateTime().toString('hh:mm:ss,zzz'),
                 self.regloDigital.response,
                 ('Active' if self.regloDigital.active else 'Idle'),
                 ('CW' if self.regloDigital.clockwise else 'CCW'),
@@ -686,17 +686,17 @@ class reglo_digital_module(QMainWindow):
 
         # update indicators
         if self.regloDigital.isOpen():
-            self.connect_btn.setStyleSheet("background-color: green")
+            self.connect_btn.setStyleSheet('background-color: green')
             self.connect_btn.setText('disconnect')
         else:
-            self.connect_btn.setStyleSheet("background-color: red")
+            self.connect_btn.setStyleSheet('background-color: red')
             self.connect_btn.setText('connect')
 
         if self.regloDigital.active:
-            self.toggle_btn.setStyleSheet("background-color: green")
+            self.toggle_btn.setStyleSheet('background-color: green')
             self.toggle_btn.setText('stop (Active)')
         else:
-            self.toggle_btn.setStyleSheet("background-color: red")
+            self.toggle_btn.setStyleSheet('background-color: red')
             self.toggle_btn.setText('start (Idle)')
 
     def connect(self):
@@ -766,7 +766,7 @@ class reglo_digital_module(QMainWindow):
 
         if sys.platform.startswith('win'):
             import ctypes
-            myappid = u'samhitech.mircoEye.reglo_digital_module'  # appid
+            myappid = 'samhitech.mircoEye.reglo_digital_module'  # appid
             ctypes.windll.shell32.\
                 SetCurrentProcessExplicitAppUserModelID(myappid)
 

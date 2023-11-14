@@ -63,13 +63,13 @@ class focusWidget(QDockWidget):
 
         # IR LineROI Graph
         self.graph_IR = PlotWidget()
-        self.graph_IR.setLabel("bottom", "Pixel", **self.labelStyle)
-        self.graph_IR.setLabel("left", "Signal", "V", **self.labelStyle)
+        self.graph_IR.setLabel('bottom', 'Pixel', **self.labelStyle)
+        self.graph_IR.setLabel('left', 'Signal', 'V', **self.labelStyle)
         # IR Peak Position Graph
         self.graph_Peak = PlotWidget()
-        self.graph_Peak.setLabel("bottom", "Frame", **self.labelStyle)
+        self.graph_Peak.setLabel('bottom', 'Frame', **self.labelStyle)
         self.graph_Peak.setLabel(
-            "left", "Center Pixel Error", **self.labelStyle)
+            'left', 'Center Pixel Error', **self.labelStyle)
         # IR Camera GraphView
         self.remote_view = RemoteGraphicsView()
         self.remote_view.pg.setConfigOptions(
@@ -134,7 +134,7 @@ class focusWidget(QDockWidget):
 
     def save_config(self):
         filename, _ = QFileDialog.getSaveFileName(
-            self, "Save config", filter="JSON Files (*.json);;")
+            self, 'Save config', filter='JSON Files (*.json);;')
 
         if len(filename) > 0:
             config = {
@@ -148,14 +148,14 @@ class focusWidget(QDockWidget):
                 json.dump(config, file)
 
             QMessageBox.information(
-                self, "Info", "Config saved.")
+                self, 'Info', 'Config saved.')
         else:
             QMessageBox.warning(
-                self, "Warning", "Config not saved.")
+                self, 'Warning', 'Config not saved.')
 
     def load_config(self):
         filename, _ = QFileDialog.getOpenFileName(
-            self, "Load config", filter="JSON Files (*.json);;")
+            self, 'Load config', filter='JSON Files (*.json);;')
 
         if len(filename) > 0:
             config: dict = None
@@ -165,7 +165,7 @@ class focusWidget(QDockWidget):
                 'ROI_length',
                 'ROI_angle',
             ]
-            with open(filename, 'r') as file:
+            with open(filename) as file:
                 config = json.load(file)
             if all(key in config for key in keys):
                 self.ROI_x.setValue(float(config['ROI_x']))
@@ -175,7 +175,7 @@ class focusWidget(QDockWidget):
                 self.set_roi()
             else:
                 QMessageBox.warning(
-                    self, "Warning", "Wrong or corrupted config file.")
+                    self, 'Warning', 'Wrong or corrupted config file.')
         else:
             QMessageBox.warning(
-                self, "Warning", "No file selected.")
+                self, 'Warning', 'No file selected.')

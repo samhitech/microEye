@@ -1,13 +1,14 @@
 
 from typing import Union
+
 import cv2
 import numpy as np
 
+from ...uImage import TiffSeqHandler, ZarrImageSequence, uImage
 from ..filters import *
-from ...uImage import TiffSeqHandler, uImage, ZarrImageSequence
 from .phasor_fit import *
-from .results import *
 from .pyfit3Dcspline import CPUmleFit_LM, get_roi_list, get_roi_list_CMOS
+from .results import *
 
 
 def get_blob_detector(
@@ -258,9 +259,11 @@ def localize_frame(
             irange=None,
             rel_threshold=0.4,
             max_threshold=1.0,
-            PSFparam=np.array([1.5]),
+            PSFparam=None,
             roiSize=13,
             method=FittingMethod._2D_Phasor_CPU):
+    if PSFparam is None:
+        np.array([1.5])
 
     uImg = uImage(filtered)
 
@@ -314,10 +317,7 @@ def localize_frame(
 
         params[:, :2] += coords
 
-    if params is not None:
-        frames = [index + 1] * params.shape[0]
-    else:
-        frames = None
+    frames = [index + 1] * params.shape[0] if params is not None else None
 
     return frames, params, crlbs, loglike
 

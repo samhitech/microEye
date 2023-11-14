@@ -18,14 +18,14 @@ except Exception:
 
 
 class Vimba_Panel(Camera_Panel):
-    """
+    '''
     A Qt Widget for controlling an Allied Vision Camera through Vimba
      | Inherits Camera_Panel
-    """
+    '''
 
     def __init__(self, threadpool: QThreadPool, cam: vimba_cam, mini=False,
                  *args, **kwargs):
-        """
+        '''
         Initializes a new Vimba_Panel Qt widget
         | Inherits Camera_Panel
 
@@ -35,7 +35,7 @@ class Vimba_Panel(Camera_Panel):
             The threadpool for multithreading
         cam : vimba_cam
             Vimba Camera python adapter
-        """
+        '''
         super().__init__(
             threadpool, cam, mini,
             *args, **kwargs)
@@ -49,7 +49,7 @@ class Vimba_Panel(Camera_Panel):
 
         # exposure slider control
         self.cam_exposure_lbl = DragLabel(
-            "Exposure " + self.cam.exposure_unit,
+            'Exposure ' + self.cam.exposure_unit,
             parent_name='cam_exposure_slider')
         self.cam_exposure_slider = qlist_slider(
             orientation=Qt.Orientation.Horizontal)
@@ -69,7 +69,7 @@ class Vimba_Panel(Camera_Panel):
         self.cam_exposure_qs.valueChanged.connect(self.exposure_spin_changed)
 
         # exposure mode combobox
-        self.cam_exposure_mode_lbl = QLabel("Exposure Mode")
+        self.cam_exposure_mode_lbl = QLabel('Exposure Mode')
         self.cam_exposure_mode_cbox = QComboBox()
         self.cam_exposure_mode_cbox.addItems(self._cam.exposure_modes[0])
         for x in range(len(self._cam.exposure_modes[2])):
@@ -79,7 +79,7 @@ class Vimba_Panel(Camera_Panel):
             .connect(self.cam_cbox_changed)
 
         # exposure auto mode combobox
-        self.cam_exposure_auto_lbl = QLabel("Exposure Auto Mode")
+        self.cam_exposure_auto_lbl = QLabel('Exposure Auto Mode')
         self.cam_exposure_auto_cbox = QComboBox()
         self.cam_exposure_auto_cbox.addItems(
             self._cam.exposure_auto_entries[0])
@@ -106,7 +106,7 @@ class Vimba_Panel(Camera_Panel):
         self.cam_framerate_qs.setEnabled(False)
 
         # trigger mode combobox
-        self.cam_trigger_mode_lbl = QLabel("Trigger Mode")
+        self.cam_trigger_mode_lbl = QLabel('Trigger Mode')
         self.cam_trigger_mode_cbox = QComboBox()
         self.cam_trigger_mode_cbox.addItems(self._cam.trigger_modes[0])
         for x in range(len(self._cam.trigger_modes[2])):
@@ -116,7 +116,7 @@ class Vimba_Panel(Camera_Panel):
             .connect(self.cam_cbox_changed)
 
         # trigger source combobox
-        self.cam_trigger_source_lbl = QLabel("Trigger Source")
+        self.cam_trigger_source_lbl = QLabel('Trigger Source')
         self.cam_trigger_source_cbox = QComboBox()
         self.cam_trigger_source_cbox.addItems(self._cam.trigger_sources[0])
         for x in range(len(self._cam.trigger_sources[2])):
@@ -126,7 +126,7 @@ class Vimba_Panel(Camera_Panel):
             .connect(self.cam_cbox_changed)
 
         # trigger selector combobox
-        self.cam_trigger_selector_lbl = QLabel("Trigger Selector")
+        self.cam_trigger_selector_lbl = QLabel('Trigger Selector')
         self.cam_trigger_selector_cbox = QComboBox()
         self.cam_trigger_selector_cbox.addItems(self._cam.trigger_selectors[0])
         for x in range(len(self._cam.trigger_selectors[2])):
@@ -136,7 +136,7 @@ class Vimba_Panel(Camera_Panel):
             .connect(self.cam_cbox_changed)
 
         # trigger activation combobox
-        self.cam_trigger_activation_lbl = QLabel("Trigger Activation")
+        self.cam_trigger_activation_lbl = QLabel('Trigger Activation')
         self.cam_trigger_activation_cbox = QComboBox()
         self.cam_trigger_activation_cbox.addItems(
             self._cam.trigger_activations[0])
@@ -147,7 +147,7 @@ class Vimba_Panel(Camera_Panel):
             .connect(self.cam_cbox_changed)
 
         # pixel formats combobox
-        self.cam_pixel_format_lbl = QLabel("Pixel Format")
+        self.cam_pixel_format_lbl = QLabel('Pixel Format')
         self.cam_pixel_format_cbox = QComboBox()
         self.cam_pixel_format_cbox.addItems(
             self._cam.pixel_formats)
@@ -156,17 +156,17 @@ class Vimba_Panel(Camera_Panel):
 
         # start freerun mode button
         self.cam_freerun_btn = QPushButton(
-            "Freerun Mode (Start)",
+            'Freerun Mode (Start)',
             clicked=lambda: self.start_free_run()
         )
 
         # config buttons
         self.cam_load_btn = QPushButton(
-            "Load Config.",
+            'Load Config.',
             clicked=lambda: self.load_config()
         )
         self.cam_save_btn = QPushButton(
-            "Save Config.",
+            'Save Config.',
             clicked=lambda: self.save_config()
         )
         self.config_Hlay = QHBoxLayout()
@@ -175,11 +175,11 @@ class Vimba_Panel(Camera_Panel):
 
         # stop acquisition button
         self.cam_stop_btn = QPushButton(
-            "Stop",
+            'Stop',
             clicked=lambda: self.stop()
         )
 
-        # AOI        
+        # AOI
         self.AOI_x_tbox.setMinimum(0)
         self.AOI_x_tbox.setMaximum(self.cam.width_range[1])
         self.AOI_y_tbox.setMinimum(0)
@@ -368,7 +368,7 @@ class Vimba_Panel(Camera_Panel):
         '''
         if self.cam.acquisition:
             QMessageBox.warning(
-                self, "Warning", "Cannot set AOI while acquiring images!")
+                self, 'Warning', 'Cannot set AOI while acquiring images!')
             return  # if acquisition is already going on
 
         with self._cam.cam:
@@ -377,6 +377,9 @@ class Vimba_Panel(Camera_Panel):
                 self.AOI_height_tbox.value(),
                 self.AOI_x_tbox.value(),
                 self.AOI_y_tbox.value())
+
+            self.cam.get_roi()
+
 
         self.AOI_x_tbox.setValue(int(self.cam.offsetX))
         self.AOI_y_tbox.setValue(int(self.cam.offsetY))
@@ -390,11 +393,13 @@ class Vimba_Panel(Camera_Panel):
         '''
         if self.cam.acquisition:
             QMessageBox.warning(
-                self, "Warning", "Cannot reset AOI while acquiring images!")
+                self, 'Warning', 'Cannot reset AOI while acquiring images!')
             return  # if acquisition is already going on
 
         with self._cam.cam:
             self.cam.set_roi(self.cam.width_max, self.cam.height_max)
+
+            self.cam.get_roi()
         self.AOI_x_tbox.setValue(0)
         self.AOI_y_tbox.setValue(0)
         self.AOI_width_tbox.setValue(int(self.cam.width))
@@ -407,7 +412,7 @@ class Vimba_Panel(Camera_Panel):
         '''
         if self.cam.acquisition:
             QMessageBox.warning(
-                self, "Warning", "Cannot set AOI while acquiring images!")
+                self, 'Warning', 'Cannot set AOI while acquiring images!')
             return  # if acquisition is already going on
 
         with self._cam.cam:
@@ -423,8 +428,8 @@ class Vimba_Panel(Camera_Panel):
         self.refresh_framerate()
 
     def select_AOI(self):
-        if self.frame is not None:
-            aoi = cv2.selectROI(self.frame._view)
+        if self.acq_job is not None:
+            aoi = cv2.selectROI(self.acq_job.frame._view)
             cv2.destroyWindow('ROI selector')
 
             z = self.zoom_box.value()
@@ -435,14 +440,14 @@ class Vimba_Panel(Camera_Panel):
 
     @pyqtSlot(str)
     def cam_cbox_changed(self, value):
-        """
+        '''
         Slot for changed combobox values
 
         Parameters
         ----------
         Value : str
             selected enum value
-        """
+        '''
         with self._cam.cam:
             if self.sender() is self.cam_trigger_mode_cbox:
                 self._cam.set_trigger_mode(value)
@@ -468,7 +473,7 @@ class Vimba_Panel(Camera_Panel):
 
     @pyqtSlot(int, float)
     def cam_exposure_value_changed(self, index, value):
-        """
+        '''
         Slot for changed exposure
 
         Parameters
@@ -477,7 +482,7 @@ class Vimba_Panel(Camera_Panel):
             selected exposure index in the slider values list
         Value : double
             selected exposure in micro-seconds
-        """
+        '''
         with self._cam.cam:
             self._cam.set_exposure(value)
             self._cam.get_exposure(False)
@@ -491,14 +496,14 @@ class Vimba_Panel(Camera_Panel):
 
     @pyqtSlot(float)
     def exposure_spin_changed(self, value: float):
-        """
+        '''
         Slot for changed exposure
 
         Parameters
         ----------
         Value : double
             selected exposure in micro-seconds
-        """
+        '''
         with self._cam.cam:
             self._cam.set_exposure(value)
             self._cam.get_exposure(False)
@@ -614,7 +619,7 @@ class Vimba_Panel(Camera_Panel):
                 self._cam.cam.stop_streaming()
             self._cam.acquisition = False
             QThreadPool.globalInstance().releaseThread()
-            return QDateTime.currentDateTime()
+        return QDateTime.currentDateTime()
 
     def getCaptureArgs(self) -> list:
         '''User specific arguments to be passed to the parallelized
@@ -649,7 +654,7 @@ class Vimba_Panel(Camera_Panel):
 
     def save_config(self):
         filename, _ = QFileDialog.getSaveFileName(
-            self, "Save config", filter="XML Files (*.xml);;")
+            self, 'Save config', filter='XML Files (*.xml);;')
 
         if len(filename) > 0:
 
@@ -657,14 +662,14 @@ class Vimba_Panel(Camera_Panel):
                 self.cam.cam.save_settings(filename, vb.PersistType.All)
 
             QMessageBox.information(
-                self, "Info", "Config saved.")
+                self, 'Info', 'Config saved.')
         else:
             QMessageBox.warning(
-                self, "Warning", "Config not saved.")
+                self, 'Warning', 'Config not saved.')
 
     def load_config(self):
         filename, _ = QFileDialog.getOpenFileName(
-            self, "Load config", filter="XML Files (*.xml);;")
+            self, 'Load config', filter='XML Files (*.xml);;')
 
         if len(filename) > 0:
             with self.cam.cam:
@@ -686,4 +691,4 @@ class Vimba_Panel(Camera_Panel):
                 self.cam_exposure_qs.setValue(self.cam.get_exposure())
         else:
             QMessageBox.warning(
-                self, "Warning", "No file selected.")
+                self, 'Warning', 'No file selected.')

@@ -25,7 +25,7 @@ class thread_worker(QRunnable):
     '''
 
     def __init__(self, fn, *args, progress=True, z_stage=True, **kwargs):
-        super(thread_worker, self).__init__()
+        super().__init__()
 
         # Store constructor arguments (re-used for processing)
         self.fn = fn

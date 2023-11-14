@@ -17,7 +17,7 @@ from PyQt5.QtWidgets import *
 from ..hid_controller import *
 from ..pyscripting import *
 from ..thread_worker import *
-from .cams import CMD, CameraListWidget, thorlabs_camera, Thorlabs_Panel
+from .cams import CMD, CameraListWidget, Thorlabs_Panel, thorlabs_camera
 from .stages import *
 from .widgets import *
 
@@ -43,19 +43,19 @@ except Exception:
 class acquisition_module(QMainWindow):
 
     def __init__(self, *args, **kwargs):
-        super(acquisition_module, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
         # setting title
         self.setWindowTitle(
-            "microEye acquisition module \
-            (https://github.com/samhitech/microEye)")
+            'microEye acquisition module \
+            (https://github.com/samhitech/microEye)')
 
         # setting geometry
         self.setGeometry(0, 0, 800, 600)
 
         # Statusbar time
-        current_time = QDateTime.currentDateTime().toString("hh:mm:ss,zzz")
-        self.statusBar().showMessage("Time: " + current_time)
+        current_time = QDateTime.currentDateTime().toString('hh:mm:ss,zzz')
+        self.statusBar().showMessage('Time: ' + current_time)
 
         # Cameras
         self.ids_cams: list[IDS_Camera] = []
@@ -71,12 +71,12 @@ class acquisition_module(QMainWindow):
         self.threadpool = QThreadPool()
         self._mcam_acq_worker = None
         print(
-            "Multithreading with maximum %d threads"
+            'Multithreading with maximum %d threads'
             % self.threadpool.maxThreadCount())
 
         self._stop_mcam_thread = True
         self._exec_time = 0.0
-        self._calc = ""
+        self._calc = ''
 
         # XY Stage
         self.kinesisXY = KinesisXY(threadpool=self.threadpool)
@@ -152,9 +152,9 @@ class acquisition_module(QMainWindow):
         self.pyEditor = pyEditor()
         self.pyEditor.exec_btn.clicked.connect(lambda: self.exec_script())
 
-        self.tabView.addTab(self.first_tab, "Main")
-        self.tabView.addTab(self.second_tab, "Stage Controls")
-        self.tabView.addTab(self.pyEditor, "Scripting")
+        self.tabView.addTab(self.first_tab, 'Main')
+        self.tabView.addTab(self.second_tab, 'Stage Controls')
+        self.tabView.addTab(self.pyEditor, 'Scripting')
 
         # CAM Table
         self.camWidget = CameraListWidget()
@@ -162,14 +162,14 @@ class acquisition_module(QMainWindow):
         self.camWidget.removeCamera.connect(self.remove_camera_clicked)
 
         self.start_macq = QPushButton(
-            "Start Multi-Cam Acquisition",
+            'Start Multi-Cam Acquisition',
             clicked=lambda: self.start_multi_cam_acq())
-        self.start_macq.setToolTip("Trigger mode acquisition | \
+        self.start_macq.setToolTip('Trigger mode acquisition | \
         First Cam Must Be Software Triggered | \
-        Second Cam Externally Triggered by the First Flash Optocoupler.")
+        Second Cam Externally Triggered by the First Flash Optocoupler.')
 
         self.stop_macq = QPushButton(
-            "Stop Acquisition",
+            'Stop Acquisition',
             clicked=lambda: self.stop_multi_cam_acq())
 
         self.camWidget.HL_buttons.addWidget(self.start_macq, 2)
@@ -177,15 +177,15 @@ class acquisition_module(QMainWindow):
 
         self.acq_mode_radio = QHBoxLayout()
 
-        self.strigger_rbox = QRadioButton("Software Triggered")
+        self.strigger_rbox = QRadioButton('Software Triggered')
         self.strigger_rbox.setChecked(True)
-        self.freerun_rbox = QRadioButton("Freerun")
+        self.freerun_rbox = QRadioButton('Freerun')
 
         self.acq_mode_radio.addWidget(self.strigger_rbox)
         self.acq_mode_radio.addWidget(self.freerun_rbox)
         self.acq_mode_radio.addStretch()
 
-        self.experiment_name = QLineEdit("Experiment_001")
+        self.experiment_name = QLineEdit('Experiment_001')
         self.experiment_name.textChanged[str].connect(
             self.experiment_name_changed)
 
@@ -195,31 +195,31 @@ class acquisition_module(QMainWindow):
         self.save_dir_edit = QLineEdit(self.save_directory)
         self.save_dir_edit.setReadOnly(True)
 
-        self.save_browse_btn = QPushButton("...",
+        self.save_browse_btn = QPushButton('...',
                                            clicked=lambda:
                                            self.save_browse_clicked())
 
         self.save_dir_layout.addWidget(self.save_dir_edit)
         self.save_dir_layout.addWidget(self.save_browse_btn)
 
-        self.frames_tbox = QLineEdit("1000")
+        self.frames_tbox = QLineEdit('1000')
         self.frames_tbox.textChanged[str].connect(self.frames_changed)
         self.frames_tbox.setValidator(QIntValidator())
 
-        self.stack_to_stats = QPushButton("Convert Tiff stack to var & mean",
+        self.stack_to_stats = QPushButton('Convert Tiff stack to var & mean',
                                           clicked=lambda:
                                           self.stack_to_stats_clicked())
 
         self.first_tab_Layout.addRow(self.camWidget)
         self.first_tab_Layout.addRow(self.acq_mode_radio)
         self.first_tab_Layout.addRow(
-            QLabel("Experiment:"),
+            QLabel('Experiment:'),
             self.experiment_name)
         self.first_tab_Layout.addRow(
-            QLabel("Save Directory:"),
+            QLabel('Save Directory:'),
             self.save_dir_layout)
         self.first_tab_Layout.addRow(
-            QLabel("Number of frames:"),
+            QLabel('Number of frames:'),
             self.frames_tbox)
         # self.first_tab_Layout.addWidget(self.stack_to_stats)
 
@@ -267,38 +267,38 @@ class acquisition_module(QMainWindow):
             self.hid_controller_toggle = not self.hid_controller_toggle
             if self.hid_controller_toggle:
                 self.kinesisXY.n_x_jump_btn.setStyleSheet(
-                    "background-color: green")
+                    'background-color: green')
                 self.kinesisXY.n_y_jump_btn.setStyleSheet(
-                    "background-color: green")
+                    'background-color: green')
                 self.kinesisXY.p_x_jump_btn.setStyleSheet(
-                    "background-color: green")
+                    'background-color: green')
                 self.kinesisXY.p_y_jump_btn.setStyleSheet(
-                    "background-color: green")
+                    'background-color: green')
                 self.kinesisXY.n_x_step_btn.setStyleSheet(
-                    "")
+                    '')
                 self.kinesisXY.n_y_step_btn.setStyleSheet(
-                    "")
+                    '')
                 self.kinesisXY.p_x_step_btn.setStyleSheet(
-                    "")
+                    '')
                 self.kinesisXY.p_y_step_btn.setStyleSheet(
-                    "")
+                    '')
             else:
                 self.kinesisXY.n_x_jump_btn.setStyleSheet(
-                    "")
+                    '')
                 self.kinesisXY.n_y_jump_btn.setStyleSheet(
-                    "")
+                    '')
                 self.kinesisXY.p_x_jump_btn.setStyleSheet(
-                    "")
+                    '')
                 self.kinesisXY.p_y_jump_btn.setStyleSheet(
-                    "")
+                    '')
                 self.kinesisXY.n_x_step_btn.setStyleSheet(
-                    "background-color: green")
+                    'background-color: green')
                 self.kinesisXY.n_y_step_btn.setStyleSheet(
-                    "background-color: green")
+                    'background-color: green')
                 self.kinesisXY.p_x_step_btn.setStyleSheet(
-                    "background-color: green")
+                    'background-color: green')
                 self.kinesisXY.p_y_step_btn.setStyleSheet(
-                    "background-color: green")
+                    'background-color: green')
 
     def hid_LStick_report(self, x, y):
         diff_x = x - 128
@@ -343,7 +343,7 @@ class acquisition_module(QMainWindow):
                             QThread.msleep(delay)
                             if average > 1:
                                 frames_avg = []
-                                for n in range(average):
+                                for _n in range(average):
                                     frames_avg.append(
                                         cam.cam.get_frame().as_numpy_ndarray())
                                 frame = uImage(
@@ -366,8 +366,7 @@ class acquisition_module(QMainWindow):
 
         except Exception:
             traceback.print_exc()
-        finally:
-            return data
+        return data
 
     def result_scan_acquisition(self, data):
         self._scanning = False
@@ -411,7 +410,7 @@ class acquisition_module(QMainWindow):
 
     def stack_to_stats_clicked(self):
         filename, _ = QFileDialog.getOpenFileName(
-            self, "Select Tiff Stack", filter="Tiff Files (*.tiff);;")
+            self, 'Select Tiff Stack', filter='Tiff Files (*.tiff);;')
 
         if len(filename) > 0:
             self.threadpool.start(
@@ -455,29 +454,29 @@ class acquisition_module(QMainWindow):
                 x = x + page.asarray()
                 x2 = x2 + np.square(page.asarray())
 
-                self._calc = " | Calculating {:d}/{:d}".format(
+                self._calc = ' | Calculating {:d}/{:d}'.format(
                     page.index + 1, len(tiff_file.pages))
 
             mean = x / len(tiff_file.pages)
             x3 = x2 / len(tiff_file.pages)
             var = x3 - np.square(mean)
 
-            self._calc = " | Saving ... "
+            self._calc = ' | Saving ... '
             # append frame to tiff
-            tf.imwrite(filename.replace(".tiff", "avg.tiff"),
+            tf.imwrite(filename.replace('.tiff', 'avg.tiff'),
                        data=mean, photometric='minisblack',
                        append=True, bigtiff=True)
-            tf.imwrite(filename.replace(".tiff", "var.tiff"),
+            tf.imwrite(filename.replace('.tiff', 'var.tiff'),
                        data=var, photometric='minisblack',
                        append=True, bigtiff=True)
-            self._calc = ""
+            self._calc = ''
 
     def save_browse_clicked(self):
-        self.save_directory = ""
+        self.save_directory = ''
 
         while len(self.save_directory) == 0:
             self.save_directory = str(QFileDialog.getExistingDirectory(
-                self, "Select Directory"))
+                self, 'Select Directory'))
 
         self.save_dir_edit.setText(self.save_directory)
 
@@ -496,14 +495,14 @@ class acquisition_module(QMainWindow):
     def remove_camera_clicked(self, cam):
         if not self._stop_mcam_thread:
             QMessageBox.warning(
-                self, "Warning",
-                "Please stop Multi-Cam acquisition.",
+                self, 'Warning',
+                'Please stop Multi-Cam acquisition.',
                 QMessageBox.StandardButton.Ok)
             return
 
-        if 'uEye' in cam["Driver"]:
+        if 'uEye' in cam['Driver']:
             for pan in self.ids_panels:
-                if pan.cam.Cam_ID == cam["camID"]:
+                if pan.cam.Cam_ID == cam['camID']:
                     if not pan.cam.acquisition:
                         pan.cam.free_memory()
                         pan.cam.dispose()
@@ -515,10 +514,10 @@ class acquisition_module(QMainWindow):
                         self.Hlayout.removeWidget(pan)
                         pan.setParent(None)
                         break
-        if 'UC480' in cam["Driver"]:
+        if 'UC480' in cam['Driver']:
             for pan in self.thor_panels:
                 # if pan.cam.hCam.value == cam["camID"]:
-                if pan.cam.cInfo.SerNo.decode('utf-8') == cam["Serial"]:
+                if pan.cam.cInfo.SerNo.decode('utf-8') == cam['Serial']:
                     if not pan.cam.acquisition:
                         pan.cam.free_memory()
                         pan.cam.dispose()
@@ -530,10 +529,10 @@ class acquisition_module(QMainWindow):
                         self.Hlayout.removeWidget(pan)
                         pan.setParent(None)
                         break
-        if 'Vimba' in cam["Driver"]:
+        if 'Vimba' in cam['Driver']:
             for pan in self.vimba_panels:
                 with pan.cam.cam:
-                    if pan.cam.cam.get_serial() == cam["Serial"]:
+                    if pan.cam.cam.get_serial() == cam['Serial']:
                         if not pan.cam.acquisition:
 
                             pan._dispose_cam = True
@@ -549,20 +548,20 @@ class acquisition_module(QMainWindow):
         if not self._stop_mcam_thread:
             QMessageBox.warning(
                 self,
-                "Warning",
-                "Please stop Multi-Cam acquisition.",
+                'Warning',
+                'Please stop Multi-Cam acquisition.',
                 QMessageBox.StandardButton.Ok)
             return
 
         # print(cam)
-        if cam["InUse"] == 0:
-            if 'uEye' in cam["Driver"]:
-                ids_cam = IDS_Camera(cam["camID"])
+        if cam['InUse'] == 0:
+            if 'uEye' in cam['Driver']:
+                ids_cam = IDS_Camera(cam['camID'])
                 nRet = ids_cam.initialize()
                 self.ids_cams.append(ids_cam)
                 ids_panel = IDS_Panel(
                     self.threadpool,
-                    ids_cam, False, cam["Model"] + " " + cam["Serial"])
+                    ids_cam, False, cam['Model'] + ' ' + cam['Serial'])
                 ids_panel._directory = self.save_directory
                 if len(self.ids_panels) == 0:
                     ids_panel.master = True
@@ -572,26 +571,26 @@ class acquisition_module(QMainWindow):
                     self.master_exposure_changed)
                 self.ids_panels.append(ids_panel)
                 self.Hlayout.addWidget(ids_panel, 1)
-            if 'UC480' in cam["Driver"]:
-                thor_cam = thorlabs_camera(cam["camID"])
+            if 'UC480' in cam['Driver']:
+                thor_cam = thorlabs_camera(cam['camID'])
                 nRet = thor_cam.initialize()
                 if nRet == CMD.IS_SUCCESS:
                     self.thorlabs_cams.append(thor_cam)
                     thor_panel = Thorlabs_Panel(
                         self.threadpool,
-                        thor_cam, False, cam["Model"] + " " + cam["Serial"])
+                        thor_cam, False, cam['Model'] + ' ' + cam['Serial'])
                     thor_panel._directory = self.save_directory
                     thor_panel.master = False
                     thor_panel.exposureChanged.connect(
                         self.master_exposure_changed)
                     self.thor_panels.append(thor_panel)
                     self.Hlayout.addWidget(thor_panel, 1)
-            if 'Vimba' in cam["Driver"]:
-                v_cam = vimba_cam(cam["camID"])
+            if 'Vimba' in cam['Driver']:
+                v_cam = vimba_cam(cam['camID'])
                 self.vimba_cams.append(v_cam)
                 v_panel = Vimba_Panel(
                         self.threadpool,
-                        v_cam, False, cam["Model"] + " " + cam["Serial"])
+                        v_cam, False, cam['Model'] + ' ' + cam['Serial'])
                 v_panel._directory = self.save_directory
                 v_panel.master = False
                 v_panel.exposureChanged.connect(
@@ -601,8 +600,8 @@ class acquisition_module(QMainWindow):
         else:
             QMessageBox.warning(
                 self,
-                "Warning",
-                "Device is in use or already added.",
+                'Warning',
+                'Device is in use or already added.',
                 QMessageBox.StandardButton.Ok)
 
     def stop_multi_cam_acq(self):
@@ -615,16 +614,16 @@ class acquisition_module(QMainWindow):
         if p_count < 2:
             QMessageBox.warning(
                 self,
-                "Warning",
-                "Two cameras has to be added at least.",
+                'Warning',
+                'Two cameras has to be added at least.',
                 QMessageBox.StandardButton.Ok)
             return
 
         if self.ids_panels[0].cam.trigger_mode != ueye.IS_SET_TRIGGER_SOFTWARE:
             QMessageBox.warning(
                 self,
-                "Warning",
-                "First camera has to be set to Software Trigger Mode.",
+                'Warning',
+                'First camera has to be set to Software Trigger Mode.',
                 QMessageBox.StandardButton.Ok)
             return
 
@@ -633,8 +632,8 @@ class acquisition_module(QMainWindow):
                ueye.IS_SET_TRIGGER_OFF:
                 QMessageBox.warning(
                     self,
-                    "Warning",
-                    "Other cameras has to be set to a certain Trigger Mode.",
+                    'Warning',
+                    'Other cameras has to be set to a certain Trigger Mode.',
                     QMessageBox.StandardButton.Ok)
                 return
 
@@ -642,8 +641,8 @@ class acquisition_module(QMainWindow):
             if cam.acquisition:
                 QMessageBox.warning(
                     self,
-                    "Warning",
-                    cam.name + " is in acquisiton mode.",
+                    'Warning',
+                    cam.name + ' is in acquisiton mode.',
                     QMessageBox.StandardButton.Ok)
                 return
 
@@ -673,7 +672,7 @@ class acquisition_module(QMainWindow):
     def multi_cam_acq(self, nRet):
         try:
             time = QDateTime.currentDateTime()
-            datetime_str = "\\" + time.toString("_yyyy_MM_dd_hhmmss")
+            datetime_str = '\\' + time.toString('_yyyy_MM_dd_hhmmss')
             nFrames = int(self.frames_tbox.text())
 
             for panel in reversed(self.ids_panels):
@@ -682,9 +681,9 @@ class acquisition_module(QMainWindow):
                 panel._frames.queue.clear()
                 panel._counter = 0
 
-                panel._save_path = (self.save_directory + "\\"
+                panel._save_path = (self.save_directory + '\\'
                                     + self.experiment_name.text()
-                                    + "\\" + panel.cam.name
+                                    + '\\' + panel.cam.name
                                     + datetime_str)
 
                 if not panel.master:
@@ -751,73 +750,67 @@ class acquisition_module(QMainWindow):
                 cam.get_temperature()
 
     def recurring_timer(self):
-        exe = ""
+        exe = ''
         if not self._stop_mcam_thread:
-            exe = " | Execution time (ms): " + \
-                "{:.3f}".format(self._exec_time) + \
-                " | FPS: " + "{:.3f}".format(1000.0/self._exec_time) + \
-                " | Frames: " + str(self.ids_panels[0]._counter)
+            exe = ' | Execution time (ms): ' + \
+                f'{self._exec_time:.3f}' + \
+                ' | FPS: ' + f'{1000.0/self._exec_time:.3f}' + \
+                ' | Frames: ' + str(self.ids_panels[0]._counter)
 
         for panel in self.ids_panels:
             panel.info_temp.setText(
-                " T {:.2f} °C".format(panel.cam.temperature))
+                f' T {panel.cam.temperature:.2f} °C')
             panel.info_cap.setText(
-                " Capture {:d}/{:d} {:.2%} | {:.2f} ms ".format(
+                ' Capture {:d}/{:d} {:.2%} | {:.2f} ms '.format(
                     panel._counter,
                     panel._nFrames,
                     panel._counter / panel._nFrames,
                     panel._exec_time))
             panel.info_disp.setText(
-                " Display {:d} | {:.2f} ms ".format(
-                    panel._buffer.qsize(), panel._dis_time))
+                f' Display {panel._buffer.qsize():d} | {panel._dis_time:.2f} ms ')
             panel.info_save.setText(
-                " Save {:d} | {:.2f} ms ".format(
-                    panel._frames.qsize(), panel._save_time))
-            exe = exe + " | CAM " + str(panel.cam.Cam_ID) + \
+                f' Save {panel._frames.qsize():d} | {panel._save_time:.2f} ms ')
+            exe = exe + ' | CAM ' + str(panel.cam.Cam_ID) + \
                 panel.info_temp.text() + panel.info_cap.text() + \
                 panel.info_disp.text() + panel.info_save.text()
 
         for panel in self.thor_panels:
             panel.info_temp.setText(
-                " T {:.2f} °C".format(panel.cam.temperature))
+                f' T {panel.cam.temperature:.2f} °C')
             panel.info_cap.setText(
-                " Capture {:d}/{:d} {:.2%} | {:.2f} ms ".format(
+                ' Capture {:d}/{:d} {:.2%} | {:.2f} ms '.format(
                     panel._counter,
                     panel._nFrames,
                     panel._counter / panel._nFrames,
                     panel._exec_time))
             panel.info_disp.setText(
-                " Display {:d} | {:.2f} ms ".format(
-                    panel._buffer.qsize(), panel._dis_time))
+                f' Display {panel._buffer.qsize():d} | {panel._dis_time:.2f} ms ')
             panel.info_save.setText(
-                " Save {:d} | {:.2f} ms ".format(
-                    panel._frames.qsize(), panel._save_time))
-            exe = exe + " | CAM " + str(panel.cam.hCam.value) + \
+                f' Save {panel._frames.qsize():d} | {panel._save_time:.2f} ms ')
+            exe = exe + ' | CAM ' + str(panel.cam.hCam.value) + \
                 panel.info_temp.text() + panel.info_cap.text() + \
                 panel.info_disp.text() + panel.info_save.text()
 
         for panel in self.vimba_panels:
             panel.info_temp.setText(
-                " T {:.2f} °C".format(panel.cam.temperature))
+                f' T {panel.cam.temperature:.2f} °C')
             panel.info_cap.setText(
-                " Capture {:d}/{:d} {:.2%} | {:.2f} ms ".format(
+                ' Capture {:d}/{:d} {:.2%} | {:.2f} ms '.format(
                     panel._counter,
                     panel._nFrames,
                     panel._counter / panel._nFrames,
                     panel._exec_time))
             panel.info_disp.setText(
-                " Display {:d} | {:.2f} ms ".format(
-                    panel._buffer.qsize(), panel._dis_time))
+                f' Display {panel._buffer.qsize():d} | {panel._dis_time:.2f} ms ')
             panel.info_save.setText(
-                " Save {:d} | {:.2f} ms ".format(
-                    panel._frames.qsize(), panel._save_time))
-            exe = exe + " | CAM " + str(panel.cam.Cam_ID) + \
+                f' Save {panel._frames.qsize():d} | {panel._save_time:.2f} ms ')
+            exe = exe + ' | CAM ' + str(panel.cam.Cam_ID) + \
                 panel.info_temp.text() + panel.info_cap.text() + \
                 panel.info_disp.text() + panel.info_save.text()
 
-        self.statusBar().showMessage("Time: " +
+        self.statusBar().showMessage('Time: ' +
                                      QDateTime.currentDateTime()
-                                     .toString("hh:mm:ss,zzz") +
+                                     .toString('hh:mm:ss,zzz') +
                                      exe + self._calc)
 
     def StartGUI():
@@ -862,7 +855,7 @@ class acquisition_module(QMainWindow):
 
         if sys.platform.startswith('win'):
             import ctypes
-            myappid = u'samhitech.mircoEye.acquisition_module'  # appid
+            myappid = 'samhitech.mircoEye.acquisition_module'  # appid
             ctypes.windll.shell32.\
                 SetCurrentProcessExplicitAppUserModelID(myappid)
 

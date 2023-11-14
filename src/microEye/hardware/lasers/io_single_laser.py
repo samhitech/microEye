@@ -1,11 +1,11 @@
-from PyQt5.QtCore import *
-from PyQt5.QtWidgets import *
-from PyQt5.QtSerialPort import *
-from PyQt5.QtGui import *
-
 import os
 import sys
+
 import qdarkstyle
+from PyQt5.QtCore import *
+from PyQt5.QtGui import *
+from PyQt5.QtSerialPort import *
+from PyQt5.QtWidgets import *
 
 
 class io_single_laser(QSerialPort):
@@ -185,12 +185,9 @@ class io_single_laser(QSerialPort):
         if (self.isOpen()):
             res = self.SendCommand(
                 io_single_laser.P_SET +
-                '{:.2f}'.format(value).encode('utf-8'))
+                f'{value:.2f}'.encode())
 
-            if '<ACK>' in res:
-                return True
-            else:
-                return False
+            return '<ACK>' in res
 
     def GetInfo(self):
         if (self.isOpen()):
@@ -234,11 +231,11 @@ class SingleLaserWidget(QGroupBox):
 
         # IO MatchBox controls
         self.mbox_connect_btn = QPushButton(
-            "Connect",
+            'Connect',
             clicked=lambda: self.laser_connect()
         )
         self.mbox_disconnect_btn = QPushButton(
-            "Disconnect",
+            'Disconnect',
             clicked=lambda: self.Laser.CloseCOM()
         )
 
@@ -254,20 +251,20 @@ class SingleLaserWidget(QGroupBox):
         L_Layout = QVBoxLayout()
 
         # on with cam 1 flash
-        self.CAM1 = QRadioButton("CAM 1")
+        self.CAM1 = QRadioButton('CAM 1')
         L_Layout.addWidget(self.CAM1)
 
         # on with cam 2 flash
-        self.CAM2 = QRadioButton("CAM 2")
+        self.CAM2 = QRadioButton('CAM 2')
         L_Layout.addWidget(self.CAM2)
 
         # off regardless
-        self.OFF = QRadioButton("OFF")
+        self.OFF = QRadioButton('OFF')
         self.OFF.setChecked(True)
         L_Layout.addWidget(self.OFF)
 
         # on regardless
-        self.ON = QRadioButton("ON")
+        self.ON = QRadioButton('ON')
         L_Layout.addWidget(self.ON)
 
         # self.CAM1.state = "L{:d}F1".format(wavelength)
@@ -288,7 +285,7 @@ class SingleLaserWidget(QGroupBox):
             QLabel('Status:'), L_Layout)
 
         # Power control
-        self.L_power_label = QLabel("Power (mW):")
+        self.L_power_label = QLabel('Power (mW):')
         self.L_power = QDoubleSpinBox()
         self.L_power.label = self.L_power_label
         self.L_power.setDecimals(2)
@@ -296,7 +293,7 @@ class SingleLaserWidget(QGroupBox):
         self.L_power.setMaximum(100)
         self.L_power.setValue(0)
         self.L_set_curr_btn = QPushButton(
-            "Set Power",
+            'Set Power',
             clicked=lambda:
             self.Laser.SetPower(
                 self.L_power.value()))
@@ -305,9 +302,9 @@ class SingleLaserWidget(QGroupBox):
             self.L_power_label, self.L_power)
         self.V_Layout.addRow(self.L_set_curr_btn)
 
-        self.R_Temps_Label = QLabel("NA")
-        self.S_Temps_Label = QLabel("NA")
-        self.R_TEC_Label = QLabel("NA")
+        self.R_Temps_Label = QLabel('NA')
+        self.S_Temps_Label = QLabel('NA')
+        self.R_TEC_Label = QLabel('NA')
 
         self.V_Layout.addRow(
             QLabel('Temp. Set (LD, Crystal, Fan):'), self.S_Temps_Label)
@@ -336,10 +333,10 @@ class SingleLaserWidget(QGroupBox):
 
         wavelength = self.Laser.Model.split('L')[0]
 
-        self.CAM1.state = "L{}F1".format(wavelength)
-        self.CAM2.state = "L{}F2".format(wavelength)
-        self.OFF.state = "L{}OFF".format(wavelength)
-        self.ON.state = "L{}ON".format(wavelength)
+        self.CAM1.state = f'L{wavelength}F1'
+        self.CAM2.state = f'L{wavelength}F2'
+        self.OFF.state = f'L{wavelength}OFF'
+        self.ON.state = f'L{wavelength}ON'
 
     def update_stats(self):
         if self.Laser.isOpen():
@@ -348,26 +345,24 @@ class SingleLaserWidget(QGroupBox):
 
             self.L_power.setMaximum(self.Laser.Max_Power)
             self.L_power_label.setText(
-                "Power {:.2f} (mW):".format(self.Laser.S_Power))
+                f'Power {self.Laser.S_Power:.2f} (mW):')
             self.R_Temps_Label.setText(
-                "{:.2f} C, {:.2f} C, {:.2f} C".format(
+                '{:.2f} C, {:.2f} C, {:.2f} C'.format(
                     self.Laser.R_Diode_Temp,
                     self.Laser.R_Crystal_Temp,
                     self.Laser.R_Body_Temp))
             self.S_Temps_Label.setText(
-                "{:.2f} C, {:.2f} C, {:.2f} C".format(
+                '{:.2f} C, {:.2f} C, {:.2f} C'.format(
                     self.Laser.S_Diode_Temp,
                     self.Laser.S_Crystal_Temp,
                     self.Laser.S_Fan_Temp))
             self.R_TEC_Label.setText(
-                "{} , {}".format(
-                    self.Laser.R_LD_TEC_Load,
-                    self.Laser.R_Crystal_TEC_Load))
+                f'{self.Laser.R_LD_TEC_Load} , {self.Laser.R_Crystal_TEC_Load}')
 
             self.setTitle(self.Laser.Model)
-            self.mbox_connect_btn.setStyleSheet("background-color: green")
+            self.mbox_connect_btn.setStyleSheet('background-color: green')
         else:
-            self.mbox_connect_btn.setStyleSheet("background-color: red")
+            self.mbox_connect_btn.setStyleSheet('background-color: red')
 
         self.RefreshPorts()
 
@@ -391,7 +386,7 @@ class SingleLaserWidget(QGroupBox):
         object : [QRadioButton]
             the radio button toggled
         '''
-        if ("OFF" in object.state):
+        if ('OFF' in object.state):
             self.Laser.SendCommand(io_single_laser.ON_DIS)
         else:
             self.Laser.SendCommand(io_single_laser.ON_EN)
@@ -444,7 +439,7 @@ class SingleLaserWidget(QGroupBox):
 
         if sys.platform.startswith('win'):
             import ctypes
-            myappid = u'samhitech.mircoEye.control_module'  # appid
+            myappid = 'samhitech.mircoEye.control_module'  # appid
             ctypes.windll.shell32.\
                 SetCurrentProcessExplicitAppUserModelID(myappid)
 

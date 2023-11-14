@@ -4,13 +4,12 @@ import sys
 from os import name
 
 import numpy as np
+import qdarkstyle
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtSerialPort import *
 from PyQt5.QtWidgets import *
 from pyqtgraph.widgets.PlotWidget import PlotWidget
-
-import qdarkstyle
 
 from ..port_config import *
 
@@ -39,22 +38,22 @@ class temperature_monitor(QMainWindow):
         self.labelStyle = {'color': '#FFF', 'font-size': '10pt'}
         self.temp_log_graph = PlotWidget()
         self.temp_log_graph.setLabel(
-            "bottom", "Frame", **self.labelStyle)
+            'bottom', 'Frame', **self.labelStyle)
         self.temp_log_graph.setLabel(
-            "left", "Temperature [C]", **self.labelStyle)
+            'left', 'Temperature [C]', **self.labelStyle)
         self.temp_log_graph_ref = None
 
         self.buttons_layout = QHBoxLayout()
         self.connect_btn = QPushButton(
-            "Connect",
+            'Connect',
             clicked=lambda: self.OpenCOM()
         )
         self.disconnect_btn = QPushButton(
-            "Disconnect",
+            'Disconnect',
             clicked=lambda: self.CloseCOM()
         )
         self.config_btn = QPushButton(
-            "Config.",
+            'Config.',
             clicked=lambda: self.open_dialog(self.serial)
         )
 
@@ -234,7 +233,7 @@ class temperature_monitor(QMainWindow):
 
         if sys.platform.startswith('win'):
             import ctypes
-            myappid = u'samhitech.mircoEye.temperature_monitor'  # appid
+            myappid = 'samhitech.mircoEye.temperature_monitor'  # appid
             ctypes.windll.shell32.\
                 SetCurrentProcessExplicitAppUserModelID(myappid)
 

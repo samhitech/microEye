@@ -1,5 +1,5 @@
-import numpy as np
 import numba as nb
+import numpy as np
 
 from .CPUfunctions import *
 from .CPUsplineLib import *
@@ -110,7 +110,7 @@ def kernel_MLEFit_LM(
                     hessian[ll*NV + mm] += t2 * newDudt[ll] * newDudt[mm]
                     hessian[mm*NV + ll] = hessian[ll*NV + mm]
 
-    for kk in range(iterations):  # main iterative loop
+    for kk in range(iterations):  # main iterative loop  # noqa: B007
         if(abs((newErr-oldErr)/newErr) < TOLERANCE):
             break  # CONVERGED
         else:
@@ -345,7 +345,7 @@ def kernel_MLEFit_LM_Sigma(
                     hessian[ll*NV + mm] += t2 * newDudt[ll] * newDudt[mm]
                     hessian[mm*NV + ll] = hessian[ll*NV + mm]
 
-    for kk in range(iterations):  # main iterative loop
+    for kk in range(iterations):  # main iterative loop  # noqa: B007
         if(abs((newErr-oldErr)/newErr) < TOLERANCE):
             break  # CONVERGED
         else:
@@ -604,7 +604,7 @@ def kernel_MLEFit_LM_z(
                     hessian[ll*NV + mm] += t2 * newDudt[ll] * newDudt[mm]
                     hessian[mm*NV + ll] = hessian[ll*NV + mm]
 
-    for kk in range(iterations):  # main iterative loop
+    for kk in range(iterations):  # main iterative loop  # noqa: B007
         if(abs((newErr-oldErr)/newErr) < TOLERANCE):
             break  # CONVERGED
         else:
@@ -848,7 +848,7 @@ def kernel_MLEFit_LM_sigmaxy(
                     hessian[ll*NV + mm] += t2 * newDudt[ll] * newDudt[mm]
                     hessian[mm*NV + ll] = hessian[ll*NV + mm]
 
-    for kk in range(iterations):  # main iterative loop
+    for kk in range(iterations):  # main iterative loop  # noqa: B007
         if(abs((newErr-oldErr)/newErr) < TOLERANCE):
             break  # CONVERGED
         else:
@@ -1134,7 +1134,7 @@ def kernel_splineMLEFit_z(
                     hessian[ll*NV + mm] += t2 * newDudt[ll] * newDudt[mm]
                     hessian[mm*NV + ll] = hessian[ll*NV + mm]
 
-    for kk in range(iterations):  # main iterative loop
+    for kk in range(iterations):  # main iterative loop  # noqa: B007
         if(abs((newErr-oldErr)/newErr) < TOLERANCE):
             break  # CONVERGED
         else:

@@ -1,12 +1,12 @@
 
+from enum import Enum
+
 import numpy as np
 import pandas as pd
 from scipy.interpolate import interp1d
 
 from ..rendering import gauss_hist_render
 from .processing import *
-
-from enum import Enum
 
 
 class DataColumns(Enum):
@@ -314,10 +314,7 @@ class FittingResults:
                 col = self.getColumn(key)
                 if col is not None:
                     columns.append(key)
-                    if loc is None:
-                        loc = col
-                    else:
-                        loc = np.c_[loc, col]
+                    loc = col if loc is None else np.c_[loc, col]
         else:
             loc = np.c_[
                 self.frames,
@@ -613,12 +610,12 @@ class FittingResults:
             frames.append(f * frames_per_bin + frames_per_bin/2)
             sub_images.append(image)
             print(
-                'Bins: {:d}/{:d}'.format(f + 1, n_bins),
-                end="\r")
+                f'Bins: {f + 1:d}/{n_bins:d}',
+                end='\r')
 
         print(
             'Shift Estimation ...',
-            end="\r")
+            end='\r')
         shifts = shift_estimation(np.array(sub_images), pixelSize, upsampling)
         # for idx, img in enumerate(sub_images):
         #     shift = phase_cross_correlation(
@@ -631,7 +628,7 @@ class FittingResults:
         shifts = np.c_[shifts, np.array(frames)]
         print(
             'Shift Correction ...',
-            end="\r")
+            end='\r')
 
         # An one-dimensional interpolation is applied
         # to drift traces in X and Y dimensions separately.
@@ -694,8 +691,8 @@ class FittingResults:
                         maxDistance=maxDistance,
                         neighbors=neighbors)
             print(
-                'NN {:.2%} ...               '.format(frameID / max_frame),
-                end="\r")
+                f'NN {frameID / max_frame:.2%} ...               ',
+                end='\r')
 
         print('Done ...                         ')
 
@@ -760,8 +757,8 @@ class FittingResults:
                         maxDistance=maxDistance,
                         neighbors=neighbors)
             print(
-                'NN {:.2%} ...               '.format(frameID / max_frame),
-                end="\r")
+                f'NN {frameID / max_frame:.2%} ...               ',
+                end='\r')
 
         print('Merging ...                         ')
         self.n_merged = np.zeros(self.__len__(), dtype=np.int64)
@@ -824,8 +821,7 @@ class FittingResults:
                 'fiducial markers tracks detected.')
             return
         else:
-            print('{:d} tracks detected.'.format(
-                len(fiducial_trackIDs)), end='\r')
+            print(f'{len(fiducial_trackIDs):d} tracks detected.', end='\r')
 
         fiducial_markers = np.zeros((
             len(fiducial_trackIDs),

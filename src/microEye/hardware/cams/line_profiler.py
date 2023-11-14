@@ -1,11 +1,12 @@
+import numpy as np
 import pyqtgraph as pg
 import qdarkstyle
-import numpy as np
 import tifffile as tf
 from PyQt5.QtCore import *
-from PyQt5.QtWidgets import *
-from PyQt5.QtSerialPort import *
 from PyQt5.QtGui import *
+from PyQt5.QtSerialPort import *
+from PyQt5.QtWidgets import *
+
 # from ..uImage import uImage
 
 
