@@ -68,6 +68,20 @@ class uImage:
     def channels(self):
         return self._channels
 
+    @property
+    def cdf_min(self) -> float:
+        return 0.00001
+
+    @property
+    def cdf_max(self) -> float:
+        return 0.999 if self._isfloat else 0.9999
+
+
+    def update_range(self):
+        self._min = np.where(self._cdf >= self.cdf_min)[0][0]
+        self._max = np.where(self._cdf >= self.cdf_max)[0][0]
+
+
     def calcHist_GPU(self):
         self.n_bins = 256 if self._image.dtype == np.uint8 else 2**16
         # Calculate the range of the input image
@@ -104,8 +118,7 @@ class uImage:
         # calculate the cdf
         self._cdf = self._hist.cumsum()
 
-        self._min = np.where(self._cdf >= 0.00001)[0][0]
-        self._max = np.where(self._cdf >= 0.9999)[0][0]
+        self.update_range()
 
     def calcHist(self):
         self.n_bins = 256 if self._image.dtype == np.uint8 else 2**16
@@ -118,8 +131,7 @@ class uImage:
         # calculate the cdf
         self._cdf = self._hist[:, 0].cumsum()
 
-        self._min = np.where(self._cdf >= 0.00001)[0][0]
-        self._max = np.where(self._cdf >= 0.999)[0][0]
+        self.update_range()
 
     def fastHIST(self):
         self.n_bins = 256 if self._image.dtype == np.uint8 else 2**16
@@ -133,8 +145,7 @@ class uImage:
         # calculate the cdf
         self._cdf = self._hist[:, 0].cumsum()
 
-        self._min = np.where(self._cdf >= 0.00001)[0][0]
-        self._max = np.where(self._cdf >= 0.9999)[0][0]
+        self.update_range()
 
     def equalizeLUT(self, range=None, nLUT=False):
         if nLUT:

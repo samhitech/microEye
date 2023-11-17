@@ -279,6 +279,9 @@ class Camera_Panel(QGroupBox):
         # autostretch checkbox
         self.auto_stretch = QCheckBox('Auto Stretch')
         self.auto_stretch.setChecked(True)
+        # display stats checkbox
+        self.display_stats = QCheckBox('Display Stats')
+        self.display_stats.setChecked(True)
         # Hist plotWidget
         self.histogram = pg.PlotWidget()
         self.hist_cdf = pg.PlotWidget()
@@ -341,7 +344,8 @@ class Camera_Panel(QGroupBox):
         # adding widgets to the main layout
 
         if not self.mini:
-            self.second_tab_Layout.addRow(self.preview_ch_box)
+            self.second_tab_Layout.addRow(
+                self.preview_ch_box, self.display_stats)
             self.second_tab_Layout.addRow(QLabel('View Options:'))
             self.second_tab_Layout.addRow(self.view_rbtns)
             self.second_tab_Layout.addRow(self.line_profiler_ch_box)

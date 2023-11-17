@@ -2,6 +2,7 @@ import json
 import os
 import sys
 import webbrowser
+from typing import Optional
 
 import cv2
 import numpy as np
@@ -21,6 +22,7 @@ else:
     def GPUmleFit_LM(*args):
         pass
 
+from ..gui_helper import *
 from ..metadata import MetadataEditor
 from ..thread_worker import *
 from ..uImage import *
@@ -34,45 +36,59 @@ from .fitting.results import *
 from .fitting.results_stats import resultsStatsWidget
 from .fitting.tardis import TARDIS_Widget
 from .rendering import *
+from .tools.kymograms import Kymogram, get_kymogram_row, select_polyline_roi
+
+
+class DockKeys(Enum):
+    FILE_SYSTEM = 'File System'
+    PREFIT_OPTIONS = 'Prefit Options'
+    IMAGE_TOOLS = 'Image Processing Tools'
+    SMLM_ANALYSIS = 'SMLM Analysis'
+    CMOS_MAPS = 'CMOS Maps'
+    DATA_FILTERS = 'Data Filters'
+    METADATA = 'Metadata'
 
 
 class tiff_viewer(QMainWindow):
 
-    def __init__(self, path=None):
+    def __init__(self, path=None, screen_info=(1920, 1080)):
         super().__init__()
+        # Set window properties
         self.title = 'microEye tiff viewer'
         self.left = 0
         self.top = 0
         self._width = 1300
         self._height = 650
-        self._zoom = 1  # display resize
+        self._zoom = 1
         self._n_levels = 4096
+        self.screen_info = screen_info
 
+        # Initialize variables
         self.fittingResults = None
-
         self.tiff = None
-
         self.tiffSequence = None
         self.tiffSeq_Handler = None
-        # self.tiffStore = None
-        # self.tiffZar = None
 
         # Threading
         self._threadpool = QThreadPool()
         print('Multithreading with maximum %d threads'
               % self._threadpool.maxThreadCount())
 
+        # Set the path
         if path is None:
             path = os.path.dirname(os.path.abspath(__package__))
         self.initialize(path)
 
+        # Set up the status bar
         self.status()
 
-        # Statues Bar Timer
-        self.timer = QTimer()
-        self.timer.setInterval(10)
+        # Status Bar Timer
+        self.timer = QTimer(self)
         self.timer.timeout.connect(self.status)
-        self.timer.start()
+        self.timer.start(10)
+
+        # Set main window properties
+        self.setStatusBar(self.statusBar())
 
     def eventFilter(self, source, event):
         if qApp.activePopupWidget() is None:
@@ -101,12 +117,106 @@ class tiff_viewer(QMainWindow):
         self.setGeometry(self.left, self.top, self._width, self._height)
 
         # Define main window layout
+        self.setupMainWindowLayout()
+
+        # Initialize the file system model / tree
+        self.setupFileSystemTab(path)
+
+        # Creating the Prefit Options tab layout
+        self.setupPrefitOptionsTab()
+
+        # Creating the Image Stack Processing Tools tab layout
+        self.setupImageToolsTab()
+
+        # Localization / Render tab layout
+        self.setupLocalizationTab()
+
+        # CMOS maps tab
+        self.setupCMOSMapsTab()
+
+        # Results stats tab layout
+        self.setupDataFiltersTab()
+
+        # Metadata Viewer / Editor
+        self.setupMetadataTab()
+
+        # Tabify docks
+        self.tabifyDocks()
+
+        # Set tab positions
+        self.setTabPositions()
+
+        # Raise docks
+        self.raiseDocks()
+
+        # Create menu bar
+        self.createMenuBar()
+
+        self.show()
+        self.center()
+
+    def setupMainWindowLayout(self):
         self.main_widget = QWidget()
         self.main_layout = QHBoxLayout()
         self.main_widget.setLayout(self.main_layout)
         self.setCentralWidget(self.main_widget)
 
-        # Initialize the file system model / tree
+        # Graphical layout
+        self.g_layout_widget = QTabWidget()
+
+        # graphics layout
+        # A plot area (ViewBox + axes) for displaying the image
+        self.uImage = None
+        self.imageWidget = pg.GraphicsLayoutWidget()
+        self.imageWidget.setMinimumWidth(600)
+
+        # Create the ViewBox
+        self.vb : pg.ViewBox = self.imageWidget.addViewBox(row=0, col=0)
+
+        # Create the ImageItem and set its view to self.vb
+        self.image = pg.ImageItem(
+            np.zeros((256, 256)), axisOrder='row-major', view=self.vb)
+
+        # Add the ImageItem to the ViewBox
+        self.vb.addItem(self.image)
+        self.vb.setAspectLocked(True)
+        self.vb.invertY(True)
+
+        self.hist = pg.HistogramLUTItem(
+            gradientPosition='bottom', orientation='horizontal')
+        self.hist.setImageItem(self.image)
+        self.imageWidget.addItem(self.hist, row=1, col=0)
+        # self.image_plot = pg.ImageView(imageItem=self.image)
+        # self.image_plot.setLevels(0, 255)
+        # self.image_plot.ui.histogram.hide()
+        # self.image_plot.ui.roiBtn.deleteLater()
+        # self.image_plot.ui.menuBtn.deleteLater()
+        self.roi = pg.RectROI(
+            [-8, 14], [6, 5],
+            scaleSnap=True, translateSnap=True,
+            movable=False)
+        self.roi.addTranslateHandle([0, 0], [0.5, 0.5])
+        self.vb.addItem(self.roi)
+        self.roi.setZValue(100)
+        self.roi.sigRegionChangeFinished.connect(self.slider_changed)
+        self.roi.setVisible(False)
+
+
+        # self.image_plot.setColorMap(pg.colormap.getFromMatplotlib('jet'))
+        self.g_layout_widget.addTab(self.imageWidget, 'Image Preview')
+
+        # Add the two sub-main layouts
+        self.main_layout.addWidget(self.g_layout_widget, 1)
+
+        self.docks : dict[str, QDockWidget] = {}  # Dictionary to store created docks
+        self.layouts = {}
+
+    def setupFileSystemTab(self, path):
+        # Tiff File system tree viewer tab layout
+        self.file_tree_layout = self.create_tab(
+            DockKeys.FILE_SYSTEM, QVBoxLayout,
+            'LeftDockWidgetArea', widget=None)
+
         self.path = path
         self.model = QFileSystemModel()
         self.model.setRootPath(self.path)
@@ -132,112 +242,18 @@ class tiff_viewer(QMainWindow):
         self.tree.setWindowTitle('Dir View')
         self.tree.resize(512, 256)
 
-        # Graphical layout
-        self.g_layout_widget = QTabWidget()
-
-        # Add the two sub-main layouts
-        self.main_layout.addWidget(self.g_layout_widget, 1)
-
-        # Tiff File system tree viewer tab
-        self.file_tree = QWidget()
-        self.file_tree_layout = QVBoxLayout()
-        self.file_tree.setLayout(self.file_tree_layout)
-
-        self.file_dock = QDockWidget('File System', self)
-        self.file_dock.setFeatures(
-            QDockWidget.DockWidgetFloatable |
-            QDockWidget.DockWidgetMovable)
-        self.file_dock.setWidget(self.file_tree)
-        self.addDockWidget(
-            Qt.DockWidgetArea.LeftDockWidgetArea,
-            self.file_dock)
-
-        # Tiff Options tab layout
-        self.controls_group = QWidget()
-        self.controls_layout = QVBoxLayout()
-        self.controls_group.setLayout(self.controls_layout)
-
-        self.cont_dock = QDockWidget('Prefit Options', self)
-        self.cont_dock.setFeatures(
-            QDockWidget.DockWidgetFloatable |
-            QDockWidget.DockWidgetMovable)
-        self.cont_dock.setWidget(self.controls_group)
-        self.addDockWidget(
-            Qt.DockWidgetArea.LeftDockWidgetArea,
-            self.cont_dock)
-
-        # Localization / Render tab layout
-        self.loc_group = QWidget()
-        self.loc_form = QFormLayout()
-        self.loc_group.setLayout(self.loc_form)
-
-        self.loc_dock = QDockWidget('SMLM Analysis', self)
-        self.loc_dock.setFeatures(
-            QDockWidget.DockWidgetFloatable |
-            QDockWidget.DockWidgetMovable)
-        self.loc_dock.setWidget(self.loc_group)
-        self.addDockWidget(
-            Qt.DockWidgetArea.RightDockWidgetArea,
-            self.loc_dock)
-
-        # CMOS maps tab
-        self.cmos_group = cmosMaps()
-
-        self.cmos_dock = QDockWidget('CMOS Maps', self)
-        self.cmos_dock.setFeatures(
-            QDockWidget.DockWidgetFloatable |
-            QDockWidget.DockWidgetMovable)
-        self.cmos_dock.setWidget(self.cmos_group)
-        self.addDockWidget(
-            Qt.DockWidgetArea.RightDockWidgetArea,
-            self.cmos_dock)
-
-        # results stats tab layout
-        self.data_filters = QWidget()
-        self.data_filters_layout = QVBoxLayout()
-        self.data_filters.setLayout(self.data_filters_layout)
-
-        self.filters_dock = QDockWidget('Data Filters', self)
-        self.filters_dock.setFeatures(
-            QDockWidget.DockWidgetFloatable |
-            QDockWidget.DockWidgetMovable)
-        self.filters_dock.setWidget(self.data_filters)
-        self.addDockWidget(
-            Qt.DockWidgetArea.RightDockWidgetArea,
-            self.filters_dock)
-
-        # Metadata Viewer / Editor
-        self.metadataEditor = MetadataEditor()
-
-        self.meta_dock = QDockWidget('Metadata', self)
-        self.meta_dock.setFeatures(
-            QDockWidget.DockWidgetFloatable |
-            QDockWidget.DockWidgetMovable)
-        self.meta_dock.setWidget(self.metadataEditor)
-        self.meta_dock.setVisible(False)
-        self.addDockWidget(
-            Qt.DockWidgetArea.RightDockWidgetArea,
-            self.meta_dock)
-
-        self.tabifyDockWidget(self.file_dock, self.cont_dock)
-        self.tabifyDockWidget(self.loc_dock, self.cmos_dock)
-        self.tabifyDockWidget(self.loc_dock, self.filters_dock)
-        self.tabifyDockWidget(self.loc_dock, self.meta_dock)
-        self.setTabPosition(
-            Qt.DockWidgetArea.LeftDockWidgetArea,
-            QTabWidget.TabPosition.East)
-        self.setTabPosition(
-            Qt.DockWidgetArea.RightDockWidgetArea,
-            QTabWidget.TabPosition.West)
-        self.file_dock.raise_()
-        self.loc_dock.raise_()
-
         # Add the File system tab contents
         self.imsq_pattern = QLineEdit('/image_0*.ome.tif')
 
         self.file_tree_layout.addWidget(QLabel('Image Sequence pattern:'))
         self.file_tree_layout.addWidget(self.imsq_pattern)
         self.file_tree_layout.addWidget(self.tree)
+
+    def setupPrefitOptionsTab(self):
+        # Creating the Prefit Options tab layout
+        self.prefit_options_layout = self.create_tab(
+            DockKeys.PREFIT_OPTIONS, QVBoxLayout,
+            'LeftDockWidgetArea', widget=None)
 
         self.image_control_layout = QFormLayout()
 
@@ -249,33 +265,35 @@ class tiff_viewer(QMainWindow):
         # Hist plotWidget
         self.histogram = pg.PlotWidget()
         self.hist_cdf = pg.PlotWidget()
-        greenP = pg.mkPen(color='g')
-        blueP = pg.mkPen(color='b')
-        greenB = pg.mkBrush(0, 255, 0, 32)
+        green_pen = pg.mkPen(color='g')
+        blue_pen = pg.mkPen(color='b')
+        green_brush = pg.mkBrush(0, 255, 0, 32)
         _bins = np.arange(self._n_levels - 1)
         self._plot_ref = self.histogram.plot(
-            _bins, np.ones_like(_bins), pen=blueP)
+            _bins, np.ones_like(_bins), pen=blue_pen)
 
         self.lr_0 = pg.LinearRegionItem(
             (0, self._n_levels - 1),
             bounds=(0, self._n_levels - 1),
-            pen=greenP, brush=greenB,
+            pen=green_pen, brush=green_brush,
             movable=True, swapMode='push', span=(0.0, 1))
         self.histogram.addItem(self.lr_0)
 
-        self.autostretch = QCheckBox('Auto-Stretch')
-        self.autostretch.setChecked(True)
+        self.autostretch = create_check_box(
+            'Auto-Stretch', initial_state=True,
+            state_changed_slot=self.slider_changed)
 
-        self.enableROI = QCheckBox('Enable ROI')
-        self.enableROI.setChecked(False)
-        self.enableROI.stateChanged.connect(self.enableROI_changed)
+        self.enable_roi = create_check_box(
+            'Enable ROI', initial_state=False,
+            state_changed_slot=self.enable_roi_changed)
 
-        self.detection = QCheckBox('Realtime localization.')
-        self.detection.setChecked(False)
+        self.detection = create_check_box(
+            'Realtime localization.', initial_state=False,
+            state_changed_slot=self.slider_changed)
 
-        checkBoxesL = QHBoxLayout()
+        check_boxes_layout = QHBoxLayout()
 
-        self.saveCropped = QPushButton(
+        self.save_cropped = QPushButton(
             'Save Cropped Image',
             clicked=lambda: self.save_cropped_img())
 
@@ -284,41 +302,41 @@ class tiff_viewer(QMainWindow):
             self.pages_slider)
         self.image_control_layout.addRow(
             self.histogram)
-        checkBoxesL.addWidget(self.autostretch)
-        checkBoxesL.addWidget(self.enableROI)
-        checkBoxesL.addWidget(self.detection)
-        self.image_control_layout.addRow(checkBoxesL)
-        self.image_control_layout.addWidget(self.saveCropped)
+        check_boxes_layout.addWidget(self.autostretch)
+        check_boxes_layout.addWidget(self.enable_roi)
+        check_boxes_layout.addWidget(self.detection)
+        self.image_control_layout.addRow(check_boxes_layout)
+        self.image_control_layout.addWidget(self.save_cropped)
 
-        self.controls_layout.addLayout(
+        self.prefit_options_layout.addLayout(
             self.image_control_layout)
 
-        self.blobDetectionWidget = BlobDetectionWidget()
-        self.blobDetectionWidget.update.connect(
+        self.blob_detection_widget = BlobDetectionWidget()
+        self.blob_detection_widget.update.connect(
             lambda: self.update_display())
 
         self.detection_method = QComboBox()
         # self.detection_method.currentIndexChanged.connect()
         self.detection_method.addItem(
             'OpenCV Blob Detection',
-            self.blobDetectionWidget
+            self.blob_detection_widget
         )
 
-        self.doG_FilterWidget = DoG_FilterWidget()
-        self.doG_FilterWidget.update.connect(
+        self.do_g_filter_widget = DoG_FilterWidget()
+        self.do_g_filter_widget.update.connect(
             lambda: self.update_display())
-        self.bandpassFilterWidget = BandpassFilterWidget()
-        self.bandpassFilterWidget.setVisible(False)
-        self.bandpassFilterWidget.update.connect(
+        self.bandpass_filter_widget = BandpassFilterWidget()
+        self.bandpass_filter_widget.setVisible(False)
+        self.bandpass_filter_widget.update.connect(
             lambda: self.update_display())
 
         self.image_filter = QComboBox()
         self.image_filter.addItem(
             'Difference of Gaussians',
-            self.doG_FilterWidget)
+            self.do_g_filter_widget)
         self.image_filter.addItem(
             'Fourier Bandpass Filter',
-            self.bandpassFilterWidget)
+            self.bandpass_filter_widget)
 
         # displays the selected item
         def update_visibility(box: QComboBox):
@@ -339,20 +357,11 @@ class tiff_viewer(QMainWindow):
             self.image_filter)
 
         self.th_min_label = QLabel('Relative threshold (min/max):')
-        self.th_min_slider = QDoubleSpinBox()
-        self.th_min_slider.setMinimum(0)
-        self.th_min_slider.setMaximum(1)
-        self.th_min_slider.setSingleStep(0.01)
-        self.th_min_slider.setDecimals(3)
-        self.th_min_slider.setValue(0.4)
-        self.th_min_slider.valueChanged.connect(self.slider_changed)
-        self.th_max_slider = QDoubleSpinBox()
-        self.th_max_slider.setMinimum(0)
-        self.th_max_slider.setMaximum(1)
-        self.th_max_slider.setSingleStep(0.01)
-        self.th_max_slider.setDecimals(3)
-        self.th_max_slider.setValue(1)
-        self.th_max_slider.valueChanged.connect(self.slider_changed)
+
+        self.th_min_slider = create_double_spin_box(
+            max_value=1, initial_value=0.4, slot=self.slider_changed)
+        self.th_max_slider = create_double_spin_box(
+            max_value=1, initial_value=1, slot=self.slider_changed)
 
         self.image_control_layout.addRow(
             self.th_min_label,
@@ -360,20 +369,69 @@ class tiff_viewer(QMainWindow):
         self.image_control_layout.addWidget(
             self.th_max_slider)
 
-        self.tempMedianFilter = TemporalMedianFilterWidget()
-        self.tempMedianFilter.update.connect(lambda: self.update_display())
-        self.controls_layout.addWidget(self.tempMedianFilter)
+        self.temp_median_filter = TemporalMedianFilterWidget()
+        self.temp_median_filter.update.connect(lambda: self.update_display())
+        self.prefit_options_layout.addWidget(self.temp_median_filter)
 
-        self.controls_layout.addWidget(self.blobDetectionWidget)
-        self.controls_layout.addWidget(self.doG_FilterWidget)
-        self.controls_layout.addWidget(self.bandpassFilterWidget)
+        self.prefit_options_layout.addWidget(self.blob_detection_widget)
+        self.prefit_options_layout.addWidget(self.do_g_filter_widget)
+        self.prefit_options_layout.addWidget(self.bandpass_filter_widget)
 
         self.pages_slider.valueChanged.connect(self.slider_changed)
         self.lr_0.sigRegionChangeFinished.connect(self.region_changed)
-        self.autostretch.stateChanged.connect(self.slider_changed)
-        self.detection.stateChanged.connect(self.slider_changed)
 
-        self.controls_layout.addStretch()
+        self.prefit_options_layout.addStretch()
+
+    def setupImageToolsTab(self):
+        # Creating the Image Stack Processing Tools tab layout
+        self.image_tools_layout = self.create_tab(
+            DockKeys.IMAGE_TOOLS, QVBoxLayout,
+            'LeftDockWidgetArea', widget=None)
+
+        self._kymogram: Kymogram = None
+
+        kymo_group, kymo_layout = create_group_box(
+            'Kymograms', QFormLayout)
+        self.image_tools_layout.addWidget(kymo_group)
+
+        self.kymogram_temporal_window = create_spin_box(
+            0, 100, 1, 50)
+        self.kymogram_linewidth = create_spin_box(
+            1, 100, 1, 1)
+
+        self.temporal_window_location = QComboBox()
+        self.temporal_window_location.addItems(
+            ['From Current', 'Current Central', 'To Current'])
+
+        self.kymogram_roi_method = QComboBox()
+        self.kymogram_roi_method.addItems(['average', 'maximum', 'sum'])
+
+        self.kymogram_btn = QPushButton(
+            'Extract', clicked=self.kymogram_btn_clicked)
+        self.kymogram_display_btn = QPushButton(
+            'Display', clicked=self.kymogram_display_clicked)
+        self.kymogram_save_btn = QPushButton(
+            'Save', clicked=self.kymogram_save_clicked)
+
+        kymogram_btns = create_hbox_layout(
+            self.kymogram_btn,
+            self.kymogram_display_btn,
+            self.kymogram_save_btn
+        )
+
+        kymo_layout.addRow(
+            QLabel('Temporal Window [frames]:'), self.kymogram_temporal_window)
+        kymo_layout.addRow(QLabel('Window Range:'), self.temporal_window_location)
+        kymo_layout.addRow(QLabel('ROI Linewidth [pixels]:'), self.kymogram_linewidth)
+        kymo_layout.addRow(QLabel('ROI Extracts:'), self.kymogram_roi_method)
+        kymo_layout.addRow(kymogram_btns)
+
+
+    def setupLocalizationTab(self):
+        # Localization / Render tab layout
+        self.localization_form = self.create_tab(
+            DockKeys.SMLM_ANALYSIS, QFormLayout,
+            'RightDockWidgetArea', widget=None)
 
         # Localization / Render layout
         self.fitting_cbox = QComboBox()
@@ -397,22 +455,15 @@ class tiff_viewer(QMainWindow):
         self.render_cbox.addItem('2D Histogram', 0)
         self.render_cbox.addItem('2D Gaussian Histogram', 1)
 
-        self.px_size = QDoubleSpinBox()
-        self.px_size.setMinimum(0)
-        self.px_size.setMaximum(20000)
-        self.px_size.setValue(117.5)
+        self.px_size = create_double_spin_box(
+            min_value=0, max_value=20000, initial_value=117.5)
 
-        self.super_px_size = QSpinBox()
-        self.super_px_size.setMinimum(0)
-        self.super_px_size.setMaximum(200)
-        self.super_px_size.setValue(10)
+        self.super_px_size = create_spin_box(
+            min_value=0, max_value=200, initial_value=10)
 
-        self.fit_roi_size = QSpinBox()
-        self.fit_roi_size.setMinimum(7)
-        self.fit_roi_size.setMaximum(99)
-        self.fit_roi_size.setSingleStep(2)
+        self.fit_roi_size = create_spin_box(
+            min_value=7, max_value=99, single_step=2, initial_value=13)
         self.fit_roi_size.lineEdit().setReadOnly(True)
-        self.fit_roi_size.setValue(13)
 
         self.loc_btn = QPushButton(
             'Localize',
@@ -453,13 +504,14 @@ class tiff_viewer(QMainWindow):
         # End Localization GroupBox
 
         self.drift_cross_args = QHBoxLayout()
-        self.drift_cross_bins = QSpinBox()
-        self.drift_cross_bins.setValue(10)
-        self.drift_cross_px = QSpinBox()
-        self.drift_cross_px.setValue(10)
-        self.drift_cross_up = QSpinBox()
-        self.drift_cross_up.setMaximum(1000)
-        self.drift_cross_up.setValue(100)
+
+        self.drift_cross_bins = create_spin_box(
+            initial_value=10)
+        self.drift_cross_px = create_spin_box(
+            initial_value=10)
+        self.drift_cross_up = create_spin_box(
+            min_value=0, max_value=1000, initial_value=100)
+
         self.drift_cross_args.addWidget(self.drift_cross_bins)
         self.drift_cross_args.addWidget(self.drift_cross_px)
         self.drift_cross_args.addWidget(self.drift_cross_up)
@@ -514,19 +566,18 @@ class tiff_viewer(QMainWindow):
         # End Precision GroupBox
 
         self.nneigh_merge_args = QHBoxLayout()
-        self.nn_neighbors = QSpinBox()
-        self.nn_neighbors.setValue(1)
-        self.nn_min_distance = QDoubleSpinBox()
-        self.nn_min_distance.setMaximum(20000)
-        self.nn_min_distance.setValue(0)
-        self.nn_max_distance = QDoubleSpinBox()
-        self.nn_max_distance.setMaximum(20000)
-        self.nn_max_distance.setValue(30)
-        self.nn_max_off = QSpinBox()
-        self.nn_max_off.setValue(1)
-        self.nn_max_length = QSpinBox()
-        self.nn_max_length.setMaximum(20000)
-        self.nn_max_length.setValue(500)
+
+        self.nn_neighbors = create_spin_box(
+            max_value=20000, initial_value=1)
+        self.nn_min_distance = create_double_spin_box(
+            max_value=20000, initial_value=0)
+        self.nn_max_distance = create_double_spin_box(
+            max_value=20000, initial_value=30)
+        self.nn_max_off = create_spin_box(
+            max_value=20000, initial_value=1)
+        self.nn_max_length = create_spin_box(
+            max_value=20000, initial_value=500)
+
         self.nneigh_merge_args.addWidget(self.nn_neighbors)
         self.nneigh_merge_args.addWidget(self.nn_min_distance)
         self.nneigh_merge_args.addWidget(self.nn_max_distance)
@@ -575,40 +626,24 @@ class tiff_viewer(QMainWindow):
         self.im_exp_layout.addWidget(self.import_loc_btn)
         self.im_exp_layout.addWidget(self.export_loc_btn)
 
-        self.loc_form.addRow(localization)
-        self.loc_form.addRow(drift)
-        self.loc_form.addRow(precision)
-        self.loc_form.addRow(nearestN)
+        self.localization_form.addRow(localization)
+        self.localization_form.addRow(drift)
+        self.localization_form.addRow(precision)
+        self.localization_form.addRow(nearestN)
 
-        self.loc_form.addRow(self.im_exp_layout)
+        self.localization_form.addRow(self.im_exp_layout)
 
-        # graphics layout
-        # A plot area (ViewBox + axes) for displaying the image
-        self.uImage = None
-        self.image = pg.ImageItem(np.zeros((256, 256)), axisOrder='row-major')
-        self.imageWidget = pg.GraphicsLayoutWidget()
-        self.imageWidget.setMinimumWidth(600)
-        self.vb = self.imageWidget.addViewBox(row=0, col=0)
-        self.vb.addItem(self.image)
-        self.vb.setAspectLocked(True)
-        self.hist = pg.HistogramLUTItem(
-            gradientPosition='bottom', orientation='horizontal')
-        self.hist.setImageItem(self.image)
-        self.imageWidget.addItem(self.hist, row=1, col=0)
-        # self.image_plot = pg.ImageView(imageItem=self.image)
-        # self.image_plot.setLevels(0, 255)
-        # self.image_plot.ui.histogram.hide()
-        # self.image_plot.ui.roiBtn.deleteLater()
-        # self.image_plot.ui.menuBtn.deleteLater()
-        self.roi = pg.RectROI(
-            [-8, 14], [6, 5],
-            scaleSnap=True, translateSnap=True,
-            movable=False)
-        self.roi.addTranslateHandle([0, 0], [0.5, 0.5])
-        self.vb.addItem(self.roi)
-        self.roi.setZValue(100)
-        self.roi.sigRegionChangeFinished.connect(self.slider_changed)
-        self.roi.setVisible(False)
+    def setupCMOSMapsTab(self):
+        # CMOS maps tab
+        self.cmos_maps_group = cmosMaps()
+        self.cmos_maps_layout = self.create_tab(
+            DockKeys.CMOS_MAPS, None,
+            'RightDockWidgetArea', widget=self.cmos_maps_group)
+
+    def setupDataFiltersTab(self):
+        # Results stats tab layout
+        self.data_filters_layout = self.create_tab(
+            DockKeys.DATA_FILTERS, QVBoxLayout, 'RightDockWidgetArea', widget=None)
 
         # results stats widget
         self.results_plot_scroll = QScrollArea()
@@ -629,11 +664,43 @@ class tiff_viewer(QMainWindow):
         self.data_filters_layout.addWidget(self.results_plot_scroll)
         self.data_filters_layout.addWidget(self.apply_filters_btn)
 
-        # self.image_plot.setColorMap(pg.colormap.getFromMatplotlib('jet'))
-        self.g_layout_widget.addTab(self.imageWidget, 'Image Preview')
-        # Item for displaying image data
+    def setupMetadataTab(self):
+        # Metadata Viewer / Editor
+        self.metadata_editor = MetadataEditor()
+        self.metadata_layout = self.create_tab(
+            DockKeys.METADATA, None,
+            'RightDockWidgetArea', visible=False, widget=self.metadata_editor)
 
-        # Create menu bar
+    def tabifyDocks(self):
+        # Tabify docks
+        self.tabifyDockWidget(
+            self.docks[DockKeys.FILE_SYSTEM],
+            self.docks[DockKeys.PREFIT_OPTIONS])
+        self.tabifyDockWidget(
+            self.docks[DockKeys.FILE_SYSTEM],
+            self.docks[DockKeys.IMAGE_TOOLS])
+        self.tabifyDockWidget(
+            self.docks[DockKeys.SMLM_ANALYSIS],
+            self.docks[DockKeys.CMOS_MAPS])
+        self.tabifyDockWidget(
+            self.docks[DockKeys.SMLM_ANALYSIS],
+            self.docks[DockKeys.DATA_FILTERS])
+        self.tabifyDockWidget(
+            self.docks[DockKeys.SMLM_ANALYSIS],
+            self.docks[DockKeys.METADATA])
+
+    def setTabPositions(self):
+        self.setTabPosition(
+            Qt.LeftDockWidgetArea, QTabWidget.East)
+        self.setTabPosition(
+            Qt.RightDockWidgetArea, QTabWidget.West)
+
+    def raiseDocks(self):
+        # Raise docks
+        self.docks[DockKeys.FILE_SYSTEM].raise_()
+        self.docks[DockKeys.SMLM_ANALYSIS].raise_()
+
+    def createMenuBar(self):
         menu_bar = self.menuBar()
 
         # Create file menu
@@ -643,22 +710,9 @@ class tiff_viewer(QMainWindow):
 
         # Create exit action
         save_config = QAction('Save Config.', self)
-        save_config.triggered.connect(lambda: generateConfig(self))
+        save_config.triggered.connect(lambda: saveConfig(self))
         load_config = QAction('Load Config.', self)
         load_config.triggered.connect(lambda: loadConfig(self))
-
-        files_act = self.file_dock.toggleViewAction()
-        files_act.setEnabled(True)
-        cont_act = self.cont_dock.toggleViewAction()
-        cont_act.setEnabled(True)
-        loc_act = self.loc_dock.toggleViewAction()
-        loc_act.setEnabled(True)
-        cmos_act = self.cmos_dock.toggleViewAction()
-        cmos_act.setEnabled(True)
-        filters_act = self.filters_dock.toggleViewAction()
-        filters_act.setEnabled(True)
-        meta_act = self.meta_dock.toggleViewAction()
-        meta_act.setEnabled(True)
 
         github = QAction('microEye Github', self)
         github.triggered.connect(
@@ -670,12 +724,14 @@ class tiff_viewer(QMainWindow):
         # Add exit action to file menu
         file_menu.addAction(save_config)
         file_menu.addAction(load_config)
-        view_menu.addAction(files_act)
-        view_menu.addAction(cont_act)
-        view_menu.addAction(loc_act)
-        view_menu.addAction(cmos_act)
-        view_menu.addAction(filters_act)
-        view_menu.addAction(meta_act)
+
+        # Create toggle view actions for each dock
+        dock_toggle_actions = {}
+        for key, dock in self.docks.items():
+            toggle_action = dock.toggleViewAction()
+            toggle_action.setEnabled(True)
+            dock_toggle_actions[key] = toggle_action
+            view_menu.addAction(toggle_action)
 
         help_menu.addAction(github)
         help_menu.addAction(pypi)
@@ -684,16 +740,73 @@ class tiff_viewer(QMainWindow):
 
         self.menuBar().hide()
 
-        self.show()
-        self.center()
+    def create_tab(
+        self,
+        key: DockKeys,
+        layout_type: Optional[type[Union[QVBoxLayout, QFormLayout]]] = None,
+        dock_area: str = 'LeftDockWidgetArea',
+        widget: Optional[QWidget] = None,
+        visible: bool = True,
+    ) -> Optional[type[Union[QVBoxLayout, QFormLayout]]]:
+        '''
+        Create a tab with a dock widget.
+
+        Parameters
+        ----------
+        key : DockKeys
+            The unique identifier for the tab.
+        layout_type : Optional[Type[Union[QVBoxLayout, QFormLayout]]], optional
+            The layout type for the group in the dock. If provided,
+            widget should be None.
+        dock_area : str, optional
+            The dock area where the tab will be added.
+        widget : Optional[QWidget], optional
+            The widget to be placed in the dock. If provided,
+            layout_type should be None.
+        visible : bool, optional
+            Whether the dock widget should be visible.
+
+        Returns
+        -------
+        Optional[Type[Union[QVBoxLayout, QFormLayout]]]
+            The layout if layout_type is provided, otherwise None.
+        '''
+        if widget:
+            group = widget
+        else:
+            group = QWidget()
+            group_layout = layout_type() if layout_type else QVBoxLayout()
+            group.setLayout(group_layout)
+            self.layouts[key] = group_layout
+
+        dock = QDockWidget(str(key.value), self)
+        dock.setFeatures(
+            QDockWidget.DockWidgetFloatable | QDockWidget.DockWidgetMovable)
+        dock.setWidget(group)
+        dock.setVisible(visible)
+        self.addDockWidget(getattr(Qt.DockWidgetArea, dock_area), dock)
+
+        # Store the dock in the dictionary
+        self.docks[key] = dock
+
+        # Return the layout if layout_type is provided, otherwise None
+        return None if widget else group_layout
 
     def center(self):
-        '''Centers the window within the screen.
-        '''
-        qtRectangle = self.frameGeometry()
-        centerPoint = QDesktopWidget().availableGeometry().center()
-        qtRectangle.moveCenter(centerPoint)
-        self.move(qtRectangle.topLeft())
+        '''Centers the window within the screen using setGeometry.'''
+        # Get the screen geometry
+        screen_geometry = QDesktopWidget().availableGeometry()
+
+        # Calculate the center point
+        center_point = screen_geometry.center()
+
+        # Set the window geometry
+        self.setGeometry(
+            center_point.x() - self.width() / 2,
+            center_point.y() - self.height() / 2,
+            self.width(),
+            self.height()
+        )
 
     def centerROI(self):
         '''Centers the ROI and fits it to the image.
@@ -704,14 +817,14 @@ class tiff_viewer(QMainWindow):
         self.roi.setPos([0, 0])
         self.roi.maxBounds = QRectF(0, 0, image.shape[1], image.shape[0])
 
-    def enableROI_changed(self, state):
-        if self.enableROI.isChecked():
+    def enable_roi_changed(self, state):
+        if self.enable_roi.isChecked():
             self.roi.setVisible(True)
         else:
             self.roi.setVisible(False)
 
     def get_roi_txt(self):
-        if self.enableROI.isChecked():
+        if self.enable_roi.isChecked():
             return (' | ROI Pos. (' + '{:.0f}, {:.0f}), ' +
                     'Size ({:.0f}, {:.0f})/({:.3f} um, {:.3f} um)').format(
                     *self.roi.pos(), *self.roi.size(),
@@ -720,7 +833,7 @@ class tiff_viewer(QMainWindow):
         return ''
 
     def get_roi_info(self):
-        if self.enableROI.isChecked():
+        if self.enable_roi.isChecked():
             origin = self.roi.pos()  # ROI (x,y)
             dim = self.roi.size()  # ROI (w,h)
             return origin, dim
@@ -737,6 +850,10 @@ class tiff_viewer(QMainWindow):
                 len(self.fittingResults)))
             )
 
+    def set_maximum(self, frames):
+        self.pages_slider.setMaximum(frames)
+        self.kymogram_temporal_window.setMaximum(frames)
+
     def _open_file(self, i):
         if not self.model.isDir(i):
             cv2.destroyAllWindows()
@@ -750,15 +867,15 @@ class tiff_viewer(QMainWindow):
             # self.tiffStore = self.tiffSequence.aszarr(axestiled={0: 0})
             # self.tiffZar = zarr.open(self.tiffStore, mode='r')
 
-            self.pages_slider.setMaximum(len(self.tiffSeq_Handler) - 1)
+            self.set_maximum(len(self.tiffSeq_Handler) - 1)
             self.pages_slider.valueChanged.emit(0)
 
             with tf.TiffFile(self.tiffSequence.files[0]) as fl:
                 if fl.is_ome:
                     ome = OME.from_xml(fl.ome_metadata)
-                    self.metadataEditor.pop_OME_XML(ome)
+                    self.metadata_editor.pop_OME_XML(ome)
                     self.px_size.setValue(
-                        self.metadataEditor.px_size.value())
+                        self.metadata_editor.px_size.value())
 
             self.centerROI()
 
@@ -776,7 +893,7 @@ class tiff_viewer(QMainWindow):
                 self.tiffSeq_Handler = ZarrImageSequence(self.path)
                 self.tiffSeq_Handler.open()
 
-                self.pages_slider.setMaximum(
+                self.set_maximum(
                         self.tiffSeq_Handler.shape[0] - 1)
                 self.pages_slider.valueChanged.emit(0)
 
@@ -792,16 +909,16 @@ class tiff_viewer(QMainWindow):
                     self.tiffSeq_Handler = TiffSeqHandler(self.tiffSequence)
                     self.tiffSeq_Handler.open()
 
-                    self.pages_slider.setMaximum(
+                    self.set_maximum(
                         self.tiffSeq_Handler.__len__() - 1)
                     self.pages_slider.valueChanged.emit(0)
 
                     with tf.TiffFile(self.tiffSequence.files[0]) as fl:
                         if fl.is_ome:
                             ome = OME.from_xml(fl.ome_metadata)
-                            self.metadataEditor.pop_OME_XML(ome)
+                            self.metadata_editor.pop_OME_XML(ome)
                             self.px_size.setValue(
-                                self.metadataEditor.px_size.value())
+                                self.metadata_editor.px_size.value())
 
                     self.centerROI()
 
@@ -835,14 +952,14 @@ class tiff_viewer(QMainWindow):
                     filename, self.tiffSeq_Handler)
 
         def done(results):
-            self.saveCropped.setDisabled(False)
+            self.save_cropped.setDisabled(False)
 
         self.worker = thread_worker(
             work_func,
             progress=False, z_stage=False)
         self.worker.signals.result.connect(done)
         # Execute
-        self.saveCropped.setDisabled(True)
+        self.save_cropped.setDisabled(True)
         self._threadpool.start(self.worker)
 
     def average_stack(self):
@@ -852,12 +969,155 @@ class tiff_viewer(QMainWindow):
 
             self.image.setImage(avg, autoLevels=True)
 
+    def get_kymogram_window(self):
+        '''
+        Get the temporal window for generating a kymogram based on the selected option.
+
+        Returns
+        -------
+        Tuple[int, int]:
+            A tuple representing the start and end frames
+            of the kymogram window.
+        '''
+        selected_option = self.temporal_window_location.currentText()
+
+        current_frame = self.pages_slider.value()
+        max_frame = self.pages_slider.maximum()
+        n_frames = self.kymogram_temporal_window.value()
+
+        if max_frame + 1 <= n_frames:
+            # return the entire range.
+            return 0, max_frame
+        else:
+            if selected_option == 'To Current':
+                # Return frames from (current_frame - n_frames) to current_frame
+                start_frame = max(0, current_frame - n_frames)
+                return start_frame, current_frame
+            elif selected_option == 'Current Central':
+                # Return frames centered around current_frame (window size = n_frames)
+                half_window = n_frames // 2
+                start_frame = max(0, current_frame - half_window)
+                end_frame = min(max_frame, current_frame + half_window)
+                return start_frame, end_frame
+            else:  # Assuming the third option is 'From Current'
+                # Return frames from current_frame to (current_frame + n_frames)
+                start_frame = current_frame
+                end_frame = min(max_frame, current_frame + n_frames)
+                return start_frame, end_frame
+
+    def kymogram_display_clicked(self):
+        if self._kymogram is None:
+            return
+
+        self.enable_roi.setChecked(False)
+        uImg = uImage(self._kymogram.data)
+        uImg.equalizeLUT()
+        self.image.setImage(uImg._view, autoLevels=True)
+
+    def kymogram_save_clicked(self):
+        if self._kymogram is None:
+            return
+
+        filename, _ = QFileDialog.getSaveFileName(
+            self, 'Export Kymogram',
+            filter='Tiff files (*.tif);;')
+
+        if len(filename) > 0:
+            self._kymogram.to_tiff(filename)
+
+    def get_scaling_factor(self, height, width, target_percentage=0.8):
+        # Calculate scaling factor to fill the specified percentage of the screen
+        target_height = self.screen_info[1] * target_percentage
+        target_width = self.screen_info[0] * target_percentage
+
+        scaling_factor_height = target_height / height
+        scaling_factor_width = target_width / width
+
+        return min(scaling_factor_height, scaling_factor_width)
+
+    def kymogram_btn_clicked(self):
+        if self.tiffSeq_Handler is None:
+            return
+
+        try:
+            window_range = self.get_kymogram_window()
+
+            linewidth = self.kymogram_linewidth.value()
+
+            roi_extracts = self.kymogram_roi_method.currentText()
+
+            image = uImage(self.tiffSeq_Handler.getSlice(
+                self.pages_slider.value(), 0, 0))
+
+            image.equalizeLUT()
+
+            roiInfo = self.get_roi_info()
+            if roiInfo is not None:
+                origin, dim = roiInfo
+                view = self.uImage._view[
+                    int(origin[1]):int(origin[1] + dim[1]),
+                    int(origin[0]):int(origin[0] + dim[0])]
+            else:
+                origin = None
+                view = image._view
+
+            scale_factor = self.get_scaling_factor(view.shape[0], view.shape[1])
+
+            def work_func():
+                try:
+                    # Do somthing
+                    points = select_polyline_roi(view, scale_factor)
+                    if len(points) > 1:
+                        if origin is not None:
+                            points[:, 0] += origin[0]
+                            points[:, 1] += origin[1]
+
+                        res = None
+                        n_points = window_range[1] - window_range[0] + 1
+                        for frame_idx in range(window_range[0], window_range[1] + 1):
+                            data = self.tiffSeq_Handler.getSlice(
+                                frame_idx, 0, 0)
+                            row = get_kymogram_row(
+                                data,
+                                points[:, 0].flatten(),  # X points
+                                points[:, 1].flatten(),  # Y points
+                                linewidth,
+                                roi_extracts
+                            )
+                            res = row if res is None else np.vstack([res, row])
+                            print(
+                                'Generating Kymogram ... {:.2f}%'.format(
+                                    100 * (res.shape[0] if res.ndim ==2 else 1
+                                     )/n_points), end='\r')
+                        return Kymogram(res, points, linewidth, roi_extracts, n_points)
+                    else:
+                        return None
+                except Exception:
+                    traceback.print_exc()
+                    return None
+
+            def done(results: Kymogram):
+                self.kymogram_btn.setDisabled(False)
+                if results is not None:
+                    self._kymogram = results
+                    self.kymogram_display_clicked()
+
+            self.worker = thread_worker(
+                work_func,
+                progress=False, z_stage=False)
+            self.worker.signals.result.connect(done)
+            # Execute
+            self.kymogram_btn.setDisabled(True)
+            self._threadpool.start(self.worker)
+        except Exception:
+            traceback.print_stack()
+
     def genOME(self):
         if self.tiffSeq_Handler is not None:
             frames = self.tiffSeq_Handler.shape[0]
             width = self.image.image.shape[1]
             height = self.image.image.shape[0]
-            ome = self.metadataEditor.gen_OME_XML(frames, width, height)
+            ome = self.metadata_editor.gen_OME_XML(frames, width, height)
             # tf.tiffcomment(
             #     self.path,
             #     ome.to_xml())
@@ -883,8 +1143,8 @@ class tiff_viewer(QMainWindow):
                 self.pages_slider.value(), 0, 0)
 
         varim = None
-        if self.cmos_group.active.isChecked():
-            res = self.cmos_group.getMaps()
+        if self.cmos_maps_group.active.isChecked():
+            res = self.cmos_maps_group.getMaps()
             if res is not None:
                 if res[0].shape == image.shape:
                     image = image * res[0]
@@ -897,11 +1157,11 @@ class tiff_viewer(QMainWindow):
         else:
             origin, dim = None, None
 
-        if self.tempMedianFilter.enabled.isChecked():
-            frames = self.tempMedianFilter.filter.getFrames(
+        if self.temp_median_filter.enabled.isChecked():
+            frames = self.temp_median_filter.filter.getFrames(
                 self.pages_slider.value(), self.tiffSeq_Handler)
 
-            image = self.tempMedianFilter.filter.run(image, frames, roiInfo)
+            image = self.temp_median_filter.filter.run(image, frames, roiInfo)
 
         self.uImage = uImage(image)
 
@@ -1527,12 +1787,12 @@ class tiff_viewer(QMainWindow):
 
         # Filters + Blob detector params
         filter = self.image_filter.currentData().filter
-        tempEnabled = self.tempMedianFilter.enabled.isChecked()
+        tempEnabled = self.temp_median_filter.enabled.isChecked()
         detector = self.detection_method.currentData().detector
 
         # ROI
         roiInfo = self.get_roi_info()
-        self.enableROI.setChecked(False)
+        self.enable_roi.setChecked(False)
 
         min_max = None
         if not self.autostretch.isChecked():
@@ -1542,8 +1802,8 @@ class tiff_viewer(QMainWindow):
         varim = None
         offset = 0
         gain = 1
-        if self.cmos_group.active.isChecked():
-            res = self.cmos_group.getMaps()
+        if self.cmos_maps_group.active.isChecked():
+            res = self.cmos_maps_group.getMaps()
             if res:
                 gain = res[0]
                 offset = res[1]
@@ -1573,7 +1833,7 @@ class tiff_viewer(QMainWindow):
                     if tempEnabled:
                         temp = TemporalMedianFilter()
                         temp._temporal_window = \
-                            self.tempMedianFilter.filter._temporal_window
+                            self.temp_median_filter.filter._temporal_window
 
                     worker = thread_worker(
                         pre_localize_frame,
@@ -1637,7 +1897,7 @@ class tiff_viewer(QMainWindow):
 
         # Filters + Blob detector params
         filter = self.image_filter.currentData().filter
-        tempEnabled = self.tempMedianFilter.enabled.isChecked()
+        tempEnabled = self.temp_median_filter.enabled.isChecked()
         detector = self.detection_method.currentData().detector
 
         # Vars
@@ -1657,14 +1917,14 @@ class tiff_viewer(QMainWindow):
 
         # ROI
         roiInfo = self.get_roi_info()
-        self.enableROI.setChecked(False)
+        self.enable_roi.setChecked(False)
 
         # varim
         varim = None
         offset = 0
         gain = 1
-        if self.cmos_group.active.isChecked():
-            res = self.cmos_group.getMaps()
+        if self.cmos_maps_group.active.isChecked():
+            res = self.cmos_maps_group.getMaps()
             if res:
                 gain = res[0]
                 offset = res[1]
@@ -1681,7 +1941,7 @@ class tiff_viewer(QMainWindow):
             if tempEnabled:
                 temp = TemporalMedianFilter()
                 temp._temporal_window = \
-                    self.tempMedianFilter.filter._temporal_window
+                    self.temp_median_filter.filter._temporal_window
 
             filtered = image.copy()
 
@@ -1788,123 +2048,169 @@ class tiff_viewer(QMainWindow):
         return frames_list, params, crlbs, loglike
 
     def StartGUI(path=None):
-        '''Initializes a new QApplication and control_module.
+        '''
+        Initializes a new QApplication and tiff_viewer.
 
-        Use
-        -------
-        app, window = control_module.StartGUI()
-
-        app.exec_()
+        Parameters
+        ----------
+        path : str, optional
+            The path to a file to be loaded initially.
 
         Returns
         -------
-        tuple (QApplication, microEye.control_module)
-            Returns a tuple with QApp and control_module main window.
+        tuple of QApplication and tiff_viewer
+            Returns a tuple with QApplication and tiff_viewer main window.
         '''
-        # create a QApp
+        # Create a QApplication
         app = QApplication(sys.argv)
-        # set darkmode from *qdarkstyle* (not compatible with pyqt6)
+        desktop = app.desktop()
+
+        main_screen = desktop.screenGeometry()
+        screen_info = (main_screen.width(), main_screen.height())
+
+        # Set dark mode from qdarkstyle (not compatible with PyQt6)
         app.setStyleSheet(qdarkstyle.load_stylesheet(qt_api='pyqt5'))
+
+        # Set the font size for the application
         font = app.font()
         font.setPointSize(10)
         app.setFont(font)
-        # sets the app icon
+
+        # Set the app icon
         dirname = os.path.dirname(os.path.abspath(__file__))
         app_icon = QIcon()
-        app_icon.addFile(
-            os.path.join(dirname, '../icons/16.png'), QSize(16, 16))
-        app_icon.addFile(
-            os.path.join(dirname, '../icons/24.png'), QSize(24, 24))
-        app_icon.addFile(
-            os.path.join(dirname, '../icons/32.png'), QSize(32, 32))
-        app_icon.addFile(
-            os.path.join(dirname, '../icons/48.png'), QSize(48, 48))
-        app_icon.addFile(
-            os.path.join(dirname, '../icons/64.png'), QSize(64, 64))
-        app_icon.addFile(
-            os.path.join(dirname, '../icons/128.png'), QSize(128, 128))
-        app_icon.addFile(
-            os.path.join(dirname, '../icons/256.png'), QSize(256, 256))
-        app_icon.addFile(
-            os.path.join(dirname, '../icons/512.png'), QSize(512, 512))
+        icon_sizes = [16, 24, 32, 48, 64, 128, 256, 512]
+
+        for size in icon_sizes:
+            icon_path = os.path.join(dirname, f'../icons/{size}.png')
+            app_icon.addFile(icon_path, QSize(size, size))
 
         app.setWindowIcon(app_icon)
 
+        # Set the app user model ID for Windows
         if sys.platform.startswith('win'):
             import ctypes
-            myappid = 'samhitech.mircoEye.tiff_viewer'  # appid
-            ctypes.windll.shell32.\
-                SetCurrentProcessExplicitAppUserModelID(myappid)
+            my_app_id = 'samhitech.mircoEye.tiff_viewer'  # App ID
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(my_app_id)
 
-        window = tiff_viewer(path)
+        # Create the tiff_viewer window
+        window = tiff_viewer(path, screen_info)
+
         return app, window
 
 
-def generateConfig(window: tiff_viewer):
-    filename = 'config_tiff.json'
+def get_dock_config(dock: QDockWidget):
+    '''
+    Get the configuration dictionary for a QDockWidget.
+
+    Parameters
+    ----------
+    dock : QDockWidget
+        The QDockWidget to get the configuration for.
+
+    Returns
+    -------
+    dict
+        The configuration dictionary containing isFloating,
+        position, size, and isVisible.
+    '''
+    if dock:
+        return {
+            'isFloating': dock.isFloating(),
+            'position': (
+                dock.mapToGlobal(QPoint(0, 0)).x(),
+                dock.mapToGlobal(QPoint(0, 0)).y()),
+            'size': (dock.geometry().width(), dock.geometry().height()),
+            'isVisible': dock.isVisible()
+        }
+
+def get_widget_config(widget: QWidget):
+    '''
+    Get the configuration dictionary for a QWidget.
+
+    Parameters
+    ----------
+    widget : QWidget
+        The QWidget to get the configuration for.
+
+    Returns
+    -------
+    dict
+        The configuration dictionary containing position, size, and isMaximized.
+    '''
+    if widget:
+        return {
+            'position': (
+                widget.mapToGlobal(QPoint(0, 0)).x(),
+                widget.mapToGlobal(QPoint(0, 0)).y()),
+            'size': (widget.geometry().width(), widget.geometry().height()),
+            'isMaximized': widget.isMaximized()
+        }
+
+def saveConfig(window: tiff_viewer, filename: str = 'config_tiff.json'):
+    """
+    Save the configuration for the tiff_viewer application.
+
+    Parameters
+    ----------
+    window : tiff_viewer
+        The main application window.
+    filename : str, optional
+        The filename of the configuration file, by default 'config_tiff.json'.
+    """
     config = dict()
 
-    config['tiff_viewer'] = (
-        (window.mapToGlobal(QPoint(0, 0)).x(),
-         window.mapToGlobal(QPoint(0, 0)).y()),
-        (window.geometry().width(),
-         window.geometry().height()),
-        window.isMaximized())
+    # Save tiff_viewer widget config
+    config['tiff_viewer'] = get_widget_config(window)
 
-    config['file_dock'] = (
-        window.file_dock.isFloating(),
-        (window.file_dock.mapToGlobal(QPoint(0, 0)).x(),
-         window.file_dock.mapToGlobal(QPoint(0, 0)).y()),
-        (window.file_dock.geometry().width(),
-         window.file_dock.geometry().height()),
-        window.file_dock.isVisible())
-    config['cont_dock'] = (
-        window.cont_dock.isFloating(),
-        (window.cont_dock.mapToGlobal(QPoint(0, 0)).x(),
-         window.cont_dock.mapToGlobal(QPoint(0, 0)).y()),
-        (window.cont_dock.geometry().width(),
-         window.cont_dock.geometry().height()),
-        window.cont_dock.isVisible())
-    config['loc_dock'] = (
-        window.loc_dock.isFloating(),
-        (window.loc_dock.mapToGlobal(QPoint(0, 0)).x(),
-         window.loc_dock.mapToGlobal(QPoint(0, 0)).y()),
-        (window.loc_dock.geometry().width(),
-         window.loc_dock.geometry().height()),
-        window.loc_dock.isVisible())
-    config['cmos_dock'] = (
-        window.cmos_dock.isFloating(),
-        (window.cmos_dock.mapToGlobal(QPoint(0, 0)).x(),
-         window.cmos_dock.mapToGlobal(QPoint(0, 0)).y()),
-        (window.cmos_dock.geometry().width(),
-         window.cmos_dock.geometry().height()),
-        window.cmos_dock.isVisible())
-    config['filters_dock'] = (
-        window.filters_dock.isFloating(),
-        (window.filters_dock.mapToGlobal(QPoint(0, 0)).x(),
-         window.filters_dock.mapToGlobal(QPoint(0, 0)).y()),
-        (window.filters_dock.geometry().width(),
-         window.filters_dock.geometry().height()),
-        window.filters_dock.isVisible())
-    config['camDock'] = (
-        window.meta_dock.isFloating(),
-        (window.meta_dock.mapToGlobal(QPoint(0, 0)).x(),
-         window.meta_dock.mapToGlobal(QPoint(0, 0)).y()),
-        (window.meta_dock.geometry().width(),
-         window.meta_dock.geometry().height()),
-        window.meta_dock.isVisible())
+    # Save docks config
+    for key in DockKeys:
+        dock = window.docks.get(key)
+        if dock:
+            config[key.value] = get_dock_config(dock)
 
     with open(filename, 'w') as file:
         json.dump(config, file, indent=2)
 
-    print('Config.json file generated!')
+    print(f'{filename} file generated!')
 
+def load_widget_config(widget: QWidget, widget_config):
+    '''
+    Load configuration for a QWidget.
 
-def loadConfig(window: tiff_viewer):
-    filename = 'config_tiff.json'
+    Parameters
+    ----------
+    widget : QWidget
+        The QWidget to apply the configuration to.
+    widget_config : dict
+        The configuration dictionary containing position, size, and maximized status.
 
+    Returns
+    -------
+    None
+    '''
+    widget.setGeometry(
+        widget_config['position'][0],
+        widget_config['position'][1],
+        widget_config['size'][0],
+        widget_config['size'][1]
+    )
+    if bool(widget_config['isMaximized']):
+        widget.showMaximized()
+
+def loadConfig(window: tiff_viewer, filename: str = 'config_tiff.json'):
+    """
+    Load the configuration for the tiff_viewer application.
+
+    Parameters
+    ----------
+    window : tiff_viewer
+        The main application window.
+    filename : str, optional
+        The filename of the configuration file, by default 'config_tiff.json'.
+    """
     if not os.path.exists(filename):
-        print('Config.json not found!')
+        print(f'{filename} not found!')
         return
 
     config: dict = None
@@ -1912,90 +2218,34 @@ def loadConfig(window: tiff_viewer):
     with open(filename) as file:
         config = json.load(file)
 
+    # Loading tiff_viewer widget config
     if 'tiff_viewer' in config:
-        if bool(config['tiff_viewer'][2]):
-            window.showMaximized()
-        else:
-            window.setGeometry(
-                config['tiff_viewer'][0][0],
-                config['tiff_viewer'][0][1],
-                config['tiff_viewer'][1][0],
-                config['tiff_viewer'][1][1])
+        load_widget_config(window, config['tiff_viewer'])
 
-    if 'file_dock' in config:
-        window.file_dock.setVisible(
-            bool(config['file_dock'][3]))
-        if bool(config['file_dock'][0]):
-            window.file_dock.setFloating(True)
-            window.file_dock.setGeometry(
-                config['file_dock'][1][0],
-                config['file_dock'][1][1],
-                config['file_dock'][2][0],
-                config['file_dock'][2][1])
-        else:
-            window.file_dock.setFloating(False)
-    if 'cont_dock' in config:
-        window.cont_dock.setVisible(
-            bool(config['cont_dock'][3]))
-        if bool(config['cont_dock'][0]):
-            window.cont_dock.setFloating(True)
-            window.cont_dock.setGeometry(
-                config['cont_dock'][1][0],
-                config['cont_dock'][1][1],
-                config['cont_dock'][2][0],
-                config['cont_dock'][2][1])
-        else:
-            window.cont_dock.setFloating(False)
-    if 'loc_dock' in config:
-        window.loc_dock.setVisible(
-            bool(config['loc_dock'][3]))
-        if bool(config['loc_dock'][0]):
-            window.loc_dock.setFloating(True)
-            window.loc_dock.setGeometry(
-                config['loc_dock'][1][0],
-                config['loc_dock'][1][1],
-                config['loc_dock'][2][0],
-                config['loc_dock'][2][1])
-        else:
-            window.loc_dock.setFloating(False)
-    if 'cmos_dock' in config:
-        window.cmos_dock.setVisible(
-            bool(config['cmos_dock'][3]))
-        if bool(config['cmos_dock'][0]):
-            window.cmos_dock.setFloating(True)
-            window.cmos_dock.setGeometry(
-                config['cmos_dock'][1][0],
-                config['cmos_dock'][1][1],
-                config['cmos_dock'][2][0],
-                config['cmos_dock'][2][1])
-        else:
-            window.cmos_dock.setFloating(False)
-    if 'filters_dock' in config:
-        window.filters_dock.setVisible(
-            bool(config['filters_dock'][3]))
-        if bool(config['filters_dock'][0]):
-            window.filters_dock.setFloating(True)
-            window.filters_dock.setGeometry(
-                config['filters_dock'][1][0],
-                config['filters_dock'][1][1],
-                config['filters_dock'][2][0],
-                config['filters_dock'][2][1])
-        else:
-            window.filters_dock.setFloating(False)
-    if 'meta_dock' in config:
-        window.meta_dock.setVisible(
-            bool(config['meta_dock'][3]))
-        if bool(config['meta_dock'][0]):
-            window.meta_dock.setFloating(True)
-            window.meta_dock.setGeometry(
-                config['meta_dock'][1][0],
-                config['meta_dock'][1][1],
-                config['meta_dock'][2][0],
-                config['meta_dock'][2][1])
-        else:
-            window.meta_dock.setFloating(False)
+    # Loading docks
+    for dock_key, dock_config in config.items():
+        dock_enum_key = None
+        try:
+            dock_enum_key = DockKeys(dock_key)
+        except ValueError:
+            # Skip processing if dock_key is not a valid DockKeys enum
+            continue
 
-    print('Config.json file loaded!')
+        if dock_enum_key in window.docks:
+            dock = window.docks[dock_enum_key]
+            dock.setVisible(bool(dock_config.get('isVisible', False)))
+            if bool(dock_config.get('isFloating', False)):
+                dock.setFloating(True)
+                dock.setGeometry(
+                    dock_config.get('position', (0, 0))[0],
+                    dock_config.get('position', (0, 0))[1],
+                    dock_config.get('size', (0, 0))[0],
+                    dock_config.get('size', (0, 0))[1]
+                )
+            else:
+                dock.setFloating(False)
+
+    print(f'{filename} file loaded!')
 
 
 if __name__ == '__main__':
