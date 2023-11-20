@@ -36,7 +36,10 @@ from .fitting.results import *
 from .fitting.results_stats import resultsStatsWidget
 from .fitting.tardis import TARDIS_Widget
 from .rendering import *
-from .tools.kymograms import Kymogram, get_kymogram_row, select_polyline_roi
+from .tools.kymograms import (
+    Kymogram,
+    KymogramWidget,
+)
 
 
 class DockKeys(Enum):
@@ -51,7 +54,7 @@ class DockKeys(Enum):
 
 class tiff_viewer(QMainWindow):
 
-    def __init__(self, path=None, screen_info=(1920, 1080)):
+    def __init__(self, threadpool, path=None):
         super().__init__()
         # Set window properties
         self.title = 'microEye tiff viewer'
@@ -61,7 +64,6 @@ class tiff_viewer(QMainWindow):
         self._height = 650
         self._zoom = 1
         self._n_levels = 4096
-        self.screen_info = screen_info
 
         # Initialize variables
         self.fittingResults = None
@@ -70,7 +72,7 @@ class tiff_viewer(QMainWindow):
         self.tiffSeq_Handler = None
 
         # Threading
-        self._threadpool = QThreadPool()
+        self._threadpool = threadpool
         print('Multithreading with maximum %d threads'
               % self._threadpool.maxThreadCount())
 
@@ -388,44 +390,13 @@ class tiff_viewer(QMainWindow):
             DockKeys.IMAGE_TOOLS, QVBoxLayout,
             'LeftDockWidgetArea', widget=None)
 
-        self._kymogram: Kymogram = None
+        self.kymogram_widget = KymogramWidget(
+            'Kymograms', self._threadpool)
 
-        kymo_group, kymo_layout = create_group_box(
-            'Kymograms', QFormLayout)
-        self.image_tools_layout.addWidget(kymo_group)
+        self.kymogram_widget.displayClicked.connect(self.kymogram_display_clicked)
+        self.kymogram_widget.extractClicked.connect(self.kymogram_btn_clicked)
 
-        self.kymogram_temporal_window = create_spin_box(
-            0, 100, 1, 50)
-        self.kymogram_linewidth = create_spin_box(
-            1, 100, 1, 1)
-
-        self.temporal_window_location = QComboBox()
-        self.temporal_window_location.addItems(
-            ['From Current', 'Current Central', 'To Current'])
-
-        self.kymogram_roi_method = QComboBox()
-        self.kymogram_roi_method.addItems(['average', 'maximum', 'sum'])
-
-        self.kymogram_btn = QPushButton(
-            'Extract', clicked=self.kymogram_btn_clicked)
-        self.kymogram_display_btn = QPushButton(
-            'Display', clicked=self.kymogram_display_clicked)
-        self.kymogram_save_btn = QPushButton(
-            'Save', clicked=self.kymogram_save_clicked)
-
-        kymogram_btns = create_hbox_layout(
-            self.kymogram_btn,
-            self.kymogram_display_btn,
-            self.kymogram_save_btn
-        )
-
-        kymo_layout.addRow(
-            QLabel('Temporal Window [frames]:'), self.kymogram_temporal_window)
-        kymo_layout.addRow(QLabel('Window Range:'), self.temporal_window_location)
-        kymo_layout.addRow(QLabel('ROI Linewidth [pixels]:'), self.kymogram_linewidth)
-        kymo_layout.addRow(QLabel('ROI Extracts:'), self.kymogram_roi_method)
-        kymo_layout.addRow(kymogram_btns)
-
+        self.image_tools_layout.addWidget(self.kymogram_widget)
 
     def setupLocalizationTab(self):
         # Localization / Render tab layout
@@ -852,7 +823,7 @@ class tiff_viewer(QMainWindow):
 
     def set_maximum(self, frames):
         self.pages_slider.setMaximum(frames)
-        self.kymogram_temporal_window.setMaximum(frames)
+        self.kymogram_widget.setMaximum(frames)
 
     def _open_file(self, i):
         if not self.model.isDir(i):
@@ -969,148 +940,22 @@ class tiff_viewer(QMainWindow):
 
             self.image.setImage(avg, autoLevels=True)
 
-    def get_kymogram_window(self):
-        '''
-        Get the temporal window for generating a kymogram based on the selected option.
-
-        Returns
-        -------
-        Tuple[int, int]:
-            A tuple representing the start and end frames
-            of the kymogram window.
-        '''
-        selected_option = self.temporal_window_location.currentText()
-
-        current_frame = self.pages_slider.value()
-        max_frame = self.pages_slider.maximum()
-        n_frames = self.kymogram_temporal_window.value()
-
-        if max_frame + 1 <= n_frames:
-            # return the entire range.
-            return 0, max_frame
-        else:
-            if selected_option == 'To Current':
-                # Return frames from (current_frame - n_frames) to current_frame
-                start_frame = max(0, current_frame - n_frames)
-                return start_frame, current_frame
-            elif selected_option == 'Current Central':
-                # Return frames centered around current_frame (window size = n_frames)
-                half_window = n_frames // 2
-                start_frame = max(0, current_frame - half_window)
-                end_frame = min(max_frame, current_frame + half_window)
-                return start_frame, end_frame
-            else:  # Assuming the third option is 'From Current'
-                # Return frames from current_frame to (current_frame + n_frames)
-                start_frame = current_frame
-                end_frame = min(max_frame, current_frame + n_frames)
-                return start_frame, end_frame
-
-    def kymogram_display_clicked(self):
-        if self._kymogram is None:
-            return
-
+    def kymogram_display_clicked(self, data: np.ndarray):
         self.enable_roi.setChecked(False)
-        uImg = uImage(self._kymogram.data)
+        uImg = uImage(data)
         uImg.equalizeLUT()
         self.image.setImage(uImg._view, autoLevels=True)
-
-    def kymogram_save_clicked(self):
-        if self._kymogram is None:
-            return
-
-        filename, _ = QFileDialog.getSaveFileName(
-            self, 'Export Kymogram',
-            filter='Tiff files (*.tif);;')
-
-        if len(filename) > 0:
-            self._kymogram.to_tiff(filename)
-
-    def get_scaling_factor(self, height, width, target_percentage=0.8):
-        # Calculate scaling factor to fill the specified percentage of the screen
-        target_height = self.screen_info[1] * target_percentage
-        target_width = self.screen_info[0] * target_percentage
-
-        scaling_factor_height = target_height / height
-        scaling_factor_width = target_width / width
-
-        return min(scaling_factor_height, scaling_factor_width)
 
     def kymogram_btn_clicked(self):
         if self.tiffSeq_Handler is None:
             return
 
-        try:
-            window_range = self.get_kymogram_window()
-
-            linewidth = self.kymogram_linewidth.value()
-
-            roi_extracts = self.kymogram_roi_method.currentText()
-
-            image = uImage(self.tiffSeq_Handler.getSlice(
-                self.pages_slider.value(), 0, 0))
-
-            image.equalizeLUT()
-
-            roiInfo = self.get_roi_info()
-            if roiInfo is not None:
-                origin, dim = roiInfo
-                view = self.uImage._view[
-                    int(origin[1]):int(origin[1] + dim[1]),
-                    int(origin[0]):int(origin[0] + dim[0])]
-            else:
-                origin = None
-                view = image._view
-
-            scale_factor = self.get_scaling_factor(view.shape[0], view.shape[1])
-
-            def work_func():
-                try:
-                    # Do somthing
-                    points = select_polyline_roi(view, scale_factor)
-                    if len(points) > 1:
-                        if origin is not None:
-                            points[:, 0] += origin[0]
-                            points[:, 1] += origin[1]
-
-                        res = None
-                        n_points = window_range[1] - window_range[0] + 1
-                        for frame_idx in range(window_range[0], window_range[1] + 1):
-                            data = self.tiffSeq_Handler.getSlice(
-                                frame_idx, 0, 0)
-                            row = get_kymogram_row(
-                                data,
-                                points[:, 0].flatten(),  # X points
-                                points[:, 1].flatten(),  # Y points
-                                linewidth,
-                                roi_extracts
-                            )
-                            res = row if res is None else np.vstack([res, row])
-                            print(
-                                'Generating Kymogram ... {:.2f}%'.format(
-                                    100 * (res.shape[0] if res.ndim ==2 else 1
-                                     )/n_points), end='\r')
-                        return Kymogram(res, points, linewidth, roi_extracts, n_points)
-                    else:
-                        return None
-                except Exception:
-                    traceback.print_exc()
-                    return None
-
-            def done(results: Kymogram):
-                self.kymogram_btn.setDisabled(False)
-                if results is not None:
-                    self._kymogram = results
-                    self.kymogram_display_clicked()
-
-            self.worker = thread_worker(
-                work_func,
-                progress=False, z_stage=False)
-            self.worker.signals.result.connect(done)
-            # Execute
-            self.kymogram_btn.setDisabled(True)
-            self._threadpool.start(self.worker)
-        except Exception:
-            traceback.print_stack()
+        self.kymogram_widget.extract_kymogram(
+            self.tiffSeq_Handler,
+            self.pages_slider.value(),
+            self.pages_slider.maximum(),
+            self.get_roi_info()
+        )
 
     def genOME(self):
         if self.tiffSeq_Handler is not None:
@@ -2063,10 +1908,8 @@ class tiff_viewer(QMainWindow):
         '''
         # Create a QApplication
         app = QApplication(sys.argv)
-        desktop = app.desktop()
 
-        main_screen = desktop.screenGeometry()
-        screen_info = (main_screen.width(), main_screen.height())
+        thread_pool = QThreadPool()
 
         # Set dark mode from qdarkstyle (not compatible with PyQt6)
         app.setStyleSheet(qdarkstyle.load_stylesheet(qt_api='pyqt5'))
@@ -2094,7 +1937,7 @@ class tiff_viewer(QMainWindow):
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(my_app_id)
 
         # Create the tiff_viewer window
-        window = tiff_viewer(path, screen_info)
+        window = tiff_viewer(thread_pool, path)
 
         return app, window
 

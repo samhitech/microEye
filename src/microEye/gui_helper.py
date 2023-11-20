@@ -1,6 +1,7 @@
 from typing import Union
 
 from PyQt5.QtWidgets import (
+    QApplication,
     QCheckBox,
     QDoubleSpinBox,
     QFormLayout,
@@ -59,3 +60,19 @@ def create_hbox_layout(*args):
         hbox_layout.addWidget(widget)
 
     return hbox_layout
+
+def get_scaling_factor(height, width, target_percentage=0.8):
+    app: QApplication = QApplication.instance()
+    desktop = app.desktop()
+
+    main_screen = desktop.screenGeometry()
+    screen_info = (main_screen.width(), main_screen.height())
+
+    # Calculate scaling factor to fill the specified percentage of the screen
+    target_height = screen_info[1] * target_percentage
+    target_width = screen_info[0] * target_percentage
+
+    scaling_factor_height = target_height / height
+    scaling_factor_width = target_width / width
+
+    return min(scaling_factor_height, scaling_factor_width)

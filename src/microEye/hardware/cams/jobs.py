@@ -126,11 +126,8 @@ class AcquisitionJob:
 
     def addTemp(self, temp: float):
         # open csv file and append sensor temp and close
-        if self.tempFile is None:
-            with open(self.getTempFilename(), 'ab') as f:
-                self.tempFile = f
-
-        np.savetxt(self.tempFile, [temp], delimiter=';')
+        with open(self.getTempFilename(), 'ab') as f:
+            np.savetxt(f, [temp], delimiter=';')
 
     def getMetaFilename(self) -> str:
         return self.path + self.name + self.timestamp + '.txt'
