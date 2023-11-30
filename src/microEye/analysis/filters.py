@@ -9,7 +9,7 @@ from PyQt5.QtWidgets import QWidget
 from scipy import signal
 from scipy.fftpack import fft2, fftshift, ifft2, ifftshift
 
-from ..uImage import ZarrImageSequence
+from ..shared.uImage import ZarrImageSequence
 
 
 class AbstractFilter:

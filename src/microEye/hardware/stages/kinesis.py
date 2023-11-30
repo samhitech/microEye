@@ -4,7 +4,7 @@ from PyQt5.QtGui import *
 from PyQt5.QtSerialPort import *
 from PyQt5.QtWidgets import *
 
-from ...thread_worker import *
+from ...shared.thread_worker import *
 from ..port_config import port_config
 
 

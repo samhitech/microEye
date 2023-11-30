@@ -13,10 +13,10 @@ from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 
-from ...metadata import MetadataEditor
-from ...qlist_slider import *
-from ...thread_worker import *
-from ...uImage import uImage
+from ...shared.metadata import MetadataEditor
+from ...shared.thread_worker import *
+from ...shared.uImage import uImage
+from ..widgets.qlist_slider import *
 from .jobs import *
 from .line_profiler import LineProfiler
 from .micam import *

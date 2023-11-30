@@ -6,7 +6,7 @@ from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 
-from ...thread_worker import *
+from ...shared.thread_worker import *
 from .thorlabs import *
 
 try:

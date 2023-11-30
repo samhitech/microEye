@@ -2,14 +2,7 @@
 import typing
 
 import ome_types.model as om
-from ome_types.model.channel import *
-from ome_types.model.detector import Detector, Type
-from ome_types.model.dichroic import Dichroic
-from ome_types.model.filter import Filter
-from ome_types.model.instrument import Instrument
-from ome_types.model.microscope import Microscope
-from ome_types.model.objective import Correction, Immersion, Objective
-from ome_types.model.ome import OME
+from ome_types.model import *
 from ome_types.model.simple_types import PixelType, UnitsLength, UnitsTime
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
@@ -139,24 +132,24 @@ class MetadataEditor(QWidget):
             self.exposure_unit)
 
         self.acq_mode = QComboBox()
-        self.acq_mode.addItems(AcquisitionMode._member_names_)
-        self.acq_mode.setCurrentText(AcquisitionMode.TIRF.name)
+        self.acq_mode.addItems(Channel_AcquisitionMode._member_names_)
+        self.acq_mode.setCurrentText(Channel_AcquisitionMode.TIRF.name)
 
         self.image_lay.addRow(
             QLabel('Acquisition mode:'),
             self.acq_mode)
 
         self.ill_type = QComboBox()
-        self.ill_type.addItems(IlluminationType._member_names_)
-        self.ill_type.setCurrentText(IlluminationType.OTHER.name)
+        self.ill_type.addItems(Channel_IlluminationType._member_names_)
+        self.ill_type.setCurrentText(Channel_IlluminationType.OTHER.name)
 
         self.image_lay.addRow(
             QLabel('Illumination type:'),
             self.ill_type)
 
         self.contrast = QComboBox()
-        self.contrast.addItems(ContrastMethod._member_names_)
-        self.contrast.setCurrentText(ContrastMethod.FLUORESCENCE.name)
+        self.contrast.addItems(Channel_ContrastMethod._member_names_)
+        self.contrast.setCurrentText(Channel_ContrastMethod.FLUORESCENCE.name)
 
         self.image_lay.addRow(
             QLabel('Contrast method:'),
@@ -198,11 +191,11 @@ class MetadataEditor(QWidget):
         self.obj_nom_mag.setMaximum(1000)
         self.obj_nom_mag.setValue(60)
         self.obj_immersion = QComboBox()
-        self.obj_immersion.addItems(Immersion._member_names_)
-        self.obj_immersion.setCurrentText(Immersion.OIL.name)
+        self.obj_immersion.addItems(Objective_Immersion._member_names_)
+        self.obj_immersion.setCurrentText(Objective_Immersion.OIL.name)
         self.obj_corr = QComboBox()
-        self.obj_corr.addItems(Correction._member_names_)
-        self.obj_corr.setCurrentText(Correction.APO.name)
+        self.obj_corr.addItems(Objective_Correction._member_names_)
+        self.obj_corr.setCurrentText(Objective_Correction.APO.name)
 
         self.instruments_lay.addRow(
             QLabel('Microscope manufacturer:'),
@@ -233,8 +226,8 @@ class MetadataEditor(QWidget):
         self.det_model = QLineEdit('ui-3060cp-rev-2')
         self.det_serial = QLineEdit('')
         self.det_type = QComboBox()
-        self.det_type.addItems(Type._member_names_)
-        self.det_type.setCurrentText(Type.CMOS.name)
+        self.det_type.addItems(Detector_Type._member_names_)
+        self.det_type.setCurrentText(Detector_Type.CMOS.name)
 
         self.instruments_lay.addRow(
             QLabel('Detector manufacturer:'),
@@ -317,16 +310,16 @@ class MetadataEditor(QWidget):
         objective.model = self.obj_model.text()
         objective.lens_na = self.obj_lens_na.value()
         objective.nominal_magnification = self.obj_nom_mag.value()
-        objective.immersion = Immersion._member_map_[
+        objective.immersion = Objective_Immersion._member_map_[
             self.obj_immersion.currentText()]
-        objective.correction = Correction._member_map_[
+        objective.correction = Objective_Correction._member_map_[
             self.obj_corr.currentText()]
 
         detector = Detector()
         detector.manufacturer = self.det_manufacturer.text()
         detector.model = self.det_model.text()
         detector.serial_number = self.det_serial.text()
-        detector.type = Type._member_map_[
+        detector.type = Detector_Type._member_map_[
             self.det_type.currentText()]
 
         dichroic = Dichroic()
@@ -359,11 +352,11 @@ class MetadataEditor(QWidget):
         channel = om.Channel()
         channel.name = self.channel_name.text()
         channel.fluor = self.fluor_name.text()
-        channel.acquisition_mode = AcquisitionMode._member_map_[
+        channel.acquisition_mode = Channel_AcquisitionMode._member_map_[
             self.acq_mode.currentText()]
-        channel.illumination_type = IlluminationType._member_map_[
+        channel.illumination_type = Channel_IlluminationType._member_map_[
             self.ill_type.currentText()]
-        channel.contrast_method = ContrastMethod._member_map_[
+        channel.contrast_method = Channel_ContrastMethod._member_map_[
             self.contrast.currentText()]
         channel.excitation_wavelength = self.excitation.value()
         channel.emission_wavelength = self.emission.value()
@@ -422,7 +415,7 @@ class MetadataEditor(QWidget):
         detector.manufacturer = self.det_manufacturer.text()
         detector.model = self.det_model.text()
         detector.serial_number = self.det_serial.text()
-        detector.type = Type._member_map_[
+        detector.type = Detector_Type._member_map_[
             self.det_type.currentText()]
 
         instrument = Instrument()

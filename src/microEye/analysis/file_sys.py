@@ -11,7 +11,7 @@ import pyqtgraph as pg
 import qdarkstyle
 import tifffile as tf
 from numba import cuda
-from ome_types.model.ome import OME
+from ome_types.model import OME
 from PyQt5.QtCore import *
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import *
@@ -22,10 +22,10 @@ else:
     def GPUmleFit_LM(*args):
         pass
 
-from ..gui_helper import *
-from ..metadata import MetadataEditor
-from ..thread_worker import *
-from ..uImage import *
+from ..shared.gui_helper import *
+from ..shared.metadata import MetadataEditor
+from ..shared.thread_worker import *
+from ..shared.uImage import *
 from .checklist_dialog import ChecklistDialog
 from .cmosMaps import cmosMaps
 from .filters import *
@@ -1831,8 +1831,6 @@ class tiff_viewer(QMainWindow):
                 th_img = th_img * th2
 
             points: np.ndarray = detector.find_peaks(th_img)
-
-            print(len(points))
 
             if len(points) > 0:
                 if varim is None:

@@ -8,7 +8,7 @@ from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 
-from ...qlist_slider import *
+from ..widgets.qlist_slider import *
 from . import Camera_Panel, vimba_cam
 
 try:
@@ -51,7 +51,7 @@ class Vimba_Panel(Camera_Panel):
         self.cam_exposure_lbl = DragLabel(
             'Exposure ' + self.cam.exposure_unit,
             parent_name='cam_exposure_slider')
-        self.cam_exposure_slider = qlist_slider(
+        self.cam_exposure_slider = QListSlider(
             orientation=Qt.Orientation.Horizontal)
         self.cam_exposure_slider.values = np.arange(
             self._cam.exposure_range[0],

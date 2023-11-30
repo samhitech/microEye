@@ -8,7 +8,7 @@ from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 
-from ...qlist_slider import *
+from ..widgets.qlist_slider import *
 from . import Camera_Panel, IDS_Camera
 
 try:
@@ -61,7 +61,7 @@ class IDS_Panel(Camera_Panel):
         self.cam_framerate_lbl = DragLabel(
             'Framerate FPS',
             parent_name='cam_framerate_slider')
-        self.cam_framerate_slider = qlist_slider(
+        self.cam_framerate_slider = QListSlider(
             orientation=Qt.Orientation.Horizontal)
         self.cam_framerate_slider.values = np.arange(
             self._cam.minFrameRate, self._cam.maxFrameRate,
@@ -82,7 +82,7 @@ class IDS_Panel(Camera_Panel):
         # exposure slider control
         self.cam_exposure_lbl = DragLabel(
             'Exposure ms', parent_name='cam_exposure_slider')
-        self.cam_exposure_slider = qlist_slider(
+        self.cam_exposure_slider = QListSlider(
             orientation=Qt.Orientation.Horizontal)
         self.cam_exposure_slider.values = np.arange(
             self._cam.exposure_range[0],
@@ -120,7 +120,7 @@ class IDS_Panel(Camera_Panel):
 
         # flash duration slider
         self.cam_flash_duration_lbl = QLabel('Flash Duration us')
-        self.cam_flash_duration_slider = qlist_slider(
+        self.cam_flash_duration_slider = QListSlider(
             orientation=Qt.Orientation.Horizontal)
         self.cam_flash_duration_slider.values = \
             np.append([0], np.arange(self._cam.flash_min.u32Duration.value,
@@ -138,7 +138,7 @@ class IDS_Panel(Camera_Panel):
 
         # flash delay slider
         self.cam_flash_delay_lbl = QLabel('Flash Delay us')
-        self.cam_flash_delay_slider = qlist_slider(
+        self.cam_flash_delay_slider = QListSlider(
             orientation=Qt.Orientation.Horizontal)
         self.cam_flash_delay_slider.values = np.append([0], np.arange(
             self._cam.flash_min.s32Delay.value,

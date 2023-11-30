@@ -14,14 +14,15 @@ from PyQt5.QtWidgets import (
     QFormLayout,
     QLabel,
     QPushButton,
+    QTableWidget,
     QVBoxLayout,
     QWidget,
 )
 from pyqtgraph.functions import interpolateArray
 
-from ...gui_helper import *
-from ...thread_worker import thread_worker
-from ...uImage import TiffSeqHandler, ZarrImageSequence, uImage
+from ...shared.gui_helper import *
+from ...shared.thread_worker import thread_worker
+from ...shared.uImage import TiffSeqHandler, ZarrImageSequence, uImage
 
 
 class MultiLineROISelector:
@@ -481,7 +482,8 @@ def get_kymogram_row(
 class Kymogram:
     def __init__(
             self, data: np.ndarray, rois: list[np.ndarray],
-            linewidth: int, method: str, window: int, shapes: list[int]) -> None:
+            linewidth: int, method: str, window: int, at_index: int,
+            window_location: str) -> None:
         '''
         Initialize a Kymogram object.
 
@@ -497,13 +499,18 @@ class Kymogram:
             The method used for kymogram generation.
         window : int
             The window size for kymogram extraction.
+        at_index: int
+            The frame index at which data was extracted.
+        window_location: str
+            The window location relative to at_index.
         '''
         self.data = data
         self.rois = rois
         self.linewidth = linewidth
         self.method = method
         self.window = window
-        self.shapes = shapes
+        self.at_index = at_index
+        self.window_location = window_location
 
     def get_metadata(self):
         '''
@@ -521,7 +528,8 @@ class Kymogram:
                 'linewidth': self.linewidth,
                 'method': self.method,
                 'window': self.window,
-                'shapes': self.shapes
+                'window_location': self.window_location,
+                'at_index': self.at_index,
             }
         }
         return kymogram_dict
@@ -587,10 +595,12 @@ class Kymogram:
         linewidth = kymogram_metadata.get('linewidth', 0)
         method = kymogram_metadata.get('method', 'N/A')
         window = kymogram_metadata.get('window', -1)
-        shapes = kymogram_metadata.get('shapes', [])
+        window_location = kymogram_metadata.get(
+            'window_location', 'From Current')
+        at_index = kymogram_metadata.get('at_index', 0)
 
         kymogram = cls(
-            None, rois, linewidth, method, window, shapes)
+            None, rois, linewidth, method, window, at_index, window_location)
 
         return kymogram
 
@@ -614,7 +624,8 @@ class Kymogram:
             # Read TIFF file and extract metadata
             with tf.TiffFile(filename) as tiff:
                 data = tiff.asarray()
-                metadata = tiff[0].image_description
+
+            metadata = tf.tiffcomment(filename)
 
             # Parse JSON metadata
             metadata_dict = json.loads(metadata)
@@ -622,7 +633,8 @@ class Kymogram:
             kymogram_metadata = metadata_dict.get('Kymogram', None)
             if kymogram_metadata is None:
                 # 'Kymogram' key is not present
-                kymogram = cls(data, np.array([]), 1, 'N/A', data.shape[0])
+                kymogram = cls(
+                    data, np.array([]), 1, 'N/A', data.shape[0], 0, 'N/A')
 
                 return kymogram
             else:
@@ -631,10 +643,12 @@ class Kymogram:
                 linewidth = kymogram_metadata.get('linewidth', 0)
                 method = kymogram_metadata.get('method', 'N/A')
                 window = kymogram_metadata.get('window', -1)
-                shapes = kymogram_metadata.get('shapes', [])
+                window_location = kymogram_metadata.get(
+                    'window_location', 'From Current')
+                at_index = kymogram_metadata.get('at_index', 0)
 
                 kymogram = cls(
-                    data, rois, linewidth, method, window, shapes)
+                    data, rois, linewidth, method, window, at_index, window_location)
 
                 return kymogram
 
@@ -683,13 +697,16 @@ class KymogramWidget(QGroupBox):
             'Display', clicked=self.kymogram_display_clicked)
         self.kymogram_save_btn = QPushButton(
             'Save', clicked=self.kymogram_save_clicked)
+        self.kymogram_load_btn = QPushButton(
+            'Load', clicked=self.kymogram_load_clicked)
 
         self.previous_selector = create_check_box('Use previous ROI selector?', True)
 
         kymogram_btns = create_hbox_layout(
             self.kymogram_btn,
             self.kymogram_display_btn,
-            self.kymogram_save_btn
+            self.kymogram_save_btn,
+            self.kymogram_load_btn
         )
 
         kymo_layout = QFormLayout(self)
@@ -715,6 +732,18 @@ class KymogramWidget(QGroupBox):
         wrapped_label.setWordWrap(True)
         kymo_layout.addRow(wrapped_label)
 
+        # Create a QTableWidget
+        self.tableWidget = QTableWidget()
+
+        # Set the column count
+        self.tableWidget.setColumnCount(3)
+
+        # Set the headers
+        self.tableWidget.setHorizontalHeaderLabels(['ROI index', 'X', 'Y'])
+        self.tableWidget.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+        kymo_layout.addRow(self.tableWidget)
+
+
         self._kymogram: Kymogram = None  # Assuming you have a Kymogram instance
 
     def setMaximum(self, value: int):
@@ -729,6 +758,7 @@ class KymogramWidget(QGroupBox):
             return
 
         try:
+            window_location = self.temporal_window_location.currentText()
             window_range = self.get_kymogram_window(current_frame, max_frame)
 
             linewidth = self.kymogram_linewidth.value()
@@ -737,8 +767,12 @@ class KymogramWidget(QGroupBox):
 
             previous_selector = self.previous_selector.isChecked()
             if previous_selector and self._kymogram is not None:
+                if roi_info is not None:
+                    origin, _ = roi_info
+                else:
+                    origin = (0, 0)
                 old_rois = [
-                    [np.array(point) for point in roi.tolist()
+                    [np.array(point) - origin for point in roi.tolist()
                      ] for roi in self._kymogram.rois]
             else:
                 old_rois = None
@@ -769,7 +803,6 @@ class KymogramWidget(QGroupBox):
 
                     if rois:
                         res = None
-                        roi_shapes = []
                         zero = np.zeros(1)
                         t_points = window_range[1] - window_range[0] + 1
                         for frame_idx in range(window_range[0], window_range[1] + 1):
@@ -794,7 +827,8 @@ class KymogramWidget(QGroupBox):
                                     100 * (res.shape[0] if res.ndim ==2 else 1
                                      )/t_points), end='\r')
                         return Kymogram(
-                            res, rois, linewidth, roi_extracts, t_points, roi_shapes)
+                            res, rois, linewidth, roi_extracts,
+                            t_points, current_frame, window_location)
                     else:
                         return None
                 except Exception:
@@ -836,6 +870,35 @@ class KymogramWidget(QGroupBox):
 
         if len(filename) > 0:
             self._kymogram.to_tiff(filename)
+
+    def kymogram_load_clicked(self):
+        filename, _ = QFileDialog.getOpenFileName(
+            self, 'Load Kymogram',
+            filter='Tiff files (*.tif);;')
+
+        if len(filename) > 0:
+            kymogram = Kymogram.from_tiff(filename)
+            if kymogram is not None:
+                self._kymogram = kymogram
+                self.kymogram_linewidth.setValue(
+                    kymogram.linewidth)
+                self.kymogram_temporal_window.setValue(
+                    kymogram.window)
+
+                index = self.kymogram_roi_method.findText(
+                    kymogram.method)
+
+                if index != -1:
+                    self.kymogram_roi_method.setCurrentIndex(index)
+
+                index = self.temporal_window_location.findText(
+                    kymogram.window_location)
+
+                if index != -1:
+                    self.temporal_window_location.setCurrentIndex(index)
+
+                self.displayClicked.emit(self._kymogram.data)
+
 
     def get_kymogram_window(
             self, current_frame: int, max_frame: int):

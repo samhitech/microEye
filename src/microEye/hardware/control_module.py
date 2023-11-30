@@ -18,14 +18,14 @@ from scipy.optimize import curve_fit
 from scipy.optimize.optimize import OptimizeWarning
 from scipy.signal import find_peaks
 
-from ..hid_controller import *
-from ..pyscripting import *
-from ..qlist_slider import *
-from ..thread_worker import *
+from ..shared.hid_controller import *
+from ..shared.pyscripting import *
+from ..shared.thread_worker import *
 from .cams import *
 from .lasers import *
 from .port_config import *
 from .stages import *
+from .widgets.qlist_slider import *
 
 try:
     from pyueye import ueye

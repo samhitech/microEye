@@ -7,7 +7,7 @@ from PyQt5.QtGui import *
 from PyQt5.QtSerialPort import *
 from PyQt5.QtWidgets import *
 
-from ...uImage import uImage
+from ...shared.uImage import uImage
 
 
 class TileImage:

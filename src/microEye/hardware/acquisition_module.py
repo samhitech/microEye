@@ -14,9 +14,9 @@ from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 
-from ..hid_controller import *
-from ..pyscripting import *
-from ..thread_worker import *
+from ..shared.hid_controller import *
+from ..shared.pyscripting import *
+from ..shared.thread_worker import *
 from .cams import CMD, CameraListWidget, Thorlabs_Panel, thorlabs_camera
 from .stages import *
 from .widgets import *

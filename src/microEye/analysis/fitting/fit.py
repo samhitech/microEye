@@ -4,7 +4,7 @@ from typing import Union
 import cv2
 import numpy as np
 
-from ...uImage import TiffSeqHandler, ZarrImageSequence, uImage
+from ...shared.uImage import TiffSeqHandler, ZarrImageSequence, uImage
 from ..filters import *
 from .phasor_fit import *
 from .pyfit3Dcspline import CPUmleFit_LM, get_roi_list, get_roi_list_CMOS

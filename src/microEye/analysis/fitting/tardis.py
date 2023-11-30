@@ -7,7 +7,7 @@ import pyqtgraph as pg
 from PyQt5.QtCore import *
 from PyQt5.QtWidgets import *
 
-from ...thread_worker import thread_worker
+from ...shared.thread_worker import thread_worker
 from .processing import tardis_data
 
 
