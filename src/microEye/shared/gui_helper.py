@@ -7,8 +7,10 @@ from PyQt5.QtWidgets import (
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
+    QLayout,
     QSpinBox,
     QVBoxLayout,
+    QWidget,
 )
 
 
@@ -53,6 +55,14 @@ def create_group_box(
     group_box.setLayout(layout)
     return group_box, layout
 
+def create_widget(
+        layout_type: Union[QVBoxLayout, QHBoxLayout, QFormLayout] = QVBoxLayout) -> \
+        tuple[QWidget, Union[QVBoxLayout, QHBoxLayout, QFormLayout]]:
+    widget = QWidget()
+    layout = layout_type()
+    widget.setLayout(layout)
+    return widget, layout
+
 def create_hbox_layout(*args):
     hbox_layout = QHBoxLayout()
 
@@ -60,6 +70,21 @@ def create_hbox_layout(*args):
         hbox_layout.addWidget(widget)
 
     return hbox_layout
+
+def create_vbox_layout(*args):
+    vbox_layout = QVBoxLayout()
+
+    for widget in args:
+        vbox_layout.addWidget(widget)
+
+    return vbox_layout
+
+def layout_add_elements(layout: Union[QVBoxLayout, QHBoxLayout], *args):
+    for widget in args:
+        if isinstance(widget, QWidget):
+            layout.addWidget(widget)
+        elif isinstance(widget, QLayout):
+            layout.addLayout(widget)
 
 def get_scaling_factor(height, width, target_percentage=0.8):
     app: QApplication = QApplication.instance()

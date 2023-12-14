@@ -69,7 +69,7 @@ class tiff_viewer(QMainWindow):
         self.fittingResults = None
         self.tiff = None
         self.tiffSequence = None
-        self.tiffSeq_Handler = None
+        self.stack_handler = None
 
         # Threading
         self._threadpool = threadpool
@@ -391,7 +391,7 @@ class tiff_viewer(QMainWindow):
             'LeftDockWidgetArea', widget=None)
 
         self.kymogram_widget = KymogramWidget(
-            'Kymograms', self._threadpool)
+            self._threadpool)
 
         self.kymogram_widget.displayClicked.connect(self.kymogram_display_clicked)
         self.kymogram_widget.extractClicked.connect(self.kymogram_btn_clicked)
@@ -583,7 +583,7 @@ class tiff_viewer(QMainWindow):
 
         self.export_options = ChecklistDialog(
                 'Exported Columns',
-                ['Super-res image', ] + FittingResults.uniqueKeys(None),
+                ['Super-res image', ] + UNIQUE_COLUMNS,
                 checked=True, parent=self)
 
         self.im_exp_layout = QHBoxLayout()
@@ -782,7 +782,7 @@ class tiff_viewer(QMainWindow):
     def centerROI(self):
         '''Centers the ROI and fits it to the image.
         '''
-        image = self.tiffSeq_Handler.getSlice(self.pages_slider.value(), 0, 0)
+        image = self.stack_handler.getSlice(self.pages_slider.value(), 0, 0)
 
         self.roi.setSize([image.shape[1], image.shape[0]])
         self.roi.setPos([0, 0])
@@ -830,15 +830,15 @@ class tiff_viewer(QMainWindow):
             cv2.destroyAllWindows()
             index = self.model.index(i.row(), 0, i.parent())
             self.path = self.model.filePath(index)
-            if self.tiffSeq_Handler is not None:
-                self.tiffSeq_Handler.close()
+            if self.stack_handler is not None:
+                self.stack_handler.close()
             self.tiffSequence = tf.TiffSequence([self.path])
-            self.tiffSeq_Handler = TiffSeqHandler(self.tiffSequence)
-            self.tiffSeq_Handler.open()
+            self.stack_handler = TiffSeqHandler(self.tiffSequence)
+            self.stack_handler.open()
             # self.tiffStore = self.tiffSequence.aszarr(axestiled={0: 0})
             # self.tiffZar = zarr.open(self.tiffStore, mode='r')
 
-            self.set_maximum(len(self.tiffSeq_Handler) - 1)
+            self.set_maximum(len(self.stack_handler) - 1)
             self.pages_slider.valueChanged.emit(0)
 
             with tf.TiffFile(self.tiffSequence.files[0]) as fl:
@@ -856,16 +856,16 @@ class tiff_viewer(QMainWindow):
             index = self.model.index(i.row(), 0, i.parent())
             self.path = self.model.filePath(index)
 
-            if self.tiffSeq_Handler is not None:
-                self.tiffSeq_Handler.close()
-                self.tiffSeq_Handler = None
+            if self.stack_handler is not None:
+                self.stack_handler.close()
+                self.stack_handler = None
 
             if self.path.endswith('.zarr'):
-                self.tiffSeq_Handler = ZarrImageSequence(self.path)
-                self.tiffSeq_Handler.open()
+                self.stack_handler = ZarrImageSequence(self.path)
+                self.stack_handler.open()
 
                 self.set_maximum(
-                        self.tiffSeq_Handler.shape[0] - 1)
+                        self.stack_handler.shape[0] - 1)
                 self.pages_slider.valueChanged.emit(0)
 
                 self.centerROI()
@@ -877,11 +877,11 @@ class tiff_viewer(QMainWindow):
                     self.tiffSequence = None
 
                 if self.tiffSequence is not None:
-                    self.tiffSeq_Handler = TiffSeqHandler(self.tiffSequence)
-                    self.tiffSeq_Handler.open()
+                    self.stack_handler = TiffSeqHandler(self.tiffSequence)
+                    self.stack_handler.open()
 
                     self.set_maximum(
-                        self.tiffSeq_Handler.__len__() - 1)
+                        self.stack_handler.__len__() - 1)
                     self.pages_slider.valueChanged.emit(0)
 
                     with tf.TiffFile(self.tiffSequence.files[0]) as fl:
@@ -894,7 +894,7 @@ class tiff_viewer(QMainWindow):
                     self.centerROI()
 
     def save_cropped_img(self):
-        if self.tiffSeq_Handler is None:
+        if self.stack_handler is None:
             return
 
         filename, _ = QFileDialog.getSaveFileName(
@@ -905,22 +905,25 @@ class tiff_viewer(QMainWindow):
         roiInfo = self.get_roi_info()
 
         def work_func():
-            if roiInfo is not None:
-                origin, dim = roiInfo
+            try:
+                if roiInfo is not None:
+                    origin, dim = roiInfo
 
-                ySlice = slice(int(origin[1]), int(origin[1] + dim[1]), 1)
-                xSlice = slice(int(origin[0]), int(origin[0] + dim[0]), 1)
+                    ySlice = slice(int(origin[1]), int(origin[1] + dim[1]), 1)
+                    xSlice = slice(int(origin[0]), int(origin[0] + dim[0]), 1)
 
-                saveZarrImage(
-                    filename, self.tiffSeq_Handler,
-                    ySlice=ySlice,
-                    xSlice=xSlice
-                )
-            else:
-                origin, dim = None, None
+                    saveZarrImage(
+                        filename, self.stack_handler,
+                        ySlice=ySlice,
+                        xSlice=xSlice
+                    )
+                else:
+                    origin, dim = None, None
 
-                saveZarrImage(
-                    filename, self.tiffSeq_Handler)
+                    saveZarrImage(
+                        filename, self.stack_handler)
+            except Exception:
+                traceback.print_exc()
 
         def done(results):
             self.save_cropped.setDisabled(False)
@@ -934,7 +937,7 @@ class tiff_viewer(QMainWindow):
         self._threadpool.start(self.worker)
 
     def average_stack(self):
-        if self.tiffSeq_Handler is not None:
+        if self.stack_handler is not None:
             sum = np.array([page.asarray() for page in self.tiff.pages])
             avg = sum.mean(axis=0, dtype=np.float32)
 
@@ -947,19 +950,19 @@ class tiff_viewer(QMainWindow):
         self.image.setImage(uImg._view, autoLevels=True)
 
     def kymogram_btn_clicked(self):
-        if self.tiffSeq_Handler is None:
+        if self.stack_handler is None:
             return
 
         self.kymogram_widget.extract_kymogram(
-            self.tiffSeq_Handler,
+            self.stack_handler,
             self.pages_slider.value(),
             self.pages_slider.maximum(),
             self.get_roi_info()
         )
 
     def genOME(self):
-        if self.tiffSeq_Handler is not None:
-            frames = self.tiffSeq_Handler.shape[0]
+        if self.stack_handler is not None:
+            frames = self.stack_handler.shape[0]
             width = self.image.image.shape[1]
             height = self.image.image.shape[0]
             ome = self.metadata_editor.gen_OME_XML(frames, width, height)
@@ -969,11 +972,11 @@ class tiff_viewer(QMainWindow):
             # print(om.OME.from_tiff(self.tiff.filename))
 
     def region_changed(self, value):
-        if self.tiffSeq_Handler is not None:
+        if self.stack_handler is not None:
             self.update_display()
 
     def slider_changed(self, value):
-        if self.tiffSeq_Handler is not None:
+        if self.stack_handler is not None:
             self.update_display()
 
         if self.pages_slider is not None:
@@ -984,7 +987,7 @@ class tiff_viewer(QMainWindow):
 
     def update_display(self, image=None):
         if image is None:
-            image = self.tiffSeq_Handler.getSlice(
+            image = self.stack_handler.getSlice(
                 self.pages_slider.value(), 0, 0)
 
         varim = None
@@ -1004,7 +1007,7 @@ class tiff_viewer(QMainWindow):
 
         if self.temp_median_filter.enabled.isChecked():
             frames = self.temp_median_filter.filter.getFrames(
-                self.pages_slider.value(), self.tiffSeq_Handler)
+                self.pages_slider.value(), self.stack_handler)
 
             image = self.temp_median_filter.filter.run(image, frames, roiInfo)
 
@@ -1018,7 +1021,17 @@ class tiff_viewer(QMainWindow):
 
         self.uImage.equalizeLUT(min_max, True)
 
-        self._plot_ref.setData(self.uImage._hist[:, 0])
+        self._plot_ref.setData(self.uImage._hist)
+
+        # if self.uImage._isfloat:
+        #     new_tick_values = np.arange(
+        #         self.uImage.n_bins) * np.max(image) / 2**16
+        #     new_tick_labels = [f'{val:.2f}' for val in new_tick_values]
+
+        #     # Set the ticks on the x-axis using the plot reference
+        #     self._plot_ref.setData(
+        #         np.arange(self.uImage.n_bins) * np.max(image) / 2**16,
+        #         self.uImage._hist)
 
         if self.autostretch.isChecked():
             self.lr_0.sigRegionChangeFinished.disconnect(self.region_changed)
@@ -1480,7 +1493,7 @@ class tiff_viewer(QMainWindow):
     def localize(self):
         '''Initiates the localization main thread worker.
         '''
-        if self.tiffSeq_Handler is None:
+        if self.stack_handler is None:
             return
 
         if not self.export_options.exec_():
@@ -1654,13 +1667,17 @@ class tiff_viewer(QMainWindow):
                 offset = res[1]
                 varim = res[2]
 
+        rel_threshold = self.th_min_slider.value()
+        max_threshold = self.th_max_slider.value()
+        roi_size  = self.fit_roi_size.value()
+
         # uses only n_threads - 2
         threads = self._threadpool.maxThreadCount() - 2
         print('Threads', threads)
         for i in range(
                 0, int(
                     np.ceil(
-                        self.tiffSeq_Handler.shape[0] / threads
+                        self.stack_handler.shape[0] / threads
                         ) * threads
                         ),
                 threads):
@@ -1668,8 +1685,8 @@ class tiff_viewer(QMainWindow):
             workers = []
             self.thread_done = 0
             for k in range(threads):
-                if i + k < len(self.tiffSeq_Handler):
-                    img = self.tiffSeq_Handler.getSlice(
+                if i + k < len(self.stack_handler):
+                    img = self.stack_handler.getSlice(
                         i + k, 0, 0)
                     img = img * gain
                     img = img - offset
@@ -1680,22 +1697,26 @@ class tiff_viewer(QMainWindow):
                         temp._temporal_window = \
                             self.temp_median_filter.filter._temporal_window
 
+                    options = {
+                        'index': i + k,
+                        'tiffSeq_Handler': self.stack_handler,
+                        'image': img,
+                        'varim': varim,
+                        'temp': temp,
+                        'filter': filter,
+                        'detector': detector,
+                        'roiInfo': roiInfo,
+                        'irange': min_max,
+                        'rel_threshold': rel_threshold,
+                        'max_threshold': max_threshold,
+                        'roi_size': roi_size,
+                        'method': method
+                    }
+
                     worker = thread_worker(
                         pre_localize_frame,
-                        i + k,
-                        self.tiffSeq_Handler,
-                        img,
-                        varim,
-                        temp,
-                        filter,
-                        detector,
-                        roiInfo,
-                        min_max,
-                        self.th_min_slider.value(),
-                        self.th_max_slider.value(),
-                        self.fit_roi_size.value(),
-                        method,
-                        progress=False, z_stage=False)
+                        progress=False, z_stage=False,
+                        **options)
                     worker.signals.result.connect(self.update_lists)
                     workers.append(worker)
                     QThreadPool.globalInstance().start(worker)
@@ -1708,7 +1729,7 @@ class tiff_viewer(QMainWindow):
 
             print(
                 'index: {:d}/{:d}, Time: {:d}  '.format(
-                    i + len(workers), self.tiffSeq_Handler.shape[0], exex),
+                    i + len(workers), self.stack_handler.shape[0], exex),
                 end='\r')
             if (i // threads) % 40 == 0:
                 progress_callback.emit(self)
@@ -1775,9 +1796,9 @@ class tiff_viewer(QMainWindow):
                 offset = res[1]
                 varim = res[2]
 
-        for k in range(len(self.tiffSeq_Handler)):
+        for k in range(len(self.stack_handler)):
             cycle = QDateTime.currentDateTime()
-            image = self.tiffSeq_Handler.getSlice(k, 0, 0)
+            image = self.stack_handler.getSlice(k, 0, 0)
 
             image = image * gain
             image = image - offset
@@ -1792,7 +1813,7 @@ class tiff_viewer(QMainWindow):
 
             # apply the median filter
             if temp is not None:
-                frames = temp.getFrames(k, self.tiffSeq_Handler)
+                frames = temp.getFrames(k, self.stack_handler)
                 filtered = temp.run(image, frames, roiInfo)
 
             # crop image to ROI
@@ -1846,7 +1867,7 @@ class tiff_viewer(QMainWindow):
 
             print(
                 'index: {:.2f}% {:d} ms    '.format(
-                    100*(k+1)/len(self.tiffSeq_Handler),
+                    100*(k+1)/len(self.stack_handler),
                     cycle.msecsTo(QDateTime.currentDateTime())),
                 end='\r')
 

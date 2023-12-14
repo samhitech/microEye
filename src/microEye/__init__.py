@@ -1,1 +1,1 @@
-from .analysis.file_sys import tiff_viewer
+from .analysis import multi_viewer, tiff_viewer

@@ -8,14 +8,6 @@ import pyqtgraph as pg
 from PyQt5.QtCore import *
 from PyQt5.QtWidgets import *
 
-ParametersHeaders = {
-    0: ['x', 'y', 'I', 'bg', 'ratio x/y', 'frame'],
-    1: ['x', 'y', 'I', 'bg'],
-    2: ['x', 'y', 'I', 'bg', 'sigma'],
-    4: ['x', 'y', 'I', 'bg', 'sigmax', 'sigmay'],
-    5: ['x', 'y', 'I', 'bg', 'z']
-}
-
 
 class resultsStatsWidget(QWidget):
     dataFilterUpdated = pyqtSignal(pd.DataFrame)
@@ -52,7 +44,6 @@ class resultsStatsWidget(QWidget):
             lr = pg.LinearRegionItem(
                 bounds,
                 bounds=bounds, movable=True)
-            lr.sigRegionChangeFinished.connect(self.update)
             pw.addItem(lr)
 
             self.plot_widgets.append(pw)
@@ -84,12 +75,24 @@ class resultsStatsWidget(QWidget):
                         fillLevel=0, fillOutline=True, brush=(0, 0, 255, 150))
             else:
                 try:
-                    min_val = np.floor(df[column].min())
-                    max_val = np.ceil(df[column].max())
+                    if column in ['frame', 'x', 'y', 'z', 'iteration']:
+                        min_val = df[column].min()
+                        max_val = df[column].max()
+                    elif column == 'loglike':
+                        min_val = np.nanmin(df[column].to_numpy())
+                        max_val = 0
+                    else:
+                        mean = np.nanmean(df[column].to_numpy())
+                        std = np.nanstd(df[column].to_numpy())
+                        min_val = max(
+                            mean - 5 * std,
+                            0)
+                        max_val = min(mean + 5 * std, 1e4)
                     counts = df[column].count()
                     hist, bins = np.histogram(
                         df[column].to_numpy(),
-                        bins=min(counts+1, 1024))
+                        bins=min(counts+1, 1024), range=(min_val, max_val))
+                    lr.setRegion((min_val, max_val))
 
                     pw.plot(
                         bins, hist / np.max(hist), stepMode='center',
@@ -97,6 +100,8 @@ class resultsStatsWidget(QWidget):
                 except Exception:
                     traceback.print_exc()
                     print(column)
+
+            lr.sigRegionChangeFinished.connect(self.update)
 
     def clearLayout(self):
         for i in reversed(range(self._layout.count())):

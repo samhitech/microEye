@@ -1,4 +1,5 @@
 import math
+from enum import Enum
 
 import cv2
 import dask.array
@@ -15,27 +16,44 @@ from ..shared.uImage import ZarrImageSequence
 class AbstractFilter:
 
     def run(self, image: np.ndarray) -> np.ndarray:
+        '''Apply the filter to the input image.'''
         return image
 
     def getWidget(self):
+        '''Return the QWidget for configuring the filter.'''
         return QWidget()
+
+    def get_metadata(self) -> dict:
+        '''Return metadata about the filter.'''
+        return {
+            'name': 'Abstract Base Filter (Implement def get_metadata(self) -> dict)'
+        }
 
 
 class DoG_Filter(AbstractFilter):
 
-    def __init__(self, sigma=1, factor=2.5) -> None:
+    def __init__(self, sigma: float =1, factor: float =2.5) -> None:
         '''Difference of Gauss init
 
         Parameters
         ----------
-        sigma : int, optional
+        sigma : float, optional
             sigma_min, by default 1
         factor : float, optional
             factor = sigma_max/sigma_min, by default 2.5
         '''
-        self.setParams(sigma, factor)
+        self.set_params(sigma, factor)
 
-    def setParams(self, sigma, factor):
+    def set_params(self, sigma: float, factor: float):
+        '''Set filter parameters.
+
+        Parameters
+        ----------
+        sigma : float
+            sigma_min
+        factor : float
+            factor = sigma_max/sigma_min
+        '''
         self._show_filter = False
         self.sigma = sigma
         self.factor = factor
@@ -55,11 +73,19 @@ class DoG_Filter(AbstractFilter):
             signal.convolve2d(image, np.rot90(self.dog), mode='same'),
             None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
 
+    def get_metadata(self):
+        '''Return metadata about the Difference of Gaussians filter.'''
+        return {
+            'name': 'Difference of Gaussains Filter',
+            'sigma': self.sigma,
+            'factor': self.factor
+        }
 
 class DoG_FilterWidget(QGroupBox):
     update = pyqtSignal()
 
     def __init__(self) -> None:
+        '''Widget for configuring the DoG filter.'''
         super().__init__()
 
         self.setTitle('DoG Filter')
@@ -67,6 +93,8 @@ class DoG_FilterWidget(QGroupBox):
         self.filter = DoG_Filter()
 
         self._layout = QFormLayout()
+        self._layout.setLabelAlignment(
+            Qt.AlignmentFlag.AlignRight)
 
         self.arg_1 = QDoubleSpinBox()
         self.arg_1.setMinimum(0)
@@ -100,7 +128,8 @@ class DoG_FilterWidget(QGroupBox):
         self.setLayout(self._layout)
 
     def value_changed(self, value):
-        self.filter.setParams(
+        '''Handle value changes in the DoG filter widget.'''
+        self.filter.set_params(
             self.arg_1.value(), self.arg_2.value()
         )
         self.filter._show_filter = self.arg_3.isChecked()
@@ -111,9 +140,11 @@ class DoG_FilterWidget(QGroupBox):
 class GaussFilter(AbstractFilter):
 
     def __init__(self, sigma=1) -> None:
-        self.setSigma(sigma)
+        '''Gaussian filter initialization.'''
+        self.set_sigma(sigma)
 
-    def setSigma(self, sigma):
+    def set_sigma(self, sigma):
+        '''Set the sigma parameter for the Gaussian filter.'''
         self.sigma = 1
         self.gauss = GaussFilter.gaussian_kernel(
             max(3, math.ceil(3*sigma+1)), sigma)
@@ -127,18 +158,40 @@ class GaussFilter(AbstractFilter):
         return signal.convolve2d(image, np.rot90(self.gauss), mode='same')
 
 
+class BANDPASS_TYPES(Enum):
+    Gaussian = 1
+    Butterworth = 2
+    Ideal = 3
+
+    @classmethod
+    def from_string(cls, s: str):
+        for column in cls:
+            if column.name.lower() == s.lower() \
+                    or s.lower() in column.name.lower():
+                return column
+        raise ValueError(f'{cls.__name__} has no value matching "{s}"')
+
+    @classmethod
+    def values(cls):
+        return np.array([column.name for column in cls])
+
 class BandpassFilter(AbstractFilter):
 
-    def __init__(self) -> None:
-        self._radial_cordinates = None
+    def __init__(
+            self,
+            center=40.0, width=90.0,
+            filter_type=BANDPASS_TYPES.Gaussian,
+            show=False) -> None:
+        '''Bandpass filter initialization.'''
+        self._radial_coordinates = None
         self._filter = None
-        self._center = 40.0
-        self._width = 90.0
-        self._type = 'gauss'
-        self._show_filter = True
+        self._center = center
+        self._width = width
+        self._type = filter_type
+        self._show_filter = show
         self._refresh = True
 
-    def radial_cordinate(self, shape):
+    def radial_coordinates(self, shape):
         '''Generates a 2D array with radial cordinates
         with according to the first two axis of the
         supplied shape tuple
@@ -155,9 +208,9 @@ class BandpassFilter(AbstractFilter):
 
         Rsq = (X**2 + Y**2)
 
-        self._radial_cordinates = (np.sqrt(Rsq), Rsq)
+        self._radial_coordinates = (np.sqrt(Rsq), Rsq)
 
-        return self._radial_cordinates
+        return self._radial_coordinates
 
     def ideal_bandpass_filter(self, shape, cutoff, cuton):
         '''Generates an ideal bandpass filter of shape
@@ -185,7 +238,6 @@ class BandpassFilter(AbstractFilter):
             cir_filter, cir_center, cuton, 1, -1)
         cir_filter = cv2.circle(
             cir_filter, cir_center, cutoff, 0, -1)
-        # cir_filter = cv2.GaussianBlur(cir_filter, (0, 0), sigmaX=1, sigmaY=1)
         return cir_filter
 
     def gauss_bandpass_filter(self, shape, center, width):
@@ -205,12 +257,12 @@ class BandpassFilter(AbstractFilter):
             filter (np.ndarray)
                 the filter in fourier space
         '''
-        if self._radial_cordinates is None:
-            R, Rsq = self.radial_cordinate(shape)
-        elif self._radial_cordinates[0].shape != shape[:2]:
-            R, Rsq = self.radial_cordinate(shape)
+        if self._radial_coordinates is None:
+            R, Rsq = self.radial_coordinates(shape)
+        elif self._radial_coordinates[0].shape != shape[:2]:
+            R, Rsq = self.radial_coordinates(shape)
         else:
-            R, Rsq = self._radial_cordinates
+            R, Rsq = self._radial_coordinates
 
         with np.errstate(divide='ignore', invalid='ignore'):
             filter = np.exp(-((Rsq - center**2)/(R * width))**2)
@@ -239,12 +291,12 @@ class BandpassFilter(AbstractFilter):
             filter (np.ndarray)
                 the filter in fourier space
         '''
-        if self._radial_cordinates is None:
-            R, Rsq = self.radial_cordinate(shape)
-        elif self._radial_cordinates[0].shape != shape[:2]:
-            R, Rsq = self.radial_cordinate(shape)
+        if self._radial_coordinates is None:
+            R, Rsq = self.radial_coordinates(shape)
+        elif self._radial_coordinates[0].shape != shape[:2]:
+            R, Rsq = self.radial_coordinates(shape)
         else:
-            R, Rsq = self._radial_cordinates
+            R, Rsq = self._radial_coordinates
 
         with np.errstate(divide='ignore', invalid='ignore'):
             filter = 1 - (1 / (1+((R * width)/(Rsq - center**2))**10))
@@ -285,10 +337,10 @@ class BandpassFilter(AbstractFilter):
             refresh = True
 
         if refresh:
-            if 'gauss' in self._type:
+            if self._type == BANDPASS_TYPES.Gaussian:
                 filter = self.gauss_bandpass_filter(
                     ft.shape, self._center, self._width)
-            elif 'butter' in self._type:
+            elif self._type == BANDPASS_TYPES.Butterworth:
                 filter = self.butterworth_bandpass_filter(
                     ft.shape, self._center, self._width)
             else:
@@ -315,11 +367,30 @@ class BandpassFilter(AbstractFilter):
         # exex = time.msecsTo(QDateTime.currentDateTime())
         return img[:rows, :cols]
 
+    def set_params(
+            self,
+            center: float, width: float,
+            filter_type: BANDPASS_TYPES, show: bool):
+        self._center = center
+        self._width = width
+        self._type = filter_type
+        self._show_filter = show
+
+    def get_metadata(self):
+        '''Return metadata about the Bandpass Fourier Filter.'''
+        return {
+            'name': 'Fourier Bandpass Filter',
+            'type': self._type,
+            'band center': self._center,
+            'band width': self._width,
+            'show filter': self._show_filter
+        }
 
 class BandpassFilterWidget(QGroupBox):
     update = pyqtSignal()
 
     def __init__(self) -> None:
+        '''Widget for configuring the Bandpass filter.'''
         super().__init__()
 
         self.setTitle('Bandpass Filter')
@@ -327,12 +398,14 @@ class BandpassFilterWidget(QGroupBox):
         self.filter = BandpassFilter()
 
         self._layout = QFormLayout()
+        self._layout.setLabelAlignment(
+            Qt.AlignmentFlag.AlignRight)
 
         self.arg_1 = QComboBox()
-        self.arg_1.addItems(['gauss', 'butter', 'ideal'])
-        self.arg_1.setCurrentText('gauss')
+        self.arg_1.addItems(['Gaussian', 'Butterworth', 'Ideal'])
+        self.arg_1.setCurrentText('Gaussian')
         self.arg_1.currentTextChanged.connect(self.value_changed)
-        self.arg_1.currentTextChanged.emit('gauss')
+        self.arg_1.currentTextChanged.emit('Gaussian')
 
         self.arg_2 = QDoubleSpinBox()
         self.arg_2.setMinimum(0)
@@ -368,8 +441,10 @@ class BandpassFilterWidget(QGroupBox):
         self.setLayout(self._layout)
 
     def value_changed(self, value):
+        '''Handle value changes in the Bandpass filter widget.'''
         if self.sender() is self.arg_1:
-            self.filter._type = self.arg_1.currentText()
+            self.filter._type = BANDPASS_TYPES.from_string(
+                self.arg_1.currentText())
         elif self.sender() is self.arg_2:
             self.filter._center = value
         elif self.sender() is self.arg_3:
@@ -382,37 +457,43 @@ class BandpassFilterWidget(QGroupBox):
 
 class TemporalMedianFilter(AbstractFilter):
 
-    def __init__(self) -> None:
+    def __init__(self, window=3) -> None:
         super().__init__()
 
-        self._temporal_window = 3
+        self._temporal_window = window
         self._frames = None
         self._median = None
 
-    def getFrames(self, index, dataHandler: ZarrImageSequence):
+    def getFrames(
+            self, index,
+            dataHandler: ZarrImageSequence, c_slice=0, z_slice=0):
         if self._temporal_window < 2:
             self._frames = None
             self._median = None
             self._start = None
             return
 
-        maximum = dataHandler.shape[0]
+        maximum = dataHandler.shapeTCZYX()[0]
         step = 0
         if self._temporal_window % 2:
             step = self._temporal_window // 2
         else:
             step = (self._temporal_window // 2) - 1
 
-        self._start = min(
-            max(index-step, 0),
-            maximum - self._temporal_window)
+        self._start = max(
+            0,
+            min(
+                index - step,
+                maximum - self._temporal_window))
+
 
         data_slice = slice(
-                self._start,
-                (self._start + self._temporal_window),
-                1)
+            max(self._start, 0),
+            min(self._start + self._temporal_window, maximum),
+            1
+        )
         return dask.array.from_array(
-            dataHandler.getSlice(data_slice, 0, 0))
+            dataHandler.getSlice(data_slice, c_slice, z_slice))
 
     def run(self, image: np.ndarray, frames: np.ndarray, roiInfo=None):
         if frames is not None:
@@ -455,6 +536,8 @@ class TemporalMedianFilterWidget(QGroupBox):
         self.filter = TemporalMedianFilter()
 
         self._layout = QFormLayout()
+        self._layout.setLabelAlignment(
+            Qt.AlignmentFlag.AlignRight)
 
         self.window_size = QSpinBox()
         self.window_size.setMinimum(1)
@@ -480,3 +563,10 @@ class TemporalMedianFilterWidget(QGroupBox):
             self.filter._temporal_window = value
 
         self.update.emit()
+
+    def get_metadata(self):
+        '''Return metadata about the Bandpass filter configuration.'''
+        return {
+            'enabled': self.enabled.isChecked(),
+            'window size': self.window_size.value()
+        }

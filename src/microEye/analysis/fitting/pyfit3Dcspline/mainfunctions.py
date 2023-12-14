@@ -55,11 +55,11 @@ if cuda.is_available():
         Parameters : np.ndarray
             fitting results in shape (roi_index, column) for each fit mode:
 
-                1. x, y, bg, I, iteration.
-                2. x, y, bg, I, sigma, iteration.
+                1. x, y, I, bg, iteration.
+                2. x, y, I, bg, sigma, iteration.
                 3. ???
-                4. x, y, bg, I, sigmax, sigmay, iteration.
-                5. x, y, bg, I, z, iteration.
+                4. x, y, I, bg, sigmax, sigmay, iteration.
+                5. x, y, I, bg, z, iteration.
         CRLBs : np.ndarray
             Cramer-Rao Lower Bounds for fitting results
             in shape (roi_index, column).
@@ -195,7 +195,7 @@ if cuda.is_available():
 
         stop = time.perf_counter_ns()
         togpu = stop - start
-        print(f'Data copied to GPU in {togpu/1e6:.3f}ms.\n')
+        print(f'Data copied to GPU in {togpu/1e9:.6f}s.\n')
         start = time.perf_counter_ns()
 
         # setup kernel
@@ -250,7 +250,7 @@ if cuda.is_available():
 
         stop = time.perf_counter_ns()
         fit = stop - start
-        print(f'Fitted {Nfitraw:d} localizations in {fit/1e6:.3f}ms.\n')
+        print(f'Fitted {Nfitraw:d} localizations in {fit/1e9:6f}s.\n')
         start = time.perf_counter_ns()
 
         # copy to matlab output
@@ -271,7 +271,7 @@ if cuda.is_available():
 
         stop = time.perf_counter_ns()
         fromgpu = stop - start
-        print(f'Data copied to Host in {fromgpu/1e6:.3f}ms.\n')
+        print(f'Data copied to Host in {fromgpu/1e9:.6f}s.\n')
         start = time.perf_counter_ns()
 
         # cleanup
@@ -337,11 +337,11 @@ def CPUmleFit_LM(
     Parameters : np.ndarray
         fitting results in shape (roi_index, column) for each fit mode:
 
-            1. x, y, bg, I, iteration.
-            2. x, y, bg, I, sigma, iteration.
+            1. x, y, I, bg, iteration.
+            2. x, y, I, bg, sigma, iteration.
             3. ???
-            4. x, y, bg, I, sigmax, sigmay, iteration.
-            5. x, y, bg, I, z, iteration.
+            4. x, y, I, bg, sigmax, sigmay, iteration.
+            5. x, y, I, bg, z, iteration.
     CRLBs : np.ndarray
         Cramer-Rao Lower Bounds for fitting results
         in shape (roi_index, column).

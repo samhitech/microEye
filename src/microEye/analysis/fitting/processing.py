@@ -212,12 +212,14 @@ def shift_estimation(sub_images, pixelSize, upsampling):
 
 
 @nb.jit(nopython=True, parallel=True)
-def shift_correction(interpx, interpy, frames, datax, datay):
+def shift_correction(interpx, interpy, frame_bins, datax, datay):
     for idx in nb.prange(0, len(interpx)):
+        mask = slice(
+            frame_bins[idx-1] if idx > 0 else 0, frame_bins[idx])
         shift_x = interpx[idx]
         shift_y = interpy[idx]
-        datax[frames == idx] -= shift_x
-        datay[frames == idx] -= shift_y
+        datax[mask] -= shift_x
+        datay[mask] -= shift_y
 
 
 def plot_drift(

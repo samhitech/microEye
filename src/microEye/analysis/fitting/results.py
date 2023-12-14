@@ -3,53 +3,62 @@ from enum import Enum
 
 import numpy as np
 import pandas as pd
+from numpy.core._exceptions import _ArrayMemoryError
 from scipy.interpolate import interp1d
 
-from ..rendering import gauss_hist_render
+from ..rendering import gauss_hist_render, hist2D_render
 from .processing import *
 
+UNIQUE_COLUMNS = [
+            'frame', 'channel', 'x', 'y', 'z', 'background', 'intensity',
+            'sigmax', 'sigmay', 'ratio', 'loglike', 'iteration', 'trackID',
+            'neighbour_distance', 'n_merged', 'CRLB x', 'CRLB y', 'CRLB z',
+            'CRLB background', 'CRLB intensity', 'CRLB sigmax',
+            'CRLB sigmay', 'CRLB sigmaz'
+            ]
 
 class DataColumns(Enum):
-    Frame = (0, 'frame')
-    X = (1, 'x')
-    Y = (2, 'y')
-    Z = (3, 'z')
-    X_nm = (4, 'x [nm]')
-    Y_nm = (5, 'y [nm]')
-    Z_nm = (6, 'z [nm]')
-    Background = (7, 'background')
-    Intensity = (8, 'intensity')
-    TrackID = (9, 'trackID')
-    NeighbourDist = (10, 'neighbour_dist')
-    NMerged = (11, 'n_merged')
-
-    XY_Ratio = (10, 'ratio x/y')
-    Sigma = (11, 'sigma')
-    X_Sigma = (11, 'X_Sigma')
-    Y_Sigma = (12, 'Y_Sigma')
+    FRAME = 1
+    C = 2
+    X = 3
+    Y = 4
+    Z = 5
+    BACKGROUND = 6
+    INTENSITY = 7
+    X_SIGMA = 8
+    Y_SIGMA = 9
+    XY_RATIO = 10
+    LOG_LIKE = 11
+    ITERATION = 12
+    TRACK_ID = 13
+    NEIGHBOUR_DISTANCE = 14
+    N_MERGED = 15
+    CRLB_X = 16
+    CRLB_Y = 17
+    CRLB_Z = 18
+    CRLB_I = 19
+    CRLB_BG = 20
+    CRLB_SIG_X = 21
+    CRLB_SIG_Y = 22
+    CRLB_SIG_Z = 23
 
     def __str__(self):
-        return self.value[1]
+        return UNIQUE_COLUMNS[self.value-1]
 
     @classmethod
     def from_string(cls, s):
         for column in cls:
-            if column.value[1] == s:
+            if column.name == s:
                 return column
-        raise ValueError(cls.__name__ + ' has no value matching "' + s + '"')
+        raise ValueError(f'{cls.__name__} has no value matching "{s}"')
 
     @classmethod
     def values(cls):
-        res = []
-        for column in cls:
-            res.append(column.value[1])
-        return np.array(res)
-
+        return np.array([column.name for column in cls])
 
 class ResultsUnits:
     Pixel = 0
     Nanometer = 1
-
 
 class FittingMethod:
     _External = -1
@@ -59,14 +68,66 @@ class FittingMethod:
     _2D_Gauss_MLE_elliptical_sigma = 4
     _3D_Gauss_MLE_cspline_sigma = 5
 
-
-ParametersHeaders = {
-    0: ['x', 'y', 'I', 'bg', 'ratio x/y', 'frame'],
-    1: ['x', 'y', 'I', 'bg', 'iteration'],
-    2: ['x', 'y', 'I', 'bg', 'sigma', 'iteration'],
-    4: ['x', 'y', 'I', 'bg', 'sigmax', 'sigmay', 'iteration'],
-    5: ['x', 'y', 'I', 'bg', 'z', 'iteration']
+PARAMETER_HEADERS = {
+    0: ['x', 'y', 'background', 'intensity', 'ratio x/y', 'frame'],
+    1: ['x', 'y', 'background', 'intensity', 'iteration'],
+    2: ['x', 'y', 'background', 'intensity', 'sigma', 'iteration'],
+    4: ['x', 'y', 'background', 'intensity', 'sigmax', 'sigmay', 'iteration'],
+    5: ['x', 'y', 'background', 'intensity', 'z', 'iteration']
 }
+
+def map_column_alias(alias: str) -> DataColumns:
+    alias_lower = alias.lower()
+    if alias_lower in ('frame', 'frames', 't', 'time'):
+        return DataColumns.FRAME
+    elif alias_lower in ('channel', 'c'):
+        return DataColumns.C
+    elif alias_lower in ('x', 'x [nm]', 'locx'):
+        return DataColumns.X
+    elif alias_lower in ('y', 'y [nm]', 'locy'):
+        return DataColumns.Y
+    elif alias_lower in ('z', 'z [nm]', 'locz'):
+        return DataColumns.Z
+    elif alias_lower in ('bg', 'background'):
+        return DataColumns.BACKGROUND
+    elif alias_lower in ('i', 'intensity'):
+        return DataColumns.INTENSITY
+    elif alias_lower in ('sigma', 'sigmax', 'sigma x', 'x_sigma'):
+        return DataColumns.X_SIGMA
+    elif alias_lower in ('sigmay', 'sigma y', 'y_sigma'):
+        return DataColumns.Y_SIGMA
+    elif alias_lower in ('ratio', 'xy_ratio'):
+        return DataColumns.XY_RATIO
+    elif alias_lower in ('loglike',):
+        return DataColumns.LOG_LIKE
+    elif alias_lower in ('iteration',):
+        return DataColumns.ITERATION
+    elif alias_lower in ('trackid', 'track id'):
+        return DataColumns.TRACK_ID
+    elif alias_lower in (
+            'neighbour_distance', 'neighbour_dist', 'neighbour distance'):
+        return DataColumns.NEIGHBOUR_DISTANCE
+    elif alias_lower in ('n_merged',):
+        return DataColumns.N_MERGED
+    elif alias_lower in ('crlb_x', 'crlb x'):
+        return DataColumns.CRLB_X
+    elif alias_lower in ('crlb_y', 'crlb y'):
+        return DataColumns.CRLB_Y
+    elif alias_lower in ('crlb_z', 'crlb z'):
+        return DataColumns.CRLB_Z
+    elif alias_lower in ('crlb_i', 'crlb i', 'crlb intensity'):
+        return DataColumns.CRLB_I
+    elif alias_lower in ('crlb_bg', 'crlb bg', 'crlb background'):
+        return DataColumns.CRLB_BG
+    elif alias_lower in ('crlb_sigx', 'crlb sigmax', 'crlb sigmax'):
+        return DataColumns.CRLB_SIG_X
+    elif alias_lower in ('crlb_sigy',  'crlb sigmay'):
+        return DataColumns.CRLB_SIG_Y
+    elif alias_lower in ('crlb_sigz', 'crlb sigmaz'):
+        return DataColumns.CRLB_SIG_Z
+    else:
+        # raise ValueError(f'Unrecognized column alias: {alias}')
+        return None
 
 
 class FittingResults:
@@ -85,38 +146,66 @@ class FittingResults:
             pixel size in nanometers, by default 130.0
         '''
         self.unit = unit
-        self.pixelSize = pixelSize
-        self.fittingMethod = fittingMethod
+        self.pixel_size = pixelSize
+        self.fitting_method = fittingMethod
         if fittingMethod > -1:
-            self.parameterHeader = ParametersHeaders[fittingMethod]
+            self.parameterHeader = PARAMETER_HEADERS[fittingMethod]
         else:
             self.parameterHeader = []
 
-        self.frames = None
-        self.locX = None
-        self.locY = None
-        self.locZ = None
-        self.intensity = None
-        self.background = None
+        # Initialize the dictionary with None for each key
+        self.data = {key: None for key in DataColumns}
 
-        self.xy_Ratio = None
-        self.x_Sigma = None
-        self.y_Sigma = None
+    def __len__(self):
+        '''Number of localized positions
+        '''
+        return len(self.data[self.uniqueKeys()[0]])
 
-        self.crlb_X = None
-        self.crlb_Y = None
-        self.crlb_Z = None
-        self.crlb_I = None
-        self.crlb_BG = None
-        self.crlb_SigX = None
-        self.crlb_SigY = None
+    def __getattr__(self, name):
+        key = map_column_alias(name)
+        if key in self.data:
+            return self.data[key]
+        else:
+            raise AttributeError(
+                f"'{type(self).__name__}' object has no attribute '{name}'.")
 
-        self.loglike = None
-        self.iteration = None
+    def __setattr__(self, name, value):
+        key = map_column_alias(name)
+        if key is None:
+            super().__setattr__(name, value)
+        else:
+            self.data[key] = value
 
-        self.trackID = None
-        self.neighbour_dist = None
-        self.n_merged = None
+    def uniqueKeys(self) -> list[DataColumns]:
+        '''Returns a list of unique keys in FittingResults
+        '''
+        keys = []
+        for key in self.data:
+            if self.data[key] is not None:
+                keys.append(key)
+
+        return keys
+
+    def extend_column(self, key, value):
+        if key not in self.data or self.data[key] is None:
+            self.data[key] = value
+        else:
+            self.data[key] = np.concatenate((self.data[key], value))
+
+    def _scale_array(self, array: np.ndarray):
+        if array is not None:
+            array[:, :2] *= self.pixel_size
+            if self.fitting_method == FittingMethod._2D_Gauss_MLE_free_sigma or \
+               self.fitting_method == FittingMethod._3D_Gauss_MLE_cspline_sigma:
+                array[:, 4] *= self.pixel_size
+            elif self.fitting_method == FittingMethod._2D_Gauss_MLE_elliptical_sigma:
+                array[:, 4:6] *= self.pixel_size
+
+    def get_column(self, key: DataColumns):
+        if self.data[key] is None:
+            return np.zeros(self.__len__())
+        else:
+            return self.data[key]
 
     def extend(self, data: np.ndarray):
         '''Extend results by contents of data array
@@ -136,145 +225,43 @@ class FittingResults:
         frames, params, crlbs, loglike = data
 
         if self.unit == ResultsUnits.Pixel:
-            if params is not None:
-                params[:, :2] *= self.pixelSize
-                if self.fittingMethod == \
-                        FittingMethod._2D_Gauss_MLE_free_sigma:
-                    params[:, 4] *= self.pixelSize
-                elif self.fittingMethod == \
-                        FittingMethod._2D_Gauss_MLE_elliptical_sigma:
-                    params[:, 4:6] *= self.pixelSize
+            self._scale_array(params)
+            self._scale_array(crlbs)
 
-            if crlbs is not None:
-                crlbs[:, :2] *= self.pixelSize
-                if self.fittingMethod == \
-                        FittingMethod._2D_Gauss_MLE_free_sigma:
-                    crlbs[:, 4] *= self.pixelSize
-                elif self.fittingMethod == \
-                        FittingMethod._2D_Gauss_MLE_elliptical_sigma:
-                    crlbs[:, 4:6] *= self.pixelSize
+        for idx, var in enumerate([
+                DataColumns.X, DataColumns.Y,
+                DataColumns.INTENSITY, DataColumns.BACKGROUND]):
+            self.extend_column(var, params[:, idx])
 
-        if self.locX is None:
-            self.locX = params[:, 0]
+        self.extend_column(DataColumns.FRAME, frames)
+
+        if self.fitting_method == FittingMethod._2D_Phasor_CPU:
+            self.extend_column(DataColumns.XY_RATIO, params[:, -1])
         else:
-            self.locX = np.concatenate(
-                (self.locX, params[:, 0]))
+            self.extend_column(DataColumns.ITERATION, params[:, -1])
 
-        if self.locY is None:
-            self.locY = params[:, 1]
-        else:
-            self.locY = np.concatenate(
-                (self.locY, params[:, 1]))
+        # Extend last column based on FittingMethod
+        if self.fitting_method != FittingMethod._2D_Phasor_CPU:
+            self.extend_column(DataColumns.LOG_LIKE, loglike)
 
-        if self.background is None:
-            self.background = params[:, 2]
-        else:
-            self.background = np.concatenate(
-                (self.background, params[:, 2]))
+            for idx, var in enumerate([
+                    DataColumns.CRLB_X, DataColumns.CRLB_Y,
+                    DataColumns.CRLB_I, DataColumns.CRLB_BG]):
+                self.extend_column(var, crlbs[:, idx])
 
-        if self.intensity is None:
-            self.intensity = params[:, 3]
-        else:
-            self.intensity = np.concatenate(
-                (self.intensity, params[:, 3]))
-
-        if self.frames is None:
-            self.frames = frames
-        else:
-            self.frames = np.concatenate(
-                (self.frames, frames))
-
-        if self.fittingMethod == FittingMethod._2D_Phasor_CPU:
-            if self.xy_Ratio is None:
-                self.xy_Ratio = params[:, 4]
-            else:
-                self.xy_Ratio = np.concatenate(
-                    (self.xy_Ratio, params[:, 4]))
-        else:
-            if self.iteration is None:
-                self.iteration = params[:, -1]
-            else:
-                self.iteration = np.concatenate(
-                    (self.iteration, params[:, -1]))
-
-            if self.loglike is None:
-                self.loglike = loglike
-            else:
-                self.loglike = np.concatenate(
-                    (self.loglike, loglike))
-
-            if self.crlb_X is None:
-                self.crlb_X = crlbs[:, 0]
-            else:
-                self.crlb_X = np.concatenate(
-                    (self.crlb_X, crlbs[:, 0]))
-
-            if self.crlb_Y is None:
-                self.crlb_Y = crlbs[:, 1]
-            else:
-                self.crlb_Y = np.concatenate(
-                    (self.crlb_Y, crlbs[:, 1]))
-
-            if self.crlb_BG is None:
-                self.crlb_BG = crlbs[:, 2]
-            else:
-                self.crlb_BG = np.concatenate(
-                    (self.crlb_BG, crlbs[:, 2]))
-
-            if self.crlb_I is None:
-                self.crlb_I = crlbs[:, 3]
-            else:
-                self.crlb_I = np.concatenate(
-                    (self.crlb_I, crlbs[:, 3]))
-
-            if self.fittingMethod == FittingMethod._2D_Gauss_MLE_free_sigma:
-                if self.x_Sigma is None:
-                    self.x_Sigma = params[:, -2]
-                else:
-                    self.x_Sigma = np.concatenate(
-                        (self.x_Sigma, params[:, -2]))
-
-                if self.crlb_SigX is None:
-                    self.crlb_SigX = crlbs[:, -1]
-                else:
-                    self.crlb_SigX = np.concatenate(
-                        (self.crlb_SigX, crlbs[:, -1]))
-            elif self.fittingMethod == \
+            if self.fitting_method == FittingMethod._2D_Gauss_MLE_free_sigma:
+                self.extend_column(DataColumns.X_SIGMA, params[:, 4])
+                self.extend_column(DataColumns.CRLB_SIG_X, crlbs[:, 4])
+            elif self.fitting_method == \
                     FittingMethod._2D_Gauss_MLE_elliptical_sigma:
-                if self.x_Sigma is None:
-                    self.x_Sigma = params[:, -3]
-                else:
-                    self.x_Sigma = np.concatenate(
-                        (self.x_Sigma, params[:, -3]))
-                if self.y_Sigma is None:
-                    self.y_Sigma = params[:, -2]
-                else:
-                    self.y_Sigma = np.concatenate(
-                        (self.y_Sigma, params[:, -2]))
-
-                if self.crlb_SigX is None:
-                    self.crlb_SigX = crlbs[:, -2]
-                else:
-                    self.crlb_SigX = np.concatenate(
-                        (self.crlb_SigX, crlbs[:, -2]))
-                if self.crlb_SigY is None:
-                    self.crlb_SigY = crlbs[:, -1]
-                else:
-                    self.crlb_SigY = np.concatenate(
-                        (self.crlb_SigY, crlbs[:, -1]))
-            elif self.fittingMethod == \
+                self.extend_column(DataColumns.X_SIGMA, params[:, 4])
+                self.extend_column(DataColumns.Y_SIGMA, params[:, 5])
+                self.extend_column(DataColumns.CRLB_SIG_X, crlbs[:, 4])
+                self.extend_column(DataColumns.CRLB_SIG_Y, crlbs[:, 5])
+            elif self.fitting_method == \
                     FittingMethod._3D_Gauss_MLE_cspline_sigma:
-                if self.locZ is None:
-                    self.locZ = params[:, -2]
-                else:
-                    self.locZ = np.concatenate(
-                        (self.locZ, params[:, -2]))
-
-                if self.crlb_Z is None:
-                    self.crlb_Z = crlbs[:, -1]
-                else:
-                    self.crlb_Z = np.concatenate(
-                        (self.crlb_Z, crlbs[:, -1]))
+                self.extend_column(DataColumns.Z, params[:, 4])
+                self.extend_column(DataColumns.CRLB_Z, crlbs[:, 4])
 
     def dataFrame(self):
         '''Return fitting results as Pandas DataFrame
@@ -284,112 +271,100 @@ class FittingResults:
         DataFrame
             fitting results DataFrame with columns FittingResults.columns
         '''
-        if self.fittingMethod == FittingMethod._2D_Phasor_CPU:
+        keys = self.uniqueKeys()
+
+        if self.fitting_method == FittingMethod._2D_Phasor_CPU:
             loc = np.c_[
-                self.locX,
-                self.locY,
-                self.background,
-                self.intensity,
-                self.xy_Ratio,
-                self.frames,
-                np.zeros(
-                    self.__len__()
-                    ) if self.trackID is None else self.trackID,
-                np.zeros(
-                    self.__len__()
-                    ) if self.neighbour_dist is None else self.neighbour_dist,
-                np.zeros(
-                    self.__len__()
-                    ) if self.n_merged is None else self.n_merged]
+                self.data[DataColumns.X],
+                self.data[DataColumns.Y],
+                self.data[DataColumns.BACKGROUND],
+                self.data[DataColumns.INTENSITY],
+                self.data[DataColumns.XY_RATIO],
+                self.data[DataColumns.FRAME],
+                self.get_column(DataColumns.TRACK_ID),
+                self.get_column(DataColumns.NEIGHBOUR_DISTANCE),
+                self.get_column(DataColumns.N_MERGED)]
 
             columns = self.parameterHeader + \
-                [str(DataColumns.TrackID),
-                 str(DataColumns.NeighbourDist),
-                 str(DataColumns.NMerged)]
-        elif self.fittingMethod == -1:
+                [str(DataColumns.TRACK_ID),
+                 str(DataColumns.NEIGHBOUR_DISTANCE),
+                 str(DataColumns.N_MERGED)]
+        elif self.fitting_method == -1:
             loc = None
-            keys = self.uniqueKeys()
             columns = []
             for key in keys:
-                col = self.getColumn(key)
-                if col is not None:
-                    columns.append(key)
-                    loc = col if loc is None else np.c_[loc, col]
+                col = self.data[key]
+                columns.append(str(key))
+                loc = col if loc is None else np.c_[loc, col]
         else:
             loc = np.c_[
-                self.frames,
-                self.locX,
-                self.locY,
-                self.background,
-                self.intensity]
+                self.data[DataColumns.FRAME],
+                self.data[DataColumns.X],
+                self.data[DataColumns.Y],
+                self.data[DataColumns.BACKGROUND],
+                self.data[DataColumns.INTENSITY]]
 
-            if self.fittingMethod == FittingMethod._2D_Gauss_MLE_fixed_sigma:
+            if self.fitting_method == FittingMethod._2D_Gauss_MLE_fixed_sigma:
                 loc = np.c_[
                     loc,
-                    self.iteration,
-                    self.crlb_X,
-                    self.crlb_Y,
-                    self.crlb_BG,
-                    self.crlb_I]
-            elif self.fittingMethod == FittingMethod._2D_Gauss_MLE_free_sigma:
+                    self.data[DataColumns.ITERATION],
+                    self.data[DataColumns.CRLB_X],
+                    self.data[DataColumns.CRLB_Y],
+                    self.data[DataColumns.CRLB_BG],
+                    self.data[DataColumns.CRLB_I]]
+            elif self.fitting_method == FittingMethod._2D_Gauss_MLE_free_sigma:
                 loc = np.c_[
                     loc,
-                    self.x_Sigma,
-                    self.iteration,
-                    self.crlb_X,
-                    self.crlb_Y,
-                    self.crlb_BG,
-                    self.crlb_I,
-                    self.crlb_SigX]
-            elif self.fittingMethod == \
+                    self.data[DataColumns.X_SIGMA],
+                    self.data[DataColumns.ITERATION],
+                    self.data[DataColumns.CRLB_X],
+                    self.data[DataColumns.CRLB_Y],
+                    self.data[DataColumns.CRLB_BG],
+                    self.data[DataColumns.CRLB_I],
+                    self.data[DataColumns.CRLB_SIG_X]]
+            elif self.fitting_method == \
                     FittingMethod._2D_Gauss_MLE_elliptical_sigma:
                 loc = np.c_[
                     loc,
-                    self.x_Sigma,
-                    self.y_Sigma,
-                    self.iteration,
-                    self.crlb_X,
-                    self.crlb_Y,
-                    self.crlb_BG,
-                    self.crlb_I,
-                    self.crlb_SigX,
-                    self.crlb_SigY]
-            elif self.fittingMethod == \
+                    self.data[DataColumns.X_SIGMA],
+                    self.data[DataColumns.Y_SIGMA],
+                    self.data[DataColumns.ITERATION],
+                    self.data[DataColumns.CRLB_X],
+                    self.data[DataColumns.CRLB_Y],
+                    self.data[DataColumns.CRLB_BG],
+                    self.data[DataColumns.CRLB_I],
+                    self.data[DataColumns.CRLB_SIG_X],
+                    self.data[DataColumns.CRLB_SIG_Y]]
+            elif self.fitting_method == \
                     FittingMethod._3D_Gauss_MLE_cspline_sigma:
                 loc = np.c_[
                     loc,
-                    self.locZ,
-                    self.iteration,
-                    self.crlb_X,
-                    self.crlb_Y,
-                    self.crlb_BG,
-                    self.crlb_I,
-                    self.crlb_Z]
+                    self.data[DataColumns.Z],
+                    self.data[DataColumns.ITERATION],
+                    self.data[DataColumns.CRLB_X],
+                    self.data[DataColumns.CRLB_Y],
+                    self.data[DataColumns.CRLB_BG],
+                    self.data[DataColumns.CRLB_I],
+                    self.data[DataColumns.CRLB_Z]]
 
             loc = np.c_[
                 loc,
-                self.loglike,
-                np.zeros(
-                    self.__len__()
-                    ) if self.trackID is None else self.trackID,
-                np.zeros(
-                    self.__len__()
-                    ) if self.neighbour_dist is None else self.neighbour_dist,
-                np.zeros(
-                    self.__len__()
-                    ) if self.n_merged is None else self.n_merged]
+                self.data[DataColumns.LOG_LIKE],
+                self.get_column(DataColumns.TRACK_ID),
+                self.get_column(DataColumns.NEIGHBOUR_DISTANCE),
+                self.get_column(DataColumns.N_MERGED)]
 
             columns = ['frame', ] + \
                 self.parameterHeader + \
                 ['CRLB ' + x for x in self.parameterHeader[:-1]] + \
                 ['loglike',
-                 str(DataColumns.TrackID),
-                 str(DataColumns.NeighbourDist),
-                 str(DataColumns.NMerged)]
+                 str(DataColumns.TRACK_ID),
+                 str(DataColumns.NEIGHBOUR_DISTANCE),
+                 str(DataColumns.N_MERGED)]
 
         return pd.DataFrame(
             loc, columns=columns).sort_values(
-            by=str(DataColumns.Frame))
+            by=str(DataColumns.FRAME))
 
     def toRender(self):
         '''Returns columns for rendering
@@ -399,16 +374,282 @@ class FittingResults:
         tuple(np.ndarray, np.ndarray, np.ndarray)
             tuple contains X [nm], Y [nm], Intensity columns
         '''
-        return self.locX, \
-            self.locY, \
-            self.intensity
+        # TODO: update for 3D render later
+        return self.data[DataColumns.X], \
+            self.data[DataColumns.Y], \
+            self.data[DataColumns.INTENSITY]
 
-    def __len__(self):
-        if self.locX is None:
-            return 0
+    def drift_cross_correlation(self, n_bins=10, pixelSize=10, upsampling=100):
+        '''Corrects the XY drift using cross-correlation measurments
+
+        Parameters
+        ----------
+        n_bins : int, optional
+            Number of frame bins, by default 10
+        pixelSize : int, optional
+            Super-res image pixel size in nanometers, by default 10
+        upsampling : int, optional
+            phase_cross_correlation upsampling (check skimage.registration),
+            by default 100
+
+        Returns
+        -------
+        tuple(FittingResults, np.ndarray)
+            returns the drift corrected fittingResults and recontructed image
+        '''
+        unique_frames = np.unique(self.data[DataColumns.FRAME])
+        if len(unique_frames) < 2:
+            print('Drift cross-correlation failed: no frame info.')
+            return
+
+        frames_per_bin = int(np.floor(np.max(unique_frames) / n_bins))
+
+        if frames_per_bin < 2:
+            print('Drift cross-correlation failed: 2 or more bins are required.')
+            return
+
+        renderEngine = hist2D_render(pixelSize)
+
+        x_max = int((np.max(self.data[DataColumns.X]) / renderEngine._pixel_size) +
+                    4)
+        y_max = int((np.max(self.data[DataColumns.Y]) / renderEngine._pixel_size) +
+                    4)
+
+        frame_ids = np.cumsum(
+            np.bincount(self.data[DataColumns.FRAME].astype(np.int64)))
+        max_frame = np.max(self.data[DataColumns.FRAME])
+
+        # grouped_data = []
+        sub_images = []
+        shifts = []
+        frames = []
+
+        for f in range(0, n_bins):
+            mask = slice(
+                frame_ids[f * frames_per_bin - 1] if f * frames_per_bin > 0 else 0,
+                frame_ids[(f + 1) * frames_per_bin])
+            image = renderEngine.fromArray(
+                np.c_[self.data[DataColumns.X][mask],
+                      self.data[DataColumns.Y][mask],
+                      self.data[DataColumns.INTENSITY][mask]],
+                (y_max, x_max))
+            frames.append(f * frames_per_bin + frames_per_bin/2)
+            sub_images.append(image)
+            print(
+                f'Bins: {f + 1:d}/{n_bins:d}',
+                end='\r')
+
+        print(
+            'Shift Estimation ...',
+            end='\r')
+        try:
+            shifts = shift_estimation(
+                np.array(sub_images), pixelSize, upsampling)
+        except _ArrayMemoryError as e:
+            print(f'Drift cross-correlation failed: {e}')
+            return
+
+
+        shifts = np.c_[shifts, np.array(frames)]
+        print(
+            'Shift Correction ...',
+            end='\r')
+
+        # An one-dimensional interpolation is applied
+        # to drift traces in X and Y dimensions separately.
+        interpy = interp1d(
+            shifts[:, -1], shifts[:, 0],
+            kind='quadratic', fill_value='extrapolate')
+        interpx = interp1d(
+            shifts[:, -1], shifts[:, 1],
+            kind='quadratic', fill_value='extrapolate')
+        # And this interpolation is used to get the shift at every frame-point
+        frames_new = np.arange(0, max_frame, 1)
+        interpx = interpx(frames_new)
+        interpy = interpy(frames_new)
+
+        shift_correction(
+            interpx, interpy,
+            frame_ids,
+            self.data[DataColumns.X], self.data[DataColumns.Y])
+
+        drift_corrected_image = renderEngine.render(
+            self.data[DataColumns.X],
+            self.data[DataColumns.Y],
+            self.data[DataColumns.INTENSITY])
+
+        return self, drift_corrected_image, \
+            (frames_new, interpx, interpy)
+
+    def nn_trajectories(
+            self, minDistance: float = 0, maxDistance: float = 30,
+            maxOff=1, neighbors=1):
+        self.trackID = np.zeros(self.__len__(), dtype=np.int64)
+        self.neighbour_dist = np.zeros(self.__len__(), dtype=np.float64)
+        # data = self.dataFrame().to_numpy()
+        data = np.c_[
+            self.data[DataColumns.FRAME],
+            self.data[DataColumns.X],
+            self.data[DataColumns.Y]]
+
+        ids = np.cumsum(
+            np.bincount(self.data[DataColumns.FRAME].astype(np.int64)))
+
+        counter = 0
+        min_frame = np.min(self.data[DataColumns.FRAME])
+        max_frame = np.max(self.data[DataColumns.FRAME])
+
+        for frameID in np.arange(min_frame, max_frame, dtype=np.int64):
+            for offset in np.arange(0, maxOff + 1, dtype=np.int64):
+                nextID = frameID + offset + 1
+
+                if nextID > max_frame:
+                    continue
+
+                currentMask = slice(
+                    ids[frameID-1] if frameID > 0 else 0, ids[frameID])
+                nextMask = slice(ids[nextID-1], ids[nextID])
+
+                counter, self.trackID[currentMask], \
+                    self.trackID[nextMask], \
+                    self.neighbour_dist[nextMask] = nn_trajectories(
+                        data[currentMask, :], data[nextMask, :],
+                        c_trackID=self.trackID[currentMask],
+                        n_trackID=self.trackID[nextMask],
+                        nn_dist=self.neighbour_dist[nextMask],
+                        counter=counter, minDistance=minDistance,
+                        maxDistance=maxDistance,
+                        neighbors=neighbors)
+            print(
+                f'NN {frameID / max_frame:.2%} ...               ',
+                end='\r')
+
+        print('Done ...                         ')
+
+        return self
+
+    def merge_tracks(self, maxLength=500):
+        self.n_merged = np.zeros(self.__len__(), dtype=np.int64)
+        df = self.dataFrame()
+        columns = list(df.columns)
+
+        column_ids = np.zeros(4, dtype=np.int32)
+        column_ids[0] = columns.index('frame')
+        column_ids[1] = columns.index('trackID')
+        column_ids[2] = columns.index('n_merged')
+        if 'I' in columns:
+            column_ids[3] = columns.index('I')
+        elif 'intensity' in columns:
+            column_ids[3] = columns.index('intensity')
+
+        data = df.to_numpy()
+
+        print('Merging ...                         ')
+        finalData = merge_localizations(data, column_ids, maxLength)
+
+        df = pd.DataFrame(
+            finalData,
+            columns=columns).sort_values(
+                by=str(DataColumns.FRAME))
+
+        print('Done ...                         ')
+
+        return FittingResults.fromDataFrame(df, self.pixel_size)
+
+    def nearest_neighbour_merging(
+            self, minDistance=0, maxDistance=30,
+            maxOff=1, maxLength=500, neighbors=1):
+        # Call nn_trajectories
+        self.nn_trajectories(minDistance, maxDistance, maxOff, neighbors)
+
+        # Call merge_tracks
+        return self.merge_tracks(maxLength)
+
+    def drift_fiducial_marker(self):
+        df = self.dataFrame()
+        columns = df.columns
+        data = df.to_numpy()
+
+        unique_frames, frame_counts = \
+            np.unique(self.data[DataColumns.FRAME], return_counts=True)
+        if len(unique_frames) < 2:
+            print('Drift correction failed: no frame info.')
+            return
+
+        if self.data[DataColumns.TRACK_ID] is None:
+            print('Drift correction failed: please perform NN, no trackIDs.')
+            return
+        if np.max(self.data[DataColumns.TRACK_ID]) < 1:
+            print('Drift correction failed: please perform NN, no trackIDs.')
+            return
+
+        unique_tracks, track_counts = \
+            np.unique(self.data[DataColumns.TRACK_ID], return_counts=True)
+        fiducial_tracks_mask = np.logical_and(
+            unique_tracks > 0,
+            track_counts == len(unique_frames)
+        )
+
+        fiducial_trackIDs = unique_tracks[fiducial_tracks_mask]
+
+        if len(fiducial_trackIDs) < 1:
+            print(
+                'Drift correction failed: no ' +
+                'fiducial markers tracks detected.')
+            return
         else:
-            return len(self.locX)
+            print(f'{len(fiducial_trackIDs):d} tracks detected.', end='\r')
 
+        fiducial_markers = np.zeros((
+            len(fiducial_trackIDs),
+            len(unique_frames), 2))
+
+        print(
+            'Fiducial markers ...                 ', end='\r')
+        for idx in np.arange(fiducial_markers.shape[0]):
+            mask = self.data[DataColumns.TRACK_ID] == fiducial_trackIDs[idx]
+            fiducial_markers[idx] = np.c_[
+                self.data[DataColumns.X][mask],
+                self.data[DataColumns.Y][mask]]
+
+            fiducial_markers[idx, :, 0] -= fiducial_markers[idx, 0, 0]
+            fiducial_markers[idx, :, 1] -= fiducial_markers[idx, 0, 1]
+
+        print(
+            'Drift estimate ...                 ', end='\r')
+        drift_x = np.mean(fiducial_markers[:, :, 0], axis=0)
+        drift_y = np.mean(fiducial_markers[:, :, 1], axis=0)
+
+        print(
+            'Drift correction ...                 ', end='\r')
+        ids = np.cumsum(
+            np.bincount(self.data[DataColumns.FRAME].astype(np.int64)))
+
+        for idx in np.arange(len(unique_frames)):
+            frame_id = int(unique_frames[idx])
+            mask = slice(
+                    ids[frame_id-1] if frame_id > 0 else 0, ids[frame_id])
+            self.data[DataColumns.X][mask] -= drift_x[idx]
+            self.data[DataColumns.Y][mask] -= drift_y[idx]
+
+        # df = pd.DataFrame(
+        #     data,
+        #     columns=columns)
+
+        # drift_corrected = FittingResults.fromDataFrame(df, self.pixelSize)
+
+        return self, \
+            (unique_frames, drift_x, drift_y)
+
+    def zero_coordinates(self):
+        if self.data[DataColumns.X] is not None:
+            self.data[DataColumns.X] -= np.min(self.data[DataColumns.X])
+        if self.data[DataColumns.Y] is not None:
+            self.data[DataColumns.Y] -= np.min(self.data[DataColumns.Y])
+        if self.data[DataColumns.Z] is not None:
+            self.data[DataColumns.Z] -= np.min(self.data[DataColumns.Z])
+
+    @staticmethod
     def fromFile(filename: str, pixelSize: float):
         '''Populates fitting results from a tab seperated values
         (tsv) file.
@@ -441,419 +682,16 @@ class FittingResults:
 
         return FittingResults.fromDataFrame(dataFrame, pixelSize)
 
-    def setColumn(self, key, value):
-        if key == 'frame':
-            self.frames = value
-        elif key == 'x' or key == 'x [nm]':
-            self.locX = value
-        elif key == 'y' or key == 'y [nm]':
-            self.locY = value
-        elif key == 'z' or key == 'z [nm]':
-            self.locZ = value
-        elif key == 'bg' or key == 'background':
-            self.background = value
-        elif key == 'I' or key == 'intensity':
-            self.intensity = value
-        elif key == 'sigmax' or key == 'sigma':
-            self.x_Sigma = value
-        elif key == 'sigmay':
-            self.y_Sigma = value
-        elif 'ratio' in key and 'iteration' not in key:
-            self.xy_Ratio = value
-        elif key == 'loglike':
-            self.loglike = value
-        elif key == 'iteration':
-            self.iteration = value
-        elif key == 'trackID':
-            self.trackID = value
-        elif 'neighbour_dist' in key:
-            self.neighbour_dist = value
-        elif key == 'n_merged':
-            self.n_merged = value
-        elif key == 'CRLB x':
-            self.crlb_X = value
-        elif key == 'CRLB y':
-            self.crlb_Y = value
-        elif key == 'CRLB z':
-            self.crlb_Z = value
-        elif key == 'CRLB I':
-            self.crlb_I = value
-        elif key == 'CRLB bg':
-            self.crlb_BG = value
-        elif key == 'CRLB sigma' or key == 'CRLB sigmax':
-            self.crlb_SigX = value
-        elif key == 'CRLB sigmay':
-            self.crlb_SigY = value
-
-    def getColumn(self, key):
-        if key == 'frame':
-            return self.frames
-        elif key == 'x' or key == 'x [nm]':
-            return self.locX
-        elif key == 'y' or key == 'y [nm]':
-            return self.locY
-        elif key == 'z' or key == 'z [nm]':
-            return self.locZ
-        elif key == 'bg' or key == 'background':
-            return self.background
-        elif key == 'I' or key == 'intensity':
-            return self.intensity
-        elif key == 'sigmax' or key == 'sigma':
-            return self.x_Sigma
-        elif key == 'sigmay':
-            return self.y_Sigma
-        elif 'ratio' in key and 'iteration' not in key:
-            return self.xy_Ratio
-        elif key == 'loglike':
-            return self.loglike
-        elif key == 'iteration':
-            return self.iteration
-        elif key == 'trackID':
-            return self.trackID
-        elif 'neighbour_dist' in key:
-            return self.neighbour_dist
-        elif key == 'n_merged':
-            return self.n_merged
-        elif key == 'CRLB x':
-            return self.crlb_X
-        elif key == 'CRLB y':
-            return self.crlb_Y
-        elif key == 'CRLB z':
-            return self.crlb_Z
-        elif key == 'CRLB I':
-            return self.crlb_I
-        elif key == 'CRLB bg':
-            return self.crlb_BG
-        elif key == 'CRLB sigma' or key == 'CRLB sigmax':
-            return self.crlb_SigX
-        elif key == 'CRLB sigmay':
-            return self.crlb_SigY
-
-    def columnKeys(self):
-        return [
-            'frame', 'x', 'y', 'z', 'x [nm]', 'y [nm]', 'z [nm]',
-            'bg', 'background', 'I', 'intensity', 'sigma', 'sigmax',
-            'sigmay', 'ratio', 'loglike', 'iteration', 'trackID',
-            'neighbour_dist', 'n_merged', 'CRLB x', 'CRLB y', 'CRLB z',
-            'CRLB I', 'CRLB bg', 'CRLB sigma', 'CRLB sigmax', 'CRLB sigmay']
-
-    def uniqueKeys(self):
-        return [
-            'frame', 'x', 'y', 'z',
-            'bg', 'I', 'sigmax',
-            'sigmay', 'ratio', 'loglike', 'iteration', 'trackID',
-            'neighbour_dist', 'n_merged', 'CRLB x', 'CRLB y', 'CRLB z',
-            'CRLB I', 'CRLB bg', 'CRLB sigmax', 'CRLB sigmay']
-
+    @staticmethod
     def fromDataFrame(dataFrame: pd.DataFrame, pixelSize: float):
         fittingResults = None
         fittingResults = FittingResults(
             ResultsUnits.Nanometer, 1, FittingMethod._External
         )
 
-        for key in fittingResults.columnKeys():
-            if key in dataFrame:
-                fittingResults.setColumn(
-                    key, dataFrame[key].to_numpy())
+        for column in dataFrame.columns.values.tolist():
+            key = map_column_alias(column)
+            if key is not None:
+                fittingResults.data[key] = dataFrame[column].to_numpy()
 
         return fittingResults
-
-    def drift_cross_correlation(self, n_bins=10, pixelSize=10, upsampling=100):
-        '''Corrects the XY drift using cross-correlation measurments
-
-        Parameters
-        ----------
-        n_bins : int, optional
-            Number of frame bins, by default 10
-        pixelSize : int, optional
-            Super-res image pixel size in nanometers, by default 10
-        upsampling : int, optional
-            phase_cross_correlation upsampling (check skimage.registration),
-            by default 100
-
-        Returns
-        -------
-        tuple(FittingResults, np.ndarray)
-            returns the drift corrected fittingResults and recontructed image
-        '''
-        unique_frames = np.unique(self.frames)
-        if len(unique_frames) < 2:
-            print('Drift cross-correlation failed: no frame info.')
-            return
-
-        frames_per_bin = np.floor(np.max(unique_frames) / n_bins)
-
-        if frames_per_bin < 2:
-            print('Drift cross-correlation failed: large number of bins.')
-            return
-
-        renderEngine = gauss_hist_render(pixelSize)
-
-        # data = self.dataFrame().to_numpy()
-
-        x_max = int((np.max(self.locX) / renderEngine._pixel_size) +
-                    4 * renderEngine._gauss_len)
-        y_max = int((np.max(self.locY) / renderEngine._pixel_size) +
-                    4 * renderEngine._gauss_len)
-
-        # grouped_data = []
-        sub_images = []
-        shifts = []
-        frames = []
-
-        for f in range(0, n_bins):
-            mask = (self.frames >= f * frames_per_bin) & \
-                (self.frames < (f + 1) * frames_per_bin + 1)
-            image = renderEngine.fromArray(
-                np.c_[self.locX[mask], self.locY[mask], self.intensity[mask]],
-                (y_max, x_max))
-            frames.append(f * frames_per_bin + frames_per_bin/2)
-            sub_images.append(image)
-            print(
-                f'Bins: {f + 1:d}/{n_bins:d}',
-                end='\r')
-
-        print(
-            'Shift Estimation ...',
-            end='\r')
-        shifts = shift_estimation(np.array(sub_images), pixelSize, upsampling)
-        # for idx, img in enumerate(sub_images):
-        #     shift = phase_cross_correlation(
-        #         img, sub_images[0], upsample_factor=upsampling)
-        #     shifts.append(shift[0] * pixelSize)
-        #     print(
-        #         'Shift Est.: {:d}/{:d}'.format(idx + 1, len(sub_images)),
-        #         end="\r")
-
-        shifts = np.c_[shifts, np.array(frames)]
-        print(
-            'Shift Correction ...',
-            end='\r')
-
-        # An one-dimensional interpolation is applied
-        # to drift traces in X and Y dimensions separately.
-        interpy = interp1d(
-            shifts[:, -1], shifts[:, 0],
-            kind='quadratic', fill_value='extrapolate')
-        interpx = interp1d(
-            shifts[:, -1], shifts[:, 1],
-            kind='quadratic', fill_value='extrapolate')
-        # And this interpolation is used to get the shift at every frame-point
-        frames_new = np.arange(0, np.max(unique_frames), 1)
-        interpx = interpx(frames_new)
-        interpy = interpy(frames_new)
-
-        shift_correction(interpx, interpy, self.frames, self.locX, self.locY)
-        # for i, (shift_x, shift_y) in enumerate(zip(interpx, interpy)):
-        #     data[data[:, 0] == i, 3] -= shift_x
-        #     data[data[:, 0] == i, 4] -= shift_y
-
-        drift_corrected_image = renderEngine.render(
-            self.locX, self.locY, self.intensity)
-
-        return self, drift_corrected_image, \
-            (frames_new, interpx, interpy)
-
-    def nn_trajectories(
-            self, minDistance: float = 0, maxDistance: float = 30,
-            maxOff=1, neighbors=1):
-        self.trackID = np.zeros(self.__len__(), dtype=np.int64)
-        self.neighbour_dist = np.zeros(self.__len__(), dtype=np.float64)
-        # data = self.dataFrame().to_numpy()
-        data = np.c_[self.frames, self.locX, self.locY]
-
-        ids = np.cumsum(
-            np.bincount(self.frames.astype(np.int64)))
-
-        counter = 0
-        min_frame = np.min(self.frames)
-        max_frame = np.max(self.frames)
-
-        for frameID in np.arange(min_frame, max_frame, dtype=np.int64):
-            for offset in np.arange(0, maxOff + 1, dtype=np.int64):
-                nextID = frameID + offset + 1
-
-                if nextID > max_frame:
-                    continue
-
-                currentMask = slice(
-                    ids[frameID-1] if frameID > 0 else 0, ids[frameID])
-                nextMask = slice(ids[nextID-1], ids[nextID])
-
-                counter, self.trackID[currentMask], \
-                    self.trackID[nextMask], \
-                    self.neighbour_dist[nextMask] = nn_trajectories(
-                        data[currentMask, :], data[nextMask, :],
-                        c_trackID=self.trackID[currentMask],
-                        n_trackID=self.trackID[nextMask],
-                        nn_dist=self.neighbour_dist[nextMask],
-                        counter=counter, minDistance=minDistance,
-                        maxDistance=maxDistance,
-                        neighbors=neighbors)
-            print(
-                f'NN {frameID / max_frame:.2%} ...               ',
-                end='\r')
-
-        print('Done ...                         ')
-
-        return self
-
-
-    def merge_tracks(self, maxLength=500):
-        self.n_merged = np.zeros(self.__len__(), dtype=np.int64)
-        df = self.dataFrame()
-        columns = list(df.columns)
-
-        column_ids = np.zeros(4, dtype=np.int32)
-        column_ids[0] = columns.index('frame')
-        column_ids[1] = columns.index('trackID')
-        column_ids[2] = columns.index('n_merged')
-        if 'I' in columns:
-            column_ids[3] = columns.index('I')
-        elif 'intensity' in columns:
-            column_ids[3] = columns.index('intensity')
-
-        data = df.to_numpy()
-
-        print('Merging ...                         ')
-        finalData = merge_localizations(data, column_ids, maxLength)
-
-        df = pd.DataFrame(
-            finalData,
-            columns=columns).sort_values(
-                by=str(DataColumns.Frame))
-
-        print('Done ...                         ')
-
-        return FittingResults.fromDataFrame(df, self.pixelSize)
-
-    def nearest_neighbour_merging(
-            self, minDistance=0, maxDistance=30,
-            maxOff=1, maxLength=500, neighbors=1):
-        self.trackID = np.zeros(self.__len__(), dtype=np.int64)
-        self.neighbour_dist = np.zeros(self.__len__(), dtype=np.float64)
-        # data = self.dataFrame().to_numpy()
-        data = np.c_[self.frames, self.locX, self.locY]
-
-        counter = 0
-        min_frame = np.min(self.frames)
-        max_frame = np.max(self.frames)
-
-        for frameID in np.arange(min_frame, max_frame + 1):
-            for offset in np.arange(0, maxOff + 1):
-                nextID = frameID + offset + 1
-
-                currentMask = data[:, 0] == frameID
-                nextMask = data[:, 0] == nextID
-
-                counter, self.trackID[currentMask], \
-                    self.trackID[nextMask], \
-                    self.neighbour_dist[nextMask] = nn_trajectories(
-                        data[currentMask, :], data[nextMask, :],
-                        c_trackID=self.trackID[currentMask],
-                        n_trackID=self.trackID[nextMask],
-                        nn_dist=self.neighbour_dist[nextMask],
-                        counter=counter, minDistance=minDistance,
-                        maxDistance=maxDistance,
-                        neighbors=neighbors)
-            print(
-                f'NN {frameID / max_frame:.2%} ...               ',
-                end='\r')
-
-        print('Merging ...                         ')
-        self.n_merged = np.zeros(self.__len__(), dtype=np.int64)
-        df = self.dataFrame()
-        columns = list(df.columns)
-
-        column_ids = np.zeros(4, dtype=np.int32)
-        column_ids[0] = columns.index('frame')
-        column_ids[1] = columns.index('trackID')
-        column_ids[2] = columns.index('n_merged')
-        if 'I' in columns:
-            column_ids[3] = columns.index('I')
-        elif 'intensity' in columns:
-            column_ids[3] = columns.index('intensity')
-
-        data = df.to_numpy()
-
-        print('Merging ...                         ')
-        finalData = merge_localizations(data, column_ids, maxLength)
-
-        df = pd.DataFrame(
-            finalData,
-            columns=columns).sort_values(
-                by=str(DataColumns.Frame))
-
-        print('Done ...                         ')
-
-        return FittingResults.fromDataFrame(df, self.pixelSize)
-
-    def drift_fiducial_marker(self):
-        df = self.dataFrame()
-        columns = df.columns
-        data = df.to_numpy()
-
-        unique_frames, frame_counts = \
-            np.unique(self.frames, return_counts=True)
-        if len(unique_frames) < 2:
-            print('Drift correction failed: no frame info.')
-            return
-
-        if self.trackID is None:
-            print('Drift correction failed: please perform NN, no trackIDs.')
-            return
-        if np.max(self.trackID) < 1:
-            print('Drift correction failed: please perform NN, no trackIDs.')
-            return
-
-        unique_tracks, track_counts = \
-            np.unique(self.trackID, return_counts=True)
-        fiducial_tracks_mask = np.logical_and(
-            unique_tracks > 0,
-            track_counts == len(unique_frames)
-        )
-
-        fiducial_trackIDs = unique_tracks[fiducial_tracks_mask]
-
-        if len(fiducial_trackIDs) < 1:
-            print(
-                'Drift correction failed: no ' +
-                'fiducial markers tracks detected.')
-            return
-        else:
-            print(f'{len(fiducial_trackIDs):d} tracks detected.', end='\r')
-
-        fiducial_markers = np.zeros((
-            len(fiducial_trackIDs),
-            len(unique_frames), 2))
-
-        print(
-            'Fiducial markers ...                 ', end='\r')
-        for idx in np.arange(fiducial_markers.shape[0]):
-            fiducial_markers[idx] = np.c_[
-                self.locX, self.locY
-                ][self.trackID == fiducial_trackIDs[idx], ...]
-
-            fiducial_markers[idx, :, 0] -= fiducial_markers[idx, 0, 0]
-            fiducial_markers[idx, :, 1] -= fiducial_markers[idx, 0, 1]
-
-        print(
-            'Drift estimate ...                 ', end='\r')
-        drift_x = np.mean(fiducial_markers[:, :, 0], axis=0)
-        drift_y = np.mean(fiducial_markers[:, :, 1], axis=0)
-
-        print(
-            'Drift correction ...                 ', end='\r')
-        for idx in np.arange(len(unique_frames)):
-            frame = unique_frames[idx]
-            self.locX[self.frames == frame] -= drift_x[idx]
-            self.locY[self.frames == frame] -= drift_y[idx]
-
-        # df = pd.DataFrame(
-        #     data,
-        #     columns=columns)
-
-        # drift_corrected = FittingResults.fromDataFrame(df, self.pixelSize)
-
-        return self, \
-            (unique_frames, drift_x, drift_y)

@@ -656,7 +656,7 @@ class Kymogram:
             print(f'Error reading TIFF file: {e}')
             return None
 
-class KymogramWidget(QGroupBox):
+class KymogramWidget(QWidget):
     extractClicked = pyqtSignal()
     displayClicked = pyqtSignal(np.ndarray)
 
@@ -673,8 +673,8 @@ class KymogramWidget(QGroupBox):
         '<b>Up/Down Arrows:</b> Select active ROI.'
     ]
 
-    def __init__(self, title: str, threadpool: QThreadPool, parent=None):
-        super().__init__(title, parent)
+    def __init__(self, threadpool: QThreadPool, parent=None):
+        super().__init__(parent)
         self._threadpool = threadpool
 
         self.kymogram_temporal_window = create_spin_box(0, 100, 1, 50)

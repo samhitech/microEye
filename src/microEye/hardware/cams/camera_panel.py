@@ -774,7 +774,7 @@ def cam_display(params: AcquisitionJob, camp: Camera_Panel):
                             camp.hist_cdf.setXRange(
                                 params.frame._min, params.frame._max)
 
-                        camp._plot_ref.setData(params.frame._hist[:, 0])
+                        camp._plot_ref.setData(params.frame._hist)
                         camp._cdf_plot_ref.setData(params.frame._cdf)
                         camp._plot_ref_2.setData(camp._hist)
                         camp._cdf_plot_ref_2.setData(camp._hist)
@@ -815,9 +815,9 @@ def cam_display(params: AcquisitionJob, camp: Camera_Panel):
                                 min(left._min, right._min),
                                 max(left._max, right._max))
 
-                        camp._plot_ref.setData(left._hist[:, 0])
+                        camp._plot_ref.setData(left._hist)
                         camp._cdf_plot_ref.setData(left._cdf)
-                        camp._plot_ref_2.setData(right._hist[:, 0])
+                        camp._plot_ref_2.setData(right._hist)
                         camp._cdf_plot_ref_2.setData(right._cdf)
 
                         if camp.dual_view_overlap_rbtn.isChecked():
