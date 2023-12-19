@@ -2,8 +2,8 @@ import sys
 from subprocess import PIPE, Popen
 
 from PyQt5.Qsci import QsciAPIs, QsciLexerPython, QsciScintilla
-from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtGui import QColor, QFont, QPainter
+from PyQt5.QtCore import QTimer
+from PyQt5.QtGui import QColor, QFont
 from PyQt5.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -15,7 +15,28 @@ from PyQt5.QtWidgets import (
 
 
 class CodeEditorWidget(QsciScintilla):
+    '''
+    Customized code editor widget based on QsciScintilla.
+
+    Parameters
+    ----------
+    linter : str, optional
+        The linter to be used (default is 'pyflakes').
+    formatter : str, optional
+        The code formatter to be used (default is 'autopep8').
+    '''
+
     def __init__(self, linter='pyflakes', formatter='autopep8'):
+        '''
+        Initialize the CodeEditorWidget.
+
+        Parameters
+        ----------
+        linter : str, optional
+            The linter to be used (default is 'pyflakes').
+        formatter : str, optional
+            The code formatter to be used (default is 'autopep8').
+        '''
         super().__init__()
 
         self.setUtf8(True)
@@ -108,9 +129,20 @@ class CodeEditorWidget(QsciScintilla):
         self.textChanged.connect(self.debouncedLintCode)
 
     def debouncedLintCode(self):
+        '''
+        Start a timer to debounce code linting on text changes.
+        '''
         self.timer.start()
 
     def lintCode(self):
+        '''
+        Lint the code using the specified linter.
+
+        Returns
+        -------
+        str
+            A message indicating the linting result.
+        '''
         code = self.text()
 
         if self.linter == 'pyflakes':
@@ -130,6 +162,14 @@ class CodeEditorWidget(QsciScintilla):
             return 'Linting passed successfully.'
 
     def markLintingErrors(self, errors: str):
+        '''
+        Mark linting errors in the editor.
+
+        Parameters
+        ----------
+        errors : str
+            Error messages from the linter.
+        '''
         error_lines_set = []
         error_lines = errors.splitlines()
 
@@ -151,6 +191,14 @@ class CodeEditorWidget(QsciScintilla):
         self.annotate(line_number-1, message, 3)
 
     def formatCode(self):
+        '''
+        Format the code using the specified code formatter.
+
+        Returns
+        -------
+        str
+            A message indicating the formatting result.
+        '''
         code = self.text()
 
         if self.formatter == 'autopep8':
@@ -169,7 +217,24 @@ class CodeEditorWidget(QsciScintilla):
 
 
 class pyEditor(QWidget):
+    '''
+    Main window containing the code editor.
+
+    Parameters
+    ----------
+    parent : QWidget, optional
+        The parent widget (default is None).
+    '''
+
     def __init__(self, parent=None):
+        '''
+        Initialize the pyEditor.
+
+        Parameters
+        ----------
+        parent : QWidget, optional
+            The parent widget (default is None).
+        '''
         super().__init__(parent=parent)
 
         self.mLayout = QVBoxLayout()
@@ -201,6 +266,9 @@ class pyEditor(QWidget):
         self.mLayout.addLayout(self.btns_layout)
 
     def openScript(self):
+        '''
+        Open a Python script file and load its content into the editor.
+        '''
         filename, _ = QFileDialog.getOpenFileName(
             self, 'Load Script', filter='Python Files (*.py);;')
 
@@ -209,6 +277,9 @@ class pyEditor(QWidget):
                 self.codeEditorWidget.setText(file.read())
 
     def saveScript(self):
+        '''
+        Save the content of the editor into a Python script file.
+        '''
         filename, _ = QFileDialog.getSaveFileName(
             self, 'Save Script', filter='Python Files (*.py);;')
 
@@ -217,12 +288,23 @@ class pyEditor(QWidget):
                 file.write(self.codeEditorWidget.text())
 
     def pydragEnterEvent(self, e):
+        '''
+        Handle drag enter event for plain text.
+        '''
         if e.mimeData().hasFormat('text/plain'):
             e.accept()
         else:
             e.ignore()
 
     def toPlainText(self):
+        '''
+        Get the plain text content of the code editor.
+
+        Returns
+        -------
+        str
+            The plain text content of the code editor.
+        '''
         return self.codeEditorWidget.text()
 
 if __name__ == '__main__':

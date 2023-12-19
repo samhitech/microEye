@@ -8,6 +8,11 @@ from PyQt5.QtWidgets import *
 
 
 class Buttons(Enum):
+    '''Enum representing controller buttons.
+
+    Each enum member has a unique value representing its state in the report,
+    along with additional information like identifier, description, etc.
+    '''
     A = (1, 0, 'X/A')
     B = (2, 0, 'O/B')
     X = (4, 0, 'Sq/X')
@@ -25,10 +30,12 @@ class Buttons(Enum):
     LEFT = (28, 1, 'D-Pad LEFT')
 
     def __str__(self):
+        '''String representation of the button.'''
         return self.value[-1]
 
     @classmethod
     def from_string(cls, s):
+        '''Get an enum member based on its string representation.'''
         for column in cls:
             if column.value[-1] == s:
                 return column
@@ -36,6 +43,7 @@ class Buttons(Enum):
 
     @classmethod
     def from_value(cls, ch, id):
+        '''Get an enum member based on its channel and identifier.'''
         for column in cls:
             if column.value[0] == id and column.value[1] == ch:
                 return column
@@ -43,6 +51,7 @@ class Buttons(Enum):
 
     @classmethod
     def strings(cls):
+        '''Get an array of string representations of all enum members.'''
         res = []
         for column in cls:
             res.append(column.value[-1])
@@ -50,11 +59,33 @@ class Buttons(Enum):
 
 
 class hid_controller(QWidget):
+    '''QWidget for handling HID controller input.'''
+    # Define signals with docstrings
     reportEvent = pyqtSignal(Buttons)
+    '''Signal emitted when a controller button event occurs.
+
+    Args:
+        Buttons: The enum member representing the button.
+    '''
+
     reportLStickPosition = pyqtSignal(int, int)
+    '''Signal emitted when the left stick position changes.
+
+    Args:
+        int: X-axis position of the left stick.
+        int: Y-axis position of the left stick.
+    '''
+
     reportRStickPosition = pyqtSignal(int, int)
+    '''Signal emitted when the right stick position changes.
+
+    Args:
+        int: X-axis position of the right stick.
+        int: Y-axis position of the right stick.
+    '''
 
     def __init__(self) -> None:
+        '''Initialize the HID controller widget.'''
         super().__init__()
 
         self._layout = QFormLayout()
@@ -100,6 +131,7 @@ class hid_controller(QWidget):
         self.timer.start()
 
     def recurring_timer(self):
+        '''Read and process controller input in a recurring timer.'''
         if self.hid_device is not None:
             report = self.hid_device.read(64)
             if report:
@@ -128,11 +160,13 @@ class hid_controller(QWidget):
                         *self.right_analog)
 
     def close_HID(self):
+        '''Close the HID device.'''
         if self.hid_device is not None:
             self.hid_device.close()
             self.hid_device = None
 
     def open_HID(self):
+        '''Open the selected HID device.'''
         data = self.devices_cbox.currentData()
         if data is not None:
             if self.hid_device is not None:
@@ -144,6 +178,7 @@ class hid_controller(QWidget):
             self.hid_device.set_nonblocking(True)
 
     def refresh_list(self):
+        '''Refresh the list of available HID devices.'''
         self.devices_cbox.clear()
         for device in hid.enumerate():
             data = (
@@ -157,12 +192,14 @@ class hid_controller(QWidget):
 
 
 def map_range(value, args):
+    '''Map a value from one range to another.'''
     old_min, old_max, new_min, new_max = args
     return (new_min +
             (new_max - new_min) * (value - old_min) / (old_max - old_min))
 
 
 def dz_scaled_radial(stick_input, deadzone):
+    '''Apply a scaled radial transformation with deadzone.'''
     input_magnitude = np.linalg.norm(stick_input)
     if input_magnitude < deadzone:
         return 0, 0
@@ -180,6 +217,7 @@ def dz_scaled_radial(stick_input, deadzone):
 
 
 def dz_sloped_scaled_axial(stick_input, deadzone, n=1):
+    '''Apply a sloped scaled axial transformation with deadzone.'''
     x_val = 0
     y_val = 0
     deadzone_x = deadzone * np.power(abs(stick_input[1]), n)
@@ -193,6 +231,7 @@ def dz_sloped_scaled_axial(stick_input, deadzone, n=1):
 
 
 def dz_hybrid(stick_input, deadzone):
+    '''Apply a hybrid transformation with deadzone.'''
     # First, check that input does not fall within deadzone
     input_magnitude = np.linalg.norm(stick_input)
     if input_magnitude < deadzone:

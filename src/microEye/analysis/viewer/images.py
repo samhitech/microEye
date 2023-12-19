@@ -31,7 +31,7 @@ else:
 
 from ...shared.gui_helper import *
 from ...shared.labelled_slider import LabelledSlider
-from ...shared.metadata import MetadataEditor
+from ...shared.metadata_tree import MetadataEditorTree, MetaParams
 from ...shared.thread_worker import thread_worker
 from ...shared.uImage import (
     WORD,
@@ -421,12 +421,12 @@ class StackView(QWidget):
             self.roi.setVisible(False)
 
     def load_ome_metadata(self, ome_metadata: str):
-        self.metadata_editor = MetadataEditor()
+        self.metadata_editor = MetadataEditorTree()
         self.metadata_editor.pop_OME_XML(ome_metadata)
 
         self.tab_widget.addTab(self.metadata_editor, 'OME Metadata')
         self.get_param(Parameters.PIXEL_SIZE).setValue(
-            self.metadata_editor.px_size.value())
+            self.metadata_editor.get_param_value(MetaParams.PX_SIZE))
 
     def slider_changed(self, value):
         if self.stack_handler is not None:
@@ -653,10 +653,12 @@ class StackView(QWidget):
         if len(filename) > 0:
             self.export_metadata_to_file(filename)
             method = self.image_prefit_widget.get_fitting_method()
-            if method == FittingMethod._2D_Phasor_CPU or not cuda.is_available():
+            if method == FittingMethod._2D_Phasor_CPU or \
+                    not cuda.is_available() or \
+                    not self.get_param(Parameters.LOCALIZE_GPU).value():
                 def done(res):
                     self.get_param(Parameters.LOCALIZE).setOpts(enabled=True)
-                    if res is not None:
+                    if os.path.exists(filename):
                         self.localizedData.emit(filename)
                 print('\nCPU Fit')
                 # Any other args, kwargs are passed to the run function
@@ -788,7 +790,7 @@ class StackView(QWidget):
                     if options['tm_window'] > 1:
                         temp = TemporalMedianFilter(options['tm_window'])
 
-                    options = {
+                    kwargs = {
                         'index': i + k,
                         'stack_handler': self.stack_handler,
                         'image': img,
@@ -807,7 +809,7 @@ class StackView(QWidget):
                     worker = thread_worker(
                         pre_localize_frame,
                         progress=False, z_stage=False,
-                        **options)
+                        **kwargs)
                     worker.signals.result.connect(self.update_lists)
                     workers.append(worker)
                     QThreadPool.globalInstance().start(worker)
@@ -815,14 +817,19 @@ class StackView(QWidget):
             while self.thread_done < len(workers):
                 QThread.msleep(10)
 
-            exex = time.msecsTo(QDateTime.currentDateTime())
-            duration = start.msecsTo(QDateTime.currentDateTime())
+            exec = time.msecsTo(QDateTime.currentDateTime()) / 1000
+            duration = time_string_ms(start.msecsTo(QDateTime.currentDateTime()))
 
             print(
-                'index: {:d}/{:d}, Time: {:d}  '.format(
-                    i + len(workers), self.stack_handler.shape[0], exex),
+                'index: {:d}/{:d}, Duration: {}, Time: {:.3f} s'.format(
+                    i + len(workers), self.stack_handler.shape[0],
+                    duration, exec),
                 end='\r')
 
+        print(
+            '\nDone... ',
+            time_string_ms(start.msecsTo(QDateTime.currentDateTime()))
+            )
         QThread.msleep(5000)
 
         self.export_loc(filename)
@@ -847,7 +854,7 @@ class StackView(QWidget):
         if roi_info is not None:
             origin = roi_info[0]  # ROI (x,y)
 
-        options = {
+        kwargs = {
             'gain': options['gain'],
             'offset': options['offset'],
             'varim': options['varim'],
@@ -863,16 +870,16 @@ class StackView(QWidget):
             get_rois_lists_GPU(
                 self.stack_handler,
                 options['filter'], options['detector'],
-                **options)
+                **kwargs)
 
         roi_list = np.vstack(roi_list)
         coord_list = np.vstack(coord_list)
         varim_list = None if options['varim'] is None else np.vstack(varim_list)
 
         print(
-            '\n',
-            start.msecsTo(QDateTime.currentDateTime()),
-            ' ms')
+            '\nROIs collected in',
+            time_string_ms(start.msecsTo(QDateTime.currentDateTime()))
+            )
 
         if options['method'] == FittingMethod._2D_Gauss_MLE_fixed_sigma:
             params, crlbs, loglike = GPUmleFit_LM(
@@ -899,9 +906,9 @@ class StackView(QWidget):
                 params[:, 1] += origin[1]
 
         print(
-            '\nDone... ',
-            start.msecsTo(QDateTime.currentDateTime()) / 1000,
-            ' s')
+            '\nDone...',
+            time_string_ms(start.msecsTo(QDateTime.currentDateTime()))
+            )
 
         return frames_list, params, crlbs, loglike
 
@@ -1030,7 +1037,7 @@ class StackView(QWidget):
         if len(filepath) > 0:
             try:
                 metadata = self.get_protocol_metadata(filepath)
-                with open(metadata['path'], 'w') as file:
+                with open(metadata['Others']['path'], 'w') as file:
                     json.dump(metadata, file, indent=2)
             except Exception as e:
                 # Handle any errors that might occur during file writing

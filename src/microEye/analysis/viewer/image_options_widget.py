@@ -57,7 +57,10 @@ class Parameters(Enum):
     FITTING_METHOD = 'Localization.Fitting Method'
     ROI_SIZE = 'Localization.ROI Size'
     PIXEL_SIZE = 'Localization.Pixel-size'
+    LOCALIZE_GPU = 'Localization.GPU'
     LOCALIZE = 'Localization.Localize'
+    EXPORT_STATE = 'Settings.Export'
+    IMPORT_STATE = 'Settings.Import'
 
 class ImagePrefitWidget(ParameterTree):
     saveCropped = pyqtSignal()
@@ -97,8 +100,7 @@ class ImagePrefitWidget(ParameterTree):
                      'limits': [0, shape[0]], 'step': 1, 'suffix': 'pixel'},
                     ]},
                 {'name': 'Realtime Localization', 'type': 'bool', 'value': False},
-                {'name': 'Save Cropped Image', 'type': 'action',
-                 'triggered': self.saveCropped.emit},
+                {'name': 'Save Cropped Image', 'type': 'action'},
             ]},
             {'name': 'Filters', 'type': 'group', 'children': [
                 {'name': 'Temporal Median Filter', 'type': 'group', 'children': [
@@ -151,20 +153,18 @@ class ImagePrefitWidget(ParameterTree):
                 {'name': 'Fitting Method', 'type': 'list',
                  'values': self.FITTING_METHODS,
                  'value': self.FITTING_METHODS[0]},
+                {'name': 'GPU', 'type': 'bool', 'value': True,
+                 'tip': 'Try GPU-accelerated fitting if possible.'},
                 {'name': 'ROI Size', 'type': 'int', 'value': 13,
                     'limits': [7, 99], 'step': 2, 'suffix': 'pixel'},
                 {'name': 'Pixel-size', 'type': 'float', 'value': 114.17,
                  'limits': [0.0, 20000], 'step': 1, 'decimals': 2,
-                 'suffix': 'nm', 'siPrefix': True},
-                {'name': 'Localize', 'type': 'action',
-                 'activated': self.localizeData.emit},
+                 'suffix': 'nm'},
+                {'name': 'Localize', 'type': 'action'},
             ]},
             {'name': 'Settings', 'type': 'group', 'children': [
-                {'name': 'Export', 'type': 'action',
-                 'triggered': self.export_json
-                 },
-                {'name': 'Import', 'type': 'action',
-                 'triggered': self.load_json},
+                {'name': 'Export', 'type': 'action'},
+                {'name': 'Import', 'type': 'action'},
             ]},
         ]
 
@@ -174,10 +174,14 @@ class ImagePrefitWidget(ParameterTree):
         self.header().setSectionResizeMode(
             QHeaderView.ResizeMode.Stretch)
 
-        self.get_param(Parameters.LOCALIZE.value).sigActivated.connect(self.localizeData.emit)
-        self.get_param('Settings.Import').sigActivated.connect(self.load_json)
-        self.get_param('Settings.Export').sigActivated.connect(self.export_json)
-        self.get_param(Parameters.SAVE_CROPPED_IMAGE.value).sigActivated.connect(self.saveCropped.emit)
+        self.get_param(
+            Parameters.LOCALIZE.value).sigActivated.connect(self.localizeData.emit)
+        self.get_param(
+            Parameters.IMPORT_STATE.value).sigActivated.connect(self.load_json)
+        self.get_param(
+            Parameters.EXPORT_STATE.value).sigActivated.connect(self.export_json)
+        self.get_param(
+            Parameters.SAVE_CROPPED_IMAGE.value).sigActivated.connect(self.saveCropped.emit)
 
     def get_param(self, param_name: str) -> Parameter:
         '''

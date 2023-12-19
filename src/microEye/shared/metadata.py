@@ -1,4 +1,3 @@
-
 import typing
 
 import ome_types.model as om
@@ -8,290 +7,304 @@ from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 
+from .gui_helper import *
+
 
 class MetadataEditor(QWidget):
+    '''
+    A PyQt-based GUI for editing OME-XML metadata.
+
+    Attributes
+    ----------
+    experiment : QLineEdit
+        Experiment name input field.
+    exp_desc : QTextEdit
+        Experiment description input field.
+    exp_email : QLineEdit
+        Experimenter's email input field.
+    exp_fName : QLineEdit
+        Experimenter's first name input field.
+    exp_lName : QLineEdit
+        Experimenter's last name input field.
+    exp_institute : QLineEdit
+        Experimenter's institute input field.
+    pixel_type : QComboBox
+        Pixel type selection dropdown.
+    px_size : QDoubleSpinBox
+        Pixel x-size input field.
+    py_size : QDoubleSpinBox
+        Pixel y-size input field.
+    p_unit : QComboBox
+        Unit selection dropdown for pixel size.
+    channel_name : QLineEdit
+        Channel name input field.
+    fluor_name : QLineEdit
+        Fluorophore input field.
+    exposure : QDoubleSpinBox
+        Exposure time input field.
+    exposure_unit : QComboBox
+        Exposure time unit selection dropdown.
+    acq_mode : QComboBox
+        Acquisition mode selection dropdown.
+    ill_type : QComboBox
+        Illumination type selection dropdown.
+    contrast : QComboBox
+        Contrast method selection dropdown.
+    excitation : QDoubleSpinBox
+        Excitation wavelength input field.
+    emission : QDoubleSpinBox
+        Emission wavelength input field.
+    wave_unit : QComboBox
+        Wavelength unit selection dropdown.
+    micro_manufacturer : QLineEdit
+        Microscope manufacturer input field.
+    micro_model : QLineEdit
+        Microscope model input field.
+    obj_manufacturer : QLineEdit
+        Objective manufacturer input field.
+    obj_model : QLineEdit
+        Objective model input field.
+    obj_lens_na : QDoubleSpinBox
+        Objective numerical aperture input field.
+    obj_nom_mag : QDoubleSpinBox
+        Objective nominal magnification input field.
+    obj_immersion : QComboBox
+        Objective immersion selection dropdown.
+    obj_corr : QComboBox
+        Objective correction selection dropdown.
+    det_manufacturer : QLineEdit
+        Detector manufacturer input field.
+    det_model : QLineEdit
+        Detector model input field.
+    det_serial : QLineEdit
+        Detector serial number input field.
+    det_type : QComboBox
+        Detector type selection dropdown.
+    dichroic_manufacturer : QLineEdit
+        Dichroic manufacturer input field.
+    dichroic_model : QLineEdit
+        Dichroic model input field.
+    exfilter_model : QLineEdit
+        Excitation filter model input field.
+    emfilter_model : QLineEdit
+        Emission filter model input field.
+    tab_view : QTabWidget
+        Tab view for organizing metadata sections.
+    main_layout : QVBoxLayout
+        Main layout of the widget.
+    '''
+
 
     def __init__(self, parent: typing.Optional['QWidget'] = None):
+        '''
+        Initializes the MetadataEditor widget.
+
+        Parameters
+        ----------
+        parent : Optional[QWidget], optional
+            The parent widget, by default None.
+        '''
         super().__init__(parent=parent)
-
-        # self.setTitle('OME-XML Metadata')
         self.setMinimumWidth(50)
-
         self.InitLayout()
 
     def InitLayout(self):
-
+        '''
+        Initializes the main layout of the widget.
+        '''
         self.main_layout = QVBoxLayout(self)
-        # self.qscroll = QScrollArea()
+        self.tab_view = QTabWidget()
+        self.main_layout.addWidget(self.tab_view)
 
-        # self.qscroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        # self.qscroll.setHorizontalScrollBarPolicy(
-        #     Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        # self.qscroll.setWidgetResizable(True)
+        self.create_tab('Experiment', self.exp_tab_setup)
+        self.create_tab('Image', self.image_tab_setup)
+        self.create_tab('Instruments', self.instruments_tab_setup)
 
-        self.TabView = QTabWidget()
-        self.main_layout.addWidget(self.TabView)
-        # self.qscroll.setWidget(self.TabView)
-
-        self.exp_tab = QWidget()
-        self.exp_lay = QFormLayout()
-        self.exp_tab.setLayout(self.exp_lay)
-        self.image_tab = QWidget()
-        self.image_lay = QFormLayout()
-        self.image_tab.setLayout(self.image_lay)
-        self.instruments_tab = QWidget()
-        self.instruments_lay = QFormLayout()
-        self.instruments_tab.setLayout(self.instruments_lay)
-
-        self.TabView.addTab(self.exp_tab, 'Experiment')
-        self.TabView.addTab(self.image_tab, 'Image')
-        self.TabView.addTab(self.instruments_tab, 'Instruments')
-
-        self.dValid = QDoubleValidator()
-        self.iValid = QIntValidator()
-
-        self.experiment = QLineEdit('Experiment_001')
-        self.exp_lay.addRow(
-            QLabel('Experiment name:'),
-            self.experiment)
-
-        self.exp_desc = QTextEdit('')
-        self.exp_lay.addRow(
-            QLabel('Experiment description:'))
-        self.exp_lay.addRow(self.exp_desc)
-
-        self.exp_email = QLineEdit()
-        self.exp_fName = QLineEdit()
-        self.exp_lName = QLineEdit()
-        self.exp_institute = QLineEdit()
-
-        self.exp_lay.addRow(
-            QLabel('Experimenter First name:'),
-            self.exp_fName)
-        self.exp_lay.addRow(
-            QLabel('Experimenter Last name:'),
-            self.exp_lName)
-        self.exp_lay.addRow(
-            QLabel('Experimenter e-mail:'),
-            self.exp_email)
-        self.exp_lay.addRow(
-            QLabel('Experimenter Institute:'),
-            self.exp_institute)
-
-        self.pixel_type = QComboBox()
-        self.pixel_type.addItems(PixelType._member_names_)
-        self.pixel_type.setCurrentText(PixelType.UINT16.name)
-
-        self.px_size = QDoubleSpinBox()
-        self.px_size.setMinimum(0)
-        self.px_size.setMaximum(10000)
-        self.px_size.setValue(117.5)
-        self.py_size = QDoubleSpinBox()
-        self.py_size.setMinimum(0)
-        self.py_size.setMaximum(10000)
-        self.py_size.setValue(117.5)
-        self.p_unit = QComboBox()
-        self.p_unit.addItems(UnitsLength._member_names_)
-        self.p_unit.setCurrentText(UnitsLength.NANOMETER.name)
-
-        self.image_lay.addRow(
-            QLabel('Pixel type:'),
-            self.pixel_type)
-        self.image_lay.addRow(
-            QLabel('Pixel x-size:'),
-            self.px_size)
-        self.image_lay.addRow(
-            QLabel('Pixel y-size:'),
-            self.py_size)
-        self.image_lay.addRow(
-            QLabel('Unit:'),
-            self.p_unit)
-
-        self.channel_name = QLineEdit('CAM_1')
-        self.fluor_name = QLineEdit()
-
-        self.image_lay.addRow(
-            QLabel('Channel name:'),
-            self.channel_name)
-        self.image_lay.addRow(
-            QLabel('Fluorophore:'),
-            self.fluor_name)
-
-        self.exposure = QDoubleSpinBox()
-        self.exposure.setMinimum(0)
-        self.exposure.setMaximum(10000)
-        self.exposure.setValue(100.0)
-        self.exposure_unit = QComboBox()
-        self.exposure_unit.addItems(UnitsTime._member_names_)
-        self.exposure_unit.setCurrentText(UnitsTime.MILLISECOND.name)
-        self.image_lay.addRow(
-            QLabel('Exposure time:'),
-            self.exposure)
-        self.image_lay.addRow(
-            QLabel('Exposure time unit:'),
-            self.exposure_unit)
-
-        self.acq_mode = QComboBox()
-        self.acq_mode.addItems(Channel_AcquisitionMode._member_names_)
-        self.acq_mode.setCurrentText(Channel_AcquisitionMode.TIRF.name)
-
-        self.image_lay.addRow(
-            QLabel('Acquisition mode:'),
-            self.acq_mode)
-
-        self.ill_type = QComboBox()
-        self.ill_type.addItems(Channel_IlluminationType._member_names_)
-        self.ill_type.setCurrentText(Channel_IlluminationType.OTHER.name)
-
-        self.image_lay.addRow(
-            QLabel('Illumination type:'),
-            self.ill_type)
-
-        self.contrast = QComboBox()
-        self.contrast.addItems(Channel_ContrastMethod._member_names_)
-        self.contrast.setCurrentText(Channel_ContrastMethod.FLUORESCENCE.name)
-
-        self.image_lay.addRow(
-            QLabel('Contrast method:'),
-            self.contrast)
-
-        self.emission = QDoubleSpinBox()
-        self.emission.setMinimum(0)
-        self.emission.setMaximum(10000)
-        self.emission.setValue(670)
-        self.excitation = QDoubleSpinBox()
-        self.excitation.setMinimum(0)
-        self.excitation.setMaximum(10000)
-        self.excitation.setValue(638)
-        self.wave_unit = QComboBox()
-        self.wave_unit.addItems(UnitsLength._member_names_)
-        self.wave_unit.setCurrentText(UnitsLength.NANOMETER.name)
-
-        self.image_lay.addRow(
-            QLabel('Excitation wavelength:'),
-            self.excitation)
-        self.image_lay.addRow(
-            QLabel('Emission wavelength:'),
-            self.emission)
-        self.image_lay.addRow(
-            QLabel('Wavelength unit:'),
-            self.wave_unit)
-
-        self.micro_manufacturer = QLineEdit('VU/FTMC')
-        self.micro_model = QLineEdit('Main scope')
-
-        self.obj_manufacturer = QLineEdit('Nikon')
-        self.obj_model = QLineEdit('CFI Apochromat TIRF 60XC Oil')
-        self.obj_lens_na = QDoubleSpinBox()
-        self.obj_lens_na.setMinimum(0)
-        self.obj_lens_na.setMaximum(2)
-        self.obj_lens_na.setValue(1.49)
-        self.obj_nom_mag = QDoubleSpinBox()
-        self.obj_nom_mag.setMinimum(0)
-        self.obj_nom_mag.setMaximum(1000)
-        self.obj_nom_mag.setValue(60)
-        self.obj_immersion = QComboBox()
-        self.obj_immersion.addItems(Objective_Immersion._member_names_)
-        self.obj_immersion.setCurrentText(Objective_Immersion.OIL.name)
-        self.obj_corr = QComboBox()
-        self.obj_corr.addItems(Objective_Correction._member_names_)
-        self.obj_corr.setCurrentText(Objective_Correction.APO.name)
-
-        self.instruments_lay.addRow(
-            QLabel('Microscope manufacturer:'),
-            self.micro_manufacturer)
-        self.instruments_lay.addRow(
-            QLabel('Microscope model:'),
-            self.micro_model)
-        self.instruments_lay.addRow(
-            QLabel('Objective manufacturer:'),
-            self.obj_manufacturer)
-        self.instruments_lay.addRow(
-            QLabel('Objective model:'),
-            self.obj_model)
-        self.instruments_lay.addRow(
-            QLabel('Objective NA:'),
-            self.obj_lens_na)
-        self.instruments_lay.addRow(
-            QLabel('Objective nominal Mag.:'),
-            self.obj_nom_mag)
-        self.instruments_lay.addRow(
-            QLabel('Objective immersion:'),
-            self.obj_immersion)
-        self.instruments_lay.addRow(
-            QLabel('Objective correction:'),
-            self.obj_corr)
-
-        self.det_manufacturer = QLineEdit('IDS')
-        self.det_model = QLineEdit('ui-3060cp-rev-2')
-        self.det_serial = QLineEdit('')
-        self.det_type = QComboBox()
-        self.det_type.addItems(Detector_Type._member_names_)
-        self.det_type.setCurrentText(Detector_Type.CMOS.name)
-
-        self.instruments_lay.addRow(
-            QLabel('Detector manufacturer:'),
-            self.det_manufacturer)
-        self.instruments_lay.addRow(
-            QLabel('Detector model:'),
-            self.det_model)
-        self.instruments_lay.addRow(
-            QLabel('Detector serial number:'),
-            self.det_serial)
-        self.instruments_lay.addRow(
-            QLabel('Detector type:'),
-            self.det_type)
-
-        self.dichroic_manufacturer = QLineEdit('')
-        self.dichroic_model = QLineEdit('')
-
-        self.instruments_lay.addRow(
-            QLabel('Dichroic manufacturer:'),
-            self.dichroic_manufacturer)
-        self.instruments_lay.addRow(
-            QLabel('Dichroic model:'),
-            self.dichroic_model)
-
-        self.exfilter_model = QLineEdit('')
-        self.emfilter_model = QLineEdit('')
-
-        self.instruments_lay.addRow(
-            QLabel('Excitation Filters:'),
-            self.exfilter_model)
-        self.instruments_lay.addRow(
-            QLabel('Emission Filters:'),
-            self.emfilter_model)
-
-        self.main_layout.addWidget(QPushButton(
-            'Save as',
-            clicked=lambda: self.saveAs()))
-
-        self.main_layout.addWidget(QPushButton(
-            'Import',
-            clicked=lambda: self.loadXML()))
-
+        self.main_layout.addWidget(
+            QPushButton('Save as', clicked=self.save))
+        self.main_layout.addWidget(
+            QPushButton('Import', clicked=self.load_xml))
         self.setLayout(self.main_layout)
 
-    def saveAs(self):
-        filename, _ = QFileDialog.getSaveFileName(
-            self, 'Save metadata', filter='OME-XML Files (*.ome.xml);;')
+    def create_tab(self, title, setup_func):
+        '''
+        Creates a tab in the tab view.
 
-        if len(filename) > 0:
-            ome_obj = self.gen_OME_XML(1, 512, 512)
-            with open(filename, 'w', encoding='utf8') as f:
-                f.write(ome_obj.to_xml())
+        Parameters
+        ----------
+        title : str
+            Title of the tab.
+        setup_func : callable
+            Function for setting up the tab layout.
+        '''
+        tab = QWidget()
+        layout = QFormLayout()
+        tab.setLayout(layout)
+        self.tab_view.addTab(tab, title)
+        setup_func(layout)
 
-    def loadXML(self):
-        filename, _ = QFileDialog.getOpenFileName(
-            self, 'Load metadata', filter='OME-XML Files (*.ome.xml);;')
+    def exp_tab_setup(self, layout):
+        '''
+        Sets up the Experiment tab.
 
-        if len(filename) > 0:
-            xml = ''
-            with open(filename) as f:
-                xml = f.read()
-            self.pop_OME_XML(OME.from_xml(xml))
+        Parameters
+        ----------
+        layout : QFormLayout
+            Layout for the Experiment tab.
+        '''
+        self.experiment = create_line_edit('Experiment name:', 'Experiment_001', layout)
+        self.exp_desc = create_text_edit('Experiment description:', '', layout)
+        self.exp_email = create_line_edit('Experimenter e-mail:', '', layout)
+        self.exp_fName = create_line_edit('Experimenter First name:', '', layout)
+        self.exp_lName = create_line_edit('Experimenter Last name:', '', layout)
+        self.exp_institute = create_line_edit('Experimenter Institute:', '', layout)
 
-    def gen_OME_XML(self, frames: int, width: int, height: int):
+    def image_tab_setup(self, layout):
+        '''
+        Sets up the Image tab.
+
+        Parameters
+        ----------
+        layout : QFormLayout
+            Layout for the Image tab.
+        '''
+        self.pixel_type = create_combo_box(
+            'Pixel type:', PixelType._member_names_,
+            PixelType.UINT16.name, layout)
+        self.px_size = create_labelled_double_spin_box(
+            'Pixel x-size:', 0, 10000, 117.5, layout)
+        self.py_size = create_labelled_double_spin_box(
+            'Pixel y-size:', 0, 10000, 117.5, layout)
+        self.p_unit = create_combo_box(
+            'Unit:', UnitsLength._member_names_,
+            UnitsLength.NANOMETER.name, layout)
+
+        self.channel_name = create_line_edit('Channel name:', 'CAM_1', layout)
+        self.fluor_name = create_line_edit('Fluorophore:', '', layout)
+        self.exposure = create_labelled_double_spin_box(
+            'Exposure time:', 0, 10000, 100.0, layout)
+        self.exposure_unit = create_combo_box(
+            'Exposure time unit:', UnitsTime._member_names_,
+            UnitsTime.MILLISECOND.name, layout)
+        self.acq_mode = create_combo_box(
+            'Acquisition mode:', Channel_AcquisitionMode._member_names_,
+            Channel_AcquisitionMode.TIRF.name, layout)
+        self.ill_type = create_combo_box(
+            'Illumination type:', Channel_IlluminationType._member_names_,
+            Channel_IlluminationType.OTHER.name, layout)
+        self.contrast = create_combo_box(
+            'Contrast method:', Channel_ContrastMethod._member_names_,
+            Channel_ContrastMethod.FLUORESCENCE.name, layout)
+        self.excitation = create_labelled_double_spin_box(
+            'Excitation wavelength:', 0, 10000, 638, layout)
+        self.emission = create_labelled_double_spin_box(
+            'Emission wavelength:', 0, 10000, 670, layout)
+        self.wave_unit = create_combo_box(
+            'Wavelength unit:', UnitsLength._member_names_,
+            UnitsLength.NANOMETER.name, layout)
+
+    def instruments_tab_setup(self, layout):
+        '''
+        Sets up the Instruments tab.
+
+        Parameters
+        ----------
+        layout : QFormLayout
+            Layout for the Instruments tab.
+        '''
+        self.micro_manufacturer = create_line_edit(
+            'Microscope manufacturer:', 'VU/FTMC', layout)
+        self.micro_model = create_line_edit(
+            'Microscope model:', 'Main scope', layout)
+        self.obj_manufacturer = create_line_edit(
+            'Objective manufacturer:', 'Nikon', layout)
+        self.obj_model = create_line_edit(
+            'Objective model:', 'CFI Apochromat TIRF 60XC Oil', layout)
+        self.obj_lens_na = create_labelled_double_spin_box(
+            'Objective NA:', 0, 2, 1.49, layout)
+        self.obj_nom_mag = create_labelled_double_spin_box(
+            'Objective nominal Mag.:', 0, 1000, 60, layout)
+        self.obj_immersion = create_combo_box(
+            'Objective immersion:', Objective_Immersion._member_names_,
+            Objective_Immersion.OIL.name, layout)
+        self.obj_corr = create_combo_box(
+            'Objective correction:', Objective_Correction._member_names_,
+            Objective_Correction.APO.name, layout)
+        self.det_manufacturer = create_line_edit(
+            'Detector manufacturer:', 'Allied Vision', layout)
+        self.det_model = create_line_edit(
+            'Detector model:', 'U-511m', layout)
+        self.det_serial = create_line_edit(
+            'Detector serial number:', '', layout)
+        self.det_type = create_combo_box(
+            'Detector type:', Detector_Type._member_names_,
+            Detector_Type.CMOS.name, layout)
+        self.dichroic_manufacturer = create_line_edit(
+            'Dichroic manufacturer:', '', layout)
+        self.dichroic_model = create_line_edit(
+            'Dichroic model:', '', layout)
+        self.exfilter_model = create_line_edit(
+            'Excitation Filters:', '', layout)
+        self.emfilter_model = create_line_edit(
+            'Emission Filters:', '', layout)
+
+    def save(self):
+        '''
+        Saves metadata to an OME-XML file.
+        '''
+        try:
+            filename, _ = QFileDialog.getSaveFileName(
+                self, 'Save metadata', filter='OME-XML Files (*.ome.xml);;')
+            if filename:
+                ome_obj = self.gen_OME_XML(1, 512, 512)
+                with open(filename, 'w', encoding='utf8') as f:
+                    f.write(ome_obj.to_xml())
+        except Exception as e:
+            print(f'Error saving file: {e}')
+
+    def load_xml(self):
+        '''
+        Loads metadata from an OME-XML file.
+        '''
+        try:
+            filename, _ = QFileDialog.getOpenFileName(
+                self, 'Load metadata', filter='OME-XML Files (*.ome.xml);;')
+            if filename:
+                xml = ''
+                with open(filename) as f:
+                    xml = f.read()
+                self.pop_OME_XML(OME.from_xml(xml))
+        except Exception as e:
+            print(f'Error loading file: {e}')
+
+
+    def gen_OME_XML(
+            self, frames: int, width: int, height: int,
+            channels: int = 1, z_planes: int = 1,
+            dimension_order: Pixels_DimensionOrder =Pixels_DimensionOrder.XYZCT):
+        '''
+        Generates OME-XML metadata.
+
+        Parameters
+        ----------
+        frames : int
+            Number of frames.
+        width : int
+            Image width.
+        height : int
+            Image height.
+        channels : int, optional
+            Number of channels, by default 1.
+        z_planes : int, optional
+            Number of z-planes, by default 1.
+        dimension_order : Pixels_DimensionOrder, optional
+            Dimension order, by default Pixels_DimensionOrder.XYZCT.
+
+        Returns
+        -------
+        om.OME
+            Generated OME-XML object.
+        '''
         ome_obj = om.OME(creator='microEye Python Package')
 
         experimenter = om.Experimenter()
@@ -367,12 +380,13 @@ class MetadataEditor(QWidget):
         channel.samples_per_pixel = 1
 
         pixels = om.Pixels(
-            size_c=1, size_t=frames,
+            size_c=channels, size_t=frames,
             size_x=width,
-            size_y=height, size_z=1,
+            size_y=height,
+            size_z=z_planes,
             type=PixelType._member_map_[
                 self.pixel_type.currentText()],
-            dimension_order='XYZCT',
+            dimension_order=dimension_order,
             # metadata_only=True,
             physical_size_x=self.px_size.value(),
             physical_size_x_unit=UnitsLength._member_map_[
@@ -394,14 +408,40 @@ class MetadataEditor(QWidget):
             description=self.exp_desc.toPlainText()
         )
         ome_obj.images.append(img)
-        ome_obj = OME.validate(ome_obj)
+        ome_obj = OME.model_validate(ome_obj)
 
         # with open('config.xml', 'w', encoding='utf8') as f:
         #     f.write(ome_obj.to_xml())
 
         return ome_obj
 
-    def gen_OME_XML_short(self, frames: int, width: int, height: int):
+    def gen_OME_XML_short(
+            self, frames: int, width: int, height: int,
+            channels: int = 1, z_planes: int = 1,
+            dimension_order: Pixels_DimensionOrder =Pixels_DimensionOrder.XYZCT):
+        '''
+        Generates short version of OME-XML metadata.
+
+        Parameters
+        ----------
+        frames : int
+            Number of frames.
+        width : int
+            Image width.
+        height : int
+            Image height.
+        channels : int, optional
+            Number of channels, by default 1.
+        z_planes : int, optional
+            Number of z-planes, by default 1.
+        dimension_order : Pixels_DimensionOrder, optional
+            Dimension order, by default Pixels_DimensionOrder.XYZCT.
+
+        Returns
+        -------
+        om.OME
+            Generated OME-XML object.
+        '''
         ome_obj = om.OME(creator='microEye Python Package')
 
         experimenter = om.Experimenter()
@@ -434,12 +474,12 @@ class MetadataEditor(QWidget):
         channel = om.Channel()
 
         pixels = om.Pixels(
-            size_c=1, size_t=frames,
+            size_c=channels, size_t=frames,
             size_x=width,
-            size_y=height, size_z=1,
+            size_y=height, size_z=z_planes,
             type=PixelType._member_map_[
                 self.pixel_type.currentText()],
-            dimension_order='XYZCT',
+            dimension_order=dimension_order,
             # metadata_only=True,
             physical_size_x=self.px_size.value(),
             physical_size_x_unit=UnitsLength._member_map_[
@@ -461,11 +501,19 @@ class MetadataEditor(QWidget):
             description=self.exp_desc.toPlainText()
         )
         ome_obj.images.append(img)
-        ome_obj = OME.validate(ome_obj)
+        ome_obj = OME.model_validate(ome_obj)
 
         return ome_obj
 
     def pop_OME_XML(self, ome_obj: OME):
+        '''
+        Populate the widget with OME-XML metadata.
+
+        Parameters
+        ----------
+        ome_obj : om.OME
+            The OME-XML object to be loaded.
+        '''
         if ome_obj.images.__len__() > 0:
             img = ome_obj.images[0]
             self.experiment.setText(img.name)
@@ -544,3 +592,10 @@ class MetadataEditor(QWidget):
                     self.exfilter_model.setText(exFilters.model)
                     emFilters = inst.filters[1]
                     self.emfilter_model.setText(emFilters.model)
+
+
+if __name__ == '__main__':
+    app = QApplication(sys.argv)
+    window = MetadataEditor()
+    window.show()
+    sys.exit(app.exec_())

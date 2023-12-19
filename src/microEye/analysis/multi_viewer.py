@@ -2,45 +2,21 @@ import json
 import os
 import sys
 import webbrowser
+from enum import Enum
 from typing import Optional
 
 import cv2
-import numpy as np
-import pandas as pd
-import pyqtgraph as pg
 import qdarkstyle
-import tifffile as tf
-from numba import cuda
-from ome_types.model import OME
 from PyQt5.QtCore import *
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import *
 
-from microEye.analysis.viewer.localizations import LocalizationsView
-
-if cuda.is_available():
-    from .fitting.pyfit3Dcspline.mainfunctions import GPUmleFit_LM
-else:
-    def GPUmleFit_LM(*args):
-        pass
-
 from ..shared.gui_helper import *
 from ..shared.thread_worker import *
 from ..shared.uImage import *
-from .checklist_dialog import ChecklistDialog
-from .filters import *
-from .fitting import pyfit3Dcspline
-from .fitting.fit import *
-from .fitting.nena import NeNA_Widget
-from .fitting.results import *
-from .fitting.results_stats import resultsStatsWidget
-from .fitting.tardis import TARDIS_Widget
-from .rendering import *
-from .tools.kymograms import (
-    Kymogram,
-    KymogramWidget,
-)
+from .fitting.results import FittingResults
 from .viewer.images import StackView
+from .viewer.localizations import LocalizationsView
 
 
 class DockKeys(Enum):

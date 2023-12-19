@@ -4,6 +4,7 @@ import os
 import threading
 import time
 import traceback
+from enum import Enum
 from queue import Queue
 
 import cv2
@@ -13,14 +14,18 @@ from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 
-from ...shared.metadata import MetadataEditor
+from ...shared.expandable_groupbox import ExpandableGroupBox
+from ...shared.metadata_tree import MetadataEditorTree, MetaParams
 from ...shared.thread_worker import *
 from ...shared.uImage import uImage
 from ..widgets.qlist_slider import *
+from .camera_options import CameraOptions, CamParams
 from .jobs import *
 from .line_profiler import LineProfiler
 from .micam import *
 
+EXPOSURE_SHORTCUTS = [
+    1, 5, 10, 20, 30, 50, 100, 150, 200, 300, 500, 1000]
 
 class Camera_Panel(QGroupBox):
     '''
@@ -93,17 +98,11 @@ class Camera_Panel(QGroupBox):
 
         # tab widgets
         self.first_tab = QWidget()
-        self.second_tab = QWidget()
-        self.third_tab = QWidget()
-        self.fourth_tab = QWidget()
 
-        self.OME_tab = MetadataEditor()
+        self.OME_tab = MetadataEditorTree()
 
         # add tabs
         self.main_tab_view.addTab(self.first_tab, 'Main')
-        self.main_tab_view.addTab(self.second_tab, 'Preview')
-        self.main_tab_view.addTab(self.third_tab, 'Area of Interest (AOI)')
-        self.main_tab_view.addTab(self.fourth_tab, 'GPIOs / Timers')
         if not self.mini:
             self.main_tab_view.addTab(self.OME_tab, 'OME-XML metadata')
 
@@ -112,176 +111,74 @@ class Camera_Panel(QGroupBox):
         # set as first tab layout
         self.first_tab.setLayout(self.first_tab_Layout)
 
-        # second tab vertical layout
-        self.second_tab_Layout = QFormLayout()
-        # set as second tab layout
-        self.second_tab.setLayout(self.second_tab_Layout)
+        self.camera_options = CameraOptions()
 
-        # third tab vertical layout
-        self.third_tab_Layout = QFormLayout()
-        # set as third tab layout
-        self.third_tab.setLayout(self.third_tab_Layout)
-
-        # fourth tab vertical layout
-        self.fourth_tab_Layout = QFormLayout()
-        # set as fourth tab layout
-        self.fourth_tab.setLayout(self.fourth_tab_Layout)
-
-        # exposure text box control
-        self.cam_exposure_qs = QDoubleSpinBox()
 
         self.cam_exp_shortcuts = QHBoxLayout()
         self.cam_exp_shortcuts.addWidget(
             QPushButton(
                 'min',
-                clicked=lambda: self.cam_exposure_qs.setValue(
+                clicked=lambda: self.camera_options.set_param_value(
+                    CamParams.EXPOSURE,
                     self._cam.exposure_range[0]))
         )
-        self.cam_exp_shortcuts.addWidget(
-            QPushButton(
-                '1ms',
-                clicked=lambda: self.setExposure(1))
-        )
-        self.cam_exp_shortcuts.addWidget(
-            QPushButton(
-                '5ms',
-                clicked=lambda: self.setExposure(5))
-        )
-        self.cam_exp_shortcuts.addWidget(
-            QPushButton(
-                '10ms',
-                clicked=lambda: self.setExposure(10))
-        )
-        self.cam_exp_shortcuts.addWidget(
-            QPushButton(
-                '30ms',
-                clicked=lambda: self.setExposure(30))
-        )
-        self.cam_exp_shortcuts.addWidget(
-            QPushButton(
-                '50ms',
-                clicked=lambda: self.setExposure(50))
-        )
-        self.cam_exp_shortcuts.addWidget(
-            QPushButton(
-                '100ms',
-                clicked=lambda: self.setExposure(100))
-        )
-        self.cam_exp_shortcuts.addWidget(
-            QPushButton(
-                '150ms',
-                clicked=lambda: self.setExposure(150))
-        )
-        self.cam_exp_shortcuts.addWidget(
-            QPushButton(
-                '200ms',
-                clicked=lambda: self.setExposure(200))
-        )
-        self.cam_exp_shortcuts.addWidget(
-            QPushButton(
-                '500ms',
-                clicked=lambda: self.setExposure(500))
-        )
-        self.cam_exp_shortcuts.addWidget(
-            QPushButton(
-                '1s',
-                clicked=lambda: self.setExposure(1000))
-        )
 
-        self.experiment_name = QLineEdit('Experiment_001')
-        self.experiment_name.textChanged.connect(
-            lambda x: self.OME_tab.experiment.setText(x))
+        def add_button(layout: QHBoxLayout, value):
+            layout.addWidget(
+                QPushButton(
+                    f'{value:.0f} ms',
+                    clicked=lambda: self.setExposure(value))
+            )
+
+        for value in EXPOSURE_SHORTCUTS:
+            add_button(self.cam_exp_shortcuts, value)
+
+        self.first_tab_Layout.addRow(self.cam_exp_shortcuts)
+        self.first_tab_Layout.addRow(self.camera_options)
+
+        self.camera_options.get_param(CamParams.EXPERIMENT_NAME).sigValueChanged.connect(
+            lambda x: self.OME_tab.set_param_value(
+                MetaParams.EXPERIMENT_NAME, x))
 
         self.save_dir_layout = QHBoxLayout()
 
-        self._directory = os.path.dirname(os.path.realpath(__package__))
-        self.save_dir_edit = QLineEdit(self._directory)
-        self.save_dir_edit.setReadOnly(True)
+        self._directory = os.path.dirname(os.path.realpath(__file__))
+        self.camera_options.set_param_value(
+            CamParams.SAVE_DIRECTORY, self._directory)
+        self.camera_options.directoryChanged.connect(
+            lambda value: self.directory_changed(value))
 
-        self.save_browse_btn = QPushButton(
-            '...', clicked=lambda: self.save_browse_clicked())
+        save_param = self.camera_options.get_param(CamParams.SAVE_DATA)
+        save_param.setOpts(enabled=not self.mini)
 
-        self.save_dir_layout.addWidget(self.save_dir_edit)
-        self.save_dir_layout.addWidget(self.save_browse_btn)
+        preview_param = self.camera_options.get_param(CamParams.PREVIEW)
+        preview_param.setValue(not self.mini)
+        preview_param.setOpts(enabled=not self.mini)
 
-        self.frames_tbox = QSpinBox()
-        self.frames_tbox.setMaximum(1e9)
-        self.frames_tbox.setMinimum(1)
-        self.frames_tbox.setValue(1e6)
+        self.camera_options.get_param(CamParams.DISPLAY_STATS_OPTION).setOpts(
+            enabled=not self.mini)
+        self.camera_options.get_param(CamParams.VIEW_OPTIONS).setOpts(
+            visible=not self.mini)
+        self.camera_options.get_param(CamParams.RESIZE_DISPLAY).setOpts(
+            enabled=not self.mini)
 
-        # save to hard drive checkbox
-        self.save_data_chbx = QCheckBox('Save Data')
-        self.save_data_chbx.setChecked(self.mini)
-        self.dark_cal = QCheckBox('Dark Calibration')
-        self.dark_cal.setToolTip('Generates mean and variance images')
-        self.dark_cal.setChecked(False)
-        self.save_formats_layout = QHBoxLayout()
-        self.save_as_tiff = QRadioButton('Tiff')
-        self.save_as_zarr = QRadioButton('Zarr')
-        self.save_formats = QButtonGroup()
-        self.save_formats.addButton(self.save_as_tiff)
-        self.save_formats.addButton(self.save_as_zarr)
-        self.save_formats_layout.addWidget(self.save_as_tiff)
-        self.save_formats_layout.addWidget(self.save_as_zarr)
-        self.save_as_tiff.setChecked(True)
-        self.save_bigg_tiff = QCheckBox('BiggTiff')
-        self.save_bigg_tiff.setChecked(True)
-        self.cam_save_meta = QCheckBox('Full OME-XML')
-        self.cam_save_meta.setChecked(self.mini)
-
-        # preview checkbox
-        self.preview_ch_box = QCheckBox('Preview')
-        self.preview_ch_box.setChecked(not self.mini)
-
-        self.line_profiler_ch_box = QCheckBox('Line Profiler')
-        self.line_profiler_ch_box.setChecked(False)
-        self.line_profiler_ch_box.stateChanged.connect(
+        profiler_param = self.camera_options.get_param(CamParams.LINE_PROFILER)
+        profiler_param.setOpts(enabled=not self.mini)
+        profiler_param.sigStateChanged.connect(
             lambda: self.lineProfiler.show()
-            if self.line_profiler_ch_box.isChecked()
+            if self.camera_options.get_param_value(CamParams.LINE_PROFILER)
             else self.lineProfiler.hide()
         )
 
-        self.single_view_rbtn = QRadioButton('Single View')
-        self.single_view_rbtn.setChecked(True)
-        self.dual_view_rbtn = QRadioButton('Dual Channel (Side by Side).')
-        self.dual_view_overlap_rbtn = QRadioButton(
-            'Dual Channel (Overlapped).')
-        self.view_btns = QButtonGroup()
-        self.view_btns.addButton(self.single_view_rbtn)
-        self.view_btns.addButton(self.dual_view_rbtn)
-        self.view_btns.addButton(self.dual_view_overlap_rbtn)
-        self.view_btns.buttonToggled.connect(self.view_toggled)
+        self.camera_options.setROI.connect(lambda: self.set_ROI())
+        self.camera_options.resetROI.connect(lambda: self.reset_ROI())
+        self.camera_options.centerROI.connect(lambda: self.center_ROI())
+        self.camera_options.selectROI.connect(lambda: self.select_ROI())
+        self.camera_options.selectROIs.connect(lambda: self.select_ROIs())
 
-        self.view_rbtns = QHBoxLayout()
-        self.view_rbtns.addWidget(self.single_view_rbtn)
-        self.view_rbtns.addWidget(self.dual_view_rbtn)
-        self.view_rbtns.addWidget(self.dual_view_overlap_rbtn)
-
-        # preview checkbox
-        self.slow_lut_rbtn = QRadioButton('LUT Numpy (12bit)')
-        self.slow_lut_rbtn.setChecked(True)
-        self.fast_lut_rbtn = QRadioButton('LUT Opencv (8bit)')
-        self.lut_btns = QButtonGroup()
-        self.lut_btns.addButton(self.slow_lut_rbtn)
-        self.lut_btns.addButton(self.fast_lut_rbtn)
-
-        # display size
-        self.zoom_lbl = QLabel('Resize Display:')
-        self.zoom_box = QDoubleSpinBox()
-        self.zoom_box.setSingleStep(0.02)
-        self.zoom_box.setMinimum(0.1)
-        self.zoom_box.setMaximum(4.0)
-        self.zoom_box.setDecimals(2)
-        self.zoom_box.setValue(0.5)
-
-        # controls for histogram stretching and plot
-        self.histogram_lbl = QLabel('Histogram')
-        # autostretch checkbox
-        self.auto_stretch = QCheckBox('Auto Stretch')
-        self.auto_stretch.setChecked(True)
-        # display stats checkbox
-        self.display_stats = QCheckBox('Display Stats')
-        self.display_stats.setChecked(True)
+        # controls for histogram and cdf
+        self.histogram_group = ExpandableGroupBox('Histogram')
+        self.first_tab_Layout.addRow(self.histogram_group)
         # Hist plotWidget
         self.histogram = pg.PlotWidget()
         self.hist_cdf = pg.PlotWidget()
@@ -311,98 +208,8 @@ class Camera_Panel(QGroupBox):
         self.histogram.addItem(self.lr_0)
         self.histogram.addItem(self.lr_1)
 
-        # Stats. info
-        self.info_cap = QLabel(f'Capture {0:d} | {0:.2f} ms ')
-        self.info_disp = QLabel(f'Display {self._buffer.qsize():d} | {0:.2f} ms ')
-        self.info_save = QLabel(f'Save {self._frames.qsize():d} | {0:.2f} ms ')
-        self.info_temp = QLabel(
-            f' T {-127:.2f} °C')
-
-        # AOI controls
-        self.AOI_x_tbox = QSpinBox()
-        self.AOI_y_tbox = QSpinBox()
-        self.AOI_width_tbox = QSpinBox()
-        self.AOI_height_tbox = QSpinBox()
-
-        self.AOI_set_btn = QPushButton(
-            'Set AOI',
-            clicked=lambda: self.set_AOI()
-        )
-        self.AOI_reset_btn = QPushButton(
-            'Reset AOI',
-            clicked=lambda: self.reset_AOI()
-        )
-        self.AOI_center_btn = QPushButton(
-            'Center AOI',
-            clicked=lambda: self.center_AOI()
-        )
-        self.AOI_select_btn = QPushButton(
-            'Select AOI',
-            clicked=lambda: self.select_AOI()
-        )
-
-        # adding widgets to the main layout
-
-        if not self.mini:
-            self.second_tab_Layout.addRow(
-                self.preview_ch_box, self.display_stats)
-            self.second_tab_Layout.addRow(QLabel('View Options:'))
-            self.second_tab_Layout.addRow(self.view_rbtns)
-            self.second_tab_Layout.addRow(self.line_profiler_ch_box)
-
-        self.second_tab_Layout.addRow(self.slow_lut_rbtn)
-        self.second_tab_Layout.addRow(self.fast_lut_rbtn)
-        if not self.mini:
-            self.second_tab_Layout.addRow(
-                self.zoom_lbl,
-                self.zoom_box)
-
-        self.second_tab_Layout.addRow(
-            self.histogram_lbl,
-            self.auto_stretch)
-        self.second_tab_Layout.addRow(self.histogram)
-        self.second_tab_Layout.addRow(self.hist_cdf)
-        self.second_tab_Layout.addRow(
-            QLabel('Stats:'), self.info_temp)
-        self.second_tab_Layout.addWidget(self.info_cap)
-        self.second_tab_Layout.addWidget(self.info_disp)
-        self.second_tab_Layout.addWidget(self.info_save)
-
-        self.third_tab_Layout.addRow(
-            QLabel('X:'),
-            self.AOI_x_tbox)
-        self.third_tab_Layout.addRow(
-            QLabel('Y:'),
-            self.AOI_y_tbox)
-        self.third_tab_Layout.addRow(
-            QLabel('Width:'),
-            self.AOI_width_tbox)
-        self.third_tab_Layout.addRow(
-            QLabel('Height:'),
-            self.AOI_height_tbox)
-        self.third_tab_Layout.addRow(self.AOI_set_btn)
-        self.third_tab_Layout.addRow(self.AOI_reset_btn)
-        self.third_tab_Layout.addRow(self.AOI_center_btn)
-        self.third_tab_Layout.addRow(self.AOI_select_btn)
-
-    def addFirstTabItems(self):
-        if not self.mini:
-            self.first_tab_Layout.addRow(
-                QLabel('Experiment:'),
-                self.experiment_name)
-            self.first_tab_Layout.addRow(
-                QLabel('Save Directory:'),
-                self.save_dir_layout)
-            self.first_tab_Layout.addRow(
-                QLabel('Frames:'),
-                self.frames_tbox)
-            self.first_tab_Layout.addWidget(self.save_data_chbx)
-            self.first_tab_Layout.addRow(
-                QLabel('Format:'),
-                self.save_formats_layout)
-            self.first_tab_Layout.addWidget(self.dark_cal)
-            self.first_tab_Layout.addWidget(self.save_bigg_tiff)
-            self.first_tab_Layout.addWidget(self.cam_save_meta)
+        self.histogram_group.layout().addWidget(self.histogram)
+        self.histogram_group.layout().addWidget(self.hist_cdf)
 
     @property
     def cam(self):
@@ -428,6 +235,13 @@ class Camera_Panel(QGroupBox):
 
     @property
     def buffer(self):
+        '''Gets the frames Queue
+
+        Returns
+        -------
+        Queue
+            Frames buffer.
+        '''
         if self._frames is not None:
             return self._frames
         else:
@@ -435,6 +249,13 @@ class Camera_Panel(QGroupBox):
 
     @property
     def bufferSize(self):
+        '''Gets frames Queue size.
+
+        Returns
+        -------
+        int
+            Frames Queue size.
+        '''
         if self._frames is not None:
             return self._frames.qsize()
         else:
@@ -442,9 +263,28 @@ class Camera_Panel(QGroupBox):
 
     @property
     def isEmpty(self) -> bool:
+        '''Is frames Queue empty.
+
+        Returns
+        -------
+        bool
+            True if frames Queue is empty, otherwise False.
+        '''
         return self._frames.empty()
 
     def get(self, last=False) -> np.ndarray:
+        '''Gets image from frames Queue in FIFO or LIFO manner.
+
+        Parameters
+        ----------
+        last : bool, optional
+            Gets image from frames Queue in LIFO manner if True, by default False.
+
+        Returns
+        -------
+        np.ndarray
+            The image first or last in buffer.
+        '''
         res = None
         if not self._frames.empty():
             if last:
@@ -456,58 +296,83 @@ class Camera_Panel(QGroupBox):
             res = np.random.normal(size=(256, 256))
         return res
 
-    def setExposure(self, value):
-        self.cam_exposure_qs.setValue(value)
+    def setExposure(self, value: float):
+        '''Sets the exposure time widget of camera
+
+        Parameters
+        ----------
+        value : float
+            selected exposure time
+        '''
+        self.camera_options.set_param_value(
+            CamParams.EXPOSURE, value)
 
     @property
     def isOpen(self) -> bool:
+        '''Returns is acquisition active?
+
+        Returns
+        -------
+        bool
+            True if acquiring, otherwise False.
+        '''
         return self.cam.acquisition
 
-    def set_AOI(self):
-        '''Sets the AOI for the slected vimba_cam
+    def set_ROI(self):
+        '''Sets the ROI for the slected camera
         '''
         pass
 
-    def reset_AOI(self):
-        '''Resets the AOI for the slected IDS_Camera
+    def reset_ROI(self):
+        '''Resets the ROI for the slected camera
         '''
         pass
 
-    def center_AOI(self):
-        '''Sets the AOI for the slected vimba_cam
+    def center_ROI(self):
+        '''Sets the ROI for the slected camera
         '''
         pass
 
-    def select_AOI(self):
-        pass
+    def select_ROI(self):
+        '''Selects the ROI for the camera
+        '''
+        raise NotImplementedError(
+            'The cam_capture function is not implemented yet.')
+
+    def select_ROIs(self):
+        '''Selects the ROI for the camera
+        '''
+        raise NotImplementedError(
+            'The cam_capture function is not implemented yet.')
 
     def get_meta(self):
         meta = dict[str, any]()
         return meta
 
     def getAcquisitionJob(self) -> AcquisitionJob:
-        self._save_path = (self._directory + '/'
-                           + self.experiment_name.text() + '/')
+        self._save_path = os.path.join(
+            self._directory,
+            self.camera_options.get_param_value(CamParams.EXPERIMENT_NAME) + '\\')
         return AcquisitionJob(
             self._temps, self._buffer, self._frames,
             self._save_path, self._cam.getHeight(),
             self._cam.getWidth(),
-            biggTiff=self.save_bigg_tiff.isChecked(),
+            biggTiff=self.camera_options.isBiggTiff,
             bytes_per_pixel=self._cam.bytes_per_pixel,
             exposure=self._cam.getExposure(),
-            frames=self.frames_tbox.value(),
-            full_tif_meta=self.cam_save_meta.isChecked(),
-            is_dark_cal=self.dark_cal.isChecked(),
+            frames=self.camera_options.get_param_value(CamParams.FRAMES),
+            full_tif_meta=self.camera_options.isFullMetadata,
+            is_dark_cal=self.camera_options.isDarkCalibration,
             meta_file=self.get_meta(),
             meta_func=self.OME_tab.gen_OME_XML if
-            self.cam_save_meta.isChecked() else self.OME_tab.gen_OME_XML_short,
+            self.camera_options.isFullMetadata else self.OME_tab.gen_OME_XML_short,
             name=self._cam.name, prefix=self._save_prefix,
-            save=self.save_data_chbx.isChecked(),
-            Zarr=self.save_as_zarr.isChecked()
+            save=self.camera_options.isSaveData,
+            Zarr=not self.camera_options.isTiff
         )
 
     def view_toggled(self, params):
-        if self.single_view_rbtn.isChecked():
+        if self.camera_options.isSingleView:
             self.lr_0.setSpan(0, 1)
             self.lr_1.setMovable(False)
             self.lr_1.setRegion((0, self._nBins))
@@ -518,17 +383,12 @@ class Camera_Panel(QGroupBox):
             self.lr_1.setSpan(0.5, 1.0)
 
     @pyqtSlot()
-    def save_browse_clicked(self):
-        '''Slot for browse clicked event'''
-        self._directory = ''
+    def directory_changed(self, value: str):
+        '''Slot for directory changed signal'''
+        if len(value) > 0:
+            self._directory = value
 
-        while len(self._directory) == 0:
-            self._directory = str(
-                QFileDialog.getExistingDirectory(self, 'Select Directory'))
-
-        self.save_dir_edit.setText(self._directory)
-
-    def start_free_run(self, Prefix=''):
+    def start_free_run(self, param=None, Prefix=''):
         '''
         Starts free run acquisition mode
 
@@ -608,19 +468,23 @@ class Camera_Panel(QGroupBox):
 
     def updateInfo(self):
         if isinstance(self.acq_job, AcquisitionJob):
-            self.info_temp.setText(
-                    f' T {self._cam.temperature:.2f} °C')
-            self.info_cap.setText(
-                ' Capture {:d}/{:d} {:.2%} | {:.2f} ms '.format(
+            self.camera_options.set_param_value(
+                CamParams.TEMPERATURE,
+                f'T {self._cam.temperature:.2f} °C')
+            self.camera_options.set_param_value(
+                CamParams.CAPTURE_STATS,
+                'Capture {:d}/{:d} {:.2%} | {:.2f} ms '.format(
                     self.acq_job.frames_captured,
                     self.acq_job.frames,
                     self.acq_job.frames_captured / self.acq_job.frames,
                     self.acq_job.capture_time))
-            self.info_disp.setText(
-                ' Display {:d} | {:.2f} ms '.format(
+            self.camera_options.set_param_value(
+                CamParams.DISPLAY_STATS,
+                'Display {:d} | {:.2f} ms '.format(
                     self._buffer.qsize(), self.acq_job.display_time))
-            self.info_save.setText(
-                f' Save {self._frames.qsize():d} | {self.acq_job.save_time:.2f} ms ')
+            self.camera_options.set_param_value(
+                CamParams.SAVE_STATS,
+                f'Save {self._frames.qsize():d} | {self.acq_job.save_time:.2f} ms ')
 
     def getCaptureArgs(self) -> list:
         '''User specific arguments to be passed to the parallelized
@@ -751,22 +615,22 @@ def cam_display(params: AcquisitionJob, camp: Camera_Panel):
                     else:
                         params.save_queue.put(params.frame.image)
 
-                if camp.preview_ch_box.isChecked():
-                    if camp.line_profiler_ch_box.isChecked():
+                if camp.camera_options.isPreview:
+                    if camp.camera_options.isLineProfiler:
                         camp.lineProfiler.setData(params.frame._image)
 
-                    if camp.single_view_rbtn.isChecked():
+                    if camp.camera_options.isSingleView:
                         _range = None
 
                         # image stretching
-                        if not camp.auto_stretch.isChecked():
+                        if not camp.camera_options.isAutostretch:
                             _range = tuple(
                                 map(math.ceil, camp.lr_0.getRegion()))
 
                         params.frame.equalizeLUT(
-                            _range, camp.slow_lut_rbtn.isChecked())
+                            _range, camp.camera_options.isNumpyLUT)
 
-                        if camp.auto_stretch.isChecked():
+                        if camp.camera_options.isAutostretch:
                             camp.lr_0.setRegion(
                                 (params.frame._min, params.frame._max))
                             camp.histogram.setXRange(
@@ -780,10 +644,12 @@ def cam_display(params: AcquisitionJob, camp: Camera_Panel):
                         camp._cdf_plot_ref_2.setData(camp._hist)
 
                         # resizing the image
+                        zoom = camp.camera_options.get_param_value(
+                            CamParams.RESIZE_DISPLAY)
                         params.frame._view = cv2.resize(
                             params.frame._view, (0, 0),
-                            fx=camp.zoom_box.value(),
-                            fy=camp.zoom_box.value(),
+                            fx=zoom,
+                            fy=zoom,
                             interpolation=cv2.INTER_NEAREST)
 
                         # display it
@@ -793,7 +659,7 @@ def cam_display(params: AcquisitionJob, camp: Camera_Panel):
                         _rang_right = None
 
                         # image stretching
-                        if not camp.auto_stretch.isChecked():
+                        if not camp.camera_options.isAutostretch:
                             _rang_left = tuple(
                                 map(math.ceil, camp.lr_0.getRegion()))
                             _rang_right = tuple(
@@ -802,10 +668,10 @@ def cam_display(params: AcquisitionJob, camp: Camera_Panel):
                         left, right = params.frame.hsplitView()
 
                         left.equalizeLUT(
-                            _rang_left, camp.slow_lut_rbtn.isChecked())
+                            _rang_left, camp.camera_options.isNumpyLUT)
                         right.equalizeLUT(
-                            _rang_right, camp.slow_lut_rbtn.isChecked())
-                        if camp.auto_stretch.isChecked():
+                            _rang_right, camp.camera_options.isNumpyLUT)
+                        if camp.camera_options.isAutostretch:
                             camp.lr_0.setRegion((left._min, left._max))
                             camp.lr_1.setRegion((right._min, right._max))
                             camp.histogram.setXRange(
@@ -820,7 +686,9 @@ def cam_display(params: AcquisitionJob, camp: Camera_Panel):
                         camp._plot_ref_2.setData(right._hist)
                         camp._cdf_plot_ref_2.setData(right._cdf)
 
-                        if camp.dual_view_overlap_rbtn.isChecked():
+                        zoom = camp.camera_options.get_param_value(
+                            CamParams.RESIZE_DISPLAY)
+                        if camp.camera_options.isOverlaidView:
                             _img = np.zeros(
                                 left._view.shape[:2] + (3,),
                                 dtype=np.uint8)
@@ -829,8 +697,8 @@ def cam_display(params: AcquisitionJob, camp: Camera_Panel):
                             _img = cv2.resize(
                                 _img,
                                 (0, 0),
-                                fx=camp.zoom_box.value(),
-                                fy=camp.zoom_box.value(),
+                                fx=zoom,
+                                fy=zoom,
                                 interpolation=cv2.INTER_NEAREST)
 
                             cv2.imshow(params.name, _img)
@@ -839,8 +707,8 @@ def cam_display(params: AcquisitionJob, camp: Camera_Panel):
                                 np.concatenate(
                                     [left._view, right._view], axis=1),
                                 (0, 0),
-                                fx=camp.zoom_box.value(),
-                                fy=camp.zoom_box.value(),
+                                fx=zoom,
+                                fy=zoom,
                                 interpolation=cv2.INTER_NEAREST)
 
                             cv2.imshow(params.name, _img)

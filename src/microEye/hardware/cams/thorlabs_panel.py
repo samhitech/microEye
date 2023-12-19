@@ -12,9 +12,8 @@ from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 
-from ...shared.metadata import MetadataEditor
+from ...shared.metadata_tree import MetaParams
 from ...shared.thread_worker import *
-from ...shared.uImage import uImage
 from ..widgets.qlist_slider import *
 from . import Camera_Panel
 from .thorlabs import *
@@ -45,12 +44,15 @@ class Thorlabs_Panel(Camera_Panel):
         # flag true to close camera adapter and dispose it
         self._dispose_cam = False
 
-        self.OME_tab.channel_name.setText(self._cam.name)
-        self.OME_tab.det_manufacturer.setText('Thorlabs')
-        self.OME_tab.det_model.setText(
+        self.OME_tab.set_param_value(MetaParams.CHANNEL_NAME, self._cam.name)
+        self.OME_tab.set_param_value(MetaParams.DET_MANUFACTURER, 'Thorlabs')
+        self.OME_tab.set_param_value(
+            MetaParams.DET_MODEL,
             self._cam.sInfo.strSensorName.decode('utf-8'))
-        self.OME_tab.det_serial.setText(
+        self.OME_tab.set_param_value(MetaParams.DET_SERIAL,
             self._cam.cInfo.SerNo.decode('utf-8'))
+        self.OME_tab.set_param_value(MetaParams.DET_TYPE,
+            'CMOS')
 
         # pixel clock label and combobox
         self.cam_pixel_clock_lbl = QLabel('Pixel Clock MHz')
@@ -182,15 +184,15 @@ class Thorlabs_Panel(Camera_Panel):
             clicked=lambda: self.stop()
         )
 
-        # AOI
-        self.AOI_x_tbox.setMinimum(0)
-        self.AOI_x_tbox.setMaximum(self.cam.width)
-        self.AOI_y_tbox.setMinimum(0)
-        self.AOI_y_tbox.setMaximum(self.cam.height)
-        self.AOI_width_tbox.setMinimum(self.cam.minAOI.s32Width)
-        self.AOI_width_tbox.setMaximum(self.cam.width)
-        self.AOI_height_tbox.setMinimum(self.cam.minAOI.s32Height)
-        self.AOI_height_tbox.setMaximum(self.cam.height)
+        # ROI
+        self.ROI_x_tbox.setMinimum(0)
+        self.ROI_x_tbox.setMaximum(self.cam.width)
+        self.ROI_y_tbox.setMinimum(0)
+        self.ROI_y_tbox.setMaximum(self.cam.height)
+        self.ROI_width_tbox.setMinimum(self.cam.minROI.s32Width)
+        self.ROI_width_tbox.setMaximum(self.cam.width)
+        self.ROI_height_tbox.setMinimum(self.cam.minROI.s32Height)
+        self.ROI_height_tbox.setMaximum(self.cam.height)
 
         # adding widgets to the main layout
         self.first_tab_Layout.addWidget(self.cam_pixel_clock_lbl)
@@ -242,19 +244,19 @@ class Thorlabs_Panel(Camera_Panel):
         '''
         self._cam = cam
 
-    def set_AOI(self):
-        '''Sets the AOI for the slected thorlabs_camera
+    def set_ROI(self):
+        '''Sets the ROI for the slected thorlabs_camera
         '''
         if self.cam.acquisition:
             QMessageBox.warning(
-                self, 'Warning', 'Cannot set AOI while acquiring images!')
+                self, 'Warning', 'Cannot set ROI while acquiring images!')
             return  # if acquisition is already going on
 
-        self.cam.set_AOI(
-            int(self.AOI_x_tbox.text()),
-            int(self.AOI_y_tbox.text()),
-            int(self.AOI_width_tbox.text()),
-            int(self.AOI_height_tbox.text()))
+        self.cam.set_ROI(
+            int(self.ROI_x_tbox.text()),
+            int(self.ROI_y_tbox.text()),
+            int(self.ROI_width_tbox.text()),
+            int(self.ROI_height_tbox.text()))
 
         # setting the highest pixel clock as default
         self.cam_pixel_clock_cbox.setCurrentText(
@@ -262,19 +264,19 @@ class Thorlabs_Panel(Camera_Panel):
         self.cam_pixel_clock_cbox.setCurrentText(
             str(self._cam.pixel_clock_list[-1]))
 
-    def reset_AOI(self):
-        '''Resets the AOI for the slected thorlabs_camera
+    def reset_ROI(self):
+        '''Resets the ROI for the slected thorlabs_camera
         '''
         if self.cam.acquisition:
             QMessageBox.warning(
-                self, 'Warning', 'Cannot reset AOI while acquiring images!')
+                self, 'Warning', 'Cannot reset ROI while acquiring images!')
             return  # if acquisition is already going on
 
-        self.cam.reset_AOI()
-        self.AOI_x_tbox.setText('0')
-        self.AOI_y_tbox.setText('0')
-        self.AOI_width_tbox.setText(str(self.cam.width))
-        self.AOI_height_tbox.setText(str(self.cam.height))
+        self.cam.reset_ROI()
+        self.ROI_x_tbox.setText('0')
+        self.ROI_y_tbox.setText('0')
+        self.ROI_width_tbox.setText(str(self.cam.width))
+        self.ROI_height_tbox.setText(str(self.cam.height))
 
         # setting the highest pixel clock as default
         self.cam_pixel_clock_cbox.setCurrentText(
@@ -282,29 +284,29 @@ class Thorlabs_Panel(Camera_Panel):
         self.cam_pixel_clock_cbox.setCurrentText(
             str(self._cam.pixel_clock_list[-1]))
 
-    def center_AOI(self):
-        '''Calculates the x, y values for a centered AOI'''
-        self.AOI_x_tbox.setText(
+    def center_ROI(self):
+        '''Calculates the x, y values for a centered ROI'''
+        self.ROI_x_tbox.setText(
             str(
                 int(
-                    (self.cam.rectAOI.s32Width -
-                     int(self.AOI_width_tbox.text()))/2)))
-        self.AOI_y_tbox.setText(
+                    (self.cam.rectROI.s32Width -
+                     int(self.ROI_width_tbox.text()))/2)))
+        self.ROI_y_tbox.setText(
             str(
                 int(
-                    (self.cam.rectAOI.s32Height -
-                     int(self.AOI_height_tbox.text()))/2)))
+                    (self.cam.rectROI.s32Height -
+                     int(self.ROI_height_tbox.text()))/2)))
 
-    def select_AOI(self):
+    def select_ROI(self):
         if self.acq_job.frame is not None:
-            aoi = cv2.selectROI(self.acq_job.frame._view)
+            roi = cv2.selectROI(self.acq_job.frame._view)
             cv2.destroyWindow('ROI selector')
 
             z = self.zoom_box.value()
-            self.AOI_x_tbox.setValue(int(aoi[0] / z))
-            self.AOI_y_tbox.setValue(int(aoi[1] / z))
-            self.AOI_width_tbox.setValue(int(aoi[2] / z))
-            self.AOI_height_tbox.setValue(int(aoi[3] / z))
+            self.ROI_x_tbox.setValue(int(roi[0] / z))
+            self.ROI_y_tbox.setValue(int(roi[1] / z))
+            self.ROI_width_tbox.setValue(int(roi[2] / z))
+            self.ROI_height_tbox.setValue(int(roi[3] / z))
 
     @pyqtSlot(str)
     def cam_trigger_cbox_changed(self, value):
@@ -395,7 +397,8 @@ class Thorlabs_Panel(Camera_Panel):
         self.refresh_exposure()
         self.refresh_flash()
 
-        self.OME_tab.exposure.setValue(self._cam.exposure_current.value)
+        self.OME_tab.set_param_value(
+            MetaParams.EXPOSURE, self._cam.exposure_current)
         if self.master:
             self.exposureChanged.emit()
 
@@ -416,43 +419,39 @@ class Thorlabs_Panel(Camera_Panel):
         self.refresh_exposure()
         self.refresh_flash()
 
-        self.OME_tab.exposure.setValue(self._cam.exposure_current.value)
+        self.OME_tab.set_param_value(
+            MetaParams.EXPOSURE, self._cam.exposure_current)
         if self.master:
             self.exposureChanged.emit()
 
     def refresh_framerate(self, range=False):
-        self.cam_framerate_slider.elementChanged[int, float].disconnect()
+        self.cam_framerate_slider.blockSignals(True)
         if range:
             self.cam_framerate_slider.values = np.arange(
                 self._cam.minFrameRate.value,
                 self._cam.maxFrameRate.value,
                 self._cam.incFrameRate.value * 100)
         self.cam_framerate_slider.setNearest(self._cam.currentFrameRate.value)
-        self.cam_framerate_slider.elementChanged[int, float] \
-            .connect(self.cam_framerate_value_changed)
+        self.cam_framerate_slider.blockSignals(False)
 
     def refresh_exposure(self, range=False):
-        self.cam_exposure_slider.elementChanged[int, float] \
-            .disconnect(self.cam_exposure_value_changed)
+        self.cam_exposure_slider.blockSignals(True)
         if range:
             self.cam_exposure_slider.values = np.arange(
                 self._cam.exposure_range[0].value,
                 self._cam.exposure_range[1].value,
                 self._cam.exposure_range[2].value)
         self.cam_exposure_slider.setNearest(self._cam.exposure_current.value)
-        self.cam_exposure_slider.elementChanged[int, float] \
-            .connect(self.cam_exposure_value_changed)
+        self.cam_exposure_slider.blockSignals(False)
 
-        self.cam_exposure_qs.valueChanged.disconnect(
-            self.exposure_spin_changed)
+        self.cam_exposure_qs.blockSignals(True)
         if range:
             self.cam_exposure_qs.setMinimum(self._cam.exposure_range[0].value)
             self.cam_exposure_qs.setMaximum(self._cam.exposure_range[1].value)
             self.cam_exposure_qs.setSingleStep(
                 self._cam.exposure_range[2].value)
         self.cam_exposure_qs.setValue(self._cam.exposure_current.value)
-        self.cam_exposure_qs.valueChanged.connect(
-            self.exposure_spin_changed)
+        self.cam_exposure_qs.blockSignals(False)
 
     def refresh_flash(self):
         self.cam_flash_duration_slider.values = np.append([0], np.arange(
@@ -659,10 +658,10 @@ class Thorlabs_Panel(Camera_Panel):
             'exposure': self.cam.exposure_current.value,
             'flash duration': self.cam.flash_cur.u32Duration,
             'flash delay': self.cam.flash_cur.s32Delay,
-            'AOI w': self.cam.set_rectAOI.s32Width,
-            'AOI h': self.cam.set_rectAOI.s32Height,
-            'AOI x': self.cam.set_rectAOI.s32X,
-            'AOI y': self.cam.set_rectAOI.s32Y,
+            'ROI w': self.cam.set_rectROI.s32Width,
+            'ROI h': self.cam.set_rectROI.s32Height,
+            'ROI x': self.cam.set_rectROI.s32X,
+            'ROI y': self.cam.set_rectROI.s32Y,
             'Zoom': self.zoom_box.value(),
         }
         return meta
@@ -698,10 +697,10 @@ class Thorlabs_Panel(Camera_Panel):
                 'exposure': self.cam.exposure_current.value,
                 'flash duration': self.cam.flash_cur.u32Duration,
                 'flash delay': self.cam.flash_cur.s32Delay,
-                'AOI w': self.cam.set_rectAOI.s32Width,
-                'AOI h': self.cam.set_rectAOI.s32Height,
-                'AOI x': self.cam.set_rectAOI.s32X,
-                'AOI y': self.cam.set_rectAOI.s32Y,
+                'ROI w': self.cam.set_rectROI.s32Width,
+                'ROI h': self.cam.set_rectROI.s32Height,
+                'ROI x': self.cam.set_rectROI.s32X,
+                'ROI y': self.cam.set_rectROI.s32Y,
                 'Zoom': self.zoom_box.value(),
             }
 
@@ -730,10 +729,10 @@ class Thorlabs_Panel(Camera_Panel):
                 'exposure',
                 'flash duration',
                 'flash delay',
-                'AOI w',
-                'AOI h',
-                'AOI x',
-                'AOI y',
+                'ROI w',
+                'ROI h',
+                'ROI x',
+                'ROI y',
                 'Zoom',
             ]
             with open(filename) as file:
@@ -741,11 +740,11 @@ class Thorlabs_Panel(Camera_Panel):
             if all(key in config for key in keys):
                 if self.cam.sInfo.strSensorName.decode('utf-8') == \
                         config['model']:
-                    self.AOI_x_tbox.setText(str(config['AOI x']))
-                    self.AOI_y_tbox.setText(str(config['AOI y']))
-                    self.AOI_width_tbox.setText(str(config['AOI w']))
-                    self.AOI_height_tbox.setText(str(config['AOI h']))
-                    self.set_AOI()
+                    self.ROI_x_tbox.setText(str(config['ROI x']))
+                    self.ROI_y_tbox.setText(str(config['ROI y']))
+                    self.ROI_width_tbox.setText(str(config['ROI w']))
+                    self.ROI_height_tbox.setText(str(config['ROI h']))
+                    self.set_ROI()
 
                     self.cam_pixel_clock_cbox.setCurrentText(
                         str(config['clock speed']))

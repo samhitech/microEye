@@ -19,6 +19,7 @@ from scipy.optimize import curve_fit
 from scipy.optimize.optimize import OptimizeWarning
 from scipy.signal import find_peaks
 
+from ..shared.gui_helper import GaussianOffSet
 from ..shared.hid_controller import *
 from ..shared.pyscripting import *
 from ..shared.thread_worker import *

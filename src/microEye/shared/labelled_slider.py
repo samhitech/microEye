@@ -1,16 +1,10 @@
-from PyQt5.QtCore import QItemSelection, Qt, pyqtSignal
-from PyQt5.QtGui import QStandardItem, QStandardItemModel
+from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtWidgets import (
-    QApplication,
     QHBoxLayout,
     QLabel,
-    QListView,
-    QPushButton,
     QSizePolicy,
     QSlider,
     QSpinBox,
-    QStyledItemDelegate,
-    QVBoxLayout,
     QWidget,
 )
 

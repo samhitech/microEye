@@ -16,9 +16,16 @@ class MultiRectangularROISelector:
         The original image data.
     resize_factor : float, optional
         The resize factor for the image. Defaults to 1.0.
+    max_rois : int, optional
+        The maximum number of rois the user can select. Defaults to 4.
+    one_size : bool, optional
+        If True after the first ROI insert is forced. Defaults to False.
     '''
 
-    def __init__(self, image_data: np.ndarray, resize_factor=1.0):
+    def __init__(
+            self,
+            image_data: np.ndarray, resize_factor=1.0, max_rois=1,
+            one_size=False):
         '''
         Initialize the MultiRectangularROISelector instance.
 
@@ -28,6 +35,10 @@ class MultiRectangularROISelector:
             The original image data.
         resize_factor : float, optional
             The resize factor for the image. Defaults to 1.0.
+        max_rois : int, optional
+            The maximum number of rois the user can select. Defaults to 4.
+        one_size : bool, optional
+            If True after the first ROI insert is forced. Defaults to False.
         '''
         self.original = image_data.copy()
         self.shape = self.original.shape
@@ -38,12 +49,14 @@ class MultiRectangularROISelector:
             interpolation=cv2.INTER_NEAREST)
         self.resized_image = self.resized_empty.copy()
 
+        self.one_size = one_size
+        self.max_rois = max(1, max_rois)
         self.rois = []  # stores multiple ROIs, represented as a list [x1, y1, x2, y2]
         self.active_roi_idx = -1  # Index of the currently active ROI
         self.dragging = False
         self.drag_idx = -1
         self.modes = Queue()
-        for mode in ['Add', 'Edit', 'Insert', 'Remove']:
+        for mode in ['Add', 'Edit', 'Insert', 'Move', 'Remove']:
             self.modes.put(mode)
         self.current_mode = self.modes.get()
 
@@ -155,13 +168,20 @@ class MultiRectangularROISelector:
         -------
         None
         '''
+        shift_pressed = flags & cv2.EVENT_FLAG_SHIFTKEY != 0
         if event == cv2.EVENT_LBUTTONDOWN:
             if self.current_mode == 'Edit':
+                if self.one_size and len(self.rois) > 1:
+                    return
+
                 if self.active_roi_idx >= 0 and self.active_roi_idx < len(self.rois):
                         self.drag_idx = self.is_hit(x, y)
                         self.dragging = self.drag_idx != -1
             elif self.current_mode == 'Add':
-                if not self.dragging:
+                if self.one_size and len(self.rois) > 0:
+                    return
+
+                if not self.dragging and len(self.rois) < self.max_rois:
                     self.rois.append([
                         x / self.resize_factor, y / self.resize_factor,
                         x / self.resize_factor, y / self.resize_factor])
@@ -169,7 +189,7 @@ class MultiRectangularROISelector:
                     self.drag_idx = 2  # Assign drag index to bottom-right corner
                     self.active_roi_idx = len(self.rois) - 1
             elif self.current_mode == 'Insert':
-                if not self.dragging:
+                if not self.dragging and len(self.rois) < self.max_rois:
                     if self.active_roi_idx == -1:
                         # Add the first ROI
                         self.rois.append([
@@ -182,9 +202,13 @@ class MultiRectangularROISelector:
                         x1, y1, x2, y2 = self.rois[-1]  # Get the first ROI
                         self.rois.append([
                             x / self.resize_factor, y / self.resize_factor,
-                            (x + (x2 - x1)) / self.resize_factor,
-                            (y + (y2 - y1)) / self.resize_factor])
+                            (x / self.resize_factor + (x2 - x1)),
+                            (y / self.resize_factor + (y2 - y1))])
                     self.active_roi_idx = len(self.rois) - 1
+            elif self.current_mode == 'Move':
+                if self.active_roi_idx >= 0 and self.active_roi_idx < len(self.rois):
+                    self.drag_idx = self.is_hit(x, y)
+                    self.dragging = self.drag_idx != -1
             elif self.current_mode == 'Remove':
                 if self.active_roi_idx >= 0 and self.active_roi_idx < len(self.rois):
                     if self.is_hit(x, y) > -1:
@@ -198,24 +222,76 @@ class MultiRectangularROISelector:
                         x2 > self.shape[1] or y2 > self.shape[0]:
                     self.delete_active()
         elif event == cv2.EVENT_MOUSEMOVE:
-            if self.dragging and 0 <= self.drag_idx < 4:
-                offset = 2 / self.resize_factor
-                x1, y1, x2, y2 = self.rois[self.active_roi_idx]
-                x_ratio, y_ratio = x / self.resize_factor, y / self.resize_factor
+            if self.current_mode in ['Add', 'Edit']:
+                if self.dragging and 0 <= self.drag_idx < 4:
+                    offset = 2 / self.resize_factor
+                    x1, y1, x2, y2 = self.rois[self.active_roi_idx]
+                    x_ratio, y_ratio = x / self.resize_factor, y / self.resize_factor
 
-                if self.drag_idx == 0:
-                    self.rois[self.active_roi_idx][0] = min(x_ratio, x2 - offset)
-                    self.rois[self.active_roi_idx][1] = min(y_ratio, y2 - offset)
-                elif self.drag_idx == 1:
-                    self.rois[self.active_roi_idx][2] = max(x_ratio, x1 + offset)
-                    self.rois[self.active_roi_idx][1] = min(y_ratio, y2 - offset)
-                elif self.drag_idx == 2:
-                    self.rois[self.active_roi_idx][2] = max(x_ratio, x1 + offset)
-                    self.rois[self.active_roi_idx][3] = max(y_ratio, y1 + offset)
-                elif self.drag_idx == 3:
-                    self.rois[self.active_roi_idx][0] = min(x_ratio, x2 - offset)
-                    self.rois[self.active_roi_idx][3] = max(y_ratio, y1 + offset)
-            self.redraw()
+                    if self.drag_idx == 0:
+                        if shift_pressed:
+                            delta = [x_ratio - x1, y_ratio - y1]
+                            self.rois[self.active_roi_idx][0] += np.mean(delta)
+                            self.rois[self.active_roi_idx][1] += np.mean(delta)
+                        else:
+                            self.rois[self.active_roi_idx][0] = min(
+                                x_ratio, x2 - offset)
+                            self.rois[self.active_roi_idx][1] = min(
+                                y_ratio, y2 - offset)
+                    elif self.drag_idx == 1:
+                        if shift_pressed:
+                            delta = [x_ratio - x2, y_ratio - y1]
+                            self.rois[self.active_roi_idx][2] += np.mean(delta)
+                            self.rois[self.active_roi_idx][1] += np.mean(delta)
+                        else:
+                            self.rois[self.active_roi_idx][2] = max(
+                                x_ratio, x1 + offset)
+                            self.rois[self.active_roi_idx][1] = min(
+                                y_ratio, y2 - offset)
+                    elif self.drag_idx == 2:
+                        if shift_pressed:
+                            delta = [x_ratio - x2, y_ratio - y2]
+                            self.rois[self.active_roi_idx][2] += np.mean(delta)
+                            self.rois[self.active_roi_idx][3] += np.mean(delta)
+                        else:
+                            self.rois[self.active_roi_idx][2] = max(
+                                x_ratio, x1 + offset)
+                            self.rois[self.active_roi_idx][3] = max(
+                                y_ratio, y1 + offset)
+                    elif self.drag_idx == 3:
+                        if shift_pressed:
+                            delta = [x_ratio - x1, y_ratio - y2]
+                            self.rois[self.active_roi_idx][0] += np.mean(delta)
+                            self.rois[self.active_roi_idx][3] += np.mean(delta)
+                        else:
+                            self.rois[self.active_roi_idx][0] = min(
+                                x_ratio, x2 - offset)
+                            self.rois[self.active_roi_idx][3] = max(
+                                y_ratio, y1 + offset)
+                    self.redraw()
+            elif self.current_mode == 'Move':
+                if self.dragging and 0 <= self.drag_idx < 4:
+                    x1, y1, x2, y2 = self.rois[self.active_roi_idx]
+                    x_ratio, y_ratio = x / self.resize_factor, y / self.resize_factor
+
+                    if self.drag_idx == 0:
+                        delta_x = x_ratio - x1
+                        delta_y = y_ratio - y1
+                    elif self.drag_idx == 1:
+                        delta_x = x_ratio - x2
+                        delta_y = y_ratio - y1
+                    elif self.drag_idx == 2:
+                        delta_x = x_ratio - x2
+                        delta_y = y_ratio - y2
+                    elif self.drag_idx == 3:
+                        delta_x = x_ratio - x1
+                        delta_y = y_ratio - y2
+
+                    self.rois[self.active_roi_idx][0] += delta_x
+                    self.rois[self.active_roi_idx][2] += delta_x
+                    self.rois[self.active_roi_idx][1] += delta_y
+                    self.rois[self.active_roi_idx][3] += delta_y
+                    self.redraw()
         elif event == cv2.EVENT_MOUSEWHEEL:
             if flags > 0:
                 self.resize_factor += 0.05
@@ -325,6 +401,9 @@ class MultiRectangularROISelector:
             elif key == ord('i'):
                 while self.current_mode != 'Insert':
                     self.cycle_mode()
+            elif key == ord('m'):
+                while self.current_mode != 'Move':
+                    self.cycle_mode()
             elif key == ord('r'):
                 while self.current_mode != 'Remove':
                     self.cycle_mode()
@@ -342,7 +421,9 @@ class MultiRectangularROISelector:
             return [np.array(rect) for rect in self.rois]
 
     @staticmethod
-    def get_selector(image: np.ndarray, resize_factor=1.0):
+    def get_selector(
+            image: np.ndarray, resize_factor=1.0,
+            max_rois=4, one_size=False):
         '''
         Get a MultiRectangularROISelector instance for the specified image.
 
@@ -352,6 +433,10 @@ class MultiRectangularROISelector:
             The image for ROI selection.
         resize_factor : float, optional
             The resize factor for the image. Defaults to 1.0.
+        max_rois : int, optional
+            The maximum number of rois the user can select. Defaults to 4.
+        one_size : bool, optional
+            If True after the first ROI insert is forced. Defaults to False.
 
         Returns
         -------
@@ -369,7 +454,59 @@ class MultiRectangularROISelector:
         _image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
 
         # Select a multi-rectangle ROI with the specified resize factor
-        return MultiRectangularROISelector(_image, resize_factor)
+        return MultiRectangularROISelector(_image, resize_factor, max_rois, one_size)
+
+def convert_rois_to_pos_size(rois: list[np.ndarray]):
+    '''
+    Convert a list of rectangular ROIs represented as NumPy arrays to a list
+    of positions and sizes.
+
+    Parameters
+    ----------
+    rois : list[np.ndarray]
+        List of rectangular ROIs, each represented as a NumPy array with shape (4,).
+
+    Returns
+    -------
+    list[list[int]]
+        List of rectangular ROIs converted to positions and sizes.
+        Each entry is a list [x, y, width, height].
+    '''
+    res = []
+    for roi in rois:
+        if roi.shape[0] == 4:
+            res.append(
+                [
+                    # x, y
+                    round(roi[0]), round(roi[1]),
+                    # w, h
+                    round(roi[2]- roi[0]), round(roi[3] - roi[1])
+                    ]
+            )
+    return res
+
+def convert_pos_size_to_rois(rectangles: list[list[int]]) -> list[list]:
+    '''
+    Convert a list of rectangular positions and sizes to a list of rectangular ROIs.
+
+    Parameters
+    ----------
+    rectangles : list[list[int]]
+        List of rectangular positions and sizes,
+        each represented as [x, y, width, height].
+
+    Returns
+    -------
+    list[list]
+        List of rectangular ROIs converted to positions and sizes.
+        Each entry is a list [x1, y1, x2, y2].
+    '''
+    res = []
+    for rect in rectangles:
+        x, y, w, h = rect
+        res.append([x, y, x + w, y + h])
+    return res
+
 
 if __name__ == '__main__':
     # Example usage
@@ -377,7 +514,7 @@ if __name__ == '__main__':
 
     resize_factor = 1
 
-    selector = MultiRectangularROISelector.get_selector(image, resize_factor)
+    selector = MultiRectangularROISelector.get_selector(image, resize_factor, 4, True)
 
     # Select a multi-point line ROI with the specified resize factor
     roi_points = selector.select_rectangular_rois()

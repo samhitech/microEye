@@ -85,9 +85,9 @@ class resultsStatsWidget(QWidget):
                         mean = np.nanmean(df[column].to_numpy())
                         std = np.nanstd(df[column].to_numpy())
                         min_val = max(
-                            mean - 5 * std,
+                            mean - 10 * std,
                             0)
-                        max_val = min(mean + 5 * std, 1e4)
+                        max_val = min(mean + 10 * std, 1e4)
                     counts = df[column].count()
                     hist, bins = np.histogram(
                         df[column].to_numpy(),

@@ -591,9 +591,9 @@ class thorlabs_camera(miCamera):
             self.supported_bit_depth = c_uint(0)
             self.bytes_per_pixel = int(self.bit_depth / 8)
             self.color_mode = c_int(0)
-            self.minAOI = IS_SIZE_2D()
-            self.rectAOI = IS_RECT()
-            self.set_rectAOI = IS_RECT()
+            self.minROI = IS_SIZE_2D()
+            self.rectROI = IS_RECT()
+            self.set_rectROI = IS_RECT()
             self.cam = None
             self.hCam = c_int(hCam)
             self.meminfo = None
@@ -752,8 +752,8 @@ class thorlabs_camera(miCamera):
             self.setColorMode()
             # self.is_GetColorDepth()
 
-            self.get_AOI()
-            self.get_minAOI()
+            self.get_ROI()
+            self.get_minROI()
 
             self.get_pixel_clock_info(True)
             self.set_pixel_clock(self.pixel_clock_def.value)
@@ -1013,11 +1013,11 @@ class thorlabs_camera(miCamera):
                     print('List ' + str(clk))
                 print()
 
-    def get_AOI(self):
+    def get_ROI(self):
         '''Can be used to get the size and position
-        of an "area of interest" (AOI) within an image.
+        of an "area of interest" (ROI) within an image.
 
-        For AOI rectangle check IDS_Camera.rectAOI
+        For ROI rectangle check IDS_Camera.rectROI
 
         Returns
         -------
@@ -1027,19 +1027,19 @@ class thorlabs_camera(miCamera):
         nRet = self.uc480.is_AOI(
             self.hCam,
             _AOI.IS_AOI_IMAGE_GET_AOI,
-            byref(self.rectAOI),
-            sizeof(self.rectAOI))
+            byref(self.rectROI),
+            sizeof(self.rectROI))
 
         if nRet != CMD.IS_SUCCESS:
             print('is_AOI GET ERROR')
 
-        self.width = self.rectAOI.s32Width
-        self.height = self.rectAOI.s32Height
+        self.width = self.rectROI.s32Width
+        self.height = self.rectROI.s32Height
         return nRet
 
-    def get_minAOI(self):
+    def get_minROI(self):
         '''Can be used to get the size of the minimum
-        "area of interest" (AOI).
+        "area of interest" (ROI).
 
         Returns
         -------
@@ -1049,53 +1049,53 @@ class thorlabs_camera(miCamera):
         nRet = self.uc480.is_AOI(
             self.hCam,
             _AOI.IS_AOI_IMAGE_GET_SIZE_MIN,
-            byref(self.minAOI),
-            sizeof(self.minAOI))
+            byref(self.minROI),
+            sizeof(self.minROI))
         if nRet != CMD.IS_SUCCESS:
             print('is_AOI GET MIN SIZE ERROR')
         return nRet
 
-    def set_AOI(self, x, y, width, height):
+    def set_ROI(self, x, y, width, height):
         '''Sets the size and position of an
-        "area of interest"(AOI) within an image.
+        "area of interest"(ROI) within an image.
 
         Parameters
         ----------
         x : int
-            AOI x position.
+            ROI x position.
         y : int
-            AOI y position.
+            ROI y position.
         width : int
-            AOI width.
+            ROI width.
         height : int
-            AOI height.
+            ROI height.
 
         Returns
         -------
         int
             is_AOI return code.
         '''
-        self.set_rectAOI.s32X = x
-        self.set_rectAOI.s32Y = y
-        self.set_rectAOI.s32Width = max(self.minAOI.s32Width, width)
-        self.set_rectAOI.s32Height = max(self.minAOI.s32Height, height)
+        self.set_rectROI.s32X = x
+        self.set_rectROI.s32Y = y
+        self.set_rectROI.s32Width = max(self.minROI.s32Width, width)
+        self.set_rectROI.s32Height = max(self.minROI.s32Height, height)
 
         nRet = self.uc480.is_AOI(
             self.hCam,
             _AOI.IS_AOI_IMAGE_SET_AOI,
-            byref(self.set_rectAOI),
-            sizeof(self.set_rectAOI))
+            byref(self.set_rectROI),
+            sizeof(self.set_rectROI))
 
         if nRet != CMD.IS_SUCCESS:
             print('is_AOI SET ERROR')
 
-        self.width = self.set_rectAOI.s32Width
-        self.height = self.set_rectAOI.s32Height
+        self.width = self.set_rectROI.s32Width
+        self.height = self.set_rectROI.s32Height
 
         return nRet
 
-    def reset_AOI(self):
-        '''Resets the AOI.
+    def reset_ROI(self):
+        '''Resets the ROI.
 
         Returns
         -------
@@ -1105,14 +1105,14 @@ class thorlabs_camera(miCamera):
         nRet = self.uc480.is_AOI(
             self.hCam,
             _AOI.IS_AOI_IMAGE_SET_AOI,
-            byref(self.rectAOI),
-            sizeof(self.rectAOI))
+            byref(self.rectROI),
+            sizeof(self.rectROI))
 
         if nRet != CMD.IS_SUCCESS:
             print('is_AOI RESET ERROR')
 
-        self.width = self.rectAOI.s32Width
-        self.height = self.rectAOI.s32Height
+        self.width = self.rectROI.s32Width
+        self.height = self.rectROI.s32Height
 
         return nRet
 

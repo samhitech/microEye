@@ -8,6 +8,7 @@ from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 
+from ...shared.metadata_tree import MetaParams
 from ..widgets.qlist_slider import *
 from . import Camera_Panel, IDS_Camera
 
@@ -42,12 +43,15 @@ class IDS_Panel(Camera_Panel):
         # flag true to close camera adapter and dispose it
         self._dispose_cam = False
 
-        self.OME_tab.channel_name.setText(self._cam.name)
-        self.OME_tab.det_manufacturer.setText('IDS uEye')
-        self.OME_tab.det_model.setText(
-            self._cam.sInfo.strSensorName.decode('utf-8'))
-        self.OME_tab.det_serial.setText(
-            self._cam.cInfo.SerNo.decode('utf-8'))
+        self.OME_tab.set_param_value(MetaParams.CHANNEL_NAME, self._cam.name)
+        self.OME_tab.set_param_value(MetaParams.DET_MANUFACTURER, 'IDS uEye')
+        self.OME_tab.set_param_value(
+            MetaParams.DET_MODEL,
+            cam.sInfo.strSensorName.decode('utf-8'))
+        self.OME_tab.set_param_value(MetaParams.DET_SERIAL,
+            cam.cInfo.SerNo.decode('utf-8'))
+        self.OME_tab.set_param_value(MetaParams.DET_TYPE,
+            'CMOS')
 
         # pixel clock label and combobox
         self.cam_pixel_clock_lbl = QLabel('Pixel Clock MHz')
@@ -189,15 +193,15 @@ class IDS_Panel(Camera_Panel):
             clicked=lambda: self.stop()
         )
 
-        # AOI
-        self.AOI_x_tbox.setMinimum(0)
-        self.AOI_x_tbox.setMaximum(self.cam.width.value)
-        self.AOI_y_tbox.setMinimum(0)
-        self.AOI_y_tbox.setMaximum(self.cam.height.value)
-        self.AOI_width_tbox.setMinimum(8)
-        self.AOI_width_tbox.setMaximum(self.cam.width.value)
-        self.AOI_height_tbox.setMinimum(8)
-        self.AOI_height_tbox.setMaximum(self.cam.height.value)
+        # ROI
+        self.ROI_x_tbox.setMinimum(0)
+        self.ROI_x_tbox.setMaximum(self.cam.width.value)
+        self.ROI_y_tbox.setMinimum(0)
+        self.ROI_y_tbox.setMaximum(self.cam.height.value)
+        self.ROI_width_tbox.setMinimum(8)
+        self.ROI_width_tbox.setMaximum(self.cam.width.value)
+        self.ROI_height_tbox.setMinimum(8)
+        self.ROI_height_tbox.setMaximum(self.cam.height.value)
 
         # adding widgets to the main layout
         self.first_tab_Layout.addRow(
@@ -259,19 +263,19 @@ class IDS_Panel(Camera_Panel):
         '''
         self._cam = cam
 
-    def set_AOI(self):
-        '''Sets the AOI for the slected IDS_Camera
+    def set_ROI(self):
+        '''Sets the ROI for the slected IDS_Camera
         '''
         if self.cam.acquisition:
             QMessageBox.warning(
-                self, 'Warning', 'Cannot set AOI while acquiring images!')
+                self, 'Warning', 'Cannot set ROI while acquiring images!')
             return  # if acquisition is already going on
 
-        self.cam.set_AOI(
-            self.AOI_x_tbox.value(),
-            self.AOI_y_tbox.value(),
-            self.AOI_width_tbox.value(),
-            self.AOI_height_tbox.value())
+        self.cam.set_ROI(
+            self.ROI_x_tbox.value(),
+            self.ROI_y_tbox.value(),
+            self.ROI_width_tbox.value(),
+            self.ROI_height_tbox.value())
 
         # setting the highest pixel clock as default
         self.cam_pixel_clock_cbox.setCurrentText(
@@ -279,24 +283,24 @@ class IDS_Panel(Camera_Panel):
         self.cam_pixel_clock_cbox.setCurrentText(
             str(self._cam.pixel_clock_list[-1].value))
 
-        self.AOI_x_tbox.setValue(self.cam.set_rectAOI.s32X.value)
-        self.AOI_y_tbox.setValue(self.cam.set_rectAOI.s32Y.value)
-        self.AOI_width_tbox.setValue(self.cam.set_rectAOI.s32Width.value)
-        self.AOI_height_tbox.setValue(self.cam.set_rectAOI.s32Height.value)
+        self.ROI_x_tbox.setValue(self.cam.set_rectROI.s32X.value)
+        self.ROI_y_tbox.setValue(self.cam.set_rectROI.s32Y.value)
+        self.ROI_width_tbox.setValue(self.cam.set_rectROI.s32Width.value)
+        self.ROI_height_tbox.setValue(self.cam.set_rectROI.s32Height.value)
 
-    def reset_AOI(self):
-        '''Resets the AOI for the slected IDS_Camera
+    def reset_ROI(self):
+        '''Resets the ROI for the slected IDS_Camera
         '''
         if self.cam.acquisition:
             QMessageBox.warning(
-                self, 'Warning', 'Cannot reset AOI while acquiring images!')
+                self, 'Warning', 'Cannot reset ROI while acquiring images!')
             return  # if acquisition is already going on
 
-        self.cam.reset_AOI()
-        self.AOI_x_tbox.setValue(0)
-        self.AOI_y_tbox.setValue(0)
-        self.AOI_width_tbox.setValue(self.cam.width.value)
-        self.AOI_height_tbox.setValue(self.cam.height.value)
+        self.cam.reset_ROI()
+        self.ROI_x_tbox.setValue(0)
+        self.ROI_y_tbox.setValue(0)
+        self.ROI_width_tbox.setValue(self.cam.width.value)
+        self.ROI_height_tbox.setValue(self.cam.height.value)
 
         # setting the highest pixel clock as default
         self.cam_pixel_clock_cbox.setCurrentText(
@@ -304,25 +308,25 @@ class IDS_Panel(Camera_Panel):
         self.cam_pixel_clock_cbox.setCurrentText(
             str(self._cam.pixel_clock_list[-1].value))
 
-    def center_AOI(self):
-        '''Calculates the x, y values for a centered AOI'''
-        self.AOI_x_tbox.setValue(
-                    (self.cam.rectAOI.s32Width.value -
-                     self.AOI_width_tbox.value())/2)
-        self.AOI_y_tbox.setValue(
-            (self.cam.rectAOI.s32Height.value -
-             self.AOI_height_tbox.value())/2)
+    def center_ROI(self):
+        '''Calculates the x, y values for a centered ROI'''
+        self.ROI_x_tbox.setValue(
+                    (self.cam.rectROI.s32Width.value -
+                     self.ROI_width_tbox.value())/2)
+        self.ROI_y_tbox.setValue(
+            (self.cam.rectROI.s32Height.value -
+             self.ROI_height_tbox.value())/2)
 
-    def select_AOI(self):
+    def select_ROI(self):
         if self.acq_job.frame is not None:
-            aoi = cv2.selectROI(self.acq_job.frame._view)
+            roi = cv2.selectROI(self.acq_job.frame._view)
             cv2.destroyWindow('ROI selector')
 
             z = self.zoom_box.value()
-            self.AOI_x_tbox.setValue(int(aoi[0] / z))
-            self.AOI_y_tbox.setValue(int(aoi[1] / z))
-            self.AOI_width_tbox.setValue(int(aoi[2] / z))
-            self.AOI_height_tbox.setValue(int(aoi[3] / z))
+            self.ROI_x_tbox.setValue(int(roi[0] / z))
+            self.ROI_y_tbox.setValue(int(roi[1] / z))
+            self.ROI_width_tbox.setValue(int(roi[2] / z))
+            self.ROI_height_tbox.setValue(int(roi[3] / z))
 
     @pyqtSlot(str)
     def cam_trigger_cbox_changed(self, value):
@@ -413,7 +417,8 @@ class IDS_Panel(Camera_Panel):
         self.refresh_exposure()
         self.refresh_flash()
 
-        self.OME_tab.exposure.setValue(self._cam.exposure_current.value)
+        self.OME_tab.set_param_value(
+            MetaParams.EXPOSURE, self._cam.exposure_current)
         if self.master:
             self.exposureChanged.emit()
 
@@ -434,43 +439,40 @@ class IDS_Panel(Camera_Panel):
         self.refresh_exposure()
         self.refresh_flash()
 
-        self.OME_tab.exposure.setValue(self._cam.exposure_current.value)
+        self.OME_tab.set_param_value(
+            MetaParams.EXPOSURE, self._cam.exposure_current)
         if self.master:
             self.exposureChanged.emit()
 
     def refresh_framerate(self, range=False):
-        self.cam_framerate_slider.elementChanged[int, float].disconnect()
+        self.cam_framerate_slider.blockSignals(True)
         if range:
             self.cam_framerate_slider.values = np.arange(
                 self._cam.minFrameRate,
                 self._cam.maxFrameRate,
                 self._cam.incFrameRate.value * 100)
-        self.cam_framerate_slider.elementChanged[int, float] \
-            .connect(self.cam_framerate_value_changed)
+
         self.cam_framerate_slider.setNearest(self._cam.currentFrameRate.value)
+        self.cam_framerate_slider.blockSignals(False)
 
     def refresh_exposure(self, range=False):
-        self.cam_exposure_slider.elementChanged[int, float] \
-            .disconnect(self.cam_exposure_value_changed)
+        self.cam_exposure_slider.blockSignals(True)
         if range:
             self.cam_exposure_slider.values = np.arange(
                 self._cam.exposure_range[0],
                 self._cam.exposure_range[1],
                 self._cam.exposure_range[2].value)
         self.cam_exposure_slider.setNearest(self._cam.exposure_current.value)
-        self.cam_exposure_slider.elementChanged[int, float] \
-            .connect(self.cam_exposure_value_changed)
+        self.cam_exposure_slider.blockSignals(False)
 
-        self.cam_exposure_qs.valueChanged.disconnect(
-            self.exposure_spin_changed)
+        self.cam_exposure_qs.blockSignals(True)
         if range:
             self.cam_exposure_qs.setMinimum(self._cam.exposure_range[0].value)
             self.cam_exposure_qs.setMaximum(self._cam.exposure_range[1].value)
             self.cam_exposure_qs.setSingleStep(
                 self._cam.exposure_range[2].value)
         self.cam_exposure_qs.setValue(self._cam.exposure_current.value)
-        self.cam_exposure_qs.valueChanged.connect(
-            self.exposure_spin_changed)
+        self.cam_exposure_qs.blockSignals(False)
 
     def refresh_flash(self):
         self.cam_flash_duration_slider.values = np.append([0], np.arange(
@@ -679,10 +681,10 @@ class IDS_Panel(Camera_Panel):
             'exposure': self.cam.exposure_current.value,
             'flash duration': self.cam.flash_cur.u32Duration.value,
             'flash delay': self.cam.flash_cur.s32Delay.value,
-            'AOI w': self.cam.set_rectAOI.s32Width.value,
-            'AOI h': self.cam.set_rectAOI.s32Height.value,
-            'AOI x': self.cam.set_rectAOI.s32X.value,
-            'AOI y': self.cam.set_rectAOI.s32Y.value,
+            'ROI w': self.cam.set_rectROI.s32Width.value,
+            'ROI h': self.cam.set_rectROI.s32Height.value,
+            'ROI x': self.cam.set_rectROI.s32X.value,
+            'ROI y': self.cam.set_rectROI.s32Y.value,
             'Zoom': self.zoom_box.value(),
         }
         return meta
@@ -718,10 +720,10 @@ class IDS_Panel(Camera_Panel):
                 'exposure': self.cam.exposure_current.value,
                 'flash duration': self.cam.flash_cur.u32Duration.value,
                 'flash delay': self.cam.flash_cur.s32Delay.value,
-                'AOI w': self.cam.set_rectAOI.s32Width.value,
-                'AOI h': self.cam.set_rectAOI.s32Height.value,
-                'AOI x': self.cam.set_rectAOI.s32X.value,
-                'AOI y': self.cam.set_rectAOI.s32Y.value,
+                'ROI w': self.cam.set_rectROI.s32Width.value,
+                'ROI h': self.cam.set_rectROI.s32Height.value,
+                'ROI x': self.cam.set_rectROI.s32X.value,
+                'ROI y': self.cam.set_rectROI.s32Y.value,
                 'Zoom': self.zoom_box.value(),
             }
 
@@ -750,10 +752,10 @@ class IDS_Panel(Camera_Panel):
                 'exposure',
                 'flash duration',
                 'flash delay',
-                'AOI w',
-                'AOI h',
-                'AOI x',
-                'AOI y',
+                'ROI w',
+                'ROI h',
+                'ROI x',
+                'ROI y',
                 'Zoom',
             ]
             with open(filename) as file:
@@ -761,11 +763,11 @@ class IDS_Panel(Camera_Panel):
             if all(key in config for key in keys):
                 if self.cam.sInfo.strSensorName.decode('utf-8') == \
                         config['model']:
-                    self.AOI_x_tbox.setValue(int(config['AOI x']))
-                    self.AOI_y_tbox.setValue(int(config['AOI y']))
-                    self.AOI_width_tbox.setValue(int(config['AOI w']))
-                    self.AOI_height_tbox.setValue(int(config['AOI h']))
-                    self.set_AOI()
+                    self.ROI_x_tbox.setValue(int(config['ROI x']))
+                    self.ROI_y_tbox.setValue(int(config['ROI y']))
+                    self.ROI_width_tbox.setValue(int(config['ROI w']))
+                    self.ROI_height_tbox.setValue(int(config['ROI h']))
+                    self.set_ROI()
 
                     self.cam_pixel_clock_cbox.setCurrentText(
                         str(config['clock speed']))

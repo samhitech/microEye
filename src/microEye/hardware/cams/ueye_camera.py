@@ -145,9 +145,9 @@ class IDS_Camera(miCamera):
         self.sInfo = ueye.SENSORINFO()
         self.cInfo = ueye.CAMINFO()
         self.dInfo = ueye.IS_DEVICE_INFO()
-        self.rectAOI = ueye.IS_RECT()
-        self.set_rectAOI = ueye.IS_RECT()
-        self.minAOI = ueye.IS_SIZE_2D()
+        self.rectROI = ueye.IS_RECT()
+        self.set_rectROI = ueye.IS_RECT()
+        self.minROI = ueye.IS_SIZE_2D()
 
         self.pitch = ueye.INT()
         self.MemInfo = []
@@ -203,7 +203,7 @@ class IDS_Camera(miCamera):
         self.resetToDefault()
         self.setDisplayMode()
         self.setColorMode()
-        self.get_AOI()
+        self.get_ROI()
         self.print_cam_info()
 
         self.name = self.sInfo.strSensorName.decode('utf-8') + '_' + \
@@ -420,71 +420,71 @@ class IDS_Camera(miCamera):
 
         nRet = ueye.is_SetColorMode(self.hCam, self.color_mode)
 
-    def get_AOI(self):
+    def get_ROI(self):
         '''Can be used to get the size and position
-        of an "area of interest" (AOI) within an image.
+        of an "area of interest" (ROI) within an image.
 
-        For AOI rectangle check IDS_Camera.rectAOI
+        For ROI rectangle check IDS_Camera.rectROI
 
         Returns
         -------
         int
-            is_AOI return code.
+            is_ROI return code.
         '''
         nRet = ueye.is_AOI(
             self.hCam,
             ueye.IS_AOI_IMAGE_GET_AOI,
-            self.rectAOI,
-            ueye.sizeof(self.rectAOI))
+            self.rectROI,
+            ueye.sizeof(self.rectROI))
 
         if nRet != ueye.IS_SUCCESS:
             print('is_AOI GET ERROR')
 
-        self.width = self.rectAOI.s32Width
-        self.height = self.rectAOI.s32Height
+        self.width = self.rectROI.s32Width
+        self.height = self.rectROI.s32Height
         return nRet
 
-    def set_AOI(self, x, y, width, height):
+    def set_ROI(self, x, y, width, height):
         '''Sets the size and position of an
-        "area of interest"(AOI) within an image.
+        "area of interest"(ROI) within an image.
 
         Parameters
         ----------
         x : int
-            AOI x position.
+            ROI x position.
         y : int
-            AOI y position.
+            ROI y position.
         width : int
-            AOI width.
+            ROI width.
         height : int
-            AOI height.
+            ROI height.
 
         Returns
         -------
         int
             is_AOI return code.
         '''
-        self.set_rectAOI.s32X.value = x
-        self.set_rectAOI.s32Y.value = y
-        self.set_rectAOI.s32Width.value = width
-        self.set_rectAOI.s32Height.value = height
+        self.set_rectROI.s32X.value = x
+        self.set_rectROI.s32Y.value = y
+        self.set_rectROI.s32Width.value = width
+        self.set_rectROI.s32Height.value = height
 
         nRet = ueye.is_AOI(
             self.hCam,
             ueye.IS_AOI_IMAGE_SET_AOI,
-            self.set_rectAOI,
-            ueye.sizeof(self.set_rectAOI))
+            self.set_rectROI,
+            ueye.sizeof(self.set_rectROI))
 
         if nRet != ueye.IS_SUCCESS:
             print('is_AOI SET ERROR')
 
-        self.width = self.set_rectAOI.s32Width
-        self.height = self.set_rectAOI.s32Height
+        self.width = self.set_rectROI.s32Width
+        self.height = self.set_rectROI.s32Height
 
         return nRet
 
-    def reset_AOI(self):
-        '''Resets the AOI.
+    def reset_ROI(self):
+        '''Resets the ROI.
 
         Returns
         -------
@@ -494,14 +494,14 @@ class IDS_Camera(miCamera):
         nRet = ueye.is_AOI(
             self.hCam,
             ueye.IS_AOI_IMAGE_SET_AOI,
-            self.rectAOI,
-            ueye.sizeof(self.rectAOI))
+            self.rectROI,
+            ueye.sizeof(self.rectROI))
 
         if nRet != ueye.IS_SUCCESS:
             print('is_AOI RESET ERROR')
 
-        self.width = self.rectAOI.s32Width
-        self.height = self.rectAOI.s32Height
+        self.width = self.rectROI.s32Width
+        self.height = self.rectROI.s32Height
 
         return nRet
 

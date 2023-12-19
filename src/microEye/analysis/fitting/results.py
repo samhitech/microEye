@@ -69,7 +69,7 @@ class FittingMethod:
     _3D_Gauss_MLE_cspline_sigma = 5
 
 PARAMETER_HEADERS = {
-    0: ['x', 'y', 'background', 'intensity', 'ratio x/y', 'frame'],
+    0: ['x', 'y', 'background', 'intensity', 'ratio'],
     1: ['x', 'y', 'background', 'intensity', 'iteration'],
     2: ['x', 'y', 'background', 'intensity', 'sigma', 'iteration'],
     4: ['x', 'y', 'background', 'intensity', 'sigmax', 'sigmay', 'iteration'],
@@ -96,7 +96,7 @@ def map_column_alias(alias: str) -> DataColumns:
         return DataColumns.X_SIGMA
     elif alias_lower in ('sigmay', 'sigma y', 'y_sigma'):
         return DataColumns.Y_SIGMA
-    elif alias_lower in ('ratio', 'xy_ratio'):
+    elif alias_lower in ('ratio', 'xy_ratio', 'ratio x/y'):
         return DataColumns.XY_RATIO
     elif alias_lower in ('loglike',):
         return DataColumns.LOG_LIKE
@@ -275,17 +275,18 @@ class FittingResults:
 
         if self.fitting_method == FittingMethod._2D_Phasor_CPU:
             loc = np.c_[
+                self.data[DataColumns.FRAME],
                 self.data[DataColumns.X],
                 self.data[DataColumns.Y],
                 self.data[DataColumns.BACKGROUND],
                 self.data[DataColumns.INTENSITY],
                 self.data[DataColumns.XY_RATIO],
-                self.data[DataColumns.FRAME],
                 self.get_column(DataColumns.TRACK_ID),
                 self.get_column(DataColumns.NEIGHBOUR_DISTANCE),
                 self.get_column(DataColumns.N_MERGED)]
 
-            columns = self.parameterHeader + \
+            columns = ['frame', ] + \
+                self.parameterHeader + \
                 [str(DataColumns.TRACK_ID),
                  str(DataColumns.NEIGHBOUR_DISTANCE),
                  str(DataColumns.N_MERGED)]
