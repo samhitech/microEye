@@ -57,6 +57,16 @@ class AcquisitionJob:
         Flag indicating whether to save data, by default False.
     Zarr : bool, optional
         Flag indicating whether to use Zarr format, by default False.
+    rois : list[list[int]], optional
+        List of regions of interest, by default empty list.
+    seperate_rois : bool, optional
+        Flag indicating whether to save ROIs into seperate files,
+        by default False.
+        (For Zarr format different ROIs are treated as channels)
+    flip_rois : bool, optional
+        Flag indicating whether to flip n-th ROIs horizontally for n > 1,
+        by default True.
+
 
     Methods
     -------
@@ -137,10 +147,18 @@ class AcquisitionJob:
             Zarr : bool, optional
                 Flag indicating whether to use Zarr format, by default False.
             rois : list[list[int]], optional
-                List of regions of interest, by default None.
+                List of regions of interest, by default empty list.
+            seperate_rois : bool, optional
+                Flag indicating whether to save ROIs into seperate files,
+                by default False.
+                (For Zarr format different ROIs are treated as channels)
+            flip_rois : bool, optional
+                Flag indicating whether to flip n-th ROIs horizontally for n > 1,
+                by default True.
         '''
         self.display_queue = display_queue
         self.height = height
+        self.cam_height = height
         self.index = 0
         self.lock = threading.Lock()
         self.major = 0
@@ -149,6 +167,8 @@ class AcquisitionJob:
         self.temp_queue = temp_queue
         self.timestamp = time.strftime('_%Y_%m_%d_%H%M%S')
         self.width = width
+        self.cam_width = width
+        self.channels = 1
         self.zarr_array = None
 
         self.biggTiff: bool = kwargs.get('biggTiff', True)
@@ -164,15 +184,21 @@ class AcquisitionJob:
         self.save: bool = kwargs.get('save', False)
         '''cross-thread attribute (use lock)'''
         self.zarr: bool = kwargs.get('Zarr', False)
-        self.rois: list[list[int]] = kwargs.get('rois', None)
+        self.rois: list[list[int]] = kwargs.get('rois', [])
+        self.seperate_rois: bool = kwargs.get('seperate_rois', False)
+        self.flip_rois: bool = kwargs.get('flip_rois', True)
 
-        if self.rois is not None:
+        if self.rois:
             same_width = all(
                 [self.rois[0][2] == roi[2] for roi in self.rois])
             same_height = all(
                 [self.rois[0][3] == roi[3] for roi in self.rois])
             if not same_width or not same_height:
                 self.rois = None
+            else:
+                self.width = self.rois[0][2]
+                self.height = self.rois[0][3]
+                self.channels = len(self.rois)
 
         self.capture_done = False
         '''cross-thread attribute (use lock)'''
@@ -193,8 +219,7 @@ class AcquisitionJob:
         self.stop_threads = False
         '''cross-thread attribute (use lock)'''
 
-        self.tiffWriter = None
-        self.tempFile = None
+        self.tiffWriter: list[tf.TiffWriter] = []
         self.dark_cal = None
 
 
@@ -217,16 +242,22 @@ class AcquisitionJob:
         '''
         return 'ome.tif' if not self.zarr else 'zarr'
 
-    def getFilename(self) -> str:
+    def getFilename(self, roi_index: int=None) -> str:
         '''Generate the filename based on the current state.
+
+        Parameters
+        ----------
+        roi_index : int, optional
+            the roi index for file name suffix, if None then not added. Default is None.
 
         Returns
         -------
         str
             Generated filename.
         '''
+        roi_suffix = '' if roi_index is None else f'_ROI_{roi_index:02d}'
         return self.path + \
-            f'{self.major:02d}_{self.prefix}_image_{self.index:05d}.{self.getExt()}'
+            f'{self.major:02d}_{self.prefix}_image_{self.index:05d}{roi_suffix}.{self.getExt()}'
 
     def getTempFilename(self) -> str:
         '''Generate the temperature log filename based on the current state.
@@ -262,28 +293,96 @@ class AcquisitionJob:
             Image frame data.
         '''
         if self.zarr:
-            self.getZarrArray()[self.frames_saved] = frame
+            if self.rois:
+                for idx, roi in enumerate(self.rois):
+                    roi_data = frame[
+                            roi[1]: roi[1] + roi[3],
+                            roi[0]: roi[0] + roi[2]]
+                    if idx > 0 and self.flip_rois:
+                        roi_data = np.fliplr(roi_data)
+
+                    self.getZarrArray()[self.frames_saved, idx, 0] = roi_data
+            else:
+                self.getZarrArray()[self.frames_saved, 0, 0] = frame
         else:
-            if self.tiffWriter is None:
-                self.tiffWriter = self.getTiffWriter()
-            # append frame to tiff
-            try:
-                self.tiffWriter.write(
-                    data=frame[np.newaxis, :],
-                    photometric='minisblack')
-            except ValueError as ve:
-                if str(ve) == \
-                        'data too large for standard TIFF file':
-                    self.tiffWriter.close()
-                    self.saveMetadata()
-                    self.frames_saved = 0
-                    self.index += 1
-                    self.tiffWriter = self.getTiffWriter()
-                    self.tiffWriter.write(
-                        data=frame[np.newaxis, :],
-                        photometric='minisblack')
+            if not self.tiffWriter:
+                if self.rois:
+                    if self.seperate_rois:
+                        for idx in range(len(self.rois)):
+                            self.tiffWriter.append(
+                                self.getTiffWriter(idx))
+                    else:
+                        self.tiffWriter.append(self.getTiffWriter())
                 else:
-                    raise ve
+                    self.tiffWriter.append(self.getTiffWriter())
+            # append frame to tiff
+            if self.rois:
+                if self.seperate_rois:
+                    for idx, roi in enumerate(self.rois):
+                        roi_data = frame[
+                                roi[1]: roi[1] + roi[3],
+                                roi[0]: roi[0] + roi[2]]
+                        if idx > 0 and self.flip_rois:
+                            roi_data = np.fliplr(roi_data)
+
+                        self.tiffWriter[idx] = self.writeTiffFrame(
+                            self.tiffWriter[idx],
+                            roi_data, idx)
+                else:
+                    data = np.zeros(
+                        (len(self.rois),
+                         self.rois[0][3], self.rois[0][2]), dtype=frame.dtype)
+                    for idx, roi in enumerate(self.rois):
+                        data[idx] = frame[
+                                roi[1]: roi[1] + roi[3],
+                                roi[0]: roi[0] + roi[2]]
+                        if idx > 0 and self.flip_rois:
+                            data[idx] = np.fliplr(data[idx])
+
+                    self.tiffWriter[0] = self.writeTiffFrame(
+                        self.tiffWriter[0], data)
+            else:
+                self.tiffWriter[0] = self.writeTiffFrame(
+                    self.tiffWriter[0], frame)
+
+    def writeTiffFrame(
+            self,
+            writer: tf.TiffWriter, frame: np.ndarray, roi_index=None):
+        '''writes an image into a Tiff file.
+
+        Parameters
+        ----------
+        writer : tf.TiffWriter
+            the TiffWriter class of the Tiff file.
+        frame : np.ndarray
+            Image frame data.
+        roi_index : int, optional
+            the roi index for file name suffix, if None then not added. Default is None.
+        '''
+
+        try:
+            writer.write(
+                data=frame[np.newaxis, np.newaxis, np.newaxis, ...
+                           ] if frame.ndim == 2 else frame[
+                               np.newaxis, :, np.newaxis, ...],
+                photometric='minisblack')
+        except ValueError as ve:
+            if str(ve) == \
+                    'data too large for standard TIFF file':
+                writer.close()
+                self.saveMetadata(roi_index)
+                self.frames_saved = 0
+                self.index += 1
+                writer = self.getTiffWriter(roi_index)
+                writer.write(
+                    data=frame[np.newaxis, np.newaxis, np.newaxis, ...
+                               ] if frame.ndim == 2 else frame[
+                                   np.newaxis, :, np.newaxis, ...],
+                    photometric='minisblack')
+            else:
+                raise ve
+
+        return writer
 
     def addTemp(self, temp: float):
         '''Add temperature data to the log file.
@@ -312,8 +411,13 @@ class AcquisitionJob:
         with open(self.getMetaFilename(), 'w+') as metaFile:
             json.dump(self.meta_file, metaFile)
 
-    def getTiffWriter(self) -> tf.TiffWriter:
+    def getTiffWriter(self, roi_index: int =None) -> tf.TiffWriter:
         '''Return a TiffWriter instance for saving TIFF files.
+
+        Parameters
+        ----------
+        roi_index : int, optional
+            the roi index for file name suffix, if None then not added. Default is None.
 
         Returns
         -------
@@ -321,7 +425,7 @@ class AcquisitionJob:
             TiffWriter instance.
         '''
         return tf.TiffWriter(
-            self.getFilename(), append=False,
+            self.getFilename(roi_index), append=False,
             bigtiff=self.biggTiff, ome=False)
 
     def getZarrArray(self) -> zarr.Array:
@@ -335,33 +439,45 @@ class AcquisitionJob:
         if self.zarr_array is None:
             self.zarr_array = zarr.open_array(
                 self.getFilename(),
-                shape=(self.frames, self.height, self.width),
+                shape=(self.frames, self.channels, 1, self.height, self.width),
                 compressor=None,
-                chunks=(1, self.height, self.width),
+                chunks=(1, 1, 1, self.height, self.width),
                 dtype=np.uint16)
         return self.zarr_array
 
-    def saveMetadata(self):
-        '''Save metadata to the current file.'''
-        ome: om.OME = self.meta_func(
-            self.frames_saved, self.width, self.height)
+    def saveMetadata(self, roi_index: int =None):
+        '''
+        Save metadata to the current file.
 
-        tf.tiffcomment(self.getFilename(), ome.to_xml())
+        Parameters
+        ----------
+        roi_index : int, optional
+            the roi index for file name suffix, if None then not added. Default is None.
+        '''
+        ome: om.OME = self.meta_func(
+            self.frames_saved, self.width, self.height,
+            1 if self.seperate_rois else self.channels)
+
+        tf.tiffcomment(self.getFilename(roi_index), ome.to_xml())
 
     def finalize(self):
         '''Finalize and clean up resources.'''
-        if self.tempFile is not None:
-            self.tempFile.close()
-        if self.tiffWriter is not None:
-            self.tiffWriter.close()
         if self.dark_cal is not None:
             if self.dark_cal._counter > 1:
                 self.dark_cal.saveResults(
                     self.path,
                     f'{self.major:02d}_{self.prefix}')
 
-        if self.save and not self.zarr:
-            self.saveMetadata()
+        if self.tiffWriter:
+            if self.rois and self.seperate_rois:
+                for idx, writer in enumerate(self.tiffWriter):
+                    writer.close()
+                    if self.save and not self.zarr:
+                        self.saveMetadata(idx)
+            else:
+                self.tiffWriter[0].close()
+                if self.save and not self.zarr:
+                    self.saveMetadata()
 
     def setDone(self, index: int, value: bool):
         '''Set the completion status for a specific stage.

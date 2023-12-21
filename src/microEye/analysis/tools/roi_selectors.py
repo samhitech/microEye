@@ -169,6 +169,7 @@ class MultiRectangularROISelector:
         None
         '''
         shift_pressed = flags & cv2.EVENT_FLAG_SHIFTKEY != 0
+        ctrl_pressed = flags & cv2.EVENT_FLAG_CTRLKEY  != 0
         if event == cv2.EVENT_LBUTTONDOWN:
             if self.current_mode == 'Edit':
                 if self.one_size and len(self.rois) > 1:
@@ -289,6 +290,16 @@ class MultiRectangularROISelector:
 
                     self.rois[self.active_roi_idx][0] += delta_x
                     self.rois[self.active_roi_idx][2] += delta_x
+
+                    if shift_pressed and not ctrl_pressed and len(self.rois) > 1:
+                        delta_y = self.rois[self.active_roi_idx - 1][1] - self.rois[
+                            self.active_roi_idx][1]
+                    elif shift_pressed and ctrl_pressed and len(self.rois) > 1:
+                        height = self.rois[self.active_roi_idx][3] - self.rois[
+                            self.active_roi_idx][1]
+                        delta_y = (self.shape[0] - height) // 2 - self.rois[
+                            self.active_roi_idx][1]
+
                     self.rois[self.active_roi_idx][1] += delta_y
                     self.rois[self.active_roi_idx][3] += delta_y
                     self.redraw()

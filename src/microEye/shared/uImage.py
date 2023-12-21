@@ -272,7 +272,7 @@ class uImage:
             max_indices = np.where(np.all(self._cdf >= self.cdf_max, axis=1))[0]
 
             # Update _min and _max based on all channels
-            self._min, self._max = min(min_indices, default=0), max(
+            self._min, self._max = min(min_indices, default=0), min(
                 max_indices, default=self._cdf.shape[0] - 1)
 
         # Ensure _max is greater than _min

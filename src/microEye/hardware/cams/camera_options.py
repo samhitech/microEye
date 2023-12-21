@@ -43,8 +43,11 @@ class CamParams(Enum):
     RESET_ROI = 'Region of Interest (ROI).Reset ROI'
     CENTER_ROI = 'Region of Interest (ROI).Center ROI'
     SELECT_ROI = 'Region of Interest (ROI).Select ROI'
-    SELECT_EXPORT_ROIS = 'Region of Interest (ROI).Select Export ROIs'
     EXPORT_ROIS = 'Region of Interest (ROI).Export ROIs'
+    SELECT_EXPORT_ROIS = 'Region of Interest (ROI).Export ROIs.Select ROIs'
+    EXPORTED_ROIS = 'Region of Interest (ROI).Export ROIs.ROIs'
+    EXPORT_ROIS_SEPERATE = 'Region of Interest (ROI).Export ROIs.Seperate Files'
+    EXPORT_ROIS_FLIPPED = 'Region of Interest (ROI).Export ROIs.Flip Horizontally'
     PREVIEW = 'Display.Preview'
     DISPLAY_STATS_OPTION = 'Display.Display Stats'
     AUTO_STRETCH = 'Display.Auto Stretch'
@@ -52,6 +55,7 @@ class CamParams(Enum):
     SINGLE_VIEW = 'Display.View Options.Single View'
     DUAL_SIDE = 'Display.View Options.Dual Channel (Side by Side)'
     DUAL_OVERLAID = 'Display.View Options.Dual Channel (Overlapped)'
+    ROIS_VIEW = 'Display.View Options.Export ROIs'
     LINE_PROFILER = 'Display.Line Profiler'
     LUT = 'Display.LUT'
     LUT_NUMPY = 'Display.LUT Numpy (12bit)'
@@ -99,6 +103,7 @@ class CameraOptions(ParameterTree):
     selectROI = pyqtSignal()
     selectROIs = pyqtSignal()
     directoryChanged = pyqtSignal(str)
+    viewOptionChanged = pyqtSignal()
 
 
 
@@ -153,8 +158,8 @@ class CameraOptions(ParameterTree):
                     str(CamParams.LUT_NUMPY), str(CamParams.LUT_OPENCV)
                 ]},
                 {'name': str(CamParams.VIEW_OPTIONS), 'type': 'list', 'values': [
-                    str(CamParams.SINGLE_VIEW),
-                    str(CamParams.DUAL_SIDE), str(CamParams.DUAL_OVERLAID)]},
+                    str(CamParams.SINGLE_VIEW), str(CamParams.DUAL_SIDE),
+                    str(CamParams.DUAL_OVERLAID), str(CamParams.ROIS_VIEW)]},
                 {'name': str(CamParams.LINE_PROFILER), 'type': 'bool', 'value': False},
                 {'name': str(CamParams.RESIZE_DISPLAY),
                 'type': 'float', 'value': 0.5, 'limits': [0.1, 4.0],
@@ -179,8 +184,16 @@ class CameraOptions(ParameterTree):
                 {'name': str(CamParams.RESET_ROI), 'type': 'action'},
                 {'name': str(CamParams.CENTER_ROI), 'type': 'action'},
                 {'name': str(CamParams.SELECT_ROI), 'type': 'action'},
-                {'name': str(CamParams.SELECT_EXPORT_ROIS), 'type': 'action'},
                 {'name': str(CamParams.EXPORT_ROIS), 'type': 'group', 'children': [
+                    {'name': str(CamParams.SELECT_EXPORT_ROIS), 'type': 'action'},
+                    {'name': str(CamParams.EXPORTED_ROIS), 'type': 'group',
+                     'children': []},
+                    {'name': str(CamParams.EXPORT_ROIS_SEPERATE),
+                     'type': 'bool', 'value': False,
+                     'tip': 'Export each ROI as a seperate Tiff file. (Not for Zarr)'},
+                    {'name': str(CamParams.EXPORT_ROIS_FLIPPED),
+                     'type': 'bool', 'value': True,
+                     'tip': 'Flip n-th ROIs horizontally for n > 1.'},
                 ]},
             ]},
             {'name': str(CamParams.CAMERA_GPIO), 'type': 'group', 'children': [
@@ -213,6 +226,9 @@ class CameraOptions(ParameterTree):
         self.get_param(
             CamParams.SELECT_EXPORT_ROIS).sigActivated.connect(
                 lambda: self.selectROIs.emit())
+        self.get_param(
+            CamParams.VIEW_OPTIONS).sigValueChanged.connect(
+                lambda: self.viewOptionChanged.emit())
 
         self.get_param(
             CamParams.IMPORT_STATE).sigActivated.connect(self.load_json)
@@ -485,6 +501,29 @@ class CameraOptions(ParameterTree):
         self.get_param(CamParams.ROI_WIDTH).setLimits(w)
         self.get_param(CamParams.ROI_HEIGHT).setLimits(h)
 
+    def get_export_rois(self):
+        '''
+        Get the export regions of interest (ROIs) information.
+
+        Returns
+        -------
+        list[list[int]]
+            list or ROIs with each being a list[int] of [x, y, w, h].
+        '''
+        rois_param = self.get_param(
+            CamParams.EXPORTED_ROIS)
+        rois = []
+
+        if len(rois_param.children()) > 0:
+            for child in rois_param.children():
+                rois.append(
+                    list(
+                        map(int,
+                            child.value().split(', '))
+                            )
+                    )
+        return rois
+
     @property
     def isTiff(self):
         '''
@@ -524,6 +563,19 @@ class CameraOptions(ParameterTree):
         '''
         return self.get_param_value(CamParams.VIEW_OPTIONS) in [
             str(CamParams.SINGLE_VIEW)]
+
+    @property
+    def isROIsView(self):
+        '''
+        Check if the view option is set to export ROIs view.
+
+        Returns
+        -------
+        bool
+            True if the view option is set to export ROIs view, False otherwise.
+        '''
+        return self.get_param_value(CamParams.VIEW_OPTIONS) in [
+            str(CamParams.ROIS_VIEW)]
 
     @property
     def isOverlaidView(self):

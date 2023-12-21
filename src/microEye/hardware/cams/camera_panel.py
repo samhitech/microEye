@@ -175,6 +175,7 @@ class Camera_Panel(QGroupBox):
         self.camera_options.centerROI.connect(lambda: self.center_ROI())
         self.camera_options.selectROI.connect(lambda: self.select_ROI())
         self.camera_options.selectROIs.connect(lambda: self.select_ROIs())
+        self.camera_options.viewOptionChanged.connect(lambda: self.view_toggled())
 
         # controls for histogram and cdf
         self.histogram_group = ExpandableGroupBox('Histogram')
@@ -368,10 +369,15 @@ class Camera_Panel(QGroupBox):
             self.camera_options.isFullMetadata else self.OME_tab.gen_OME_XML_short,
             name=self._cam.name, prefix=self._save_prefix,
             save=self.camera_options.isSaveData,
-            Zarr=not self.camera_options.isTiff
+            Zarr=not self.camera_options.isTiff,
+            rois=self.camera_options.get_export_rois(),
+            seperate_rois=self.camera_options.get_param_value(
+                CamParams.EXPORT_ROIS_SEPERATE),
+            flip_rois=self.camera_options.get_param_value(
+                CamParams.EXPORT_ROIS_FLIPPED)
         )
 
-    def view_toggled(self, params):
+    def view_toggled(self):
         if self.camera_options.isSingleView:
             self.lr_0.setSpan(0, 1)
             self.lr_1.setMovable(False)
@@ -394,8 +400,10 @@ class Camera_Panel(QGroupBox):
 
         Parameters
         ----------
+        param : Parameter
+            the parameter that was activated.
         Prefix : str
-            an extra prefix added to the image stack file name
+            an extra prefix added to the image stack file name.
         '''
         if self._cam.acquisition:
             return  # if acquisition is already going on
@@ -574,6 +582,163 @@ def cam_save(params: AcquisitionJob):
         params.finalize()
         print('Save thread finally finished.')
 
+def update_histogram_and_display(params: AcquisitionJob, camp: Camera_Panel):
+    '''
+    Update histogram and display based on camera options.
+
+    Parameters
+    ----------
+    params : AcquisitionJob
+        Class holding cross-thread info required for an Acquisition Job.
+    camp : Camera_Panel
+        The camera panel to display data.
+    '''
+    # Common logic for updating histogram and display
+    if camp.camera_options.isSingleView or (
+            camp.camera_options.isROIsView and len(params.rois) == 0):
+        _range = None
+
+        # image stretching
+        if not camp.camera_options.isAutostretch:
+            _range = tuple(
+                map(math.ceil, camp.lr_0.getRegion()))
+
+        params.frame.equalizeLUT(
+            _range, camp.camera_options.isNumpyLUT)
+
+        if camp.camera_options.isAutostretch:
+            camp.lr_0.setRegion(
+                (params.frame._min, params.frame._max))
+            camp.histogram.setXRange(
+                params.frame._min, params.frame._max)
+            camp.hist_cdf.setXRange(
+                params.frame._min, params.frame._max)
+
+        camp._plot_ref.setData(params.frame._hist)
+        camp._cdf_plot_ref.setData(params.frame._cdf)
+        camp._plot_ref_2.setData(camp._hist)
+        camp._cdf_plot_ref_2.setData(camp._hist)
+
+        # resizing the image
+        zoom = camp.camera_options.get_param_value(
+            CamParams.RESIZE_DISPLAY)
+        params.frame._view = cv2.resize(
+            params.frame._view, (0, 0),
+            fx=zoom,
+            fy=zoom,
+            interpolation=cv2.INTER_NEAREST)
+
+        # display it
+        cv2.imshow(params.name, params.frame._view)
+    elif camp.camera_options.isROIsView:
+        if len(params.rois) == 1:
+            camp._plot_ref_2.setData(camp._hist)
+            camp._cdf_plot_ref_2.setData(camp._hist)
+        mins, maxs = [], []
+        for idx, roi in enumerate(params.rois):
+            uimage = uImage(
+                params.frame.image[
+                    roi[1]: roi[1] + roi[3],
+                    roi[0]: roi[0] + roi[2]])
+
+            if idx > 0 and params.flip_rois:
+                uimage.image = np.fliplr(uimage.image)
+
+            _range = None
+            # image stretching
+            if not camp.camera_options.isAutostretch and idx < 2:
+                linear_region = camp.lr_0 if idx == 0 else camp.lr_1
+                _range = tuple(
+                    map(math.ceil, linear_region.getRegion()))
+
+            uimage.equalizeLUT(_range, camp.camera_options.isNumpyLUT)
+
+            if camp.camera_options.isAutostretch and idx < 2:
+                linear_region = camp.lr_0 if idx == 0 else camp.lr_1
+                linear_region.setRegion(
+                    (uimage._min, uimage._max))
+                mins.append(uimage._min)
+                maxs.append(uimage._max)
+
+            if idx < 2:
+                _plot_ref = camp._plot_ref if idx == 0 else camp._plot_ref_2
+                _cdf_plot_ref = camp._cdf_plot_ref if idx == 0 else camp._cdf_plot_ref_2
+                _plot_ref.setData(uimage._hist)
+                _cdf_plot_ref.setData(uimage._cdf)
+
+            # resizing the image
+            zoom = camp.camera_options.get_param_value(
+                CamParams.RESIZE_DISPLAY)
+            uimage._view = cv2.resize(
+                uimage._view, (0, 0),
+                fx=zoom,
+                fy=zoom,
+                interpolation=cv2.INTER_NEAREST)
+
+            # display it
+            cv2.imshow(params.name + f' ROI {idx+1}', uimage._view)
+
+        if camp.camera_options.isAutostretch:
+            camp.histogram.setXRange(min(mins), max(maxs))
+            camp.hist_cdf.setXRange(min(mins), max(maxs))
+    else:
+        _rang_left = None
+        _rang_right = None
+
+        # image stretching
+        if not camp.camera_options.isAutostretch:
+            _rang_left = tuple(
+                map(math.ceil, camp.lr_0.getRegion()))
+            _rang_right = tuple(
+                map(math.ceil, camp.lr_1.getRegion()))
+
+        left, right = params.frame.hsplitView()
+
+        left.equalizeLUT(
+            _rang_left, camp.camera_options.isNumpyLUT)
+        right.equalizeLUT(
+            _rang_right, camp.camera_options.isNumpyLUT)
+        if camp.camera_options.isAutostretch:
+            camp.lr_0.setRegion((left._min, left._max))
+            camp.lr_1.setRegion((right._min, right._max))
+            camp.histogram.setXRange(
+                min(left._min, right._min),
+                max(left._max, right._max))
+            camp.hist_cdf.setXRange(
+                min(left._min, right._min),
+                max(left._max, right._max))
+
+        camp._plot_ref.setData(left._hist)
+        camp._cdf_plot_ref.setData(left._cdf)
+        camp._plot_ref_2.setData(right._hist)
+        camp._cdf_plot_ref_2.setData(right._cdf)
+
+        zoom = camp.camera_options.get_param_value(
+            CamParams.RESIZE_DISPLAY)
+        if camp.camera_options.isOverlaidView:
+            _img = np.zeros(
+                left._view.shape[:2] + (3,),
+                dtype=np.uint8)
+            _img[..., 1] = left._view
+            _img[..., 0] = right._view
+            _img = cv2.resize(
+                _img,
+                (0, 0),
+                fx=zoom,
+                fy=zoom,
+                interpolation=cv2.INTER_NEAREST)
+
+            cv2.imshow(params.name, _img)
+        else:
+            _img = cv2.resize(
+                np.concatenate(
+                    [left._view, right._view], axis=1),
+                (0, 0),
+                fx=zoom,
+                fy=zoom,
+                interpolation=cv2.INTER_NEAREST)
+
+            cv2.imshow(params.name, _img)
 
 def cam_display(params: AcquisitionJob, camp: Camera_Panel):
     '''Display function executed by the display worker.
@@ -583,138 +748,47 @@ def cam_display(params: AcquisitionJob, camp: Camera_Panel):
 
     Parameters
     ----------
-    cam : vimba_cam
-        the vimba_cam used to acquire frames.
+    params : AcquisitionJob
+        class holding cross-thread info required for an Acquisition Job.
+    camp : Camera_Panel
+        the camera panel to display data.
     '''
     try:
         time = QDateTime.currentDateTime()
+
         # Continuous image display
         while (True):
-
             # proceed only if the buffer is not empty
             if not params.display_queue.empty():
                 # for display time estimations
                 with params.lock:
                     params.display_time = time.msecsTo(
                         QDateTime.currentDateTime())
-                time = QDateTime.currentDateTime()
+                    time = QDateTime.currentDateTime()
 
-                # reshape image into proper shape
-                # (height, width, bytes per pixel)
-                with params.lock:
-                    params.frame = uImage.fromBuffer(
+                    # reshape image into proper shape
+                    # (height, width, bytes per pixel)
+                    params.frame: uImage = uImage.fromBuffer(
                         params.display_queue.get(),
-                        params.height, params.width,
+                        params.cam_height, params.cam_width,
                         params.bytes_per_pixel)
 
-                # add to saving stack
-                if params.save:
-                    if not camp.mini:
-                        params.save_queue.put(
-                            (params.frame.image, params.temp_queue.get()))
-                    else:
-                        params.save_queue.put(params.frame.image)
-
-                if camp.camera_options.isPreview:
-                    if camp.camera_options.isLineProfiler:
-                        camp.lineProfiler.setData(params.frame._image)
-
-                    if camp.camera_options.isSingleView:
-                        _range = None
-
-                        # image stretching
-                        if not camp.camera_options.isAutostretch:
-                            _range = tuple(
-                                map(math.ceil, camp.lr_0.getRegion()))
-
-                        params.frame.equalizeLUT(
-                            _range, camp.camera_options.isNumpyLUT)
-
-                        if camp.camera_options.isAutostretch:
-                            camp.lr_0.setRegion(
-                                (params.frame._min, params.frame._max))
-                            camp.histogram.setXRange(
-                                params.frame._min, params.frame._max)
-                            camp.hist_cdf.setXRange(
-                                params.frame._min, params.frame._max)
-
-                        camp._plot_ref.setData(params.frame._hist)
-                        camp._cdf_plot_ref.setData(params.frame._cdf)
-                        camp._plot_ref_2.setData(camp._hist)
-                        camp._cdf_plot_ref_2.setData(camp._hist)
-
-                        # resizing the image
-                        zoom = camp.camera_options.get_param_value(
-                            CamParams.RESIZE_DISPLAY)
-                        params.frame._view = cv2.resize(
-                            params.frame._view, (0, 0),
-                            fx=zoom,
-                            fy=zoom,
-                            interpolation=cv2.INTER_NEAREST)
-
-                        # display it
-                        cv2.imshow(params.name, params.frame._view)
-                    else:
-                        _rang_left = None
-                        _rang_right = None
-
-                        # image stretching
-                        if not camp.camera_options.isAutostretch:
-                            _rang_left = tuple(
-                                map(math.ceil, camp.lr_0.getRegion()))
-                            _rang_right = tuple(
-                                map(math.ceil, camp.lr_1.getRegion()))
-
-                        left, right = params.frame.hsplitView()
-
-                        left.equalizeLUT(
-                            _rang_left, camp.camera_options.isNumpyLUT)
-                        right.equalizeLUT(
-                            _rang_right, camp.camera_options.isNumpyLUT)
-                        if camp.camera_options.isAutostretch:
-                            camp.lr_0.setRegion((left._min, left._max))
-                            camp.lr_1.setRegion((right._min, right._max))
-                            camp.histogram.setXRange(
-                                min(left._min, right._min),
-                                max(left._max, right._max))
-                            camp.hist_cdf.setXRange(
-                                min(left._min, right._min),
-                                max(left._max, right._max))
-
-                        camp._plot_ref.setData(left._hist)
-                        camp._cdf_plot_ref.setData(left._cdf)
-                        camp._plot_ref_2.setData(right._hist)
-                        camp._cdf_plot_ref_2.setData(right._cdf)
-
-                        zoom = camp.camera_options.get_param_value(
-                            CamParams.RESIZE_DISPLAY)
-                        if camp.camera_options.isOverlaidView:
-                            _img = np.zeros(
-                                left._view.shape[:2] + (3,),
-                                dtype=np.uint8)
-                            _img[..., 1] = left._view
-                            _img[..., 0] = right._view
-                            _img = cv2.resize(
-                                _img,
-                                (0, 0),
-                                fx=zoom,
-                                fy=zoom,
-                                interpolation=cv2.INTER_NEAREST)
-
-                            cv2.imshow(params.name, _img)
+                    # add to saving stack
+                    if params.save:
+                        if not camp.mini:
+                            params.save_queue.put(
+                                (params.frame.image, params.temp_queue.get()))
                         else:
-                            _img = cv2.resize(
-                                np.concatenate(
-                                    [left._view, right._view], axis=1),
-                                (0, 0),
-                                fx=zoom,
-                                fy=zoom,
-                                interpolation=cv2.INTER_NEAREST)
+                            params.save_queue.put(params.frame.image)
 
-                            cv2.imshow(params.name, _img)
-                    cv2.waitKey(1)
-                else:
-                    cv2.waitKey(1)
+                    if camp.camera_options.isPreview:
+                        if camp.camera_options.isLineProfiler:
+                            camp.lineProfiler.setData(params.frame._image)
+
+                        update_histogram_and_display(params, camp)
+                        cv2.waitKey(1)
+                    else:
+                        cv2.waitKey(1)
             else:
                 cv2.waitKey(1)
 
@@ -729,7 +803,7 @@ def cam_display(params: AcquisitionJob, camp: Camera_Panel):
     finally:
         try:
             if not camp.mini:
-                cv2.destroyWindow(params.name)
+                cv2.destroyAllWindows()
         except Exception:
             traceback.print_exc()
         print('Display thread finally finished.')

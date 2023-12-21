@@ -518,18 +518,9 @@ class Vimba_Panel(Camera_Panel):
                         selector = MultiRectangularROISelector.get_selector(
                             image._view, scale_factor, max_rois=4, one_size=True)
 
-                        rois_param = self.camera_options.get_param(
-                            CamParams.EXPORT_ROIS)
+                        old_rois = self.camera_options.get_export_rois()
 
-                        if len(rois_param.children()) > 0:
-                            old_rois = []
-                            for child in rois_param.children():
-                                old_rois.append(
-                                    list(
-                                        map(int,
-                                            child.value().split(', '))
-                                            )
-                                    )
+                        if len(old_rois) > 0:
                             old_rois = convert_pos_size_to_rois(old_rois)
                             selector.rois = old_rois
 
@@ -548,11 +539,11 @@ class Vimba_Panel(Camera_Panel):
                 def done(results: list[list]):
                     if results is not None:
                         rois_param = self.camera_options.get_param(
-                            CamParams.EXPORT_ROIS)
+                            CamParams.EXPORTED_ROIS)
                         rois_param.clearChildren()
                         for x, y, w, h in results:
                             self.camera_options.add_param_child(
-                                CamParams.EXPORT_ROIS,
+                                CamParams.EXPORTED_ROIS,
                                 {'name': 'ROI 1', 'type': 'str',
                                  'readonly': True, 'removable': True,
                                  'value': f'{x}, {y}, {w}, {h}'}

@@ -1,6 +1,7 @@
 import json
 import logging
 import traceback
+from enum import Enum
 
 import cv2
 import numpy as np
@@ -8,15 +9,49 @@ from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 
+from ...analysis.tools.roi_selectors import (
+    MultiRectangularROISelector,
+    convert_rois_to_pos_size,
+)
+from ...shared.gui_helper import get_scaling_factor
 from ...shared.metadata_tree import MetaParams
+from ...shared.thread_worker import thread_worker
+from ...shared.uImage import uImage
 from ..widgets.qlist_slider import *
 from . import Camera_Panel, IDS_Camera
+from .camera_options import CamParams
 
 try:
     from pyueye import ueye
 except Exception:
     ueye = None
 
+
+class uEyeParams(Enum):
+    PIXEL_CLOCK = 'Camera.Pixel Clock (MHz)'
+    FRAMERATE = 'Camera.Framerate Slider'
+    FRAME_AVERAGING = 'Camera.Frame Averaging'
+    TRIGGER_MODE = 'Camera.Trigger Mode'
+    FLASH_MODE = 'Camera.Flash Mode'
+    FLASH_DURATION = 'Camera.Flash Duration Slider'
+    FLASH_DELAY = 'Camera.Flash Delay Slider'
+    FREERUN = 'Camera.Start (Freerun)'
+    TRIGGERED = 'Camera.Start (Triggered)'
+    LOAD = 'Camera.Load'
+    SAVE = 'Camera.Save'
+    STOP = 'Camera.Stop'
+
+    def __str__(self):
+        '''
+        Return the last part of the enum value (Param name).
+        '''
+        return self.value.split('.')[-1]
+
+    def get_path(self):
+        '''
+        Return the full parameter path.
+        '''
+        return self.value.split('.')
 
 class IDS_Panel(Camera_Panel):
     '''
@@ -54,192 +89,141 @@ class IDS_Panel(Camera_Panel):
             'CMOS')
 
         # pixel clock label and combobox
-        self.cam_pixel_clock_lbl = QLabel('Pixel Clock MHz')
-        self.cam_pixel_clock_cbox = QComboBox()
-        self.cam_pixel_clock_cbox.addItems(
-            map(str, self._cam.pixel_clock_list[:]))
-        self.cam_pixel_clock_cbox.currentIndexChanged[str] \
-            .connect(self.cam_pixel_cbox_changed)
+        pixel_clock = {
+            'name': str(uEyeParams.PIXEL_CLOCK), 'type': 'list',
+            'values': list(map(str, self._cam.pixel_clock_list[:]))}
+        self.camera_options.add_param_child(
+            CamParams.CAMERA_OPTIONS, pixel_clock)
+        self.camera_options.get_param(
+            uEyeParams.PIXEL_CLOCK).sigValueChanged.connect(
+                lambda: self.cam_pixel_cbox_changed(uEyeParams.PIXEL_CLOCK))
 
         # framerate slider control
-        self.cam_framerate_lbl = DragLabel(
-            'Framerate FPS',
-            parent_name='cam_framerate_slider')
-        self.cam_framerate_slider = QListSlider(
-            orientation=Qt.Orientation.Horizontal)
-        self.cam_framerate_slider.values = np.arange(
-            self._cam.minFrameRate, self._cam.maxFrameRate,
-            self._cam.incFrameRate.value * 100)
-        self.cam_framerate_slider.elementChanged[int, float] \
-            .connect(self.cam_framerate_value_changed)
+        framerate = {
+            'name': str(uEyeParams.FRAMERATE), 'type': 'float',
+            'value': self._cam.currentFrameRate.value, 'dec': False, 'decimals': 6,
+            'step': self._cam.incFrameRate.value,
+            'limits': [self._cam.minFrameRate.value, self._cam.maxFrameRate.value],
+            'suffix': 'Hz'}
+        self.camera_options.add_param_child(
+            CamParams.CAMERA_OPTIONS, framerate)
+        self.camera_options.get_param(
+            uEyeParams.FRAMERATE).sigValueChanged.connect(
+                lambda: self.cam_framerate_value_changed())
 
-        # framerate text box control
-        self.cam_framerate_ledit = QLineEdit(f'{self._cam.currentFrameRate.value:.6f}')
-        self.cam_framerate_ledit.setCompleter(
-            QCompleter(map('{:.6f}'.format, self.cam_framerate_slider.values)))
-        self.cam_framerate_ledit.setValidator(QDoubleValidator())
-        self.cam_framerate_ledit.returnPressed \
-            .connect(self.cam_framerate_return)
-
-        self.cam_framerate_ledit.returnPressed.emit()
-
-        # exposure slider control
-        self.cam_exposure_lbl = DragLabel(
-            'Exposure ms', parent_name='cam_exposure_slider')
-        self.cam_exposure_slider = QListSlider(
-            orientation=Qt.Orientation.Horizontal)
-        self.cam_exposure_slider.values = np.arange(
-            self._cam.exposure_range[0],
-            self._cam.exposure_range[1],
-            self._cam.exposure_range[2].value)
-        self.cam_exposure_slider.elementChanged[int, float] \
-            .connect(self.cam_exposure_value_changed)
 
         # exposure text box
-        self.cam_exposure_qs.setMinimum(self._cam.exposure_range[0].value)
-        self.cam_exposure_qs.setMaximum(self._cam.exposure_range[1].value)
-        self.cam_exposure_qs.setSingleStep(self._cam.exposure_range[2].value)
-        self.cam_exposure_qs.setValue(self._cam.exposure_current.value)
-        self.cam_exposure_qs.valueChanged.connect(self.exposure_spin_changed)
+        exposure = self.camera_options.get_param(CamParams.EXPOSURE)
+        exposure.setLimits(
+            (self._cam.exposure_range[0].value, self._cam.exposure_range[1].value))
+        exposure.setOpts(
+            step=self._cam.exposure_range[2].value,
+            suffix='ms')
+        exposure.setValue(self._cam.exposure_current.value)
+        exposure.sigValueChanged.connect(self.exposure_spin_changed)
 
         # Averaging choice
-        self.frame_averaging = QSpinBox()
-        self.frame_averaging.setMinimum(1)
-        self.frame_averaging.setMaximum(512)
-        self.frame_averaging.setValue(1)
+        averaging = {
+            'name': str(uEyeParams.FRAME_AVERAGING), 'type': 'int',
+            'value': 1, 'dec': False, 'decimals': 6,
+            'limits': [1, 512], 'suffix': 'frame'}
+        self.camera_options.add_param_child(
+            CamParams.CAMERA_OPTIONS, averaging)
 
         # trigger mode combobox
-        self.cam_trigger_mode_lbl = QLabel('Trigger Mode')
-        self.cam_trigger_mode_cbox = QComboBox()
-        self.cam_trigger_mode_cbox.addItems(IDS_Camera.TRIGGER_MODES.keys())
-        self.cam_trigger_mode_cbox.currentIndexChanged[str] \
-            .connect(self.cam_trigger_cbox_changed)
+        trigger_mode = {
+            'name': str(uEyeParams.TRIGGER_MODE), 'type': 'list',
+            'values': list(IDS_Camera.TRIGGER_MODES.keys())}
+        self.camera_options.add_param_child(
+            CamParams.CAMERA_OPTIONS, trigger_mode)
+        self.camera_options.get_param(
+            uEyeParams.TRIGGER_MODE).sigValueChanged.connect(
+                lambda: self.cam_trigger_cbox_changed(uEyeParams.TRIGGER_MODE))
 
         # flash mode combobox
-        self.cam_flash_mode_lbl = QLabel('Flash Mode')
-        self.cam_flash_mode_cbox = QComboBox()
-        self.cam_flash_mode_cbox.addItems(IDS_Camera.FLASH_MODES.keys())
-        self.cam_flash_mode_cbox.currentIndexChanged[str] \
-            .connect(self.cam_flash_cbox_changed)
+        flash_mode = {
+            'name': str(uEyeParams.FLASH_MODE), 'type': 'list',
+            'values': list(IDS_Camera.FLASH_MODES.keys()),
+            'enabled': not self.mini},
+        self.camera_options.add_param_child(
+            CamParams.CAMERA_OPTIONS, flash_mode)
+        self.camera_options.get_param(
+            uEyeParams.FLASH_MODE).sigValueChanged.connect(
+                lambda: self.cam_flash_cbox_changed(uEyeParams.FLASH_MODE))
 
         # flash duration slider
-        self.cam_flash_duration_lbl = QLabel('Flash Duration us')
-        self.cam_flash_duration_slider = QListSlider(
-            orientation=Qt.Orientation.Horizontal)
-        self.cam_flash_duration_slider.values = \
-            np.append([0], np.arange(self._cam.flash_min.u32Duration.value,
-                      self._cam.flash_max.u32Duration.value,
-                      self._cam.flash_inc.u32Duration.value))
-        self.cam_flash_duration_slider.elementChanged[int, int] \
-            .connect(self.cam_flash_duration_value_changed)
+        falsh_duration = {
+            'name': str(uEyeParams.FLASH_DURATION), 'type': 'float',
+            'value': 0,
+            'dec': False, 'decimals': 6, 'suffix': 'us', 'enabled': not self.mini,
+            'step': self._cam.flash_inc.u32Duration.value,
+            'limits': [
+                0,
+                self._cam.flash_max.u32Duration.value]}
+        self.camera_options.add_param_child(
+            CamParams.CAMERA_OPTIONS, falsh_duration)
+        self.camera_options.get_param(
+            uEyeParams.FLASH_DURATION).sigValueChanged.connect(
+                self.cam_flash_duration_value_changed)
 
-        # flash duration text box
-        self.cam_flash_duration_ledit = QLineEdit('{:d}'.format(
-            self._cam.flash_cur.u32Duration.value))
-        self.cam_flash_duration_ledit.setValidator(QIntValidator())
-        self.cam_flash_duration_ledit.returnPressed \
-            .connect(self.cam_flash_duration_return)
-
-        # flash delay slider
-        self.cam_flash_delay_lbl = QLabel('Flash Delay us')
-        self.cam_flash_delay_slider = QListSlider(
-            orientation=Qt.Orientation.Horizontal)
-        self.cam_flash_delay_slider.values = np.append([0], np.arange(
-            self._cam.flash_min.s32Delay.value,
-            self._cam.flash_max.s32Delay.value,
-            self._cam.flash_inc.s32Delay.value))
-        self.cam_flash_delay_slider.elementChanged[int, int] \
-            .connect(self.cam_flash_delay_value_changed)
-
-        # flash delay text box
-        self.cam_flash_delay_ledit = QLineEdit(
-            f'{self._cam.flash_cur.s32Delay.value:d}')
-        self.cam_flash_delay_ledit.setValidator(QIntValidator())
-        self.cam_flash_delay_ledit.returnPressed \
-            .connect(self.cam_flash_delay_return)
+        # flash delay
+        falsh_delay = {
+            'name': str(uEyeParams.FLASH_DELAY), 'type': 'float',
+            'value': 0,
+            'dec': False, 'decimals': 6, 'suffix': 'us', 'enabled': not self.mini,
+            'step': self._cam.flash_inc.s32Delay.value,
+            'limits': [
+                0,
+                self._cam.flash_max.s32Delay.value]}
+        self.camera_options.add_param_child(
+            CamParams.CAMERA_OPTIONS, falsh_delay)
+        self.camera_options.get_param(
+            uEyeParams.FLASH_DELAY).sigValueChanged.connect(
+                self.cam_flash_delay_value_changed)
 
         # setting the highest pixel clock as default
-        self.cam_pixel_clock_cbox.setCurrentText(
+        self.camera_options.set_param_value(
+            uEyeParams.PIXEL_CLOCK,
             str(self._cam.pixel_clock_list[-1].value))
 
-        # start freerun mode button
-        self.cam_freerun_btn = QPushButton(
-            'Freerun Mode (Start)',
-            clicked=lambda: self.start_free_run()
-        )
+        # start freerun mode
+        freerun = {'name': str(uEyeParams.FREERUN), 'type': 'action'}
+        self.camera_options.add_param_child(
+            CamParams.CAMERA_OPTIONS, freerun)
+        self.camera_options.get_param(
+            uEyeParams.FREERUN).sigActivated.connect(
+                self.start_free_run)
 
         # start trigger mode button
-        self.cam_trigger_btn = QPushButton(
-            'Trigger Mode (Start)',
-            clicked=lambda: self.start_software_triggered()
-        )
+        triggered = {'name': str(uEyeParams.TRIGGERED), 'type': 'action'}
+        self.camera_options.add_param_child(
+            CamParams.CAMERA_OPTIONS, triggered)
+        self.camera_options.get_param(
+            uEyeParams.TRIGGERED).sigActivated.connect(
+                self.start_software_triggered)
+
+        # stop acquisition
+        stop = {'name': str(uEyeParams.STOP), 'type': 'action'}
+        self.camera_options.add_param_child(
+            CamParams.CAMERA_OPTIONS, stop)
+        self.camera_options.get_param(
+            uEyeParams.STOP).sigActivated.connect(
+                lambda: self.stop())
 
         # config buttons
-        self.cam_load_btn = QPushButton(
-            'Load Config.',
-            clicked=lambda: self.load_config()
-        )
-        self.cam_save_btn = QPushButton(
-            'Save Config.',
-            clicked=lambda: self.save_config()
-        )
-        self.config_Hlay = QHBoxLayout()
-        self.config_Hlay.addWidget(self.cam_save_btn)
-        self.config_Hlay.addWidget(self.cam_load_btn)
+        load = {'name': str(uEyeParams.LOAD), 'type': 'action'}
+        self.camera_options.add_param_child(
+            CamParams.CAMERA_OPTIONS, load)
+        self.camera_options.get_param(
+            uEyeParams.LOAD).sigActivated.connect(
+                lambda: self.load_config())
 
-        # stop acquisition button
-        self.cam_stop_btn = QPushButton(
-            'Stop',
-            clicked=lambda: self.stop()
-        )
-
-        # ROI
-        self.ROI_x_tbox.setMinimum(0)
-        self.ROI_x_tbox.setMaximum(self.cam.width.value)
-        self.ROI_y_tbox.setMinimum(0)
-        self.ROI_y_tbox.setMaximum(self.cam.height.value)
-        self.ROI_width_tbox.setMinimum(8)
-        self.ROI_width_tbox.setMaximum(self.cam.width.value)
-        self.ROI_height_tbox.setMinimum(8)
-        self.ROI_height_tbox.setMaximum(self.cam.height.value)
-
-        # adding widgets to the main layout
-        self.first_tab_Layout.addRow(
-            self.cam_pixel_clock_lbl,
-            self.cam_pixel_clock_cbox)
-        self.first_tab_Layout.addRow(
-            self.cam_trigger_mode_lbl,
-            self.cam_trigger_mode_cbox)
-        self.first_tab_Layout.addRow(
-            self.cam_framerate_lbl,
-            self.cam_framerate_ledit)
-        self.first_tab_Layout.addWidget(self.cam_framerate_slider)
-        self.first_tab_Layout.addRow(
-            self.cam_exposure_lbl,
-            self.cam_exposure_qs)
-        self.first_tab_Layout.addWidget(self.cam_exposure_slider)
-        self.first_tab_Layout.addRow(self.cam_exp_shortcuts)
-        self.first_tab_Layout.addRow(
-            QLabel('Averaged Frames'),
-            self.frame_averaging)
-        if not self.mini:
-            self.first_tab_Layout.addRow(
-                self.cam_flash_mode_lbl,
-                self.cam_flash_mode_cbox)
-            self.first_tab_Layout.addRow(
-                self.cam_flash_duration_lbl,
-                self.cam_flash_duration_ledit)
-            self.first_tab_Layout.addWidget(self.cam_flash_duration_slider)
-            self.first_tab_Layout.addRow(
-                self.cam_flash_delay_lbl,
-                self.cam_flash_delay_ledit)
-            self.first_tab_Layout.addWidget(self.cam_flash_delay_slider)
-        self.first_tab_Layout.addRow(self.config_Hlay)
-        self.first_tab_Layout.addRow(self.cam_freerun_btn)
-        self.first_tab_Layout.addRow(self.cam_trigger_btn)
-        self.first_tab_Layout.addRow(self.cam_stop_btn)
-
-        self.addFirstTabItems()
+        save = {'name': str(uEyeParams.SAVE), 'type': 'action'}
+        self.camera_options.add_param_child(
+            CamParams.CAMERA_OPTIONS, save)
+        self.camera_options.get_param(
+            uEyeParams.SAVE).sigActivated.connect(
+                lambda: self.save_config())
 
     @property
     def cam(self):
@@ -272,21 +256,21 @@ class IDS_Panel(Camera_Panel):
             return  # if acquisition is already going on
 
         self.cam.set_ROI(
-            self.ROI_x_tbox.value(),
-            self.ROI_y_tbox.value(),
-            self.ROI_width_tbox.value(),
-            self.ROI_height_tbox.value())
+            *self.camera_options.get_roi_info())
 
         # setting the highest pixel clock as default
-        self.cam_pixel_clock_cbox.setCurrentText(
+        self.camera_options.set_param_value(
+            uEyeParams.PIXEL_CLOCK,
             str(self._cam.pixel_clock_list[0].value))
-        self.cam_pixel_clock_cbox.setCurrentText(
+        self.camera_options.set_param_value(
+            uEyeParams.PIXEL_CLOCK,
             str(self._cam.pixel_clock_list[-1].value))
 
-        self.ROI_x_tbox.setValue(self.cam.set_rectROI.s32X.value)
-        self.ROI_y_tbox.setValue(self.cam.set_rectROI.s32Y.value)
-        self.ROI_width_tbox.setValue(self.cam.set_rectROI.s32Width.value)
-        self.ROI_height_tbox.setValue(self.cam.set_rectROI.s32Height.value)
+        self.camera_options.set_roi_info(
+            self.cam.set_rectROI.s32X.value,
+            self.cam.set_rectROI.s32Y.value,
+            self.cam.set_rectROI.s32Width.value,
+            self.cam.set_rectROI.s32Height.value)
 
     def reset_ROI(self):
         '''Resets the ROI for the slected IDS_Camera
@@ -297,146 +281,154 @@ class IDS_Panel(Camera_Panel):
             return  # if acquisition is already going on
 
         self.cam.reset_ROI()
-        self.ROI_x_tbox.setValue(0)
-        self.ROI_y_tbox.setValue(0)
-        self.ROI_width_tbox.setValue(self.cam.width.value)
-        self.ROI_height_tbox.setValue(self.cam.height.value)
+        self.camera_options.set_roi_info(
+            0, 0,
+            self.cam.width.value,
+            self.cam.height.value)
 
         # setting the highest pixel clock as default
-        self.cam_pixel_clock_cbox.setCurrentText(
+        self.camera_options.set_param_value(
+            uEyeParams.PIXEL_CLOCK,
             str(self._cam.pixel_clock_list[0].value))
-        self.cam_pixel_clock_cbox.setCurrentText(
+        self.camera_options.set_param_value(
+            uEyeParams.PIXEL_CLOCK,
             str(self._cam.pixel_clock_list[-1].value))
 
     def center_ROI(self):
         '''Calculates the x, y values for a centered ROI'''
-        self.ROI_x_tbox.setValue(
-                    (self.cam.rectROI.s32Width.value -
-                     self.ROI_width_tbox.value())/2)
-        self.ROI_y_tbox.setValue(
-            (self.cam.rectROI.s32Height.value -
-             self.ROI_height_tbox.value())/2)
+        _, _, w, h = self.camera_options.get_roi_info()
+        x = (self.cam.rectROI.s32Width.value - w) // 2
+        y = (self.cam.rectROI.s32Height.value - h) // 2
+
+        self.camera_options.set_roi_info(x, y, w, h)
+
+        self.set_ROI()
 
     def select_ROI(self):
         if self.acq_job.frame is not None:
-            roi = cv2.selectROI(self.acq_job.frame._view)
-            cv2.destroyWindow('ROI selector')
+            try:
+                def work_func():
+                    try:
+                        image = uImage(self.acq_job.frame.image)
 
-            z = self.zoom_box.value()
-            self.ROI_x_tbox.setValue(int(roi[0] / z))
-            self.ROI_y_tbox.setValue(int(roi[1] / z))
-            self.ROI_width_tbox.setValue(int(roi[2] / z))
-            self.ROI_height_tbox.setValue(int(roi[3] / z))
+                        image.equalizeLUT()
 
-    @pyqtSlot(str)
-    def cam_trigger_cbox_changed(self, value):
+                        scale_factor = get_scaling_factor(image.height, image.width)
+
+                        selector = MultiRectangularROISelector.get_selector(
+                            image._view, scale_factor, max_rois=1)
+                        # if old_rois:
+                        #     selector.rois = old_rois
+
+                        rois = selector.select_rectangular_rois()
+
+                        rois = convert_rois_to_pos_size(rois)
+
+                        if len(rois) > 0:
+                            return rois[0]
+                        else:
+                            return None
+                    except Exception:
+                        traceback.print_exc()
+                        return None
+
+                def done(result: list):
+                    if result is not None:
+                        # x, y, w, h = result
+                        self.camera_options.set_roi_info(*result)
+
+                self.worker = thread_worker(
+                    work_func,
+                    progress=False, z_stage=False)
+                self.worker.signals.result.connect(done)
+                # Execute
+                self._threadpool.start(self.worker)
+            except Exception:
+                traceback.print_exc()
+
+    def cam_trigger_cbox_changed(self, param: uEyeParams):
         '''
         Slot for changed trigger mode
 
         Parameters
         ----------
-        Value : int
-            index of selected trigger mode from IDS_Camera.TRIGGER_MODES
+        param : uEyeParams
+            parameter path to index of selected trigger mode
+            from IDS_Camera.TRIGGER_MODES.
         '''
+        value = self.camera_options.get_param_value(param)
         self._cam.set_trigger_mode(IDS_Camera.TRIGGER_MODES[value])
         self._cam.get_trigger_mode()
 
-    @pyqtSlot(str)
-    def cam_flash_cbox_changed(self, value):
+    def cam_flash_cbox_changed(self, param: uEyeParams):
         '''
         Slot for changed flash mode
 
         Parameters
         ----------
-        Value : int
-            index of selected flash mode from IDS_Camera.FLASH_MODES
+        param : uEyeParams
+            parameter path to index of selected flash mode from IDS_Camera.FLASH_MODES
         '''
+        value = self.camera_options.get_param_value(param)
         self._cam.set_flash_mode(IDS_Camera.FLASH_MODES[value])
         self._cam.get_flash_mode(output=True)
 
-    @pyqtSlot(str)
-    def cam_pixel_cbox_changed(self, value):
+    def cam_pixel_cbox_changed(self, param: uEyeParams):
         '''
         Slot for changed pixel clock
 
         Parameters
         ----------
-        Value : int
-            selected pixel clock in MHz
+        param : uEyeParams
+            parameter path Enum value pointing to pixel clock parameter in MHz
             (note that only certain values are allowed by camera)
         '''
+        value = self.camera_options.get_param_value(param)
         self._cam.set_pixel_clock(int(value))
         self._cam.get_pixel_clock_info(False)
-        self._cam.get_framerate_range(False)
 
-        self.refresh_framerate(True)
-        self.cam_framerate_slider.setValue(
-            len(self.cam_framerate_slider.values) - 1)
+        self.refresh_framerate()
 
-    @pyqtSlot(int, float)
-    def cam_framerate_value_changed(self, index, value):
+    def cam_framerate_value_changed(self, param, value):
         '''
         Slot for changed framerate
 
         Parameters
         ----------
-        Index : ont
-            selected frames per second index in the slider values list
+        param : Parameter
+            frames per second parameter
         Value : double
             selected frames per second
         '''
         self._cam.set_framerate(value)
-        self._cam.get_exposure_range(False)
-        self.cam_framerate_ledit.setText(f'{self._cam.currentFrameRate.value:.6f}')
-        self.refresh_exposure(True)
-        self.cam_exposure_slider.setValue(
-            len(self.cam_exposure_slider.values) - 1)
+        self._cam.get_framerate(False)
 
-    def cam_framerate_return(self):
-        '''
-        Sets the framerate slider with the entered text box value
-        '''
-        self.cam_framerate_slider.setNearest(self.cam_framerate_ledit.text())
-
-    @pyqtSlot(int, float)
-    def cam_exposure_value_changed(self, index, value):
-        '''
-        Slot for changed exposure
-
-        Parameters
-        ----------
-        Index : ont
-            selected exposure index in the slider values list
-        Value : double
-            selected exposure in milli-seconds
-        '''
-        self._cam.set_exposure(value)
-        self._cam.get_exposure(False)
-        self._cam.get_flash_range(False)
+        self.camera_options.set_param_value(
+            uEyeParams.FRAMERATE,
+            self._cam.currentFrameRate.value,
+            self.cam_framerate_value_changed)
 
         self.refresh_exposure()
-        self.refresh_flash()
 
-        self.OME_tab.set_param_value(
-            MetaParams.EXPOSURE, self._cam.exposure_current)
-        if self.master:
-            self.exposureChanged.emit()
-
-    @pyqtSlot(float)
-    def exposure_spin_changed(self, value: float):
+    def exposure_spin_changed(self, param, value: float):
         '''
         Slot for changed exposure
 
         Parameters
         ----------
+        param : Parameter
+            frames per second parameter
         Value : double
             selected exposure in micro-seconds
         '''
         self._cam.set_exposure(value)
         self._cam.get_exposure(False)
-        self._cam.get_flash_range(False)
 
-        self.refresh_exposure()
+        self.camera_options.set_param_value(
+            CamParams.EXPOSURE,
+            self._cam.exposure_current.value,
+            self.exposure_spin_changed)
+
         self.refresh_flash()
 
         self.OME_tab.set_param_value(
@@ -444,102 +436,92 @@ class IDS_Panel(Camera_Panel):
         if self.master:
             self.exposureChanged.emit()
 
-    def refresh_framerate(self, range=False):
-        self.cam_framerate_slider.blockSignals(True)
-        if range:
-            self.cam_framerate_slider.values = np.arange(
-                self._cam.minFrameRate,
-                self._cam.maxFrameRate,
-                self._cam.incFrameRate.value * 100)
+    def refresh_framerate(self):
+        self._cam.get_framerate_range(False)
 
-        self.cam_framerate_slider.setNearest(self._cam.currentFrameRate.value)
-        self.cam_framerate_slider.blockSignals(False)
+        framerate = self.camera_options.get_param(uEyeParams.FRAMERATE)
+        framerate.setLimits(
+            (self._cam.minFrameRate.value,
+            self._cam.maxFrameRate.value))
+        framerate.setOpts(step=self._cam.incFrameRate.value)
+        framerate.setValue(self._cam.maxFrameRate.value)
 
-    def refresh_exposure(self, range=False):
-        self.cam_exposure_slider.blockSignals(True)
-        if range:
-            self.cam_exposure_slider.values = np.arange(
-                self._cam.exposure_range[0],
-                self._cam.exposure_range[1],
-                self._cam.exposure_range[2].value)
-        self.cam_exposure_slider.setNearest(self._cam.exposure_current.value)
-        self.cam_exposure_slider.blockSignals(False)
+    def refresh_exposure(self):
+        self._cam.get_exposure_range(False)
 
-        self.cam_exposure_qs.blockSignals(True)
-        if range:
-            self.cam_exposure_qs.setMinimum(self._cam.exposure_range[0].value)
-            self.cam_exposure_qs.setMaximum(self._cam.exposure_range[1].value)
-            self.cam_exposure_qs.setSingleStep(
-                self._cam.exposure_range[2].value)
-        self.cam_exposure_qs.setValue(self._cam.exposure_current.value)
-        self.cam_exposure_qs.blockSignals(False)
+        exposure = self.camera_options.get_param(CamParams.EXPOSURE)
+        exposure.setLimits(
+            (self._cam.exposure_range[0].value,
+             self._cam.exposure_range[1].value))
+        exposure.setOpts(step=self._cam.exposure_range[2].value)
+        exposure.setValue(self.cam.exposure_range[1].value)
 
     def refresh_flash(self):
-        self.cam_flash_duration_slider.values = np.append([0], np.arange(
-            self._cam.flash_min.u32Duration.value,
-            self._cam.flash_max.u32Duration.value,
-            self._cam.flash_inc.u32Duration.value))
-        self.cam_flash_delay_slider.values = np.append([0], np.arange(
-            self._cam.flash_min.s32Delay.value,
-            self._cam.flash_max.s32Delay.value,
-            self._cam.flash_inc.s32Delay.value))
+        self._cam.get_flash_range(False)
 
-    @pyqtSlot(int, int)
-    def cam_flash_duration_value_changed(self, index, value):
+        duration = self.camera_options.get_param(uEyeParams.FLASH_DURATION)
+        duration.setLimits(
+            (0,
+             self._cam.flash_max.u32Duration.value))
+        duration.setOpts(step=self._cam.flash_inc.u32Duration.value)
+        duration.setValue(0)
+
+        delay = self.camera_options.get_param(uEyeParams.FLASH_DURATION)
+        delay.setLimits(
+            (0,
+             self._cam.flash_max.s32Delay.value))
+        delay.setOpts(step=self._cam.flash_inc.s32Delay.value)
+        delay.setValue(0)
+
+    def cam_flash_duration_value_changed(self, param, value):
         '''
         Slot for changed flash duration
 
         Parameters
         ----------
-        Index : ont
-            selected flash duration index in the slider values list
+        param : Parameter
+            frames per second parameter
         Value : double
             selected flash duration in micro-seconds
         '''
         self._cam.set_flash_params(self._cam.flash_cur.s32Delay.value, value)
         self._cam.get_flash_params()
-        self.cam_flash_duration_ledit.setText('{:d}'.format(
-            self._cam.flash_cur.u32Duration.value))
 
-    def cam_flash_duration_return(self):
-        '''
-        Sets the flash duration slider with the entered text box value
-        '''
-        self.cam_flash_duration_slider.setNearest(
-            self.cam_flash_duration_ledit.text())
+        self.camera_options.set_param_value(
+            uEyeParams.FLASH_DURATION,
+            self._cam.flash_cur.u32Duration.value,
+            self.cam_flash_duration_value_changed)
 
-    @pyqtSlot(int, int)
-    def cam_flash_delay_value_changed(self, index, value):
+    def cam_flash_delay_value_changed(self, param, value):
         '''
         Slot for changed flash delay
 
         Parameters
         ----------
-        Index : ont
-            selected flash delay index in the slider values list
+        param : Parameter
+            frames per second parameter
         Value : double
             selected flash delay in micro-seconds
         '''
         self._cam.set_flash_params(
             value, self._cam.flash_cur.u32Duration.value)
         self._cam.get_flash_params()
-        self.cam_flash_delay_ledit.setText(f'{self._cam.flash_cur.s32Delay.value:d}')
 
-    def cam_flash_delay_return(self):
-        '''
-        Sets the flash delay slider with the entered text box value
-        '''
-        self.cam_flash_delay_slider.setNearest(
-            self.cam_flash_delay_ledit.text())
+        self.camera_options.set_param_value(
+            uEyeParams.FLASH_DURATION,
+            self._cam.flash_cur.s32Delay.value,
+            self.cam_flash_delay_value_changed)
 
-    def start_free_run(self, Prefix=''):
+    def start_free_run(self, param=None, Prefix=''):
         '''
         Starts free run acquisition mode
 
         Parameters
         ----------
-        cam : IDS_Camera
-            IDS Camera python adapter
+        param : Parameter
+            the parameter that was activated.
+        Prefix : str
+            an extra prefix added to the image stack file name.
         '''
         nRet = 0
         if self._cam.acquisition:
@@ -561,14 +543,16 @@ class IDS_Panel(Camera_Panel):
         # start both capture and display workers
         self.start_all_workers()
 
-    def start_software_triggered(self, Prefix=''):
+    def start_software_triggered(self, param=None, Prefix=''):
         '''
         Starts trigger acquisition mode
 
         Parameters
         ----------
-        cam : IDS_Camera
-            IDS Camera python adapter
+        param : Parameter
+            the parameter that was activated.
+        Prefix : str
+            an extra prefix added to the image stack file name.
         '''
 
         nRet = 0
@@ -671,12 +655,12 @@ class IDS_Panel(Camera_Panel):
 
     def get_meta(self):
         meta = {
-            'Frames': self.frames_tbox.value(),
+            'Frames': self.camera_options.get_param_value(CamParams.FRAMES),
             'model': self.cam.sInfo.strSensorName.decode('utf-8'),
             'serial': self.cam.cInfo.SerNo.decode('utf-8'),
             'clock speed': self.cam.pixel_clock.value,
-            'trigger': self.cam_trigger_mode_cbox.currentText(),
-            'flash mode': self.cam_flash_mode_cbox.currentText(),
+            'trigger': self.camera_options.get_param_value(uEyeParams.TRIGGER_MODE),
+            'flash mode': self.camera_options.get_param_value(uEyeParams.FLASH_MODE),
             'framerate': self.cam.currentFrameRate.value,
             'exposure': self.cam.exposure_current.value,
             'flash duration': self.cam.flash_cur.u32Duration.value,
@@ -685,24 +669,9 @@ class IDS_Panel(Camera_Panel):
             'ROI h': self.cam.set_rectROI.s32Height.value,
             'ROI x': self.cam.set_rectROI.s32X.value,
             'ROI y': self.cam.set_rectROI.s32Y.value,
-            'Zoom': self.zoom_box.value(),
+            'Zoom': self.camera_options.get_param_value(CamParams.RESIZE_DISPLAY),
         }
         return meta
-
-    @staticmethod
-    def find_nearest(array, value):
-        '''
-        find nearest value in array to the supplied one
-
-        Parameters
-        ----------
-        array : ndarray
-            numpy array searching in
-        value : type of ndarray.dtype
-            value to find nearest to in the array
-        '''
-        array = np.asarray(array)
-        return (np.abs(array - value)).argmin()
 
     def save_config(self):
         filename, _ = QFileDialog.getSaveFileName(
@@ -714,8 +683,9 @@ class IDS_Panel(Camera_Panel):
                 'model': self.cam.sInfo.strSensorName.decode('utf-8'),
                 'serial': self.cam.cInfo.SerNo.decode('utf-8'),
                 'clock speed': self.cam.pixel_clock.value,
-                'trigger': self.cam_trigger_mode_cbox.currentText(),
-                'flash mode': self.cam_flash_mode_cbox.currentText(),
+                'trigger': self.camera_options.get_param_value(uEyeParams.TRIGGER_MODE),
+                'flash mode': self.camera_options.get_param_value(
+                    uEyeParams.FLASH_MODE),
                 'framerate': self.cam.currentFrameRate.value,
                 'exposure': self.cam.exposure_current.value,
                 'flash duration': self.cam.flash_cur.u32Duration.value,
@@ -724,7 +694,7 @@ class IDS_Panel(Camera_Panel):
                 'ROI h': self.cam.set_rectROI.s32Height.value,
                 'ROI x': self.cam.set_rectROI.s32X.value,
                 'ROI y': self.cam.set_rectROI.s32Y.value,
-                'Zoom': self.zoom_box.value(),
+                'Zoom': self.camera_options.get_param_value(CamParams.RESIZE_DISPLAY),
             }
 
             with open(filename, 'w') as file:
@@ -763,30 +733,40 @@ class IDS_Panel(Camera_Panel):
             if all(key in config for key in keys):
                 if self.cam.sInfo.strSensorName.decode('utf-8') == \
                         config['model']:
-                    self.ROI_x_tbox.setValue(int(config['ROI x']))
-                    self.ROI_y_tbox.setValue(int(config['ROI y']))
-                    self.ROI_width_tbox.setValue(int(config['ROI w']))
-                    self.ROI_height_tbox.setValue(int(config['ROI h']))
+                    self.camera_options.set_roi_info(
+                        int(config['ROI x']), int(config['ROI y']),
+                        int(config['ROI w']), int(config['ROI h']))
                     self.set_ROI()
 
-                    self.cam_pixel_clock_cbox.setCurrentText(
+                    self.camera_options.set_param_value(
+                        uEyeParams.PIXEL_CLOCK,
                         str(config['clock speed']))
-                    self.cam_trigger_mode_cbox.setCurrentText(
+                    self.camera_options.set_param_value(
+                        uEyeParams.TRIGGER_MODE,
                         config['trigger'])
-                    self.cam_flash_mode_cbox.setCurrentText(
+                    self.camera_options.set_param_value(
+                        uEyeParams.FLASH_DURATION,
                         config['flash mode'])
 
-                    self.cam_framerate_slider.setNearest(config['framerate'])
+                    self.camera_options.set_param_value(
+                        uEyeParams.FRAMERATE,
+                        config['framerate'])
 
-                    self.cam_exposure_slider.setNearest(config['exposure'])
+                    self.camera_options.set_param_value(
+                        CamParams.EXPOSURE,
+                        config['exposure'])
 
-                    self.cam_flash_duration_slider.setNearest(
+                    self.camera_options.set_param_value(
+                        uEyeParams.FLASH_DURATION,
                         config['flash duration'])
 
-                    self.cam_flash_delay_slider.setNearest(
+                    self.camera_options.set_param_value(
+                        uEyeParams.FLASH_DELAY,
                         config['flash delay'])
 
-                    self.zoom_box.setValue(float(config['Zoom']))
+                    self.camera_options.set_param_value(
+                        CamParams.RESIZE_DISPLAY,
+                        float(config['Zoom']))
                 else:
                     QMessageBox.warning(
                         self, 'Warning', 'Camera model is different.')
