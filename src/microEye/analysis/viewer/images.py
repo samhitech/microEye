@@ -1043,6 +1043,25 @@ class StackView(QWidget):
                 # Handle any errors that might occur during file writing
                 print(f'Error exporting metadata: {e}')
 
+    def closeEvent(self, event):
+            if self.get_param(Parameters.SAVE_CROPPED_IMAGE).opts['enabled'] and \
+                    self.get_param(Parameters.LOCALIZE).opts['enabled']:
+                # Ask the user if they really want to close the widget
+                reply = QMessageBox.question(
+                    self, 'Confirmation', 'Are you sure you want to close the widget?',
+                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+
+                if reply == QMessageBox.Yes:
+                    # User clicked "Yes," close the widget
+                    self.stack_handler.close()
+                    event.accept()
+                else:
+                    # User clicked "No," ignore the close event
+                    event.ignore()
+            else:
+                event.ignore()
+                QMessageBox.warning(
+                    self, 'Warning', 'Cannot close while workers are active!')
 
     @staticmethod
     def FromZarr(

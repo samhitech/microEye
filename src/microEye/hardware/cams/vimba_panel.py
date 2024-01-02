@@ -503,7 +503,6 @@ class Vimba_Panel(Camera_Panel):
             except Exception:
                 traceback.print_exc()
 
-
     def select_ROIs(self):
         if self.acq_job is not None:
             try:
@@ -557,8 +556,6 @@ class Vimba_Panel(Camera_Panel):
                 self._threadpool.start(self.worker)
             except Exception:
                 traceback.print_exc()
-
-
 
     def cam_cbox_changed(self, param: VimbaParams):
         '''

@@ -732,10 +732,15 @@ class IDS_Camera(miCamera):
                 min(duration, self.flash_max.u32Duration.value),
                 self.flash_min.u32Duration.value)
         else:
-            params.u32Duration.value = duration
-        params.s32Delay.value = max(
-            min(delay, self.flash_max.s32Delay.value),
-            self.flash_min.s32Delay.value)
+            params.u32Duration.value = 0
+
+        if delay > 0:
+            params.s32Delay.value = max(
+                min(delay, self.flash_max.s32Delay.value),
+                self.flash_min.s32Delay.value)
+        else:
+            params.s32Delay.value = 0
+
         nRet = ueye.is_IO(
             self.hCam,
             ueye.IS_IO_CMD_FLASH_SET_PARAMS,

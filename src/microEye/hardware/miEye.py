@@ -168,27 +168,6 @@ class miEye_module(QMainWindow):
         qtRectangle.moveCenter(centerPoint)
         self.move(qtRectangle.topLeft())
 
-    def eventFilter(self, source, event):
-        if qApp.activePopupWidget() is None:
-            if event.type() == QEvent.MouseMove:
-                if self.menuBar().isHidden():
-                    rect = self.geometry()
-                    rect.setHeight(40)
-
-                    if rect.contains(event.globalPos()):
-                        self.menuBar().show()
-                else:
-                    rect = QRect(
-                        self.menuBar().mapToGlobal(QPoint(0, 0)),
-                        self.menuBar().size()
-                    )
-
-                    if not rect.contains(event.globalPos()):
-                        self.menuBar().hide()
-            elif event.type() == QEvent.Leave and source is self:
-                self.menuBar().hide()
-        return super().eventFilter(source, event)
-
     def LayoutInit(self):
         '''Initializes the window layout
         '''
@@ -471,10 +450,6 @@ class miEye_module(QMainWindow):
 
         help_menu.addAction(github)
         help_menu.addAction(pypi)
-
-        qApp.installEventFilter(self)
-
-        self.menuBar().hide()
 
     def scriptTest(self):
         exec(self.pyEditor.toPlainText())

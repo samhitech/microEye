@@ -150,6 +150,7 @@ class Camera_Panel(QGroupBox):
 
         save_param = self.camera_options.get_param(CamParams.SAVE_DATA)
         save_param.setOpts(enabled=not self.mini)
+        save_param.setValue(self.mini)
 
         preview_param = self.camera_options.get_param(CamParams.PREVIEW)
         preview_param.setValue(not self.mini)
@@ -338,13 +339,13 @@ class Camera_Panel(QGroupBox):
         '''Selects the ROI for the camera
         '''
         raise NotImplementedError(
-            'The cam_capture function is not implemented yet.')
+            'The select_ROI function is not implemented yet.')
 
     def select_ROIs(self):
         '''Selects the ROI for the camera
         '''
         raise NotImplementedError(
-            'The cam_capture function is not implemented yet.')
+            'The select_ROIs function is not implemented yet.')
 
     def get_meta(self):
         meta = dict[str, any]()

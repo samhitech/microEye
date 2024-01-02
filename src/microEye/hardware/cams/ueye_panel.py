@@ -11,6 +11,7 @@ from PyQt5.QtWidgets import *
 
 from ...analysis.tools.roi_selectors import (
     MultiRectangularROISelector,
+    convert_pos_size_to_rois,
     convert_rois_to_pos_size,
 )
 from ...shared.gui_helper import get_scaling_factor
@@ -101,7 +102,7 @@ class IDS_Panel(Camera_Panel):
         # framerate slider control
         framerate = {
             'name': str(uEyeParams.FRAMERATE), 'type': 'float',
-            'value': self._cam.currentFrameRate.value, 'dec': False, 'decimals': 6,
+            'value': int(self._cam.currentFrameRate.value), 'dec': False, 'decimals': 6,
             'step': self._cam.incFrameRate.value,
             'limits': [self._cam.minFrameRate.value, self._cam.maxFrameRate.value],
             'suffix': 'Hz'}
@@ -109,7 +110,7 @@ class IDS_Panel(Camera_Panel):
             CamParams.CAMERA_OPTIONS, framerate)
         self.camera_options.get_param(
             uEyeParams.FRAMERATE).sigValueChanged.connect(
-                lambda: self.cam_framerate_value_changed())
+                self.cam_framerate_value_changed)
 
 
         # exposure text box
@@ -144,7 +145,7 @@ class IDS_Panel(Camera_Panel):
         flash_mode = {
             'name': str(uEyeParams.FLASH_MODE), 'type': 'list',
             'values': list(IDS_Camera.FLASH_MODES.keys()),
-            'enabled': not self.mini},
+            'enabled': not self.mini}
         self.camera_options.add_param_child(
             CamParams.CAMERA_OPTIONS, flash_mode)
         self.camera_options.get_param(
@@ -153,7 +154,7 @@ class IDS_Panel(Camera_Panel):
 
         # flash duration slider
         falsh_duration = {
-            'name': str(uEyeParams.FLASH_DURATION), 'type': 'float',
+            'name': str(uEyeParams.FLASH_DURATION), 'type': 'int',
             'value': 0,
             'dec': False, 'decimals': 6, 'suffix': 'us', 'enabled': not self.mini,
             'step': self._cam.flash_inc.u32Duration.value,
@@ -168,7 +169,7 @@ class IDS_Panel(Camera_Panel):
 
         # flash delay
         falsh_delay = {
-            'name': str(uEyeParams.FLASH_DELAY), 'type': 'float',
+            'name': str(uEyeParams.FLASH_DELAY), 'type': 'int',
             'value': 0,
             'dec': False, 'decimals': 6, 'suffix': 'us', 'enabled': not self.mini,
             'step': self._cam.flash_inc.s32Delay.value,
@@ -346,6 +347,60 @@ class IDS_Panel(Camera_Panel):
             except Exception:
                 traceback.print_exc()
 
+    def select_ROIs(self):
+        if self.acq_job is not None:
+            try:
+                def work_func():
+                    try:
+                        image = uImage(self.acq_job.frame.image)
+
+                        image.equalizeLUT()
+
+                        scale_factor = get_scaling_factor(image.height, image.width)
+
+                        selector = MultiRectangularROISelector.get_selector(
+                            image._view, scale_factor, max_rois=4, one_size=True)
+
+                        old_rois = self.camera_options.get_export_rois()
+
+                        if len(old_rois) > 0:
+                            old_rois = convert_pos_size_to_rois(old_rois)
+                            selector.rois = old_rois
+
+                        rois = selector.select_rectangular_rois()
+
+                        rois = convert_rois_to_pos_size(rois)
+
+                        if len(rois) > 0:
+                            return rois
+                        else:
+                            return None
+                    except Exception:
+                        traceback.print_exc()
+                        return None
+
+                def done(results: list[list]):
+                    if results is not None:
+                        rois_param = self.camera_options.get_param(
+                            CamParams.EXPORTED_ROIS)
+                        rois_param.clearChildren()
+                        for x, y, w, h in results:
+                            self.camera_options.add_param_child(
+                                CamParams.EXPORTED_ROIS,
+                                {'name': 'ROI 1', 'type': 'str',
+                                 'readonly': True, 'removable': True,
+                                 'value': f'{x}, {y}, {w}, {h}'}
+                            )
+
+                self.worker = thread_worker(
+                    work_func,
+                    progress=False, z_stage=False)
+                self.worker.signals.result.connect(done)
+                # Execute
+                self._threadpool.start(self.worker)
+            except Exception:
+                traceback.print_exc()
+
     def cam_trigger_cbox_changed(self, param: uEyeParams):
         '''
         Slot for changed trigger mode
@@ -401,7 +456,7 @@ class IDS_Panel(Camera_Panel):
             selected frames per second
         '''
         self._cam.set_framerate(value)
-        self._cam.get_framerate(False)
+        # self._cam.get_framerate(False)
 
         self.camera_options.set_param_value(
             uEyeParams.FRAMERATE,
@@ -417,9 +472,9 @@ class IDS_Panel(Camera_Panel):
         Parameters
         ----------
         param : Parameter
-            frames per second parameter
+            exposure parameter
         Value : double
-            selected exposure in micro-seconds
+            selected exposure in milliseconds
         '''
         self._cam.set_exposure(value)
         self._cam.get_exposure(False)
@@ -444,7 +499,8 @@ class IDS_Panel(Camera_Panel):
             (self._cam.minFrameRate.value,
             self._cam.maxFrameRate.value))
         framerate.setOpts(step=self._cam.incFrameRate.value)
-        framerate.setValue(self._cam.maxFrameRate.value)
+
+        self.cam_framerate_value_changed(framerate, self._cam.maxFrameRate.value)
 
     def refresh_exposure(self):
         self._cam.get_exposure_range(False)
@@ -480,7 +536,7 @@ class IDS_Panel(Camera_Panel):
         Parameters
         ----------
         param : Parameter
-            frames per second parameter
+            flash duration parameter
         Value : double
             selected flash duration in micro-seconds
         '''
@@ -499,16 +555,15 @@ class IDS_Panel(Camera_Panel):
         Parameters
         ----------
         param : Parameter
-            frames per second parameter
+            flash delay parameter
         Value : double
             selected flash delay in micro-seconds
         '''
         self._cam.set_flash_params(
             value, self._cam.flash_cur.u32Duration.value)
-        self._cam.get_flash_params()
 
         self.camera_options.set_param_value(
-            uEyeParams.FLASH_DURATION,
+            uEyeParams.FLASH_DELAY,
             self._cam.flash_cur.s32Delay.value,
             self.cam_flash_delay_value_changed)
 
