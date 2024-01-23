@@ -322,8 +322,13 @@ class BandpassFilter(AbstractFilter):
         rows, cols = image.shape
         nrows = cv2.getOptimalDFTSize(rows)
         ncols = cv2.getOptimalDFTSize(cols)
-        nimg = np.zeros((nrows, ncols))
-        nimg[:rows, :cols] = image
+        pad_rows = nrows - rows
+        pad_cols = ncols - cols
+        pad_rows = (pad_rows//2,  pad_rows - pad_rows//2)
+        pad_cols = (pad_cols//2,  pad_cols - pad_cols//2)
+        nimg = np.pad(image, (pad_rows, pad_cols), mode='reflect')
+        # nimg = np.zeros((nrows, ncols))
+        # nimg[:rows, :cols] = image
 
         ft = fftshift(cv2.dft(np.float64(nimg), flags=cv2.DFT_COMPLEX_OUTPUT))
 
@@ -337,10 +342,10 @@ class BandpassFilter(AbstractFilter):
             refresh = True
 
         if refresh:
-            if self._type == BANDPASS_TYPES.Gaussian:
+            if self._type == BANDPASS_TYPES.Gaussian.name:
                 filter = self.gauss_bandpass_filter(
                     ft.shape, self._center, self._width)
-            elif self._type == BANDPASS_TYPES.Butterworth:
+            elif self._type == BANDPASS_TYPES.Butterworth.name:
                 filter = self.butterworth_bandpass_filter(
                     ft.shape, self._center, self._width)
             else:
@@ -365,7 +370,9 @@ class BandpassFilter(AbstractFilter):
             idft, img, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
 
         # exex = time.msecsTo(QDateTime.currentDateTime())
-        return img[:rows, :cols]
+        return img[
+            pad_rows[0]:-pad_rows[1],
+            pad_cols[0]:-pad_cols[1]]
 
     def set_params(
             self,

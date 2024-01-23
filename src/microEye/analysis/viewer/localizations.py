@@ -233,6 +233,9 @@ class LocalizationsView(QWidget):
         else:
             return None
 
+    def render_tracks(self):
+        pass
+
     def setup_localization_tab(self):
         '''Set up the Localization tab.'''
         # Render tab layout

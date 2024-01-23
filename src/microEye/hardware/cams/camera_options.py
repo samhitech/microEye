@@ -651,6 +651,18 @@ class CameraOptions(ParameterTree):
         return self.get_param_value(CamParams.AUTO_STRETCH)
 
     @property
+    def isDisplayStats(self):
+        '''
+        Check if the display stats option is set.
+
+        Returns
+        -------
+        bool
+            True if the display stats option is set, False otherwise.
+        '''
+        return self.get_param_value(CamParams.DISPLAY_STATS_OPTION)
+
+    @property
     def isLineProfiler(self):
         '''
         Check if the line profiler option is set.

@@ -33,6 +33,8 @@ class Camera_Panel(QGroupBox):
     '''
 
     exposureChanged = pyqtSignal()
+    updateStatsSignal = pyqtSignal(tuple)
+    updateRangeSignal = pyqtSignal(int, int)
 
     def __init__(self, threadpool: QThreadPool, cam: miCamera, mini=False,
                  *args, **kwargs):
@@ -63,6 +65,10 @@ class Camera_Panel(QGroupBox):
         self._nBins = 2**12
         self._hist = np.arange(0, self._nBins) * 0  # arrays for the Hist plot
         self._bins = np.arange(0, self._nBins)      # arrays for the Hist plot
+
+        self.__update_timer = time.time()
+        self.updateStatsSignal.connect(self.updateStats)
+        self.updateRangeSignal.connect(self.updateRange)
 
         self._threadpool = threadpool  # the threadpool for workers
 
@@ -534,6 +540,38 @@ class Camera_Panel(QGroupBox):
         raise NotImplementedError(
             'The cam_capture function is not implemented yet.')
 
+    def updateStats(self, frames: tuple[uImage]):
+        now = time.time()
+        if now - self.__update_timer < 0.1:
+            return
+
+        self.__update_timer = now
+        for idx, frame in enumerate(frames):
+            if idx < 2:
+                _lr = self.lr_0 if idx == 0 else self.lr_1
+                _plot_ref = self._plot_ref if idx == 0 else self._plot_ref_2
+                _cdf_plot_ref = self._cdf_plot_ref if idx == 0 else self._cdf_plot_ref_2
+
+                if frame is not None:
+                    if self.camera_options.isAutostretch:
+                        _lr.setRegion((frame._min, frame._max))
+
+                    _plot_ref.setData(frame._hist)
+                    _cdf_plot_ref.setData(frame._cdf)
+                else:
+                    _plot_ref.setData(self._hist)
+                    _cdf_plot_ref.setData(self._hist)
+            else:
+                break
+
+    def updateRange(self, rmin: int, rmax: int):
+        if time.time() - self.__update_timer < 0.1:
+            return
+
+        if self.camera_options.isAutostretch:
+            self.histogram.setXRange(rmin, rmax)
+            self.hist_cdf.setXRange(rmin, rmax)
+
 
 def cam_save(params: AcquisitionJob):
     '''Save function executed by the save worker thread.
@@ -583,6 +621,32 @@ def cam_save(params: AcquisitionJob):
         params.finalize()
         print('Save thread finally finished.')
 
+def drawStats(frame: uImage):
+    stats = \
+        f'min/max: {np.min(frame.image)}/{np.max(frame.image)}\n'
+    stats += f'mean: {np.mean(frame.image):.3f}\n'
+    stats += f'median: {np.median(frame.image):.3f}\n'
+    stats += f'std: {np.std(frame.image):.4f}'
+
+    # Font settings
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.8
+    font_thickness = 2
+    font_color = 255  # White color for monochrome image
+
+    # Split the text into lines
+    lines = stats.split('\n')
+
+    # Position to start adding text
+    x, y = 50, 50
+
+    # Add each line of text to the image
+    for line in lines:
+        cv2.putText(
+            frame._view, line, (x, y),
+            font, font_scale, font_color, font_thickness)
+        y += int(2 * font_scale * 20)  # Adjust vertical spacing
+
 def update_histogram_and_display(params: AcquisitionJob, camp: Camera_Panel):
     '''
     Update histogram and display based on camera options.
@@ -607,22 +671,18 @@ def update_histogram_and_display(params: AcquisitionJob, camp: Camera_Panel):
         params.frame.equalizeLUT(
             _range, camp.camera_options.isNumpyLUT)
 
-        if camp.camera_options.isAutostretch:
-            camp.lr_0.setRegion(
-                (params.frame._min, params.frame._max))
-            camp.histogram.setXRange(
-                params.frame._min, params.frame._max)
-            camp.hist_cdf.setXRange(
-                params.frame._min, params.frame._max)
+        camp.updateRangeSignal.emit(params.frame._min, params.frame._max)
 
-        camp._plot_ref.setData(params.frame._hist)
-        camp._cdf_plot_ref.setData(params.frame._cdf)
-        camp._plot_ref_2.setData(camp._hist)
-        camp._cdf_plot_ref_2.setData(camp._hist)
+        camp.updateStatsSignal.emit(
+            (params.frame, None))
 
         # resizing the image
         zoom = camp.camera_options.get_param_value(
             CamParams.RESIZE_DISPLAY)
+
+        if camp.camera_options.isDisplayStats:
+            drawStats(params.frame)
+
         params.frame._view = cv2.resize(
             params.frame._view, (0, 0),
             fx=zoom,
@@ -635,7 +695,7 @@ def update_histogram_and_display(params: AcquisitionJob, camp: Camera_Panel):
         if len(params.rois) == 1:
             camp._plot_ref_2.setData(camp._hist)
             camp._cdf_plot_ref_2.setData(camp._hist)
-        mins, maxs = [], []
+        images, mins, maxs = [], []
         for idx, roi in enumerate(params.rois):
             uimage = uImage(
                 params.frame.image[
@@ -654,18 +714,9 @@ def update_histogram_and_display(params: AcquisitionJob, camp: Camera_Panel):
 
             uimage.equalizeLUT(_range, camp.camera_options.isNumpyLUT)
 
-            if camp.camera_options.isAutostretch and idx < 2:
-                linear_region = camp.lr_0 if idx == 0 else camp.lr_1
-                linear_region.setRegion(
-                    (uimage._min, uimage._max))
-                mins.append(uimage._min)
-                maxs.append(uimage._max)
-
-            if idx < 2:
-                _plot_ref = camp._plot_ref if idx == 0 else camp._plot_ref_2
-                _cdf_plot_ref = camp._cdf_plot_ref if idx == 0 else camp._cdf_plot_ref_2
-                _plot_ref.setData(uimage._hist)
-                _cdf_plot_ref.setData(uimage._cdf)
+            mins.append(uimage._min)
+            maxs.append(uimage._max)
+            images.append(uimage)
 
             # resizing the image
             zoom = camp.camera_options.get_param_value(
@@ -679,9 +730,8 @@ def update_histogram_and_display(params: AcquisitionJob, camp: Camera_Panel):
             # display it
             cv2.imshow(params.name + f' ROI {idx+1}', uimage._view)
 
-        if camp.camera_options.isAutostretch:
-            camp.histogram.setXRange(min(mins), max(maxs))
-            camp.hist_cdf.setXRange(min(mins), max(maxs))
+        camp.updateRangeSignal.emit(min(mins), max(maxs))
+        camp.updateStatsSignal.emit(images)
     else:
         _rang_left = None
         _rang_right = None
@@ -699,20 +749,12 @@ def update_histogram_and_display(params: AcquisitionJob, camp: Camera_Panel):
             _rang_left, camp.camera_options.isNumpyLUT)
         right.equalizeLUT(
             _rang_right, camp.camera_options.isNumpyLUT)
-        if camp.camera_options.isAutostretch:
-            camp.lr_0.setRegion((left._min, left._max))
-            camp.lr_1.setRegion((right._min, right._max))
-            camp.histogram.setXRange(
-                min(left._min, right._min),
-                max(left._max, right._max))
-            camp.hist_cdf.setXRange(
-                min(left._min, right._min),
-                max(left._max, right._max))
 
-        camp._plot_ref.setData(left._hist)
-        camp._cdf_plot_ref.setData(left._cdf)
-        camp._plot_ref_2.setData(right._hist)
-        camp._cdf_plot_ref_2.setData(right._cdf)
+        camp.updateRangeSignal.emit(
+            min(left._min, right._min),
+            max(left._max, right._max))
+        camp.updateStatsSignal.emit(
+            (left, right))
 
         zoom = camp.camera_options.get_param_value(
             CamParams.RESIZE_DISPLAY)
