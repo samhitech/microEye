@@ -1,4 +1,5 @@
 import os
+import re
 import traceback
 
 import cv2
@@ -793,10 +794,9 @@ class LocalizationsView(QWidget):
             if 'Super-res image' in options:
                 sres_img = self.render_loc()
                 tf.imsave(
-                    filename.replace('.tsv', '_super_res.tif'),
+                    re.sub(r'(\.h5|\.tsv)$', '_super_res.tif', filename),
                     sres_img,
                     photometric='minisblack',
-                    append=True,
                     bigtiff=True,
                     ome=False)
 

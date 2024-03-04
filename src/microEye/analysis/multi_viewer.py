@@ -298,7 +298,8 @@ class multi_viewer(QMainWindow):
             if path.endswith('.zarr'):
                 view = StackView.FromZarr(path, self._threadpool)
             else:
-                view = StackView.FromImageSequence(path, None, self._threadpool)
+                view = StackView.FromImageSequence(
+                    path, self.imsq_pattern.text(), self._threadpool)
 
             view.localizedData.connect(self.localizedData)
 

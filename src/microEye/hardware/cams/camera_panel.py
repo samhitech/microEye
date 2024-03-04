@@ -144,7 +144,7 @@ class Camera_Panel(QGroupBox):
 
         self.camera_options.get_param(CamParams.EXPERIMENT_NAME).sigValueChanged.connect(
             lambda x: self.OME_tab.set_param_value(
-                MetaParams.EXPERIMENT_NAME, x))
+                MetaParams.EXPERIMENT_NAME, x.value()))
 
         self.save_dir_layout = QHBoxLayout()
 

@@ -22,7 +22,7 @@ def get_blob_detector(
         params.filterByColor = True
         params.blobColor = 255
 
-        params.minDistBetweenBlobs = 0
+        params.minDistBetweenBlobs = 1
 
         # Change thresholds
         # params.minThreshold = 0
@@ -82,7 +82,7 @@ class CV_BlobDetector(AbstractDetector):
             minArea=1.5, maxArea=80,
             minCircularity=None, minConvexity=None,
             minInertiaRatio=None, blobColor=255,
-            minDistBetweenBlobs=0) -> cv2.SimpleBlobDetector_Params:
+            minDistBetweenBlobs=1) -> cv2.SimpleBlobDetector_Params:
         '''
         Set parameters for the blob detector.
 
@@ -130,7 +130,7 @@ class CV_BlobDetector(AbstractDetector):
         # Filter by Circularity
         if minCircularity is None:
             self.params.filterByCircularity = False
-            self.params.minCircularity = 0
+            # self.params.minCircularity = 0
         else:
             self.params.filterByCircularity = True
             self.params.minCircularity = minCircularity
@@ -138,7 +138,7 @@ class CV_BlobDetector(AbstractDetector):
         # Filter by Convexity
         if minConvexity is None:
             self.params.filterByConvexity = False
-            self.params.minConvexity = 0
+            # self.params.minConvexity = 0
         else:
             self.params.filterByConvexity = True
             self.params.minConvexity = minConvexity
@@ -146,7 +146,7 @@ class CV_BlobDetector(AbstractDetector):
         # Filter by Inertia
         if minInertiaRatio is None:
             self.params.filterByInertia = False
-            self.params.minInertiaRatio = 0
+            # self.params.minInertiaRatio = 0
         else:
             self.params.filterByInertia = True
             self.params.minInertiaRatio = minInertiaRatio

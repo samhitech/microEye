@@ -1095,7 +1095,7 @@ class ZarrImageSequence:
 
     def getSlice(
             self, timeSlice=None, channelSlice=None,
-            zSlice=None, ySlice=None, xSlice=None,
+            zSlice=None, ySlice=None, xSlice=None, squeezed=True,
             four='TCYX', three='TYX'):
         '''
         Retrieves a slice from the Zarr array based on specified indices.
@@ -1112,6 +1112,8 @@ class ZarrImageSequence:
             Slice for the y dimension.
         xSlice : slice or None
             Slice for the x dimension.
+        squeezed : bool (optional)
+            Squeeze returned slice, default is True.
         four : str
             String representing the axis configuration for four dimensions.
         three : str
@@ -1132,29 +1134,34 @@ class ZarrImageSequence:
         xSlice = ifnone(xSlice, slice(None))
 
         if len(za.shape) == 5:
-            return za[timeSlice, channelSlice, zSlice, ySlice, xSlice]
+            data = za[timeSlice, channelSlice, zSlice, ySlice, xSlice]
         elif len(za.shape) == 4:
             if four == 'TCYX':
-                return za[timeSlice, channelSlice, ySlice, xSlice]
+                data = za[timeSlice, channelSlice, ySlice, xSlice]
             elif four == 'CZYX':
-                return za[channelSlice, zSlice, ySlice, xSlice]
+                data = za[channelSlice, zSlice, ySlice, xSlice]
             elif four == 'TZYX':
-                return za[timeSlice, zSlice, ySlice, xSlice]
+                data = za[timeSlice, zSlice, ySlice, xSlice]
             else:
                 raise ValueError(f'Unsupported dimensions format: {four}')
         elif len(za.shape) == 3:
             if three == 'TYX':
-                return za[timeSlice, ySlice, xSlice]
+                data = za[timeSlice, ySlice, xSlice]
             elif three == 'CYX':
-                return za[channelSlice, ySlice, xSlice]
+                data = za[channelSlice, ySlice, xSlice]
             elif three == 'ZYX':
-                return za[zSlice, ySlice, xSlice]
+                data = za[zSlice, ySlice, xSlice]
             else:
                 raise ValueError(f'Unsupported dimensions format: {three}')
         elif len(za.shape) == 2:
-            return za[ySlice, xSlice]
+            data = za[ySlice, xSlice]
         else:
             raise ValueError(f'Unsupported number of dimensions: {len(za.shape)}')
+
+        if squeezed:
+            return data.squeeze()
+        else:
+            return data
 
     def open(self):
         """

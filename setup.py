@@ -36,7 +36,7 @@ setuptools.setup(
         'numba (==0.57.1)',
         'numpy (==1.24.4)',
         'ome_types (==0.4.3)',
-        'opencv_python (==4.5.3)',
+        'opencv_python (==4.9.0)',
         'pandas (==1.3.3)',
         'pyflakes (==2.4.0)',
         'PyQt5 (==5.15.10)',

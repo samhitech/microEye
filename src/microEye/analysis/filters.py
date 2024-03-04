@@ -69,9 +69,23 @@ class DoG_Filter(AbstractFilter):
         return kernel
 
     def run(self, image: np.ndarray) -> np.ndarray:
-        return cv2.normalize(
-            signal.convolve2d(image, np.rot90(self.dog), mode='same'),
+        rows, cols = image.shape
+        nrows = cv2.getOptimalDFTSize(rows)
+        ncols = cv2.getOptimalDFTSize(cols)
+        pad_rows = nrows - rows
+        pad_cols = ncols - cols
+
+        # Ensure that pad_cols[1] and pad_rows[1] are at least 1
+        pad_rows = (pad_rows // 2, max(1, pad_rows - pad_rows // 2))
+        pad_cols = (pad_cols // 2, max(1, pad_cols - pad_cols // 2))
+
+        nimg = np.pad(image, (pad_rows, pad_cols), mode='reflect')
+
+        res = cv2.normalize(
+            signal.convolve2d(nimg, np.rot90(self.dog), mode='same')[
+                pad_rows[0]:-pad_rows[1], pad_cols[0]:-pad_cols[1]],
             None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
+        return res
 
     def get_metadata(self):
         '''Return metadata about the Difference of Gaussians filter.'''
@@ -324,8 +338,11 @@ class BandpassFilter(AbstractFilter):
         ncols = cv2.getOptimalDFTSize(cols)
         pad_rows = nrows - rows
         pad_cols = ncols - cols
-        pad_rows = (pad_rows//2,  pad_rows - pad_rows//2)
-        pad_cols = (pad_cols//2,  pad_cols - pad_cols//2)
+
+        # Ensure that pad_cols[1] and pad_rows[1] are at least 1
+        pad_rows = (pad_rows // 2, max(1, pad_rows - pad_rows // 2))
+        pad_cols = (pad_cols // 2, max(1, pad_cols - pad_cols // 2))
+
         nimg = np.pad(image, (pad_rows, pad_cols), mode='reflect')
         # nimg = np.zeros((nrows, ncols))
         # nimg[:rows, :cols] = image
