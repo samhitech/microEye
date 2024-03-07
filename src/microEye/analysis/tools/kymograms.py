@@ -190,7 +190,7 @@ class MultiLineROISelector:
         cv2.imshow('Select Line ROIs', self.resized_image)
         cv2.setWindowTitle(
             'Select Line ROIs',
-            f'Select Line ROIs \"Mode: {self.current_mode}\"' + \
+            f'Select Line ROIs "Mode: {self.current_mode}"' + \
                 ' (Space: change mode | Q: quit)')
 
     def mouse_callback(self, event, x, y, flags, param):
@@ -673,9 +673,9 @@ class KymogramWidget(QWidget):
         '<b>Up/Down Arrows:</b> Select active ROI.'
     ]
 
-    def __init__(self, threadpool: QThreadPool, parent=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self._threadpool = threadpool
+        self._threadpool = QThreadPool.globalInstance()
 
         self.kymogram_temporal_window = create_spin_box(0, 100, 1, 50)
         self.kymogram_linewidth = create_spin_box(1, 100, 1, 1)

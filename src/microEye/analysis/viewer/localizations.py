@@ -41,8 +41,7 @@ class LocalizationsView(QWidget):
     def __init__(
             self,
             path: str,
-            fittingResults: FittingResults = None,
-            threadpool: QThreadPool =None):
+            fittingResults: FittingResults = None):
         '''Initialize the StackView.
 
         Parameters
@@ -51,15 +50,13 @@ class LocalizationsView(QWidget):
             The path to the image stack.
         fittingResults : FittingResults, optional
             Fitting results, by default None.
-        threadpool : QThreadPool, optional
-            Thread pool for concurrent processing, by default None.
         '''
         super().__init__()
 
         self.setWindowTitle(path.split('/')[-1])
 
         self.path = path
-        self._threadpool = threadpool
+        self._threadpool = QThreadPool.globalInstance()
         # Initialize variables
         self.fittingResults = fittingResults
 

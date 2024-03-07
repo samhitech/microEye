@@ -1,4 +1,3 @@
-
 import contextlib
 from typing import Optional
 
@@ -15,9 +14,9 @@ try:
             cams = vimba.get_all_cameras()
             for cam in cams:
                 cam_list.append({
-                            'camID': cam.get_id(),
-                            'devID': cam.get_interface_id(),
-                            'senID': 'NA',
+                            'Camera ID': cam.get_id(),
+                            'Device ID': cam.get_interface_id(),
+                            'Sensor ID': 'NA',
                             'Status': 'NA',
                             'InUse': 0,
                             'Model': cam.get_model(),
@@ -41,7 +40,6 @@ try:
                     return None
 
                 return cams[0]
-
 except Exception:
     vb = None
 

@@ -81,7 +81,7 @@ class miEye_module(QMainWindow):
         self.stage = stage()
 
         # kinesis XY Stage
-        self.kinesisXY = KinesisXY(threadpool=self._threadpool)
+        self.kinesisXY = KinesisXY()
 
         self.lastTile = None
         self._stop_scan = False
@@ -101,8 +101,6 @@ class miEye_module(QMainWindow):
         self.vimba_panels: list[Vimba_Panel] = []
 
         # IR 2D Camera
-        self.cam = None
-        self.cam_panel = None
         self.cam_dock = None
 
         # Serial Port Laser Relay
@@ -376,11 +374,11 @@ class miEye_module(QMainWindow):
             QDockWidget.DockWidgetFloatable |
             QDockWidget.DockWidgetMovable)
 
-        self.camListWidget = CameraListWidget()
-        self.camListWidget.addCamera.connect(self.add_camera)
-        self.camListWidget.removeCamera.connect(self.remove_camera)
+        self.camList = CameraList()
+        self.camList.cameraAdded.connect(self.add_camera)
+        self.camList.cameraRemoved.connect(self.remove_camera)
 
-        self.camDock.setWidget(self.camListWidget)
+        self.camDock.setWidget(self.camList)
         self.setTabPosition(
             Qt.DockWidgetArea.BottomDockWidgetArea,
             QTabWidget.TabPosition.North)
@@ -462,93 +460,10 @@ class miEye_module(QMainWindow):
         dock.setWidget(content)
         return dock
 
-    def add_camera(self, cam):
-        res = QMessageBox.information(
-            self,
-            'Acquisition / IR camera',
-            'Add acquisition or IR camera? (Yes/No)',
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No |
-            QMessageBox.StandardButton.Cancel)
-
-        if res == QMessageBox.StandardButton.Yes:
-            self.add_camera_clicked(cam)
-        elif res == QMessageBox.StandardButton.No:
-            self.add_IR_camera(cam)
-        else:
-            pass
-
-    def remove_camera(self, cam):
-        res = QMessageBox.warning(
-            self,
-            'Acquisition / IR camera',
-            'Remove acquisition or IR camera? (Yes/No)',
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No |
-            QMessageBox.StandardButton.Cancel)
-
-        if res == QMessageBox.StandardButton.Yes:
-            self.remove_camera_clicked(cam)
-        elif res == QMessageBox.StandardButton.No:
-            self.remove_IR_camera(cam)
-        else:
-            pass
-
-    def add_IR_camera(self, cam):
-        if self.cam is not None:
-            QMessageBox.warning(
-                self,
-                'Warning',
-                f'Please remove {self.cam.name}.',
-                QMessageBox.StandardButton.Ok)
-            return
-
-        if not self.IR_Cam.isDummy():
-            QMessageBox.warning(
-                self,
-                'Warning',
-                f'Please remove {self.IR_Cam.name}.',
-                QMessageBox.StandardButton.Ok)
-            return
-
-        # print(cam)
-        if cam['InUse'] == 0:
-            if 'uEye' in cam['Driver']:
-                ids_cam = IDS_Camera(cam['camID'])
-                nRet = ids_cam.initialize()
-                self.cam = ids_cam
-                ids_panel = IDS_Panel(
-                    self._threadpool,
-                    ids_cam, True,
-                    cam['Model'] + ' ' + cam['Serial'])
-                # ids_panel._directory = self.save_directory
-                ids_panel.master = False
-                self.cam_panel = ids_panel
-                self.cam_dock = self.getDockWidget(
-                    ids_cam.name, ids_panel)
-            if 'UC480' in cam['Driver']:
-                thor_cam = thorlabs_camera(cam['camID'])
-                nRet = thor_cam.initialize()
-                if nRet == CMD.IS_SUCCESS:
-                    self.cam = thor_cam
-                    thor_panel = Thorlabs_Panel(
-                        self._threadpool,
-                        thor_cam, True,
-                        cam['Model'] + ' ' + cam['Serial'])
-                    # thor_panel._directory = self.save_directory
-                    thor_panel.master = False
-                    self.cam_panel = thor_panel
-                    self.cam_dock = self.getDockWidget(
-                        thor_cam.name, thor_panel)
-            if 'Vimba' in cam['Driver']:
-                v_cam = vimba_cam(cam['camID'])
-                self.cam = v_cam
-                v_panel = Vimba_Panel(
-                        self._threadpool,
-                        v_cam, True, cam['Model'] + ' ' + cam['Serial'])
-                v_panel.master = False
-                self.cam_panel = v_panel
-                self.cam_dock = self.getDockWidget(
-                    v_cam.name, v_panel)
-
+    def add_camera(self, panel: Camera_Panel, ir: bool):
+        if ir:
+            self.cam_dock = self.getDockWidget(
+                panel._cam.name, panel)
             self.addDockWidget(
                 Qt.DockWidgetArea.BottomDockWidgetArea,
                 self.cam_dock)
@@ -557,127 +472,26 @@ class miEye_module(QMainWindow):
             self.focus.graph_IR.setLabel(
                 'left', 'Signal', '', **self.labelStyle)
         else:
-            QMessageBox.warning(
-                self,
-                'Warning',
-                'Device is in use or already added.',
-                QMessageBox.StandardButton.Ok)
+            panel.show()
 
-    def remove_IR_camera(self, cam):
-        if self.cam.cInfo.SerNo.decode('utf-8') == cam['Serial']:
-            if not self.cam.acquisition:
-                if self.cam.free_memory:
-                    self.cam.free_memory()
-                    self.cam.dispose()
-
-            self.cam_panel._dispose_cam = True
-            self.cam_panel._stop_thread = True
+    def remove_camera(self, cam: dict, ir: bool):
+        if ir:
             self.removeDockWidget(self.cam_dock)
             self.cam_dock.deleteLater()
-            self.cam = None
-            self.cam_panel = None
             self.cam_dock = None
-
-    def add_camera_clicked(self, cam):
-        home = os.path.expanduser('~')
-        _directory = os.path.join(home, 'Desktop')
-
-        if cam['InUse'] == 0:
-            if 'uEye' in cam['Driver']:
-                ids_cam = IDS_Camera(cam['camID'])
-                nRet = ids_cam.initialize()
-                self.ids_cams.append(ids_cam)
-                ids_panel = IDS_Panel(
-                    self._threadpool,
-                    ids_cam, False, cam['Model'] + ' ' + cam['Serial'])
-                ids_panel._directory = _directory
-                ids_panel.master = False
-                ids_panel.show()
-                self.ids_panels.append(ids_panel)
-            if 'UC480' in cam['Driver']:
-                thor_cam = thorlabs_camera(cam['camID'])
-                nRet = thor_cam.initialize()
-                if nRet == CMD.IS_SUCCESS:
-                    self.thorlabs_cams.append(thor_cam)
-                    thor_panel = Thorlabs_Panel(
-                        self._threadpool,
-                        thor_cam, False, cam['Model'] + ' ' + cam['Serial'])
-                    thor_panel._directory = _directory
-                    thor_panel.master = False
-                    thor_panel.show()
-                    self.thor_panels.append(thor_panel)
-            if 'Vimba' in cam['Driver']:
-                v_cam = vimba_cam(cam['camID'])
-                self.vimba_cams.append(v_cam)
-                v_panel = Vimba_Panel(
-                        self._threadpool,
-                        v_cam, False, cam['Model'] + ' ' + cam['Serial'])
-                v_panel._directory = _directory
-                v_panel.master = False
-                v_panel.show()
-                self.vimba_panels.append(v_panel)
         else:
-            QMessageBox.warning(
-                self,
-                'Warning',
-                'Device is in use or already added.',
-                QMessageBox.StandardButton.Ok)
-
-    def remove_camera_clicked(self, cam):
-
-        if 'uEye' in cam['Driver']:
-            for pan in self.ids_panels:
-                if pan.cam.Cam_ID == cam['camID']:
-                    if not pan.cam.acquisition:
-                        pan.cam.free_memory()
-                        pan.cam.dispose()
-
-                        pan._dispose_cam = True
-                        pan._stop_thread = True
-                        self.ids_cams.remove(pan.cam)
-                        self.ids_panels.remove(pan)
-                        pan.close()
-                        pan.setParent(None)
-                        break
-        if 'UC480' in cam['Driver']:
-            for pan in self.thor_panels:
-                # if pan.cam.hCam.value == cam["camID"]:
-                if pan.cam.cInfo.SerNo.decode('utf-8') == cam['Serial']:
-                    if not pan.cam.acquisition:
-                        pan.cam.free_memory()
-                        pan.cam.dispose()
-
-                        pan._dispose_cam = True
-                        pan._stop_thread = True
-                        self.thorlabs_cams.remove(pan.cam)
-                        self.thor_panels.remove(pan)
-                        pan.close()
-                        pan.setParent(None)
-                        break
-        if 'Vimba' in cam['Driver']:
-            for pan in self.vimba_panels:
-                with pan.cam.cam:
-                    if pan.cam.cam.get_serial() == cam['Serial']:
-                        if not pan.cam.acquisition:
-                            pan._dispose_cam = True
-                            if pan.acq_job is not None:
-                                pan.acq_job.stop_threads = True
-                            self.vimba_cams.remove(pan.cam)
-                            self.vimba_panels.remove(pan)
-                            pan.close()
-                            pan.setParent(None)
-                            break
+            pass
 
     def isEmpty(self):
-        if self.cam_panel is not None:
-            return self.cam_panel.isEmpty
+        if self.camList.autofocusCam:
+            return self.camList.autofocusCam.isEmpty
         elif not self.IR_Cam.isDummy():
             return self.IR_Cam.isEmpty
         else:
             return True
 
     def isImage(self):
-        if self.cam is not None:
+        if self.camList.autofocusCam:
             return True
         elif not self.IR_Cam.isDummy():
             return False
@@ -685,16 +499,16 @@ class miEye_module(QMainWindow):
             return False
 
     def BufferGet(self) -> Queue:
-        if self.cam is not None:
-            return self.cam_panel.get(True)
+        if self.camList.autofocusCam:
+            return self.camList.autofocusCam.get(True)
         elif not self.IR_Cam.isDummy():
             return self.IR_Cam.buffer.get()
         else:
             return np.zeros((256, 256), dtype=np.uint16)
 
     def BufferSize(self) -> Queue:
-        if self.cam is not None:
-            return self.cam_panel.bufferSize
+        if self.camList.autofocusCam:
+            return self.camList.autofocusCam.bufferSize
         elif not self.IR_Cam.isDummy():
             return 0
         else:
@@ -902,7 +716,7 @@ class miEye_module(QMainWindow):
         Frames = '    | Frames Saved: ' + str(self.frames_saved)
 
         Worker = f'    | Execution time: {self._exec_time:d}'
-        if self.cam is not None:
+        if self.camList.autofocusCam:
             Worker += f'    | Frames Buffer: {self.BufferSize():d}'
         self.statusBar().showMessage(
             'Time: ' + QDateTime.currentDateTime().toString('hh:mm:ss,zzz')
@@ -940,15 +754,9 @@ class miEye_module(QMainWindow):
         else:
             self.send_laser_relay_btn.setStyleSheet('')
 
-        if self.cam_panel is not None:
-            self.cam_panel.updateInfo()
-
-        for panel in self.vimba_panels:
-            panel.updateInfo()
-        for panel in self.ids_panels:
-            panel.updateInfo()
-        for panel in self.thor_panels:
-            panel.updateInfo()
+        for _, cam_list in CameraList.cameras.items():
+            for cam in cam_list:
+                cam['Panel'].updateInfo()
 
     @pyqtSlot()
     def open_dialog(self, serial: QSerialPort):
@@ -1014,11 +822,11 @@ class miEye_module(QMainWindow):
 
     @pyqtSlot()
     def setIRcam(self):
-        if self.cam is not None:
+        if self.camList.autofocusCam:
             QMessageBox.warning(
                 self,
                 'Warning',
-                f'Please remove {self.cam.name}.',
+                f'Please remove {self.camList.autofocusCam.title()}.',
                 QMessageBox.StandardButton.Ok)
             return
 
@@ -1080,10 +888,10 @@ class miEye_module(QMainWindow):
                     QDockWidget.DockWidgetMovable)
                 self.stage_dock.setWidget(self.stage_widget)
                 self.addDockWidget(
-                    Qt.DockWidgetArea.TopDockWidgetArea,
+                    Qt.DockWidgetArea.BottomDockWidgetArea,
                     self.stage_dock)
-                self.tabifyDockWidget(
-                    self.devicesDock, self.stage_dock)
+                # self.tabifyDockWidget(
+                #     self.devicesDock, self.stage_dock)
 
     def hid_report(self, reportedEvent: Buttons):
         if type(self.stage) is piezo_concept:

@@ -54,7 +54,7 @@ class DockKeys(Enum):
 
 class tiff_viewer(QMainWindow):
 
-    def __init__(self, threadpool, path=None):
+    def __init__(self, path=None):
         super().__init__()
         # Set window properties
         self.title = 'microEye tiff viewer'
@@ -72,7 +72,7 @@ class tiff_viewer(QMainWindow):
         self.stack_handler = None
 
         # Threading
-        self._threadpool = threadpool
+        self._threadpool = QThreadPool.globalInstance()
         print('Multithreading with maximum %d threads'
               % self._threadpool.maxThreadCount())
 
@@ -390,8 +390,7 @@ class tiff_viewer(QMainWindow):
             DockKeys.IMAGE_TOOLS, QVBoxLayout,
             'LeftDockWidgetArea', widget=None)
 
-        self.kymogram_widget = KymogramWidget(
-            self._threadpool)
+        self.kymogram_widget = KymogramWidget()
 
         self.kymogram_widget.displayClicked.connect(self.kymogram_display_clicked)
         self.kymogram_widget.extractClicked.connect(self.kymogram_btn_clicked)
@@ -1928,8 +1927,6 @@ class tiff_viewer(QMainWindow):
         # Create a QApplication
         app = QApplication(sys.argv)
 
-        thread_pool = QThreadPool()
-
         # Set dark mode from qdarkstyle (not compatible with PyQt6)
         app.setStyleSheet(qdarkstyle.load_stylesheet(qt_api='pyqt5'))
 
@@ -1956,7 +1953,7 @@ class tiff_viewer(QMainWindow):
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(my_app_id)
 
         # Create the tiff_viewer window
-        window = tiff_viewer(thread_pool, path)
+        window = tiff_viewer(path)
 
         return app, window
 

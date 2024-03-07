@@ -67,8 +67,7 @@ class StackView(QWidget):
     def __init__(
             self,
             path: str,
-            stack_handler: Union[ZarrImageSequence, TiffSeqHandler],
-            threadpool: QThreadPool =None):
+            stack_handler: Union[ZarrImageSequence, TiffSeqHandler]):
         '''
         Initialize the StackView.
 
@@ -78,8 +77,6 @@ class StackView(QWidget):
             The path to the image stack.
         stack_handler : Union[ZarrImageSequence, TiffSeqHandler]
             An image stack handler.
-        threadpool : QThreadPool, optional
-            Thread pool for concurrent processing, by default None.
         '''
         super().__init__()
 
@@ -87,7 +84,7 @@ class StackView(QWidget):
 
         self.path = path
         self.stack_handler = stack_handler
-        self._threadpool = threadpool
+        self._threadpool = QThreadPool.globalInstance()
 
         self.main_layout = QHBoxLayout()
         self.setLayout(self.main_layout)
@@ -332,8 +329,7 @@ class StackView(QWidget):
 
     def setupKymogramTab(self):
         # Creating the kymogram tab layout
-        self.kymogram_widget = KymogramWidget(
-            self._threadpool)
+        self.kymogram_widget = KymogramWidget()
 
         self.kymogram_widget.setMaximum(
             self.stack_handler.shapeTCZYX()[0] - 1)
@@ -1065,7 +1061,7 @@ class StackView(QWidget):
 
     @staticmethod
     def FromZarr(
-            path: str, threadpool=None):
+            path: str):
         '''
         Create a StackView instance from a Zarr image sequence.
 
@@ -1086,14 +1082,14 @@ class StackView(QWidget):
         zarr_handler = ZarrImageSequence(path)
         zarr_handler.open()
 
-        stack_view = StackView(path, zarr_handler, threadpool)
+        stack_view = StackView(path, zarr_handler)
         stack_view.centerROI()
 
         return stack_view
 
     @staticmethod
     def FromImageSequence(
-            path: str, mask_pattern: str = None, threadpool=None):
+            path: str, mask_pattern: str = None):
         '''
         Create a StackView instance from an image sequence.
 
@@ -1124,7 +1120,7 @@ class StackView(QWidget):
         image_seq_handler = TiffSeqHandler(image_sequence)
         image_seq_handler.open()
 
-        stack_view = StackView(path, image_seq_handler, threadpool)
+        stack_view = StackView(path, image_seq_handler)
         stack_view.centerROI()
 
         with tf.TiffFile(image_sequence.files[0]) as fl:

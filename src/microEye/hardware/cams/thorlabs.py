@@ -649,7 +649,7 @@ class thorlabs_camera(miCamera):
         -------
         dict[str, object]
             dictionary containing
-            {camID, devID, senID, Status, InUse, Model, Serial}
+            {Camera ID, Device ID, Sensor ID, Status, InUse, Model, Serial}
         '''
         uc480 = windll.LoadLibrary(thorlabs_camera.uc480_file)
         cam_list = []
@@ -662,9 +662,9 @@ class thorlabs_camera(miCamera):
             if (uc480.is_GetCameraList(byref(pucl)) == CMD.IS_SUCCESS):
                 for index in range(cam_count.value):
                     cam_list.append({
-                        'camID': pucl.uci[index].dwCameraID,
-                        'devID': pucl.uci[index].dwDeviceID,
-                        'senID': pucl.uci[index].dwSensorID,
+                        'Camera ID': pucl.uci[index].dwCameraID,
+                        'Device ID': pucl.uci[index].dwDeviceID,
+                        'Sensor ID': pucl.uci[index].dwSensorID,
                         'Status': pucl.uci[index].dwStatus,
                         'InUse': pucl.uci[index].dwInUse,
                         'Model': pucl.uci[index].Model.decode('utf-8'),

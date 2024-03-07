@@ -19,8 +19,9 @@ from ...shared.metadata_tree import MetaParams
 from ...shared.thread_worker import thread_worker
 from ...shared.uImage import uImage
 from ..widgets.qlist_slider import *
-from . import Camera_Panel, IDS_Camera
 from .camera_options import CamParams
+from .camera_panel import Camera_Panel
+from .ueye_camera import IDS_Camera
 
 try:
     from pyueye import ueye
@@ -59,21 +60,31 @@ class IDS_Panel(Camera_Panel):
     A Qt Widget for controlling an IDS Camera | Inherits Camera_Panel
     '''
 
-    def __init__(self, threadpool: QThreadPool, cam: IDS_Camera, mini=False,
+    def __init__(self, cam: IDS_Camera, mini=False,
                  *args, **kwargs):
         '''
-        Initializes a new IDS_Panel Qt widget
-        | Inherits Camera_Panel
+        Initializes a new IDS_Panel Qt widget.
+
+        Inherits Camera_Panel.
 
         Parameters
         ----------
-        threadpool : QThreadPool
-            The threadpool for multithreading
         cam : IDS_Camera
-            IDS Camera python adapter
+            IDS Camera python adapter.
+
+        mini : bool, optional
+            Flag indicating if this is a mini camera panel, by default False.
+
+        Other Parameters
+        ---------------
+        *args
+            Arguments to pass to the Camera_Panel constructor.
+
+        **kwargs
+            Keyword arguments to pass to the Camera_Panel constructor.
         '''
         super().__init__(
-            threadpool, cam, mini,
+            cam, mini,
             *args, **kwargs)
 
         # flag true to close camera adapter and dispose it

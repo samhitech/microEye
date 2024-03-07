@@ -36,18 +36,28 @@ class Camera_Panel(QGroupBox):
     updateStatsSignal = pyqtSignal(tuple)
     updateRangeSignal = pyqtSignal(int, int)
 
-    def __init__(self, threadpool: QThreadPool, cam: miCamera, mini=False,
+    def __init__(self, cam: miCamera, mini=False,
                  *args, **kwargs):
         '''
-        Initializes a new Vimba_Panel Qt widget
-        | Inherits QGroupBox
+        Initializes a new Camera_Panel Qt widget.
+
+        Inherits QGroupBox.
 
         Parameters
         ----------
-        threadpool : QThreadPool
-            The threadpool for multithreading
         cam : miCamera
-            Camera python adapter
+            Camera python adapter.
+
+        mini : bool, optional
+            Flag indicating if this is a mini camera panel, by default False.
+
+        Other Parameters
+        ---------------
+        *args
+            Arguments to pass to the QGroupBox constructor.
+
+        **kwargs
+            Keyword arguments to pass to the QGroupBox constructor.
         '''
         super().__init__(*args, **kwargs)
         self._cam = cam  # miCamera
@@ -70,7 +80,7 @@ class Camera_Panel(QGroupBox):
         self.updateStatsSignal.connect(self.updateStats)
         self.updateRangeSignal.connect(self.updateRange)
 
-        self._threadpool = threadpool  # the threadpool for workers
+        self._threadpool = QThreadPool.globalInstance()  # the threadpool for workers
 
         # flag true to close camera adapter and dispose it
         self._dispose_cam = False
@@ -80,7 +90,9 @@ class Camera_Panel(QGroupBox):
         self.frame = None
         self._frames = Queue()
         # reserved for saving
-        self._directory = ''  # save directory
+        home = os.path.expanduser('~')
+
+        self._directory = os.path.join(home, 'Desktop')  # save directory
         self._save_path = ''  # save path
         self._save_prefix = ''  # save prefix
 
@@ -811,7 +823,7 @@ def cam_display(params: AcquisitionJob, camp: Camera_Panel):
 
                     # reshape image into proper shape
                     # (height, width, bytes per pixel)
-                    params.frame: uImage = uImage.fromBuffer(
+                    params.frame = uImage.fromBuffer(
                         params.display_queue.get(),
                         params.cam_height, params.cam_width,
                         params.bytes_per_pixel)

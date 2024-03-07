@@ -20,8 +20,9 @@ from ...shared.metadata_tree import MetaParams
 from ...shared.thread_worker import thread_worker
 from ...shared.uImage import uImage
 from ..widgets.qlist_slider import *
-from . import Camera_Panel, vimba_cam
 from .camera_options import CamParams
+from .camera_panel import Camera_Panel
+from .vimba_cam import vimba_cam
 
 try:
     import vimba as vb
@@ -73,22 +74,30 @@ class Vimba_Panel(Camera_Panel):
      | Inherits Camera_Panel
     '''
 
-    def __init__(self, threadpool: QThreadPool, cam: vimba_cam, mini=False,
+    def __init__(self, cam: vimba_cam, mini=False,
                  *args, **kwargs):
         '''
-        Initializes a new Vimba_Panel Qt widget
-        | Inherits Camera_Panel
+        Initializes a new Vimba_Panel Qt widget.
+
+        Inherits Camera_Panel.
 
         Parameters
         ----------
-        threadpool : QThreadPool
-            The threadpool for multithreading
         cam : vimba_cam
-            Vimba Camera python adapter
+            Vimba Camera python adapter.
+
+        mini : bool, optional
+            Flag indicating if this is a mini camera panel, by default False.
+
+        Other Parameters
+        ---------------
+        *args
+            Arguments to pass to the Camera_Panel constructor.
+
+        **kwargs
+            Keyword arguments to pass to the Camera_Panel constructor.
         '''
-        super().__init__(
-            threadpool, cam, mini,
-            *args, **kwargs)
+        super().__init__(cam, mini, *args, **kwargs)
 
         self.OME_tab.set_param_value(MetaParams.CHANNEL_NAME, self._cam.name)
         self.OME_tab.set_param_value(MetaParams.DET_MANUFACTURER, 'Allied Vision')
@@ -374,11 +383,11 @@ class Vimba_Panel(Camera_Panel):
 
     @property
     def cam(self):
-        '''The IDS_Camera property.
+        '''The vimba_cam property.
 
         Returns
         -------
-        IDS_Camera
+        vimba_cam
             the cam property value
         '''
         return self._cam

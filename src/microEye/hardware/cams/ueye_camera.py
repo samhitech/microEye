@@ -243,7 +243,7 @@ class IDS_Camera(miCamera):
         -------
         dict[str, object]
             dictionary containing
-            {camID, devID, senID, Status, InUse, Model, Serial}
+            {Camera ID, Device ID, Sensor ID, Status, InUse, Model, Serial}
         '''
         cam_list = []
         cam_count = ueye.c_int(0)
@@ -255,9 +255,9 @@ class IDS_Camera(miCamera):
             if (ueye.is_GetCameraList(pucl) == ueye.IS_SUCCESS):
                 for index in range(cam_count.value):
                     cam_list.append({
-                        'camID': pucl.uci[index].dwCameraID.value,
-                        'devID': pucl.uci[index].dwDeviceID.value,
-                        'senID': pucl.uci[index].dwSensorID.value,
+                        'Camera ID': pucl.uci[index].dwCameraID.value,
+                        'Device ID': pucl.uci[index].dwDeviceID.value,
+                        'Sensor ID': pucl.uci[index].dwSensorID.value,
                         'Status': pucl.uci[index].dwStatus.value,
                         'InUse': pucl.uci[index].dwInUse.value,
                         'Model': pucl.uci[index].Model.decode('utf-8'),

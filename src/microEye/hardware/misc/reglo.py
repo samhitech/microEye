@@ -376,7 +376,7 @@ class reglo_digital_module(QMainWindow):
         self.timer.start()
 
         # Threading
-        self._threadpool = QThreadPool()
+        self._threadpool = QThreadPool.globalInstance()
         print('Multithreading with maximum %d threads'
               % self._threadpool.maxThreadCount())
 

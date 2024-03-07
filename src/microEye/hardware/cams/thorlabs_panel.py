@@ -23,8 +23,8 @@ from ...shared.metadata_tree import MetaParams
 from ...shared.thread_worker import thread_worker
 from ...shared.uImage import uImage
 from ..widgets.qlist_slider import *
-from . import Camera_Panel
 from .camera_options import CamParams
+from .camera_panel import Camera_Panel
 from .thorlabs import *
 
 
@@ -60,21 +60,31 @@ class Thorlabs_Panel(Camera_Panel):
     A Qt Widget for controlling a Thorlabs Camera | Inherits Camera_Panel
     '''
 
-    def __init__(self, threadpool, cam: thorlabs_camera,
+    def __init__(self, cam: thorlabs_camera,
                  mini: bool = False, *args, **kwargs):
         '''
-        Initializes a new Thorlabs_Panel Qt widget
-        | Inherits Camera_Panel
+        Initializes a new Thorlabs_Panel Qt widget.
+
+        Inherits Camera_Panel.
 
         Parameters
         ----------
-        threadpool : QThreadPool
-            The threadpool for multithreading
         cam : thorlabs_camera
-            Thorlabs Camera python adapter
+            Thorlabs Camera python adapter.
+
+        mini : bool, optional
+            Flag indicating if this is a mini camera panel, by default False.
+
+        Other Parameters
+        ---------------
+        *args
+            Arguments to pass to the Camera_Panel constructor.
+
+        **kwargs
+            Keyword arguments to pass to the Camera_Panel constructor.
         '''
         super().__init__(
-            threadpool, cam, mini,
+            cam, mini,
             *args, **kwargs)
 
         # flag true to close camera adapter and dispose it

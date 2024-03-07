@@ -17,7 +17,7 @@ from PyQt5.QtWidgets import *
 from ..shared.hid_controller import *
 from ..shared.pyscripting import *
 from ..shared.thread_worker import *
-from .cams import CMD, CameraListWidget, Thorlabs_Panel, thorlabs_camera
+from .cams import CMD, CameraList, Thorlabs_Panel, thorlabs_camera
 from .stages import *
 from .widgets import *
 
@@ -68,7 +68,7 @@ class acquisition_module(QMainWindow):
         self.vimba_panels: list[Vimba_Panel] = []
 
         # Threading
-        self.threadpool = QThreadPool()
+        self.threadpool = QThreadPool.globalInstance()
         self._mcam_acq_worker = None
         print(
             'Multithreading with maximum %d threads'
@@ -79,7 +79,7 @@ class acquisition_module(QMainWindow):
         self._calc = ''
 
         # XY Stage
-        self.kinesisXY = KinesisXY(threadpool=self.threadpool)
+        self.kinesisXY = KinesisXY()
 
         self.lastTile = None
         self._stop_scan = False
@@ -157,9 +157,9 @@ class acquisition_module(QMainWindow):
         self.tabView.addTab(self.pyEditor, 'Scripting')
 
         # CAM Table
-        self.camWidget = CameraListWidget()
-        self.camWidget.addCamera.connect(self.add_camera_clicked)
-        self.camWidget.removeCamera.connect(self.remove_camera_clicked)
+        self.camWidget = CameraList()
+        self.camWidget.cameraAdded.connect(self.add_camera_clicked)
+        self.camWidget.cameraRemoved.connect(self.remove_camera_clicked)
 
         self.start_macq = QPushButton(
             'Start Multi-Cam Acquisition',
@@ -502,7 +502,7 @@ class acquisition_module(QMainWindow):
 
         if 'uEye' in cam['Driver']:
             for pan in self.ids_panels:
-                if pan.cam.Cam_ID == cam['camID']:
+                if pan.cam.Cam_ID == cam['Camera ID']:
                     if not pan.cam.acquisition:
                         pan.cam.free_memory()
                         pan.cam.dispose()
@@ -516,7 +516,7 @@ class acquisition_module(QMainWindow):
                         break
         if 'UC480' in cam['Driver']:
             for pan in self.thor_panels:
-                # if pan.cam.hCam.value == cam["camID"]:
+                # if pan.cam.hCam.value == cam["Camera ID"]:
                 if pan.cam.cInfo.SerNo.decode('utf-8') == cam['Serial']:
                     if not pan.cam.acquisition:
                         pan.cam.free_memory()
@@ -556,11 +556,10 @@ class acquisition_module(QMainWindow):
         # print(cam)
         if cam['InUse'] == 0:
             if 'uEye' in cam['Driver']:
-                ids_cam = IDS_Camera(cam['camID'])
+                ids_cam = IDS_Camera(cam['Camera ID'])
                 nRet = ids_cam.initialize()
                 self.ids_cams.append(ids_cam)
                 ids_panel = IDS_Panel(
-                    self.threadpool,
                     ids_cam, False, cam['Model'] + ' ' + cam['Serial'])
                 ids_panel._directory = self.save_directory
                 if len(self.ids_panels) == 0:
@@ -572,12 +571,11 @@ class acquisition_module(QMainWindow):
                 self.ids_panels.append(ids_panel)
                 self.Hlayout.addWidget(ids_panel, 1)
             if 'UC480' in cam['Driver']:
-                thor_cam = thorlabs_camera(cam['camID'])
+                thor_cam = thorlabs_camera(cam['Camera ID'])
                 nRet = thor_cam.initialize()
                 if nRet == CMD.IS_SUCCESS:
                     self.thorlabs_cams.append(thor_cam)
                     thor_panel = Thorlabs_Panel(
-                        self.threadpool,
                         thor_cam, False, cam['Model'] + ' ' + cam['Serial'])
                     thor_panel._directory = self.save_directory
                     thor_panel.master = False
@@ -586,10 +584,9 @@ class acquisition_module(QMainWindow):
                     self.thor_panels.append(thor_panel)
                     self.Hlayout.addWidget(thor_panel, 1)
             if 'Vimba' in cam['Driver']:
-                v_cam = vimba_cam(cam['camID'])
+                v_cam = vimba_cam(cam['Camera ID'])
                 self.vimba_cams.append(v_cam)
                 v_panel = Vimba_Panel(
-                        self.threadpool,
                         v_cam, False, cam['Model'] + ' ' + cam['Serial'])
                 v_panel._directory = self.save_directory
                 v_panel.master = False

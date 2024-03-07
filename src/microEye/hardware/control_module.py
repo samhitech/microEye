@@ -120,7 +120,7 @@ class control_module(QMainWindow):
         self.timer.start()
 
         # Threading
-        self._threadpool = QThreadPool()
+        self._threadpool = QThreadPool.globalInstance()
         print('Multithreading with maximum %d threads'
               % self._threadpool.maxThreadCount())
 
@@ -293,9 +293,9 @@ class control_module(QMainWindow):
         self.elliptec_tab.setLayout(self.elliptecLayout)
 
         # cameras tab
-        self.camListWidget = CameraListWidget()
-        self.camListWidget.addCamera.connect(self.add_camera)
-        self.camListWidget.removeCamera.connect(self.remove_camera)
+        self.camListWidget = CameraList()
+        self.camListWidget.cameraAdded.connect(self.add_camera)
+        self.camListWidget.cameraRemoved.connect(self.remove_camera)
 
         # display tab
         self.labelStyle = {'color': '#FFF', 'font-size': '10pt'}
@@ -497,23 +497,21 @@ class control_module(QMainWindow):
         # print(cam)
         if cam['InUse'] == 0:
             if 'uEye' in cam['Driver']:
-                ids_cam = IDS_Camera(cam['camID'])
+                ids_cam = IDS_Camera(cam['Camera ID'])
                 nRet = ids_cam.initialize()
                 self.cam = ids_cam
                 ids_panel = IDS_Panel(
-                    self._threadpool,
                     ids_cam, True, cam['Model'] + ' ' + cam['Serial'])
                 # ids_panel._directory = self.save_directory
                 ids_panel.master = False
                 self.cam_panel = ids_panel
                 self.Tab_Widget.addTab(ids_panel, ids_cam.name)
             if 'UC480' in cam['Driver']:
-                thor_cam = thorlabs_camera(cam['camID'])
+                thor_cam = thorlabs_camera(cam['Camera ID'])
                 nRet = thor_cam.initialize()
                 if nRet == CMD.IS_SUCCESS:
                     self.cam = thor_cam
                     thor_panel = Thorlabs_Panel(
-                        self._threadpool,
                         thor_cam, True, cam['Model'] + ' ' + cam['Serial'])
                     # thor_panel._directory = self.save_directory
                     thor_panel.master = False

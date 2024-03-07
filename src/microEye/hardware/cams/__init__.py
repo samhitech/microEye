@@ -1,11 +1,12 @@
-from .micam import miCamera
-from .jobs import AcquisitionJob
-from .camera_panel import Camera_Panel
 from .camera_calibration import dark_calibration
-from .CameraListWidget import CameraListWidget
+from .camera_list import CameraList
+from .camera_panel import Camera_Panel
 from .IR_Cam import IR_Cam, ParallaxLineScanner
+from .jobs import AcquisitionJob
+from .micam import miCamera, miDummy
 from .thorlabs import CMD, thorlabs_camera
 from .thorlabs_panel import Thorlabs_Panel
+
 try:
     from pyueye import ueye
 

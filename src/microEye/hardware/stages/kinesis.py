@@ -81,15 +81,14 @@ class KinesisDevice:
 class KinesisXY:
     '''Class for controlling Two Kinesis Devices as an XY Stage'''
 
-    def __init__(self, x_port='COM12', y_port='COM11',
-                 threadpool: QThreadPool = None):
+    def __init__(self, x_port='COM12', y_port='COM11'):
         self.X_Kinesis = KinesisDevice(x_port)
         self.Y_Kinesis = KinesisDevice(y_port)
         self.position = [0, 0]
         self.min = [0, 0]
         self.max = [25, 25]
         self.prec = 4
-        self.threadpool = threadpool
+        self.threadpool = QThreadPool.globalInstance()
 
     def home(self):
         self.X_Kinesis.home()

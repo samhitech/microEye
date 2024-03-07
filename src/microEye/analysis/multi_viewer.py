@@ -27,7 +27,7 @@ class DockKeys(Enum):
 
 class multi_viewer(QMainWindow):
 
-    def __init__(self, threadpool, path=None):
+    def __init__(self, path=None):
         super().__init__()
         # Set window properties
         self.title = 'microEye tiff viewer'
@@ -42,7 +42,7 @@ class multi_viewer(QMainWindow):
         self.fittingResults = None
 
         # Threading
-        self._threadpool = threadpool
+        self._threadpool = QThreadPool.globalInstance()
         print('Multithreading with maximum %d threads'
               % self._threadpool.maxThreadCount())
 
@@ -282,12 +282,12 @@ class multi_viewer(QMainWindow):
             path = self.model.filePath(index)
 
             if path.endswith('.tif') or path.endswith('.tiff'):
-                view = StackView.FromImageSequence(path, None, self._threadpool)
+                view = StackView.FromImageSequence(path, None)
                 view.localizedData.connect(self.localizedData)
             elif path.endswith('.h5') or path.endswith('.tsv'):
                 results = FittingResults.fromFile(path, 1)
                 if results is not None:
-                    view = LocalizationsView(path, results, self._threadpool)
+                    view = LocalizationsView(path, results)
                     print('Done importing results.')
                 else:
                     print('Error importing results.')
@@ -296,10 +296,10 @@ class multi_viewer(QMainWindow):
             path = self.model.filePath(index)
 
             if path.endswith('.zarr'):
-                view = StackView.FromZarr(path, self._threadpool)
+                view = StackView.FromZarr(path)
             else:
                 view = StackView.FromImageSequence(
-                    path, self.imsq_pattern.text(), self._threadpool)
+                    path, self.imsq_pattern.text())
 
             view.localizedData.connect(self.localizedData)
 
@@ -328,8 +328,6 @@ class multi_viewer(QMainWindow):
         # Create a QApplication
         app = QApplication(sys.argv)
 
-        thread_pool = QThreadPool()
-
         # Set dark mode from qdarkstyle (not compatible with PyQt6)
         app.setStyleSheet(qdarkstyle.load_stylesheet(qt_api='pyqt5'))
 
@@ -356,7 +354,7 @@ class multi_viewer(QMainWindow):
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(my_app_id)
 
         # Create the multi_viewer window
-        window = multi_viewer(thread_pool, path)
+        window = multi_viewer(path)
 
         return app, window
 
