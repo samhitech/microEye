@@ -589,13 +589,6 @@ class Dummy_Panel(Camera_Panel):
         args = []
         return args
 
-    def get_meta(self):
-        return {
-            'Exposure': self._cam.exposure_current,
-            'ROI': self._cam.get_roi(),
-            'Frames': self.camera_options.get_param_value(CamParams.FRAMES)
-        }
-
     def save_config(self):
         filename, _ = QFileDialog.getSaveFileName(
             self, 'Save config', filter='XML Files (*.xml);;')

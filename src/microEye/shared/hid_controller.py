@@ -1,17 +1,64 @@
 import sys
 from enum import Enum
+from typing import Optional
 
 import hid
 import numpy as np
 from PyQt5.QtCore import *
 from PyQt5.QtWidgets import *
+from pyqtgraph.parametertree import Parameter
+
+from .parameter_tree import Tree
 
 
 class Buttons(Enum):
-    '''Enum representing controller buttons.
+    '''
+    Enum representing controller buttons.
 
     Each enum member has a unique value representing its state in the report,
     along with additional information like identifier, description, etc.
+
+    Attributes
+    ----------
+    A : Buttons
+        Represents the X/A button on the controller.
+    B : Buttons
+        Represents the O/B button on the controller.
+    X : Buttons
+        Represents the Sq/X button on the controller.
+    Y : Buttons
+        Represents the Tri/Y button on the controller.
+    L1 : Buttons
+        Represents the L1 button on the controller.
+    R1 : Buttons
+        Represents the R1 button on the controller.
+    Share : Buttons
+        Represents the Share button on the controller.
+    Options : Buttons
+        Represents the Options button on the controller.
+    L3 : Buttons
+        Represents the L3 button on the controller.
+    R3 : Buttons
+        Represents the R3 button on the controller.
+    UP : Buttons
+        Represents the D-Pad UP button on the controller.
+    RIGHT : Buttons
+        Represents the D-Pad RIGHT button on the controller.
+    DOWN : Buttons
+        Represents the D-Pad DOWN button on the controller.
+    LEFT : Buttons
+        Represents the D-Pad LEFT button on the controller.
+
+    Methods
+    -------
+    __str__()
+        String representation of the button.
+    from_string(s)
+        Get an enum member based on its string representation.
+    from_value(ch, id)
+        Get an enum member based on its channel and identifier.
+    strings()
+        Get an array of string representations of all enum members.
     '''
     A = (1, 0, 'X/A')
     B = (2, 0, 'O/B')
@@ -43,7 +90,26 @@ class Buttons(Enum):
 
     @classmethod
     def from_value(cls, ch, id):
-        '''Get an enum member based on its channel and identifier.'''
+        '''Get an enum member based on its channel and identifier.
+
+        Parameters
+        ----------
+        ch : int
+            The channel of the button.
+        id : int
+            The identifier of the button.
+
+        Returns
+        -------
+        Buttons
+            The enum member representing the button with the
+            given channel and identifier.
+
+        Raises
+        ------
+        ValueError
+            If no enum member is found with the given channel and identifier.
+        '''
         for column in cls:
             if column.value[0] == id and column.value[1] == ch:
                 return column
@@ -57,39 +123,130 @@ class Buttons(Enum):
             res.append(column.value[-1])
         return np.array(res)
 
+class hidParams(Enum):
+    '''
+    Enum class defining hidController parameters.
+    '''
+    TITLE = 'HID Controller'
+    DEVICE = 'Device'
+    REFRESH = 'Refresh'
+    OPEN = 'Open'
+    CLOSE = 'Close'
 
-class hid_controller(QWidget):
+    REMOVE = 'Remove Device'
+
+    def __str__(self):
+        '''
+        Return the last part of the enum value (Param name).
+        '''
+        return self.value.split('.')[-1]
+
+    def get_path(self):
+        '''
+        Return the full parameter path.
+        '''
+        return self.value.split('.')
+
+class hidDevice:
+    def __init__(self, device: dict) -> None:
+        '''
+        Initialize a new hidDevice object.
+
+        Parameters
+        ----------
+        device : dict
+            A dictionary containing information about the HID device.
+        '''
+        self.data = device
+
+    @property
+    def vendorID(self):
+        '''
+        Get the vendor ID of the HID device.
+
+        Returns
+        -------
+        int or None
+            The vendor ID of the HID device, or None if it is not available.
+        '''
+        return self.data.get('vendor_id', None)
+
+    @property
+    def productID(self):
+        '''
+        Get the product ID of the HID device.
+
+        Returns
+        -------
+        int or None
+            The product ID of the HID device, or None if it is not available.
+        '''
+        return self.data.get('product_id', None)
+
+    def getHID(self):
+        '''
+        Get a hid.device object for the HID device.
+
+        Returns
+        -------
+        hid.device
+            A hid.device object for the HID device.
+        '''
+        hid_device = hid.device()
+        hid_device.open(self.vendorID, self.productID)
+        hid_device.set_nonblocking(True)
+        return hid_device
+
+    def __str__(self) -> str:
+        '''
+        Get a string representation of the HID device.
+
+        Returns
+        -------
+        str
+            A string representation of the HID device.
+        '''
+        return self.data.get('product_string', 'N/A')
+
+class hidController(Tree):
     '''QWidget for handling HID controller input.'''
     # Define signals with docstrings
     reportEvent = pyqtSignal(Buttons)
     '''Signal emitted when a controller button event occurs.
 
-    Args:
-        Buttons: The enum member representing the button.
+    Parameters
+    ----------
+    Buttons: :class:`Buttons`
+        The enum member representing the button.
     '''
 
     reportLStickPosition = pyqtSignal(int, int)
     '''Signal emitted when the left stick position changes.
 
-    Args:
-        int: X-axis position of the left stick.
-        int: Y-axis position of the left stick.
+    Parameters
+    ----------
+    int: int
+        X-axis position of the left stick.
+    int: int
+        Y-axis position of the left stick.
     '''
 
     reportRStickPosition = pyqtSignal(int, int)
     '''Signal emitted when the right stick position changes.
 
-    Args:
-        int: X-axis position of the right stick.
-        int: Y-axis position of the right stick.
+    Parameters
+    ----------
+    int: int
+        X-axis position of the right stick.
+    int: int
+        Y-axis position of the right stick.
     '''
 
-    def __init__(self) -> None:
+    def __init__(self, parent: Optional['QWidget'] = None):
         '''Initialize the HID controller widget.'''
-        super().__init__()
+        super().__init__(parent=parent)
 
-        self._layout = QFormLayout()
-        self.setLayout(self._layout)
+        self.refresh_list()
 
         self.hid_device = None
 
@@ -98,37 +255,36 @@ class hid_controller(QWidget):
         self.left_analog = (128, 127)
         self.right_analog = (128, 127)
 
-        self.devices_cbox = QComboBox()
-        self.refresh_list()
-
-        self.refresh_btn = QPushButton(
-            'Refresh',
-            clicked=lambda: self.refresh_list()
-        )
-        self.open_btn = QPushButton(
-            'Open',
-            clicked=lambda: self.open_HID()
-        )
-        self.close_btn = QPushButton(
-            'Close',
-            clicked=lambda: self.close_HID()
-        )
-        self.btn_layout = QHBoxLayout()
-        self.btn_layout.addWidget(self.open_btn)
-        self.btn_layout.addWidget(self.close_btn)
-        self.btn_layout.addWidget(self.refresh_btn)
-
-        self._layout.addRow(
-            QLabel('HID Devices'),
-            self.devices_cbox
-        )
-        self._layout.addRow(
-            self.btn_layout)
-
         self.timer = QTimer()
         self.timer.setInterval(1)
         self.timer.timeout.connect(self.recurring_timer)
         self.timer.start()
+
+    def create_parameters(self):
+        '''
+        Create the parameter tree structure.
+        '''
+        params = [
+            {'name': str(hidParams.TITLE), 'type': 'group',
+                'children': []},
+            {'name': str(hidParams.DEVICE), 'type': 'list',
+                'values': []},
+            {'name': str(hidParams.REFRESH), 'type': 'action'},
+            {'name': str(hidParams.OPEN), 'type': 'action'},
+            {'name': str(hidParams.CLOSE), 'type': 'action'},
+        ]
+
+        self.param_tree = Parameter.create(name='root', type='group', children=params)
+        self.param_tree.sigTreeStateChanged.connect(self.change)
+        self.header().setSectionResizeMode(
+            QHeaderView.ResizeMode.ResizeToContents)
+
+        self.get_param(
+            hidParams.REFRESH).sigActivated.connect(self.refresh_list)
+        self.get_param(
+            hidParams.OPEN).sigActivated.connect(self.open_HID)
+        self.get_param(
+            hidParams.CLOSE).sigActivated.connect(self.close_HID)
 
     def recurring_timer(self):
         '''Read and process controller input in a recurring timer.'''
@@ -167,39 +323,77 @@ class hid_controller(QWidget):
 
     def open_HID(self):
         '''Open the selected HID device.'''
-        data = self.devices_cbox.currentData()
-        if data is not None:
+        device: hidDevice = self.get_param_value(hidParams.DEVICE)
+        if device is not None:
             if self.hid_device is not None:
                 self.hid_device.close()
                 self.hid_device = None
 
-            self.hid_device = hid.device()
-            self.hid_device.open(data[0], data[1])
-            self.hid_device.set_nonblocking(True)
+            self.hid_device = device.getHID()
 
     def refresh_list(self):
         '''Refresh the list of available HID devices.'''
-        self.devices_cbox.clear()
-        for device in hid.enumerate():
-            data = (
-                device['vendor_id'],
-                device['product_id'],
-                device['product_string'])
-            self.devices_cbox.addItem(
-                data[2],
-                data
-            )
+        devicesParam = self.get_param(hidParams.DEVICE)
 
+        devices = [hidDevice(device) for device in hid.enumerate()]
+
+        devicesParam.setLimits(devices)
 
 def map_range(value, args):
-    '''Map a value from one range to another.'''
+    '''Map a value from one range to another.
+
+    This function maps a value from one range to another by linearly
+    interpolating between the two ranges. It takes a value and a tuple
+    of four arguments: the old minimum, old maximum, new minimum, and
+    new maximum.
+
+    Parameters
+    ----------
+    value : float
+        The value to be mapped.
+    args : tuple
+        A tuple of four arguments: old_min, old_max, new_min, new_max.
+
+    Returns
+    -------
+    float
+        The mapped value.
+
+    Examples
+    --------
+    >>> map_range(0.5, (0, 1, 0, 10))
+    5.0
+    '''
     old_min, old_max, new_min, new_max = args
     return (new_min +
             (new_max - new_min) * (value - old_min) / (old_max - old_min))
 
 
 def dz_scaled_radial(stick_input, deadzone):
-    '''Apply a scaled radial transformation with deadzone.'''
+    '''Apply a scaled radial transformation with deadzone.
+
+    This function applies a scaled radial transformation with a deadzone to a
+    stick input, which is a 2D vector. The transformation scales the input vector
+    based on its magnitude and applies a deadzone, where inputs within the
+    deadzone are mapped to zero.
+
+    Parameters
+    ----------
+    stick_input : numpy.ndarray
+        A 2D vector representing the stick input.
+    deadzone : float
+        The radius of the deadzone.
+
+    Returns
+    -------
+    numpy.ndarray
+        A 2D vector representing the transformed stick input.
+
+    Examples
+    --------
+    >>> dz_scaled_radial(np.array([1.0, 0.0]), 0.5)
+    array([0.5, 0.  ])
+    '''
     input_magnitude = np.linalg.norm(stick_input)
     if input_magnitude < deadzone:
         return 0, 0
@@ -217,7 +411,34 @@ def dz_scaled_radial(stick_input, deadzone):
 
 
 def dz_sloped_scaled_axial(stick_input, deadzone, n=1):
-    '''Apply a sloped scaled axial transformation with deadzone.'''
+    '''Apply a sloped scaled axial transformation with deadzone.
+
+    This function applies a sloped scaled axial transformation with a deadzone to a
+    stick input, which is a 2D vector. The transformation scales the input vector
+    based on its magnitude and applies a deadzone, where inputs within the
+    deadzone are mapped to zero. The scaling is sloped, meaning that the scaling
+    factor depends on the direction of the input vector.
+
+    Parameters
+    ----------
+    stick_input : numpy.ndarray
+        A 2D vector representing the stick input.
+    deadzone : float
+        The radius of the deadzone.
+    n : float, optional
+        The slope of the scaling factor. Default is 1.
+
+    Returns
+    -------
+    numpy.ndarray
+        A 2D vector representing the transformed stick input.
+
+    Examples
+    --------
+    >>> dz_sloped_scaled_axial(np.array([1.0, 0.0]), 0.5)
+    array([0.5, 0.  ])
+
+    '''
     x_val = 0
     y_val = 0
     deadzone_x = deadzone * np.power(abs(stick_input[1]), n)
@@ -231,7 +452,30 @@ def dz_sloped_scaled_axial(stick_input, deadzone, n=1):
 
 
 def dz_hybrid(stick_input, deadzone):
-    '''Apply a hybrid transformation with deadzone.'''
+    '''Apply a hybrid transformation with deadzone.
+
+    This function applies a hybrid transformation with a deadzone to a stick input,
+    which is a 2D vector. The transformation first checks if the input falls within
+    the deadzone, and if so, maps it to zero. Otherwise, it applies a scaled radial
+    transformation to the input.
+
+    Parameters
+    ----------
+    stick_input : numpy.ndarray
+        A 2D vector representing the stick input.
+    deadzone : float
+        The radius of the deadzone.
+
+    Returns
+    -------
+    numpy.ndarray
+        A 2D vector representing the transformed stick input.
+
+    Examples
+    --------
+    >>> dz_hybrid(np.array([1.0, 0.0]), 0.5)
+    array([0.5, 0.  ])
+    '''
     # First, check that input does not fall within deadzone
     input_magnitude = np.linalg.norm(stick_input)
     if input_magnitude < deadzone:
@@ -245,7 +489,7 @@ def dz_hybrid(stick_input, deadzone):
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-    win = hid_controller()
+    win = hidController()
     win.show()
 
     app.exec_()

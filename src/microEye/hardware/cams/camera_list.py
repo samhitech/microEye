@@ -34,6 +34,9 @@ except Exception:
 
 
 class CameraList(QWidget):
+    '''
+    A widget for displaying and managing a list of cameras.
+    '''
 
     cameraAdded = pyqtSignal(Camera_Panel, bool)
     cameraRemoved = pyqtSignal(dict, bool)
@@ -46,6 +49,14 @@ class CameraList(QWidget):
     }
 
     def __init__(self, parent: typing.Optional['QWidget'] = None):
+        '''
+        Initialize the camera list widget.
+
+        Parameters
+        ----------
+        parent : typing.Optional[QWidget], optional
+            The parent widget of this camera list widget.
+        '''
         super().__init__(parent=parent)
 
         self.cam_list = None
@@ -56,6 +67,9 @@ class CameraList(QWidget):
         self.InitLayout()
 
     def InitLayout(self):
+        '''
+        Initialize the layout of the widget.
+        '''
 
         # main layout
         self.mainLayout = QVBoxLayout()
@@ -95,18 +109,24 @@ class CameraList(QWidget):
 
     @property
     def autofocusCam(self) -> typing.Union[Camera_Panel, None]:
+        '''
+        Get the autofocus camera panel.
+
+        Returns
+        -------
+        Camera_Panel | None
+            The autofocus camera panel, or None if no autofocus camera is available.
+        '''
         if self.cached_autofocusCam is None:
             self.cached_autofocusCam = next(
                 (cam['Panel'] for _, cam_list in CameraList.cameras.items()
                  for cam in cam_list if cam['IR']), None)
         return self.cached_autofocusCam
-        # for _, cam_list in self.cameras.items():
-        #     for cam in cam_list:
-        #         if cam['IR']:
-        #             return cam
-        # return None
 
     def add_camera_clicked(self):
+        '''
+        Add a camera when the "Add Camera" button is clicked.
+        '''
         if len(self.cam_table.selectedIndexes()) > 0:
             cam = self.cam_list[self.cam_table.currentIndex().row()]
 
@@ -137,6 +157,21 @@ class CameraList(QWidget):
             self._display_warning_message('Please select a device.')
 
     def add_camera(self, cam, mini=False):
+        '''
+        Add a camera.
+
+        Parameters
+        ----------
+        cam : dict
+            The camera information dictionary.
+        mini : bool, optional
+            True to add a mini camera panel, False to add a full camera panel.
+
+        Returns
+        -------
+        Camera_Panel | None
+            The camera panel, or None if the camera could not be added.
+        '''
         if cam['InUse'] == 0:
             driver = cam['Driver']
             if driver == 'uEye':
@@ -154,6 +189,23 @@ class CameraList(QWidget):
             self._display_warning_message('Device is in use or already added.')
 
     def _add_ids_camera(self, cam, camera_id, mini):
+        '''
+        Add an IDS camera.
+
+        Parameters
+        ----------
+        cam : dict
+            The camera information dictionary.
+        camera_id : int
+            The camera ID.
+        mini : bool
+            True to add a mini camera panel, False to add a full camera panel.
+
+        Returns
+        -------
+        Camera_Panel | None
+            The camera panel, or None if the camera could not be added.
+        '''
         ids_cam = IDS_Camera(camera_id)
         ids_cam.initialize()
         ids_panel = IDS_Panel(ids_cam, mini, self.get_cam_title(cam))
@@ -162,6 +214,23 @@ class CameraList(QWidget):
         return ids_panel
 
     def _add_thorlabs_camera(self, cam, camera_id, mini):
+        '''
+        Add a Thorlabs camera.
+
+        Parameters
+        ----------
+        cam : dict
+            The camera information dictionary.
+        camera_id : int
+            The camera ID.
+        mini : bool
+            True to add a mini camera panel, False to add a full camera panel.
+
+        Returns
+        -------
+        Camera_Panel | None
+            The camera panel, or None if the camera could not be added.
+        '''
         thor_cam = thorlabs_camera(camera_id)
         n_ret = thor_cam.initialize()
         if n_ret == CMD.IS_SUCCESS:
@@ -173,6 +242,23 @@ class CameraList(QWidget):
             self._display_warning_message('Thorlabs camera initialization failed.')
 
     def _add_vimba_camera(self, cam, camera_id, mini):
+        '''
+        Add a Vimba camera.
+
+        Parameters
+        ----------
+        cam : dict
+            The camera information dictionary.
+        camera_id : int
+            The camera ID.
+        mini : bool
+            True to add a mini camera panel, False to add a full camera panel.
+
+        Returns
+        -------
+        Camera_Panel | None
+            The camera panel, or None if the camera could not be added.
+        '''
         v_cam = vimba_cam(camera_id)
         v_panel = Vimba_Panel(v_cam, mini, self.get_cam_title(cam))
         CameraList.cameras['Vimba'].append({
@@ -180,12 +266,35 @@ class CameraList(QWidget):
         return v_panel
 
     def _add_dummy_camera(self, cam, mini):
+        '''
+        Add a dummy camera.
+
+        Parameters
+        ----------
+        cam : dict
+            The camera information dictionary.
+        mini : bool
+            True to add a mini camera panel, False to add a full camera panel.
+
+        Returns
+        -------
+        Camera_Panel | None
+            The camera panel, or None if the camera could not be added.
+        '''
         dummy_panel = Dummy_Panel(mini, self.get_cam_title(cam))
         CameraList.cameras['miDummy'].append({
             'Camera': dummy_panel.cam, 'Panel': dummy_panel, 'IR': mini})
         return dummy_panel
 
     def _display_warning_message(self, message):
+        '''
+        Display a warning message.
+
+        Parameters
+        ----------
+        message : str
+            The warning message to display.
+        '''
         QMessageBox.warning(
             self,
             'Warning',
@@ -193,9 +302,25 @@ class CameraList(QWidget):
             QMessageBox.StandardButton.Ok)
 
     def get_cam_title(self, cam: dict):
+        '''
+        Get the camera title.
+
+        Parameters
+        ----------
+        cam : dict
+            The camera information dictionary.
+
+        Returns
+        -------
+        str
+            The camera title.
+        '''
         return f'{cam["Model"]} {cam["Serial"]}'
 
     def remove_camera_clicked(self):
+        '''
+        Remove a camera when the "Remove Camera" button is clicked.
+        '''
         if len(self.cam_table.selectedIndexes()) > 0:
             cam = self.cam_list[self.cam_table.currentIndex().row()]
 
@@ -216,12 +341,23 @@ class CameraList(QWidget):
             self._display_warning_message('Please select a device.')
 
     def remove_camera(self, cam):
+        '''
+        Remove a camera.
+
+        Parameters
+        ----------
+        cam : dict
+            The camera information dictionary.
+        '''
         cams : list[dict] = CameraList.cameras.get(cam['Driver'], [])
         if cams:
             for item in cams:
                 pan : Camera_Panel = item['Panel']
                 if pan.title() == self.get_cam_title(cam):
-                    if not pan.cam.acquisition:
+                    if pan.cam.acquisition:
+                        self._display_warning_message(
+                            'Please stop acquisition before removing!')
+                    else:
                         if isinstance(pan.cam, IDS_Camera) or isinstance(  # noqa: SIM101
                                 pan.cam, thorlabs_camera):  # noqa: SIM101
                             pan.cam.free_memory()
@@ -245,6 +381,9 @@ class CameraList(QWidget):
             self._display_warning_message('Device/Panel not found!')
 
     def refresh_list(self):
+        '''
+        Refresh the camera list.
+        '''
         self.cam_list = []
 
         # Add miDummy to the list

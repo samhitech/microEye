@@ -468,6 +468,8 @@ def get_kymogram_row(
             x_idx = np.round(x + move_line * dx).astype(np.int64)
             y_idx = np.round(y + move_line * dy).astype(np.int64)
             with nb.objmode():
+                np.clip(x_idx, 0, Data.shape[1]-1, x_idx)
+                np.clip(y_idx, 0, Data.shape[0]-1, y_idx)
                 if method == 'maximum':
                     temp[:] = np.maximum(temp, Data[y_idx, x_idx])
                 else:

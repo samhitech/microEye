@@ -1,6 +1,6 @@
 from .camera_calibration import dark_calibration
 from .camera_list import CameraList
-from .camera_panel import Camera_Panel
+from .camera_panel import Camera_Panel, CamParams
 from .IR_Cam import IR_Cam, ParallaxLineScanner
 from .jobs import AcquisitionJob
 from .micam import miCamera, miDummy

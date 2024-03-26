@@ -11,6 +11,7 @@ from PyQt5.QtCore import *
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import *
 
+from ..shared import StartGUI
 from ..shared.gui_helper import *
 from ..shared.thread_worker import *
 from ..shared.uImage import *
@@ -325,38 +326,7 @@ class multi_viewer(QMainWindow):
         tuple of QApplication and multi_viewer
             Returns a tuple with QApplication and multi_viewer main window.
         '''
-        # Create a QApplication
-        app = QApplication(sys.argv)
-
-        # Set dark mode from qdarkstyle (not compatible with PyQt6)
-        app.setStyleSheet(qdarkstyle.load_stylesheet(qt_api='pyqt5'))
-
-        # Set the font size for the application
-        font = app.font()
-        font.setPointSize(10)
-        app.setFont(font)
-
-        # Set the app icon
-        dirname = os.path.dirname(os.path.abspath(__file__))
-        app_icon = QIcon()
-        icon_sizes = [16, 24, 32, 48, 64, 128, 256, 512]
-
-        for size in icon_sizes:
-            icon_path = os.path.join(dirname, f'../icons/{size}.png')
-            app_icon.addFile(icon_path, QSize(size, size))
-
-        app.setWindowIcon(app_icon)
-
-        # Set the app user model ID for Windows
-        if sys.platform.startswith('win'):
-            import ctypes
-            my_app_id = 'samhitech.mircoEye.multi_viewer'  # App ID
-            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(my_app_id)
-
-        # Create the multi_viewer window
-        window = multi_viewer(path)
-
-        return app, window
+        return StartGUI(multi_viewer, path)
 
 def get_dock_config(dock: QDockWidget):
     '''

@@ -695,9 +695,10 @@ class Vimba_Panel(Camera_Panel):
             self.acq_job.frames_captured = self.acq_job.frames_captured + 1
         if self.acq_job.frames_captured > self.acq_job.frames - 1 and \
                 not self.mini:
-            self.c_event.set()
+            self.acq_job.c_event.set()
             self.acq_job.stop_threads = True
             logging.debug('Stop')
+            print('Capture Stopped!')
 
     def cam_capture(self, *args):
         '''Capture function executed by the capture worker.
@@ -715,7 +716,7 @@ class Vimba_Panel(Camera_Panel):
             with self._cam.cam:
                 self._cam.cam.start_streaming(self._capture_handler)
 
-                self.c_event.wait()
+                self.acq_job.c_event.wait()
         except Exception:
             traceback.print_exc()
         finally:
@@ -747,15 +748,6 @@ class Vimba_Panel(Camera_Panel):
         '''
         args = []
         return args
-
-    def get_meta(self):
-        with self._cam.cam:
-            meta = {
-                'Exposure': self._cam.exposure_current,
-                'ROI': self._cam.get_roi(False),
-                'Frames': self.camera_options.get_param_value(CamParams.FRAMES)
-            }
-        return meta
 
     def save_config(self):
         filename, _ = QFileDialog.getSaveFileName(

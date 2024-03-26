@@ -219,6 +219,9 @@ class AcquisitionJob:
         self.stop_threads = False
         '''cross-thread attribute (use lock)'''
 
+        self.c_event = threading.Event()
+        self.s_event = kwargs.get('s_event', threading.Event())
+
         self.tiffWriter: list[tf.TiffWriter] = []
         self.dark_cal = None
 
@@ -267,7 +270,7 @@ class AcquisitionJob:
         str
             Generated temperature log filename.
         '''
-        return self.path + self.prefix + \
+        return self.path + \
             f'{self.major:02d}_{self.prefix}_temp_log.csv'
 
     def addDarkFrame(self, frame: np.ndarray):
@@ -404,12 +407,14 @@ class AcquisitionJob:
         str
             Metadata file path.
         '''
-        return self.path + self.name + self.timestamp + '.txt'
+        return self.path + \
+            f'{self.major:02d}_{self.prefix}' + self.name.replace(
+                ' ', '_') + self.timestamp + '.json'
 
     def writeMetaFile(self):
         '''Write metadata to a file.'''
         with open(self.getMetaFilename(), 'w+') as metaFile:
-            json.dump(self.meta_file, metaFile)
+            json.dump(self.meta_file, metaFile, indent=2)
 
     def getTiffWriter(self, roi_index: int =None) -> tf.TiffWriter:
         '''Return a TiffWriter instance for saving TIFF files.

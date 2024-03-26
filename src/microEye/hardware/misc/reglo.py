@@ -8,6 +8,8 @@ from PyQt5.QtGui import *
 from PyQt5.QtSerialPort import *
 from PyQt5.QtWidgets import *
 
+from ...shared import StartGUI
+
 
 class RegloDigital(QSerialPort):
 
@@ -732,46 +734,10 @@ class reglo_digital_module(QMainWindow):
 
         Returns
         -------
-        tuple (QApplication, microEye.reglo_digital_module)
+        tuple (QApplication, reglo_digital_module)
             Returns a tuple with QApp and reglo_digital_module main window.
         '''
-        # create a QApp
-        app = QApplication(sys.argv)
-        # set darkmode from *qdarkstyle* (not compatible with pyqt6)
-        app.setStyleSheet(qdarkstyle.load_stylesheet(qt_api='pyqt5'))
-        font = app.font()
-        font.setPointSize(12)
-        app.setFont(font)
-        # sets the app icon
-        dirname = os.path.dirname(os.path.abspath(__file__))
-        app_icon = QIcon()
-        app_icon.addFile(
-            os.path.join(dirname, '../icons/16.png'), QSize(16, 16))
-        app_icon.addFile(
-            os.path.join(dirname, '../icons/24.png'), QSize(24, 24))
-        app_icon.addFile(
-            os.path.join(dirname, '../icons/32.png'), QSize(32, 32))
-        app_icon.addFile(
-            os.path.join(dirname, '../icons/48.png'), QSize(48, 48))
-        app_icon.addFile(
-            os.path.join(dirname, '../icons/64.png'), QSize(64, 64))
-        app_icon.addFile(
-            os.path.join(dirname, '../icons/128.png'), QSize(128, 128))
-        app_icon.addFile(
-            os.path.join(dirname, '../icons/256.png'), QSize(256, 256))
-        app_icon.addFile(
-            os.path.join(dirname, '../icons/512.png'), QSize(512, 512))
-
-        app.setWindowIcon(app_icon)
-
-        if sys.platform.startswith('win'):
-            import ctypes
-            myappid = 'samhitech.mircoEye.reglo_digital_module'  # appid
-            ctypes.windll.shell32.\
-                SetCurrentProcessExplicitAppUserModelID(myappid)
-
-        window = reglo_digital_module()
-        return app, window
+        return StartGUI(reglo_digital_module)
 
 
 if __name__ == '__main__':

@@ -1,3 +1,6 @@
+import os
+from enum import Enum
+
 import numpy as np
 import pyqtgraph as pg
 import qdarkstyle
@@ -6,8 +9,9 @@ from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtSerialPort import *
 from PyQt5.QtWidgets import *
+from pyqtgraph.parametertree import Parameter
 
-from ...shared.uImage import uImage
+from ...shared import Tree, uImage
 
 
 class TileImage:
@@ -92,14 +96,51 @@ class TiledImageSelector(QWidget):
         if len(directory) > 0:
             for idx, tImg in enumerate(self.images):
                 tf.imwrite(
-                    directory + '/{:03d}_image_y{:02d}_x{:02d}.tif'.format(
-                        idx, tImg.index[0], tImg.index[1]
-                    ),
+                    directory + \
+                    f'/{idx:03d}_image_y{tImg.index[0]:02d}_x{tImg.index[1]:02d}.tif',
                     tImg.uImage.image,
                     photometric='minisblack')
 
 
-class ScanAcquisitionWidget(QGroupBox):
+class ScanParams(Enum):
+    '''
+    Enum class defining Scanning Acquisition parameters.
+    '''
+    DELAY = 'Delay [ms]'
+    XY_SCAN = 'XY SCAN'
+    Z_SCAN = 'Z SCAN'
+    X_STEP = 'XY SCAN.X Steps'
+    Y_STEP = 'XY SCAN.Y Steps'
+    Z_STEP = 'Z SCAN.Z Steps'
+    X_STEP_SIZE = 'XY SCAN.X Step Size [um]'
+    Y_STEP_SIZE = 'XY SCAN.Y Step Size [um]'
+    Z_STEP_SIZE = 'Z SCAN.Z Step Size [nm]'
+    AVG_FRAMES = 'XY SCAN.Average [Frames]'
+
+    XY_START = 'XY SCAN.START SCAN'
+    XY_LAST = 'XY SCAN.LAST SCAN'
+    XY_STOP = 'XY SCAN.STOP SCAN'
+
+    N_FRAMES = 'Z SCAN.Frames per Z-Slice'
+    Z_REVERSED = 'Z SCAN.Reversed'
+    Z_DIRECTORY = 'Z SCAN.Save Directory'
+    Z_START = 'Z SCAN.START SCAN'
+    Z_STOP = 'Z SCAN.STOP SCAN'
+    Z_CAL = 'Z SCAN.START CALIBRATION'
+
+    def __str__(self):
+        '''
+        Return the last part of the enum value (Param name).
+        '''
+        return self.value.split('.')[-1]
+
+    def get_path(self):
+        '''
+        Return the full parameter path.
+        '''
+        return self.value.split('.')
+
+class ScanAcquisitionWidget(Tree):
     startAcquisitionXY = pyqtSignal(tuple)
     stopAcquisitionXY = pyqtSignal()
     openLastTileXY = pyqtSignal()
@@ -114,191 +155,174 @@ class ScanAcquisitionWidget(QGroupBox):
     def __init__(self) -> None:
         super().__init__()
 
-        self.setTitle('Scan Acquisition')
+        self._directory = os.path.join(os.path.expanduser('~'), 'Desktop')
 
-        layout = QFormLayout()
-        self.setLayout(layout)
+    def create_parameters(self):
+        '''
+        Create the parameter tree structure.
 
-        self.x_steps = QSpinBox()
-        self.x_steps.setMinimum(1)
-        self.x_steps.setMaximum(20)
-        self.x_steps.setValue(4)
+        This method creates and sets up the parameter tree structure for the
+        `PzFocView` class.
+        '''
+        params = [
+            {'name': str(ScanParams.DELAY),
+                'type': 'int', 'value': 200, 'limits': [1, 1e4], 'step': 50},
+            {'name': str(ScanParams.XY_SCAN), 'type': 'group', 'children': [
+                {'name': str(ScanParams.X_STEP),
+                    'type': 'int', 'value': 4, 'limits': [1, 100], 'step': 1},
+                {'name': str(ScanParams.Y_STEP),
+                    'type': 'int', 'value': 4, 'limits': [1, 100], 'step': 1},
+                {'name': str(ScanParams.X_STEP_SIZE),
+                'type': 'float', 'value': 50.0, 'limits': [0.1, 500],
+                'step': 1, 'dec': False, 'decimals': 3},
+                {'name': str(ScanParams.Y_STEP_SIZE),
+                'type': 'float', 'value': 50.0, 'limits': [0.1, 500],
+                'step': 1, 'dec': False, 'decimals': 3},
+                {'name': str(ScanParams.AVG_FRAMES),
+                    'type': 'int', 'value': 1, 'limits': [1, 128], 'step': 1},
+                {'name': str(ScanParams.XY_START), 'type': 'action'},
+                {'name': str(ScanParams.XY_STOP), 'type': 'action'},
+                {'name': str(ScanParams.XY_LAST), 'type': 'action'},
+            ]},
+            {'name': str(ScanParams.Z_SCAN), 'type': 'group', 'children': [
+                {'name': str(ScanParams.Z_STEP),
+                    'type': 'int', 'value': 5, 'limits': [2, 1e4], 'step': 1},
+                {'name': str(ScanParams.Z_STEP_SIZE),
+                    'type': 'int', 'value': 25, 'limits': [1, 2e4], 'step': 1},
+                {'name': str(ScanParams.N_FRAMES),
+                    'type': 'int', 'value': 10, 'limits': [1, 1e9], 'step': 1},
+                {'name': str(ScanParams.Z_REVERSED),
+                    'type': 'bool', 'value': False},
+                {'name': str(ScanParams.Z_DIRECTORY), 'type': 'file',
+                 'directory': os.path.join(os.path.expanduser('~'), 'Desktop'),
+                 'value': os.path.join(os.path.expanduser('~'), 'Desktop'),
+                 'fileMode': 'DirectoryOnly'},
+                {'name': str(ScanParams.Z_START), 'type': 'action'},
+                {'name': str(ScanParams.Z_STOP), 'type': 'action'},
+                {'name': str(ScanParams.Z_CAL), 'type': 'action'},
+            ]},
+        ]
 
-        self.y_steps = QSpinBox()
-        self.y_steps.setMinimum(1)
-        self.y_steps.setMaximum(20)
-        self.y_steps.setValue(4)
+        self.param_tree = Parameter.create(name='root', type='group', children=params)
+        self.param_tree.sigTreeStateChanged.connect(self.change)
+        self.header().setSectionResizeMode(
+            QHeaderView.ResizeMode.ResizeToContents)
 
-        self.x_stepsize = QDoubleSpinBox()
-        self.x_stepsize.setDecimals(1)
-        self.x_stepsize.setMinimum(0.1)
-        self.x_stepsize.setMaximum(500)
-        self.x_stepsize.setValue(50)
+        self.get_param(
+            ScanParams.XY_START).sigActivated.connect(
+                lambda: self.startScanning(True))
+        self.get_param(
+            ScanParams.XY_STOP).sigActivated.connect(
+                self.stopAcquisitionXY.emit)
+        self.get_param(
+            ScanParams.XY_LAST).sigActivated.connect(
+                self.openLastTileXY.emit)
 
-        self.y_stepsize = QDoubleSpinBox()
-        self.y_stepsize.setDecimals(1)
-        self.y_stepsize.setMinimum(0.1)
-        self.y_stepsize.setMaximum(500)
-        self.y_stepsize.setValue(50)
+        self.get_param(
+            ScanParams.Z_START).sigActivated.connect(
+                lambda: self.startScanning(False))
+        self.get_param(
+            ScanParams.Z_STOP).sigActivated.connect(
+                self.stopAcquisitionZ.emit)
+        self.get_param(
+            ScanParams.Z_CAL).sigActivated.connect(
+                lambda: self.startScanning(None))
 
-        self.delay = QSpinBox()
-        self.delay.setMinimum(0)
-        self.delay.setMaximum(10000)
-        self.delay.setValue(200)
+        self.get_param(
+            ScanParams.Z_DIRECTORY).sigValueChanged.connect(self.directory_changed)
 
-        self.average = QSpinBox()
-        self.average.setMinimum(1)
-        self.average.setMaximum(32)
-        self.average.setValue(1)
+    def startScanning(self, XY: bool):
+        '''
+        Starts the scanning process based on the provided XY parameter.
 
-        layout.addRow(
-            QLabel('Number of X steps'),
-            self.x_steps
-        )
-        layout.addRow(
-            QLabel('Number of Y steps'),
-            self.y_steps
-        )
-        layout.addRow(
-            QLabel('X Step size [um]'),
-            self.x_stepsize
-        )
-        layout.addRow(
-            QLabel('Y Step size [um]'),
-            self.y_stepsize
-        )
-        layout.addRow(
-            QLabel('Delay [ms]'),
-            self.delay
-        )
-        layout.addRow(
-            QLabel('Average [frames]'),
-            self.average
-        )
+        Parameters
+        ----------
+        XY : bool, optional
+            If True, starts XY scanning with the parameters set in the
+            GUI. If False, starts Z scanning with the parameters set in
+            the GUI. If None, starts calibration for Z scanning with
+            the parameters set in the GUI.
 
-        xy_buttons = QHBoxLayout()
+        '''
+        if XY is None:
+            self.startCalibrationZ.emit(self.get_params(False))
+            return
 
-        self.acquire_btn = QPushButton(
-            'Acquire',
-            clicked=lambda: self.startAcquisitionXY.emit((
-                self.x_steps.value(),
-                self.y_steps.value(),
-                self.x_stepsize.value(),
-                self.y_stepsize.value(),
-                self.delay.value(),
-                self.average.value())
-            )
-        )
-        self.last_btn = QPushButton(
-            'Last Scan',
-            clicked=lambda: self.openLastTileXY.emit()
-        )
+        if XY:
+            self.startAcquisitionXY.emit(self.get_params(XY))
+        else:
+            self.startAcquisitionZ.emit(self.get_params(XY))
 
-        self.stop_btn = QPushButton(
-            'STOP!',
-            clicked=lambda: self.stopAcquisitionXY.emit()
-        )
-
-        xy_buttons.addWidget(self.acquire_btn)
-        xy_buttons.addWidget(self.last_btn)
-        xy_buttons.addWidget(self.stop_btn)
-        layout.addRow(xy_buttons)
-
-        self.z_steps = QSpinBox()
-        self.z_steps.setMinimum(2)
-        self.z_steps.setMaximum(10000)
-        self.z_steps.setValue(10)
-
-        self.z_stepsize = QSpinBox()
-        self.z_stepsize.setMinimum(1)
-        self.z_stepsize.setMaximum(20000)
-        self.z_stepsize.setValue(25)
-
-        self.n_frames = QSpinBox()
-        self.n_frames.setMinimum(1)
-        self.n_frames.setMaximum(1e9)
-        self.n_frames.setValue(10)
-
-        self.reverse = QCheckBox()
-        self.reverse.setChecked(False)
-
-        layout.addRow(
-            QLabel('Number of Z steps'),
-            self.z_steps
-        )
-        layout.addRow(
-            QLabel('Z Step size [nm]'),
-            self.z_stepsize
-        )
-        layout.addRow(
-            QLabel('Number of Frames'),
-            self.n_frames
-        )
-        layout.addRow(
-            QLabel('Reverse'),
-            self.reverse
-        )
-
-        z_buttons = QHBoxLayout()
-
-        self.z_acquire_btn = QPushButton(
-            'Acquire Z-stack',
-            clicked=lambda: self.startAcquisitionZ.emit((
-                self.z_steps.value(),
-                self.z_stepsize.value(),
-                self.delay.value(),
-                self.n_frames.value(),
-                self.reverse.isChecked())
-            )
-        )
-        self.z_cal_btn = QPushButton(
-            'Z Cal.',
-            clicked=lambda: self.startCalibrationZ.emit((
-                self.z_steps.value(),
-                self.z_stepsize.value(),
-                self.delay.value(),
-                self.n_frames.value(),
-                self.reverse.isChecked())
-            )
-        )
-        self.z_stop_btn = QPushButton(
-            'STOP!',
-            clicked=lambda: self.stopAcquisitionZ.emit()
-        )
-
-        z_buttons.addWidget(self.z_acquire_btn)
-        z_buttons.addWidget(self.z_cal_btn)
-        z_buttons.addWidget(self.z_stop_btn)
-        layout.addRow(z_buttons)
-
-        self._directory = ''
-        self.save_dir_edit = QLineEdit(self._directory)
-        self.save_dir_edit.setReadOnly(True)
-
-        save_browse_btn = QPushButton(
-            '...', clicked=lambda: self.save_browse_clicked())
-
-        layout.addRow(self.save_dir_edit)
-        layout.addWidget(save_browse_btn)
-
-    def save_browse_clicked(self):
+    def directory_changed(self, param, value):
         '''Slot for browse clicked event'''
-        directory = QFileDialog.getExistingDirectory(
-            self, 'Select Directory')
+        self._directory = value
+        self.directoryChanged.emit(self._directory)
 
-        if len(directory) > 0:
-            self._directory = directory
-            self.save_dir_edit.setText(self._directory)
-            self.directoryChanged.emit(self._directory)
+    def get_params(self, XY: bool):
+        '''
+        Returns the scanning parameters for XY or Z scan.
 
-    def get_params(self):
-        return (
-                self.x_steps.value(),
-                self.y_steps.value(),
-                self.x_stepsize.value(),
-                self.y_stepsize.value(),
-                self.delay.value(),
-                self.average.value())
+        Parameters
+        ----------
+        XY : bool
+            If True, returns parameters for XY scan. If False, returns
+            parameters for Z scan.
+
+        Returns
+        -------
+        tuple
+            A tuple of scanning parameters depending on the value of XY.
+
+            If XY is True, returns:
+                - Number of X steps
+                - Number of Y steps
+                - X Step size (um)
+                - Y Step size (um)
+                - Delay (ms)
+                - Average (frames)
+
+            If XY is False, returns:
+                - Number of Z steps
+                - Z Step size (nm)
+                - Delay (ms)
+                - Number of Frames
+                - Reversed (bool)
+        '''
+        if XY:
+            return (
+                self.get_param_value(ScanParams.X_STEP),
+                self.get_param_value(ScanParams.Y_STEP),
+                self.get_param_value(ScanParams.X_STEP_SIZE),
+                self.get_param_value(ScanParams.Y_STEP_SIZE),
+                self.get_param_value(ScanParams.DELAY),
+                self.get_param_value(ScanParams.AVG_FRAMES))
+        else:
+            return (
+                self.get_param_value(ScanParams.Z_STEP),
+                self.get_param_value(ScanParams.Z_STEP_SIZE),
+                self.get_param_value(ScanParams.DELAY),
+                self.get_param_value(ScanParams.N_FRAMES),
+                self.get_param_value(ScanParams.Z_REVERSED))
+
+    def setActionsStatus(self, status: bool):
+        '''
+        Enables or disables the scanning actions based on the provided status parameter.
+
+        Parameters
+        ----------
+        status : bool
+            The status to set for the scanning actions.
+            If True, the actions are enabled.
+            If False, the actions are disabled.
+
+        '''
+        self.get_param(ScanParams.XY_START).setOpts(enabled=status)
+        self.get_param(ScanParams.XY_STOP).setOpts(enabled=status)
+        self.get_param(ScanParams.XY_LAST).setOpts(enabled=status)
+        self.get_param(ScanParams.Z_START).setOpts(enabled=status)
+        self.get_param(ScanParams.Z_STOP).setOpts(enabled=status)
+        self.get_param(ScanParams.Z_CAL).setOpts(enabled=status)
+        self.get_param(ScanParams.Z_DIRECTORY).setOpts(enabled=status)
 
 
 if __name__ == '__main__':

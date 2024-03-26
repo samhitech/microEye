@@ -2,6 +2,7 @@ import ctypes
 from typing import Union
 
 import numpy as np
+from tabulate import tabulate
 
 
 class miCamera:
@@ -10,32 +11,41 @@ class miCamera:
         self.acquisition = False
         self.bytes_per_pixel = 1
         self.exposure_current = 1
-        self._height = 512
         self.temperature = -127
-        self._width = 512
         self.name = ''
         self.exposure_range = [0.05, 5000]
+
+        self.status = {}
 
     def get_temperature(self):
         return self.temperature
 
     def getWidth(self):
-        if isinstance(self._width, ctypes.c_int):
-            return self._width.value
-        elif isinstance(self._width, int):
-            return self._width
+        if isinstance(self.width, ctypes.c_int):
+            return self.width.value
+        elif isinstance(self.width, int):
+            return self.width
 
     def getHeight(self):
-        if isinstance(self._height, ctypes.c_int):
-            return self._height.value
-        elif isinstance(self._height, int):
-            return self._height
+        if isinstance(self.height, ctypes.c_int):
+            return self.height.value
+        elif isinstance(self.height, int):
+            return self.height
 
     def getExposure(self):
         if isinstance(self.exposure_current, ctypes.c_double):
             return self.exposure_current.value
         elif isinstance(self.exposure_current, (int, float)):
             return self.exposure_current
+
+    def populate_status(self):
+        pass
+
+    def print_status(self):
+        self.populate_status()
+        for key in self.status:
+            data = [[k, i] for k, i in self.status[key].items()]
+            print(tabulate(data, headers=[key], tablefmt='rounded_grid'))
 
 
 class miDummy(miCamera):

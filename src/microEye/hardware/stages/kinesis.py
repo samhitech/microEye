@@ -377,13 +377,13 @@ class KinesisXY:
         )
 
         self.n_x_step_btn.setStyleSheet(
-            'background-color: green')
+            'background-color: #004CB6')
         self.n_y_step_btn.setStyleSheet(
-            'background-color: green')
+            'background-color: #004CB6')
         self.p_x_step_btn.setStyleSheet(
-            'background-color: green')
+            'background-color: #004CB6')
         self.p_y_step_btn.setStyleSheet(
-            'background-color: green')
+            'background-color: #004CB6')
 
         grid = QGridLayout()
         grid.addWidget(self.n_x_jump_btn, 2, 0)

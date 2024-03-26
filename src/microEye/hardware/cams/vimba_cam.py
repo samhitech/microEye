@@ -2,6 +2,7 @@ import contextlib
 from typing import Optional
 
 import numpy as np
+from tabulate import tabulate
 
 from .micam import miCamera
 
@@ -25,7 +26,7 @@ try:
                             'Name': cam.get_name()})
         return cam_list
 
-    def get_camera(camera_id: Optional[str]) -> vb.Camera:
+    def get_camera(camera_id: Optional[str]) -> vb.Camera: # type: ignore
         with vb.Vimba.get_instance() as vimba:
             if camera_id:
                 try:
@@ -125,19 +126,19 @@ class vimba_cam(miCamera):
     def initialize(self):
         with self.cam:
             self.default()
-            self.getAcquisitionFrameRateEnable()
-            self.getFrameRate()
-            self.get_exposure()
-            self.get_exposure_mode()
-            self.get_exposure_auto()
-            self.get_trigger_source()
-            self.get_trigger_selector()
-            self.get_trigger_mode()
-            self.get_trigger_activation()
-            self.get_acquisition_mode()
-            self.get_pixel_format()
-            self.get_pixel_size()
-            self.get_roi()
+            self.getAcquisitionFrameRateEnable(False)
+            self.getFrameRate(False)
+            self.get_exposure(False)
+            self.get_exposure_mode(False)
+            self.get_exposure_auto(False)
+            self.get_trigger_source(False)
+            self.get_trigger_selector(False)
+            self.get_trigger_mode(False)
+            self.get_trigger_activation(False)
+            self.get_acquisition_mode(False)
+            self.get_pixel_format(False)
+            self.get_pixel_size(False)
+            self.get_roi(False)
             self.get_temperature()
 
             self.trigger_modes = self.get_trigger_modes()
@@ -149,6 +150,67 @@ class vimba_cam(miCamera):
             self.exposure_auto_entries = self.get_exposure_auto_entries()
 
             self.pixel_formats = self.get_pixel_formats()
+
+            self.print_status()
+
+    def populate_status(self):
+        self.status['Camera'] = {
+            'Name': self.name
+        }
+
+        self.status['Temperature'] = {
+            'Value': self.temperature,
+            'Unit': 'Celsius'
+        }
+
+        self.status['Exposure'] = {
+            'Mode': self.exposure_mode,
+            'Value': self.exposure_current,
+            'Unit': self.exposure_unit,
+            'Increment': self.exposure_increment,
+            'Auto': self.exposure_auto
+        }
+
+        self.status['Framerate'] = {
+            'Value': self.frameRate,
+            'Unit': self.frameRate_unit,
+            'Range': self.frameRate_range,
+            'Increment': self.frameRate_increment,
+            'Enabled': self.frameRateEnabled
+        }
+
+        self.status['Acquisition'] = {
+            'Mode': self.acquisition_mode,
+            'Enabled': self.acquisition
+        }
+
+        # self.status['Trigger'] = {
+        #     'source': self.trigger_source,
+        #     'selector': self.trigger_selector,
+        #     'activation': self.trigger_activation,
+        # }
+        self.status['Image Format'] = {
+            'Pixel Format': self.pixel_format,
+            'Pixel Size': self.pixel_size,
+            'Bytes per Pixel': self.bytes_per_pixel
+        }
+
+        self.status['Image Size'] = {
+            'Width': self.width,
+            'Width_max': self.width_max,
+            'Width_range': self.width_range,
+            'Width_inc': self.width_inc,
+            'Height': self.height,
+            'Height_max': self.height_max,
+            'Height_range': self.height_range,
+            'Height_inc': self.height_inc,
+            'Offset_x': self.offsetX,
+            'Offset_x_range': self.offsetX_range,
+            'Offset_x_inc': self.offsetX_inc,
+            'Offset_y': self.offsetY,
+            'Offset_y_range': self.offsetY_range,
+            'Offset_y_inc': self.offsetY_inc
+        }
 
     def default(self):
         # with self.cam:
@@ -264,12 +326,13 @@ class vimba_cam(miCamera):
             print('ExposureMode Set ERROR')
             return 0
 
-    def get_exposure_mode(self):
+    def get_exposure_mode(self, output=True):
         try:
             # with self.cam:
             ExposureMode = self.cam.ExposureMode
             self.exposure_mode = ExposureMode.get()
-            print('Exposure mode ', self.exposure_mode)
+            if output:
+                print('Exposure mode ', self.exposure_mode)
             return self.exposure_mode
         except Exception:
             print('ExposureMode get ERROR')
@@ -308,12 +371,13 @@ class vimba_cam(miCamera):
             print('ExposureAuto Set ERROR')
             return 0
 
-    def get_exposure_auto(self):
+    def get_exposure_auto(self, output=True):
         try:
             # with self.cam:
             ExposureAuto = self.cam.ExposureAuto
             self.exposure_auto = ExposureAuto.get()
-            print('Exposure Auto ', self.exposure_auto)
+            if output:
+                print('Exposure Auto ', self.exposure_auto)
             return self.exposure_auto
         except Exception:
             print('ExposureAuto get ERROR')
@@ -408,12 +472,13 @@ class vimba_cam(miCamera):
             print('trigger Set ERROR')
             return 0
 
-    def get_trigger_mode(self):
+    def get_trigger_mode(self, output=True):
         try:
             # with self.cam:
             TriggerMode = self.cam.TriggerMode
             self.trigger_mode = TriggerMode.get()
-            print('Trigger mode ', self.trigger_mode)
+            if output:
+                print('Trigger mode ', self.trigger_mode)
             return self.trigger_mode
         except Exception:
             print('trigger get ERROR')
@@ -452,12 +517,13 @@ class vimba_cam(miCamera):
             print('trigger source Set ERROR')
             return 0
 
-    def get_trigger_source(self):
+    def get_trigger_source(self, output=True):
         try:
             # with self.cam:
             TriggerSource = self.cam.TriggerSource
             self.trigger_source = TriggerSource.get()
-            print('Trigger source ', self.trigger_source)
+            if output:
+                print('Trigger source ', self.trigger_source)
             return self.trigger_source
         except Exception:
             print('trigger source get ERROR')
@@ -496,12 +562,13 @@ class vimba_cam(miCamera):
             print('trigger selector Set ERROR')
             return 0
 
-    def get_trigger_selector(self):
+    def get_trigger_selector(self, output=True):
         try:
             # with self.cam:
             TriggerSelector = self.cam.TriggerSelector
             self.trigger_selector = TriggerSelector.get()
-            print('Trigger selector ', self.trigger_selector)
+            if output:
+                print('Trigger selector ', self.trigger_selector)
             return self.trigger_selector
         except Exception:
             print('trigger selector get ERROR')
@@ -539,12 +606,13 @@ class vimba_cam(miCamera):
             print('TriggerActivation Set ERROR')
             return 0
 
-    def get_trigger_activation(self):
+    def get_trigger_activation(self, output=True):
         try:
             # with self.cam:
             TriggerActivation = self.cam.TriggerActivation
             self.trigger_activation = TriggerActivation.get()
-            print('Trigger activation ', self.trigger_activation)
+            if output:
+                print('Trigger activation ', self.trigger_activation)
             return self.trigger_activation
         except Exception:
             print('TriggerActivation get ERROR')
@@ -582,12 +650,13 @@ class vimba_cam(miCamera):
             print('AcquisitionMode Set ERROR')
             return 0
 
-    def get_acquisition_mode(self):
+    def get_acquisition_mode(self, output=True):
         try:
             # with self.cam:
             AcquisitionMode = self.cam.AcquisitionMode
             self.acquisition_mode = AcquisitionMode.get()
-            print('Acquisition mode ', self.acquisition_mode)
+            if output:
+                print('Acquisition mode ', self.acquisition_mode)
             return self.acquisition_mode
         except Exception:
             print('AcquisitionMode get ERROR')
@@ -622,12 +691,13 @@ class vimba_cam(miCamera):
 
         return formats
 
-    def get_pixel_format(self):
+    def get_pixel_format(self, output=True):
         formats = []
         try:
             # with self.cam:
             self.pixel_format = self.cam.get_pixel_format()
-            print('Pixel Format', self.pixel_format)
+            if output:
+                print('Pixel Format', self.pixel_format)
             return self.pixel_format
         except Exception:
             print('Pixel Format Get ERROR')
@@ -661,12 +731,13 @@ class vimba_cam(miCamera):
         finally:
             self.set_black_level(5.0)
 
-    def get_pixel_size(self):
+    def get_pixel_size(self, output=True):
         try:
             # with self.cam:
             self.pixel_size = self.cam.PixelSize.get()
             self.bytes_per_pixel = int(np.ceil(int(self.pixel_size)/8))
-            print('Pixel Format', self.pixel_size)
+            if output:
+                print('Pixel Size', self.pixel_size)
             return self.pixel_size
         except Exception:
             print('Pixel Size Get ERROR')

@@ -12,6 +12,8 @@ from PyQt5.QtWidgets import *
 from pyqtgraph.parametertree import Parameter, ParameterTree
 from pyqtgraph.parametertree.parameterTypes import ActionParameter, GroupParameter
 
+from ...shared.parameter_tree import Tree
+
 
 class CamParams(Enum):
     '''
@@ -77,7 +79,7 @@ class CamParams(Enum):
         '''
         return self.value.split('.')
 
-class CameraOptions(ParameterTree):
+class CameraOptions(Tree):
     '''
     Tree widget for editing camera parameters.
 
@@ -105,8 +107,6 @@ class CameraOptions(ParameterTree):
     directoryChanged = pyqtSignal(str)
     viewOptionChanged = pyqtSignal()
 
-
-
     def __init__(self, parent: Optional['QWidget'] = None):
         '''
         Initialize the CameraOptions.
@@ -116,11 +116,7 @@ class CameraOptions(ParameterTree):
         parent : QWidget, optional
             The parent widget, by default None.
         '''
-        super().__init__()
-
-        self.setMinimumWidth(50)
-        self.create_parameters()
-        self.setParameters(self.param_tree, showTop=False)
+        super().__init__(parent=parent)
 
     def create_parameters(self):
         '''
@@ -138,7 +134,7 @@ class CameraOptions(ParameterTree):
                 {'name': str(CamParams.FRAMES),
                 'type': 'int', 'value': 1e6, 'limits': [1, 1e9]},
                 {'name': str(CamParams.SAVE_DIRECTORY), 'type': 'file',
-                 'directory': os.path.dirname(os.path.realpath(__file__)),
+                 'directory': os.path.join(os.path.expanduser('~'), 'Desktop'),
                  'fileMode': 'DirectoryOnly'},
                 {'name': str(CamParams.SAVE_DATA), 'type': 'bool', 'value': False},
                 {'name': str(CamParams.DARK_CALIBRATION),
@@ -235,184 +231,6 @@ class CameraOptions(ParameterTree):
         self.get_param(
             CamParams.EXPORT_STATE).sigActivated.connect(self.export_json)
 
-    def get_param(
-            self, param: CamParams
-            ) -> Union[Parameter, ActionParameter]:
-        '''Get a parameter by name.
-
-        Parameters
-        ----------
-        param : CamParams
-            Camera parameter.
-
-        Returns
-        -------
-        Union[Parameter, ActionParameter]
-            Retrieved parameter.
-        '''
-        return self.param_tree.param(*param.value.split('.'))
-
-    def get_param_value(
-            self, param: CamParams):
-        '''Get a parameter value by name.
-
-        Parameters
-        ----------
-        param : CamParams
-            Camera parameter.
-
-        Returns
-        -------
-        Any
-            The value of the parameter.
-        '''
-        return self.param_tree.param(*param.value.split('.')).value()
-
-    def set_param_value(
-            self, param: CamParams, value, blockSignals: Union[Any, None]= None):
-        '''
-        Set a camera parameter value by name.
-
-        Parameters
-        ----------
-        param : CamParams
-            Camera parameter.
-        value : Any
-            The value to set.
-        blockSignals : Union[Any, None], optional
-            If provided, signals for parameter changes are blocked during the update.
-            The interpretation of the value is left to the implementation.
-
-        Returns
-        -------
-        bool
-            True if the value is set successfully, False otherwise.
-        '''
-        try:
-            parameter: Parameter = self.param_tree.param(*param.value.split('.'))
-            parameter.setValue(value, blockSignals)
-        except Exception:
-            import traceback
-            traceback.print_exc()
-            return False
-        else:
-            return True
-
-    def get_param_path(self, param: Parameter):
-        '''
-        Get the child path of a parameter in the parameter tree.
-
-        Parameters
-        ----------
-        param : Parameter
-            The parameter for which to retrieve the child path.
-
-        Returns
-        -------
-        list
-            The child path of the parameter.
-        '''
-        return self.param_tree.childPath(param)
-
-    def add_param_child(self, parent: CamParams, value: dict):
-        '''
-        Add a child parameter to the specified parent parameter.
-
-        Parameters
-        ----------
-        parent : CamParams
-            The parent parameter to which the child will be added.
-        value : dict
-            A dictionary representing the child parameter. It should contain at
-            least the following key-value pairs:
-            - 'name': str, the name of the parameter.
-            - 'type': str, the type of the parameter (e.g., 'int', 'float', 'str').
-            - 'value': Any, the initial value of the parameter.
-            Additional optional keys can be included based on the desired configuration.
-
-        Returns
-        -------
-        None
-        '''
-        parent = self.get_param(parent)
-        parent.addChild(value, autoIncrementName=True)
-
-    def get_children(self, param: CamParams):
-        '''
-        Get the values of all children of a specified parameter.
-
-        Parameters
-        ----------
-        param : CamParams
-            The parameter whose children's values will be retrieved.
-
-        Returns
-        -------
-        list
-            List of values of all children of the specified parameter.
-        '''
-        res = []
-        param = self.get_param(param)
-        if isinstance(param, GroupParameter):
-            for child in param.children():
-                res.append(child.value())
-        return res
-
-    def change(self, param: Parameter, changes: list):
-        '''
-        Handle parameter changes as needed.
-
-        Parameters
-        ----------
-        param : Parameter
-            The parameter that triggered the change.
-        changes : list
-            List of changes.
-
-        Returns
-        -------
-        None
-        '''
-        # Handle parameter changes as needed
-        pass
-
-    def export_json(self):
-        '''
-        Export parameters to a JSON file.
-
-        Returns
-        -------
-        None
-        '''
-        filename, _ = QFileDialog.getSaveFileName(
-            None,
-            'Save Parameters', '', 'JSON Files (*.json);;All Files (*)')
-        if not filename:
-            return  # User canceled the operation
-
-        state = self.param_tree.saveState()
-        with open(filename, 'w', encoding='utf8') as file:
-            json.dump(state, file, indent=2)
-
-    # Load parameters from JSON
-    def load_json(self):
-        '''
-        Load parameters from a JSON file.
-
-        Returns
-        -------
-        None
-        '''
-        filename, _ = QFileDialog.getOpenFileName(
-            None, 'Load Parameters',
-            '', 'JSON Files (*.json);;All Files (*)')
-        if not filename:
-            return  # User canceled the operation
-
-        with open(filename, encoding='utf8') as file:
-            state = json.load(file)
-        self.param_tree.restoreState(state, blockSignals=False)
-
     def get_roi_info(self, vimba=False):
         '''
         Get the region of interest (ROI) information.
@@ -499,7 +317,11 @@ class CameraOptions(ParameterTree):
         self.get_param(CamParams.ROI_X).setLimits(x)
         self.get_param(CamParams.ROI_Y).setLimits(y)
         self.get_param(CamParams.ROI_WIDTH).setLimits(w)
+        self.get_param(CamParams.ROI_WIDTH).setDefault(w[1])
+        self.get_param(CamParams.ROI_WIDTH).setValue(w[1])
         self.get_param(CamParams.ROI_HEIGHT).setLimits(h)
+        self.get_param(CamParams.ROI_HEIGHT).setDefault(h[1])
+        self.get_param(CamParams.ROI_HEIGHT).setValue(h[1])
 
     def get_export_rois(self):
         '''

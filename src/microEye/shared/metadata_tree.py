@@ -11,6 +11,8 @@ from PyQt5.QtWidgets import *
 from pyqtgraph.parametertree import Parameter, ParameterTree
 from pyqtgraph.parametertree.parameterTypes import ActionParameter, GroupParameter
 
+from .parameter_tree import Tree
+
 
 class MetaParams(Enum):
     '''
@@ -75,7 +77,7 @@ class MetaParams(Enum):
         '''
         return self.value.split('.')
 
-class MetadataEditorTree(ParameterTree):
+class MetadataEditorTree(Tree):
     '''
     Tree widget for editing metadata parameters.
 
@@ -90,17 +92,6 @@ class MetadataEditorTree(ParameterTree):
         List of emission filter suggestions, adjust to fit your setup.
     EXCITATION_FILTERS : list
         List of excitation filter suggestions, adjust to fit your setup.
-    '''
-
-    paramsChanged = pyqtSignal(GroupParameter, list)
-    '''Signal emitted when parameters are changed.
-
-    Parameters
-    ----------
-    GroupParameter
-        The group parameter that was changed.
-    list
-        A list of changes made to the parameter.
     '''
 
     DICHROIC_SUGGESTIONS = [
@@ -154,11 +145,7 @@ class MetadataEditorTree(ParameterTree):
         parent : QWidget, optional
             The parent widget, by default None.
         '''
-        super().__init__()
-
-        self.setMinimumWidth(50)
-        self.create_parameters()
-        self.setParameters(self.param_tree, showTop=False)
+        super().__init__(parent=parent)
 
     def create_parameters(self):
         '''
@@ -263,7 +250,7 @@ class MetadataEditorTree(ParameterTree):
         self.param_tree = Parameter.create(name='root', type='group', children=params)
         self.param_tree.sigTreeStateChanged.connect(self.change)
         self.header().setSectionResizeMode(
-            QHeaderView.ResizeMode.Stretch)
+            QHeaderView.ResizeMode.ResizeToContents)
 
         self.get_param(
             MetaParams.DICHROIC_MODEL_BTN).sigActivated.connect(
@@ -290,80 +277,6 @@ class MetadataEditorTree(ParameterTree):
         self.get_param(
             MetaParams.EXPORT_XML).sigActivated.connect(self.save)
 
-    def get_param(
-            self, param: MetaParams
-            ) -> Union[Parameter, ActionParameter]:
-        '''Get a parameter by name.
-
-        Parameters
-        ----------
-        param : MetaParams
-            Metadata parameter.
-
-        Returns
-        -------
-        Union[Parameter, ActionParameter]
-            Retrieved parameter.
-        '''
-        return self.param_tree.param(*param.value.split('.'))
-
-    def get_param_value(
-            self, param: MetaParams):
-        '''Get a parameter value by name.
-
-        Parameters
-        ----------
-        param : MetaParams
-            Metadata parameter.
-
-        Returns
-        -------
-        Any
-            The value of the parameter.
-        '''
-        return self.param_tree.param(*param.value.split('.')).value()
-
-    def set_param_value(
-            self, param: MetaParams, value):
-        '''Set a parameter value by name.
-
-        Parameters
-        ----------
-        param : MetaParams
-            Metadata parameter.
-        value : Any
-            The value to set.
-
-        Returns
-        -------
-        bool
-            True if the value is set successfully, False otherwise.
-        '''
-        try:
-            self.param_tree.param(*param.value.split('.')).setValue(value)
-        except Exception:
-            import traceback
-            traceback.print_exc()
-            return False
-        else:
-            return True
-
-    def get_param_path(self, param: Parameter):
-        '''
-        Get the child path of a parameter in the parameter tree.
-
-        Parameters
-        ----------
-        param : Parameter
-            The parameter for which to retrieve the child path.
-
-        Returns
-        -------
-        list
-            The child path of the parameter.
-        '''
-        return self.param_tree.childPath(param)
-
     def add_param_child(self, parent: MetaParams, value: Union[MetaParams, Any]):
         '''
         Add a child parameter to the specified parent parameter.
@@ -386,27 +299,6 @@ class MetadataEditorTree(ParameterTree):
                 isinstance(value, MetaParams) else value, 'removable': True},
             True)
 
-    def get_children(self, param: MetaParams):
-        '''
-        Get the values of all children of a specified parameter.
-
-        Parameters
-        ----------
-        param : MetaParams
-            The parameter whose children's values will be retrieved.
-
-        Returns
-        -------
-        list
-            List of values of all children of the specified parameter.
-        '''
-        res = []
-        param = self.get_param(param)
-        if isinstance(param, GroupParameter):
-            for child in param.children():
-                res.append(child.value())
-        return res
-
     def change(self, param: Parameter, changes: list):
         '''
         Handle parameter changes as needed.
@@ -424,43 +316,6 @@ class MetadataEditorTree(ParameterTree):
         '''
         # Handle parameter changes as needed
         pass
-
-    def export_json(self):
-        '''
-        Export parameters to a JSON file.
-
-        Returns
-        -------
-        None
-        '''
-        filename, _ = QFileDialog.getSaveFileName(
-            None,
-            'Save Parameters', '', 'JSON Files (*.json);;All Files (*)')
-        if not filename:
-            return  # User canceled the operation
-
-        state = self.param_tree.saveState()
-        with open(filename, 'w', encoding='utf8') as file:
-            json.dump(state, file, indent=2)
-
-    # Load parameters from JSON
-    def load_json(self):
-        '''
-        Load parameters from a JSON file.
-
-        Returns
-        -------
-        None
-        '''
-        filename, _ = QFileDialog.getOpenFileName(
-            None, 'Load Parameters',
-            '', 'JSON Files (*.json);;All Files (*)')
-        if not filename:
-            return  # User canceled the operation
-
-        with open(filename, encoding='utf8') as file:
-            state = json.load(file)
-        self.param_tree.restoreState(state)
 
     def save(self):
         '''

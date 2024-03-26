@@ -237,6 +237,13 @@ class IDS_Panel(Camera_Panel):
             uEyeParams.SAVE).sigActivated.connect(
                 lambda: self.save_config())
 
+        # ROI
+        self.camera_options.set_roi_limits(
+            (0, self.cam.rectROI.s32Width.value),
+            (0, self.cam.rectROI.s32Height.value),
+            (32, self.cam.rectROI.s32Width.value),
+            (32, self.cam.rectROI.s32Height.value))
+
     @property
     def cam(self):
         '''The IDS_Camera property.
@@ -675,7 +682,7 @@ class IDS_Panel(Camera_Panel):
                         self.acq_job.frames_captured + 1
                     if self.acq_job.frames_captured >= self.acq_job.frames \
                             and not self.mini:
-                        self.c_event.set()
+                        self.acq_job.c_event.set()
                         self.acq_job.stop_threads = True
                         logging.debug('Stop')
                     self._cam.unlock_buffer()
@@ -718,26 +725,6 @@ class IDS_Panel(Camera_Panel):
         '''
         args = []
         return args
-
-    def get_meta(self):
-        meta = {
-            'Frames': self.camera_options.get_param_value(CamParams.FRAMES),
-            'model': self.cam.sInfo.strSensorName.decode('utf-8'),
-            'serial': self.cam.cInfo.SerNo.decode('utf-8'),
-            'clock speed': self.cam.pixel_clock.value,
-            'trigger': self.camera_options.get_param_value(uEyeParams.TRIGGER_MODE),
-            'flash mode': self.camera_options.get_param_value(uEyeParams.FLASH_MODE),
-            'framerate': self.cam.currentFrameRate.value,
-            'exposure': self.cam.exposure_current.value,
-            'flash duration': self.cam.flash_cur.u32Duration.value,
-            'flash delay': self.cam.flash_cur.s32Delay.value,
-            'ROI w': self.cam.set_rectROI.s32Width.value,
-            'ROI h': self.cam.set_rectROI.s32Height.value,
-            'ROI x': self.cam.set_rectROI.s32X.value,
-            'ROI y': self.cam.set_rectROI.s32Y.value,
-            'Zoom': self.camera_options.get_param_value(CamParams.RESIZE_DISPLAY),
-        }
-        return meta
 
     def save_config(self):
         filename, _ = QFileDialog.getSaveFileName(

@@ -1,16 +1,22 @@
 import os
 import sys
+from enum import Enum
+from typing import Optional
 
 import qdarkstyle
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtSerialPort import *
 from PyQt5.QtWidgets import *
+from pyqtgraph.parametertree import Parameter
+
+from ...shared import StartGUI, Tree
+from .io_params import *
 
 
 class io_combiner(QSerialPort):
     '''
-    MatchBox Class | Inherits QSerialPort
+    Class representing a laser combiner MatchBox device | Inherits QSerialPort
     '''
     INFO = b'r i'
     '''Get MatchBox Info
@@ -238,6 +244,20 @@ class io_combiner(QSerialPort):
                     self.R_Fan_Load = readings[8]
                     self.R_Input_Voltage = readings[9]
 
+                    return {
+                        MB_Params.LD_TEMP : self.R_Diode_Temp,
+                        MB_Params.CRYSTAL_TEMP : self.R_Crystal_Temp,
+                        MB_Params.BODY_TEMP : self.R_Body_Temp,
+                        MB_Params.LD_CURRENT : self.R_LD_Current,
+                        MB_Params.CRYSTAL_TEC_LOAD : self.R_Crystal_TEC_Load,
+                        MB_Params.LD_TEC_LOAD : self.R_LD_TEC_Load,
+                        MB_Params.STATUS : self.R_Status,
+                        MB_Params.FAN_LOAD : self.R_Fan_Load,
+                        MB_Params.IN_VOLTAGE : self.R_Input_Voltage,
+                    }
+
+        return {}
+
     def GetSettings(self, log_print: bool = True):
         if (self.isOpen()):
             res = self.SendCommand(
@@ -257,8 +277,27 @@ class io_combiner(QSerialPort):
                     self.S_Access_Level = int(readings[8])
                     self.S_Fan_Temp = float(readings[9]) / 100
 
+                    return {
+                        MB_Params.CRYSTAL_TEMP_SET : self.S_Crystal_Temp,
+                        MB_Params.LD_TEMP_SET : self.S_Diode_Temp,
+                        MB_Params.LD_CURRENT_SET : self.S_LD_Current,
+                        MB_Params.FEEDBACK_DAC : self.S_Feedback_DAC,
+                        MB_Params.POWER_READ : self.S_Power,
+                        MB_Params.LD_CURRENT_MAX : self.S_LD_MaxCurrent,
+                        MB_Params.AUTO_MODE : self.S_Autostart_Mode,
+                        MB_Params.ACCESS_LEVEL : self.S_Access_Level,
+                        MB_Params.FAN_TEMP_SET : self.S_Fan_Temp,
+                    }
+
+        return {}
+
     def SetCurrent(self, index: int, value: int) -> bool:
         if (self.isOpen()):
+            if not isinstance(value, int):
+                raise TypeError('Current must be an int!')
+            if value < 0 or value > self.Max[index-1]:
+                raise ValueError(f'Current must be between 0 and {self.Max[index-1]}')
+
             res = self.SendCommand(
                 f'Lc{index:.0f} {value:.0f}'.encode())
 
@@ -294,67 +333,20 @@ class io_combiner(QSerialPort):
                 self.ON_Times = info[4]
 
 
-class LaserSwitches(QGroupBox):
+class LaserSwitches:
     def __init__(self, Laser: io_combiner, index=1, wavelength=638) -> None:
         super().__init__()
 
         self.Laser = Laser
         self.index = index
         self.wavelength = wavelength
+        self.state = LaserState.OFF
+        self.max_current = Laser.Max[index - 1]
 
-        self.setTitle(str(wavelength))
+        self.STATE = f'Options.{self.wavelength:d}nm State'
+        self.CURRENT = f'Options.{self.wavelength:d}nm Current [mA]'
 
-        # main vertical layout
-        L_Layout = QVBoxLayout()
-
-        # on with cam 1 flash
-        self.CAM1 = QRadioButton('CAM 1')
-        self.CAM1.state = f'L{wavelength:d}F1'
-        L_Layout.addWidget(self.CAM1)
-
-        # on with cam 2 flash
-        self.CAM2 = QRadioButton('CAM 2')
-        self.CAM2.state = f'L{wavelength:d}F2'
-        L_Layout.addWidget(self.CAM2)
-
-        # off regardless
-        self.OFF = QRadioButton('OFF')
-        self.OFF.state = f'L{wavelength:d}OFF'
-        self.OFF.setChecked(True)
-        L_Layout.addWidget(self.OFF)
-
-        # on regardless
-        self.ON = QRadioButton('ON')
-        self.ON.state = f'L{wavelength:d}ON'
-        L_Layout.addWidget(self.ON)
-
-        # Create a button group for radio buttons
-        self.L_button_group = QButtonGroup()
-        self.L_button_group.addButton(self.CAM1, 1)
-        self.L_button_group.addButton(self.CAM2, 2)
-        self.L_button_group.addButton(self.OFF, 3)
-        self.L_button_group.addButton(self.ON, 4)
-
-        self.L_button_group.buttonPressed.connect(self.laser_radio_changed)
-
-        # Power control
-        self.L_current = QSpinBox()
-        self.L_current.setMinimum(0)
-        self.L_current.setMaximum(Laser.Max[index - 1])
-        self.L_current.setValue(0)
-        self.L_set_curr_btn = QPushButton(
-            'Set [mA]',
-            clicked=lambda:
-            self.Laser.SetCurrent(
-                self.index,
-                self.L_current.value()))
-
-        L_Layout.addWidget(self.L_current)
-        L_Layout.addWidget(self.L_set_curr_btn)
-
-        self.setLayout(L_Layout)
-
-    def laser_radio_changed(self, object):
+    def laser_state_changed(self, param: Parameter, value):
         '''Sends enable/disable signals to the
         laser combiner according to selected setting
 
@@ -363,79 +355,52 @@ class LaserSwitches(QGroupBox):
         object : [QRadioButton]
             the radio button toggled
         '''
-        if ('OFF' in object.state):
+        self.state = value
+        if self.state == LaserState.OFF:
             self.Laser.SetDisabled(self.index)
         else:
             self.Laser.SetEnabled(self.index)
 
+    def SetCurrent(self, value):
+        self.Laser.SetCurrent(
+            self.index, value)
+
     def GetRelayState(self):
-        return self.L_button_group.checkedButton().state
+        return f'L{self.wavelength:d}{self.state}'
+
+    def add_params(self, parent: Tree):
+        params = [
+            {'name': self.STATE.split('.')[1], 'type': 'list',
+                'value': LaserState.OFF, 'values': LaserState.get_list()},
+            {'name': self.CURRENT.split('.')[1],
+            'type': 'int', 'value': 0, 'limits': [0, self.max_current]}]
+        for param in params:
+            parent.add_param_child(MB_Params.OPTIONS, param)
+
+        parent.get_param(self.STATE).sigValueChanged.connect(
+            self.laser_state_changed)
 
 
-class CombinerLaserWidget(QGroupBox):
-    def __init__(self) -> None:
+class CombinerLaserWidget(Tree):
+
+    def __init__(self, parent: Optional['QWidget'] = None):
+        '''Initializes a new CombinerLaserWidget instance.
+
+        Parameters
+        ----------
+        parent : Optional[QWidget]
+            The parent widget for this CombinerLaserWidget instance.
+
+        Attributes
+        ----------
+        Laser : io_combiner
+            The `io_combiner` instance used to communicate with the device.
+        '''
         super().__init__()
 
         self.Laser = io_combiner()
 
-        self._laserSwitches = []
-
-        self.V_Layout = QFormLayout()
-
-        self.portname_comboBox = QComboBox()    # port name combobox
-        self.baudrate_comboBox = QComboBox()    # baudrate combobox
-
-        # adding available serial ports
-        for info in QSerialPortInfo.availablePorts():
-            self.portname_comboBox.addItem(info.portName())
-
-        # adding default baudrates (default 115200)
-        for baudrate in QSerialPortInfo.standardBaudRates():
-            if baudrate == 115200:
-                self.baudrate_comboBox.addItem(str(baudrate), baudrate)
-
-        self.SetConfigBtn = QPushButton(
-            'Set Config.',
-            clicked=lambda: self.set_config())
-
-        # IO MatchBox controls
-        self.mbox_connect_btn = QPushButton(
-            'Connect',
-            clicked=lambda: self.laser_connect()
-        )
-        self.mbox_disconnect_btn = QPushButton(
-            'Disconnect',
-            clicked=lambda: self.Laser.CloseCOM()
-        )
-
-        self.V_Layout.addRow(
-            QLabel('Serial Port:'), self.portname_comboBox)
-        self.V_Layout.addRow(
-            QLabel('Baurate:'), self.baudrate_comboBox)
-        self.V_Layout.addRow(self.SetConfigBtn)
-        self.V_Layout.addRow(self.mbox_connect_btn)
-        self.V_Layout.addRow(self.mbox_disconnect_btn)
-
-        self.Switches_Layout = QHBoxLayout()
-        self.V_Layout.addRow(
-            self.Switches_Layout)
-
-        self.S_Current_Label = QLabel('NA')
-        self.R_Current_Label = QLabel('NA')
-        self.R_Temps_Label = QLabel('NA')
-        self.S_Temps_Label = QLabel('NA')
-        self.R_TEC_Label = QLabel('NA')
-
-        self.V_Layout.addRow(
-            QLabel('Currents Read:'), self.R_Current_Label)
-        self.V_Layout.addRow(
-            QLabel('Temp. Set (LD, Crystal, Fan):'), self.S_Temps_Label)
-        self.V_Layout.addRow(
-            QLabel('Temp. Read (LD, Crystal, Body):'), self.R_Temps_Label)
-        self.V_Layout.addRow(
-            QLabel('TEC Load (LD, Crystal):'), self.R_TEC_Label)
-
-        self.setLayout(self.V_Layout)
+        self._laserSwitches: list[LaserSwitches] = []
 
         # Statues Bar Timer
         self.timer = QTimer()
@@ -443,120 +408,229 @@ class CombinerLaserWidget(QGroupBox):
         self.timer.timeout.connect(self.update_stats)
         self.timer.start()
 
+    def create_parameters(self):
+        '''
+        Create the parameter tree structure.
+        '''
+        params = [
+            {'name': str(MB_Params.MODEL),
+                'type': 'str', 'value': 'N/A', 'readonly': True},
+            {'name': str(MB_Params.WAVELENGTHS),
+                'type': 'str', 'value': 'N/A', 'readonly': True},
+            {'name': str(MB_Params.SERIAL_PORT), 'type': 'group', 'children': [
+                {'name': str(MB_Params.PORT), 'type': 'list',
+                 'values': [
+                     info.portName() for info in QSerialPortInfo.availablePorts()]},
+                {'name': str(MB_Params.BAUDRATE), 'type': 'list', 'value': 115200,
+                 'values': [
+                     baudrate for baudrate in QSerialPortInfo.standardBaudRates()]},
+                {'name': str(MB_Params.SET_PORT), 'type': 'action'},
+                {'name': str(MB_Params.OPEN), 'type': 'action'},
+                {'name': str(MB_Params.CLOSE), 'type': 'action'},
+                {'name': str(MB_Params.PORT_STATE),
+                 'type': 'str', 'value': 'closed', 'readonly': True},
+            ]},
+            {'name': str(MB_Params.OPTIONS), 'type': 'group', 'children': [
+                {'name': str(MB_Params.SET_CURRENT), 'type': 'action'},
+            ]},
+            {'name': str(MB_Params.READINGS), 'type': 'group', 'children': [
+                {'name': str(MB_Params.POWER_READ),
+                'type': 'str', 'value': '0', 'readonly': True},
+                {'name': str(MB_Params.LD_CURRENT),
+                'type': 'str', 'value': '0', 'readonly': True},
+                {'name': str(MB_Params.LD_CURRENT_SET),
+                'type': 'str', 'value': '0', 'readonly': True},
+                {'name': str(MB_Params.LD_CURRENT_MAX),
+                'type': 'str', 'value': '0', 'readonly': True},
+                {'name': str(MB_Params.LD_TEMP),
+                'type': 'str', 'value': '0', 'readonly': True},
+                {'name': str(MB_Params.LD_TEMP_SET),
+                'type': 'str', 'value': '0', 'readonly': True},
+                {'name': str(MB_Params.LD_TEC_LOAD),
+                'type': 'str', 'value': '0', 'readonly': True},
+                {'name': str(MB_Params.CRYSTAL_TEMP),
+                'type': 'str', 'value': '0', 'readonly': True},
+                {'name': str(MB_Params.CRYSTAL_TEMP_SET),
+                'type': 'str', 'value': '0', 'readonly': True},
+                {'name': str(MB_Params.CRYSTAL_TEC_LOAD),
+                'type': 'str', 'value': '0', 'readonly': True},
+                {'name': str(MB_Params.BODY_TEMP),
+                'type': 'str', 'value': '0', 'readonly': True},
+                {'name': str(MB_Params.FAN_TEMP_SET),
+                'type': 'str', 'value': '0', 'readonly': True},
+                {'name': str(MB_Params.FAN_LOAD),
+                'type': 'str', 'value': '0', 'readonly': True},
+                {'name': str(MB_Params.FEEDBACK_DAC),
+                'type': 'str', 'value': '0', 'readonly': True},
+                {'name': str(MB_Params.AUTO_MODE),
+                'type': 'str', 'value': '0', 'readonly': True},
+                {'name': str(MB_Params.ACCESS_LEVEL),
+                'type': 'str', 'value': '0', 'readonly': True},
+                {'name': str(MB_Params.STATUS),
+                'type': 'str', 'value': '0', 'readonly': True},
+                {'name': str(MB_Params.IN_VOLTAGE),
+                'type': 'str', 'value': '0', 'readonly': True},
+            ]},
+            {'name': str(MB_Params.INFO), 'type': 'group', 'children': [
+                {'name': str(MB_Params.FIRMWARE),
+                'type': 'str', 'value': 'N/A', 'readonly': True},
+                {'name': str(MB_Params.SERIAL),
+                'type': 'str', 'value': 'N/A', 'readonly': True},
+                {'name': str(MB_Params.OPERATION_TIME),
+                'type': 'str', 'value': 'N/A', 'readonly': True},
+                {'name': str(MB_Params.ON_TIMES),
+                'type': 'str', 'value': 'N/A', 'readonly': True},
+            ]},
+            {'name': str(MB_Params.REMOVE), 'type': 'action'},
+        ]
+
+        self.param_tree = Parameter.create(name='root', type='group', children=params)
+        self.param_tree.sigTreeStateChanged.connect(self.change)
+        self.header().setSectionResizeMode(
+            QHeaderView.ResizeMode.ResizeToContents)
+
+
+        self.get_param(
+            MB_Params.SET_PORT).sigActivated.connect(self.set_config)
+        self.get_param(
+            MB_Params.OPEN).sigActivated.connect(self.laser_connect)
+        self.get_param(
+            MB_Params.CLOSE).sigActivated.connect(lambda: self.Laser.CloseCOM())
+        self.get_param(
+            MB_Params.SET_CURRENT).sigActivated.connect(self.set_current)
+
+        self.get_param(
+            MB_Params.REMOVE).sigActivated.connect(self.remove_widget)
+
     def laser_connect(self):
+        '''Connects to the MatchBox device.
+
+        This method opens the serial port and initializes the laser.
+        '''
         self.Laser.OpenCOM()
 
-        if self.Switches_Layout.isEmpty():
+        self.set_param_value(MB_Params.MODEL, self.Laser.Model)
+        self.set_param_value(MB_Params.WAVELENGTHS, str(self.Laser.Wavelengths))
+        self.set_param_value(MB_Params.FIRMWARE, self.Laser.Firmware)
+        self.set_param_value(MB_Params.SERIAL, self.Laser.Serial)
+
+        if not self._laserSwitches:
             for idx in range(len(self.Laser.Wavelengths)):
                 if self.Laser.Wavelengths[idx] > 0:
                     switch = LaserSwitches(
                         self.Laser, idx + 1,
                         self.Laser.Wavelengths[idx])
+                    switch.add_params(self)
                     self._laserSwitches.append(switch)
-                    self.Switches_Layout.addWidget(switch)
 
     def set_config(self):
+        '''Sets the serial port configuration.
+
+        This method sets the serial port configuration based on the current
+        settings in the parameter tree.
+        '''
         if not self.Laser.isOpen():
             self.Laser.setPortName(
-                self.portname_comboBox.currentText())
+                self.get_param_value(MB_Params.PORT))
             self.Laser.setBaudRate(
-                self.baudrate_comboBox.currentData())
+                self.get_param_value(MB_Params.BAUDRATE))
+
+    def set_current(self):
+        for switch in self._laserSwitches:
+            value = self.get_param(switch.CURRENT).value()
+            switch.SetCurrent(value)
 
     def update_stats(self):
+        '''
+        Updates the statistics displayed in the MatchBox GUI.
+
+        This method retrieves the current readings and settings from the device, and
+        updates the corresponding parameter tree items with the new values. It also
+        sets the limits of the power parameter based on the maximum power that can be
+        set for the laser diode.
+
+        If the laser is not connected, the method sets the 'Port State' parameter to
+        'closed'.
+        '''
         if self.Laser.isOpen():
-            self.Laser.GetReadings(False)
-            self.Laser.GetSettings(False)
+            readings = self.Laser.GetReadings(False)
+            settings = self.Laser.GetSettings(False)
             self.Laser.GetCurrent()
 
-            self.R_Current_Label.setText(
+            for key, value in readings.items():
+                if isinstance(value, (int, float)):
+                    self.set_param_value(key, f'{value:.2f}')
+                elif isinstance(value, str):
+                    self.set_param_value(key, value)
+
+            for key, value in settings.items():
+                if isinstance(value, (int, float)):
+                    self.set_param_value(key, f'{value:.2f}')
+                elif isinstance(value, str):
+                    self.set_param_value(key, value)
+
+            self.set_param_value(
+                MB_Params.LD_CURRENT,
                 '{:.2f} mA, {:.2f} mA, {:.2f} mA, {:.2f} mA'.format(
                     *self.Laser.Current))
-            self.R_Temps_Label.setText(
-                '{:.2f} C, {:.2f} C, {:.2f} C'.format(
-                    self.Laser.R_Diode_Temp,
-                    self.Laser.R_Crystal_Temp,
-                    self.Laser.R_Body_Temp))
-            self.S_Temps_Label.setText(
-                '{:.2f} C, {:.2f} C, {:.2f} C'.format(
-                    self.Laser.S_Diode_Temp,
-                    self.Laser.S_Crystal_Temp,
-                    self.Laser.S_Fan_Temp))
-            self.R_TEC_Label.setText(
-                f'{self.Laser.R_LD_TEC_Load} , {self.Laser.R_Crystal_TEC_Load}')
+            self.set_param_value(
+                MB_Params.LD_CURRENT_MAX,
+                '{:.2f} mA, {:.2f} mA, {:.2f} mA, {:.2f} mA'.format(
+                    *self.Laser.Max))
+            self.set_param_value(
+                MB_Params.LD_CURRENT_SET,
+                '{:.2f} mA, {:.2f} mA, {:.2f} mA, {:.2f} mA'.format(
+                    *self.Laser.Setting))
 
-            self.setTitle(self.Laser.Model)
-            self.mbox_connect_btn.setStyleSheet('background-color: green')
+            self.set_param_value(MB_Params.OPERATION_TIME, self.Laser.Operation_Time)
+            self.set_param_value(MB_Params.ON_TIMES, self.Laser.ON_Times)
+
+            self.set_param_value(MB_Params.PORT_STATE, 'open')
         else:
-            self.mbox_connect_btn.setStyleSheet('background-color: red')
+            self.set_param_value(MB_Params.PORT_STATE, 'closed')
 
         self.RefreshPorts()
 
     def RefreshPorts(self):
-        avPorts = QSerialPortInfo.availablePorts()
-        if self.portname_comboBox.count() > len(avPorts):
-            self.portname_comboBox.clear()
-            for info in avPorts:
-                self.portname_comboBox.addItem(info.portName())
-        else:
-            for info in avPorts:
-                if self.portname_comboBox.findText(info.portName()) == -1:
-                    self.portname_comboBox.addItem(info.portName())
+        '''
+        Refreshes the available serial ports list in the GUI.
+
+        This method updates the list of available serial ports in the GUI by fetching
+        the current list of available ports and setting it as the options for the
+        'Serial Port' parameter in the parameter tree.
+        '''
+        if not self.Laser.isOpen():
+            self.get_param(MB_Params.PORT).setLimits([
+                info.portName() for info in QSerialPortInfo.availablePorts()])
 
     def GetRelayState(self):
         states = ''
         for switch in self._laserSwitches:
-            states += switch.L_button_group.checkedButton().state
+            states += switch.GetRelayState()
         return states
 
+    def remove_widget(self):
+        if self.parent() and not self.Laser.isOpen():
+            self.parent().layout().removeWidget(self)
+            self.deleteLater()
+        else:
+            print(f'Disconnect device {self.Laser.Model} before removing!')
+
     def StartGUI():
-        '''Initializes a new QApplication and control_module.
+        '''Initializes a new QApplication and CombinerLaserWidget.
 
         Use
         -------
-        app, window = control_module.StartGUI()
+        app, window = CombinerLaserWidget.StartGUI()
 
         app.exec_()
 
         Returns
         -------
-        tuple (QApplication, microEye.control_module)
-            Returns a tuple with QApp and control_module main window.
+        tuple (QApplication, CombinerLaserWidget)
+            Returns a tuple with QApp and CombinerLaserWidget main window.
         '''
-        # create a QApp
-        app = QApplication(sys.argv)
-        # set darkmode from *qdarkstyle* (not compatible with pyqt6)
-        app.setStyleSheet(qdarkstyle.load_stylesheet(qt_api='pyqt5'))
-        # sets the app icon
-        dirname = os.path.dirname(os.path.abspath(__file__))
-        app_icon = QIcon()
-        app_icon.addFile(
-            os.path.join(dirname, '../icons/16.png'), QSize(16, 16))
-        app_icon.addFile(
-            os.path.join(dirname, '../icons/24.png'), QSize(24, 24))
-        app_icon.addFile(
-            os.path.join(dirname, '../icons/32.png'), QSize(32, 32))
-        app_icon.addFile(
-            os.path.join(dirname, '../icons/48.png'), QSize(48, 48))
-        app_icon.addFile(
-            os.path.join(dirname, '../icons/64.png'), QSize(64, 64))
-        app_icon.addFile(
-            os.path.join(dirname, '../icons/128.png'), QSize(128, 128))
-        app_icon.addFile(
-            os.path.join(dirname, '../icons/256.png'), QSize(256, 256))
-        app_icon.addFile(
-            os.path.join(dirname, '../icons/512.png'), QSize(512, 512))
-
-        app.setWindowIcon(app_icon)
-
-        if sys.platform.startswith('win'):
-            import ctypes
-            myappid = 'samhitech.mircoEye.control_module'  # appid
-            ctypes.windll.shell32.\
-                SetCurrentProcessExplicitAppUserModelID(myappid)
-
-        widget = CombinerLaserWidget()
-        widget.show()
-        return app, widget
+        return StartGUI(CombinerLaserWidget)
 
 
 if __name__ == '__main__':

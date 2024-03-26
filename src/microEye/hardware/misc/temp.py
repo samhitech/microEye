@@ -11,6 +11,7 @@ from PyQt5.QtSerialPort import *
 from PyQt5.QtWidgets import *
 from pyqtgraph.widgets.PlotWidget import PlotWidget
 
+from ...shared import StartGUI
 from ..port_config import *
 
 
@@ -192,50 +193,17 @@ class temperature_monitor(QMainWindow):
             self.serial.write(command.encode('utf-8'))
 
     def StartGUI():
-        '''Initializes a new QApplication and control_module.
+        '''Initializes a new QApplication and temperature_monitor.
 
         Use
         -------
-        app, window = control_module.StartGUI()
+        app, window = temperature_monitor.StartGUI()
 
         app.exec_()
 
         Returns
         -------
-        tuple (QApplication, microEye.control_module)
-            Returns a tuple with QApp and control_module main window.
+        tuple (QApplication, temperature_monitor)
+            Returns a tuple with QApp and temperature_monitor main window.
         '''
-        # create a QApp
-        app = QApplication(sys.argv)
-        # set darkmode from *qdarkstyle* (not compatible with pyqt6)
-        app.setStyleSheet(qdarkstyle.load_stylesheet(qt_api='pyqt5'))
-        # sets the app icon
-        dirname = os.path.dirname(os.path.abspath(__file__))
-        app_icon = QIcon()
-        app_icon.addFile(
-            os.path.join(dirname, '../icons/16.png'), QSize(16, 16))
-        app_icon.addFile(
-            os.path.join(dirname, '../icons/24.png'), QSize(24, 24))
-        app_icon.addFile(
-            os.path.join(dirname, '../icons/32.png'), QSize(32, 32))
-        app_icon.addFile(
-            os.path.join(dirname, '../icons/48.png'), QSize(48, 48))
-        app_icon.addFile(
-            os.path.join(dirname, '../icons/64.png'), QSize(64, 64))
-        app_icon.addFile(
-            os.path.join(dirname, '../icons/128.png'), QSize(128, 128))
-        app_icon.addFile(
-            os.path.join(dirname, '../icons/256.png'), QSize(256, 256))
-        app_icon.addFile(
-            os.path.join(dirname, '../icons/512.png'), QSize(512, 512))
-
-        app.setWindowIcon(app_icon)
-
-        if sys.platform.startswith('win'):
-            import ctypes
-            myappid = 'samhitech.mircoEye.temperature_monitor'  # appid
-            ctypes.windll.shell32.\
-                SetCurrentProcessExplicitAppUserModelID(myappid)
-
-        window = temperature_monitor()
-        return app, window
+        return StartGUI(temperature_monitor)

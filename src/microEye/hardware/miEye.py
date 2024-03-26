@@ -1,20 +1,17 @@
 import json
 import os
-import sys
+import threading
 import traceback
 import warnings
 import webbrowser
-from queue import Queue
 
 import numpy as np
 import pyqtgraph as pg
-import qdarkstyle
+import tabulate
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtSerialPort import *
 from PyQt5.QtWidgets import *
-from pyqtgraph.widgets.PlotWidget import PlotWidget
-from pyqtgraph.widgets.RemoteGraphicsView import RemoteGraphicsView
 from scipy.optimize import curve_fit
 from scipy.optimize.optimize import OptimizeWarning
 from scipy.signal import find_peaks
@@ -22,13 +19,13 @@ from scipy.signal import find_peaks
 from ..shared.gui_helper import GaussianOffSet
 from ..shared.hid_controller import *
 from ..shared.pyscripting import *
+from ..shared.start_gui import StartGUI
 from ..shared.thread_worker import *
 from .cams import *
 from .lasers import *
 from .port_config import *
 from .stages import *
 from .widgets import *
-from .widgets.qlist_slider import *
 
 try:
     from pyueye import ueye
@@ -52,9 +49,41 @@ warnings.filterwarnings('ignore', category=OptimizeWarning)
 
 
 class miEye_module(QMainWindow):
-    '''The main GUI for miEye combines control and acquisition modules
+    '''The main GUI for miEye combines control and acquisition modules.
 
-    | Inherits QMainWindow
+    Inherits `QMainWindow`
+
+    Attributes:
+        - devicesDock (`QDockWidget`):
+            - devicesWidget (`QWidget`):
+                - devicesLayout (`QHBoxLayout`):
+                    - hid_controller (`hidController`)
+                    - devicesView (`DevicesView`)
+
+        - ir_widget (`QDockWidget`, optional):
+            - `QWidget`
+
+        - stagesDock (`QDockWidget`):
+            - stagesWidget (`QWidget`):
+                - stages_Layout (`QHBoxLayout`):
+                    - z-stage (`FocPzView`)
+                    - elliptec_controller (`elliptec_controller`)
+                    - kinesisXY (`KinesisXY`)
+                    - scanAcqWidget (`ScanAcquisitionWidget`)
+
+        - pyDock (`QDockWidget`):
+            - pyEditor (`pyEditor`)
+
+        - lasersDock (`QDockWidget`):
+            - lasersWidget (`QWidget`):
+                - lasersLayout (`QHBoxLayout`):
+                    - laserRelayCtrllr (`LaserRelayController`)
+                    - lasers ...
+
+        - camDock (`QDockWidget`):
+            - camList (`CameraList`)
+
+        - focus (`focusWidget`)
     '''
 
     def __init__(self, *args, **kwargs):
@@ -77,10 +106,10 @@ class miEye_module(QMainWindow):
         print('Multithreading with maximum %d threads'
               % self._threadpool.maxThreadCount())
 
-        # PiezoConcept
-        self.stage = stage()
+        # Z-Stage e.g., PiezoConcept
+        self.stage = None
 
-        # kinesis XY Stage
+        # XY-Stage e.g., kinesis
         self.kinesisXY = KinesisXY()
 
         self.lastTile = None
@@ -89,56 +118,24 @@ class miEye_module(QMainWindow):
 
         # Serial Port IR linear CCD array
         self.IR_Cam = IR_Cam()
-
-        # Acquisition Cameras lists
-        self.ids_cams: list[IDS_Camera] = []
-        self.thorlabs_cams: list[thorlabs_camera] = []
-        self.vimba_cams: list[vimba_cam] = []
-
-        # Acquisition Cameras Panels
-        self.ids_panels: list[IDS_Panel] = []
-        self.thor_panels: list[Thorlabs_Panel] = []
-        self.vimba_panels: list[Vimba_Panel] = []
+        # IR Detector Widget
+        self.IR_Widget = None
 
         # IR 2D Camera
         self.cam_dock = None
 
         # Serial Port Laser Relay
-        self.laserRelay = QSerialPort(
-            self)
-        self.laserRelay.setBaudRate(115200)
-        self.laserRelay.setPortName('COM6')
-        self.laserRelay_last = ''
-        self.laserRelay_curr = ''
+        self.laserRelayCtrllr = LaserRelayController()
+        self.laserRelayCtrllr.sendCommandActivated.connect(
+            lambda: self.laserRelayCtrllr.sendCommand(
+                self.getRelaySettings())
+        )
 
         # Elliptec controller
         self._elliptec_controller = elliptec_controller()
 
         # Layout
         self.LayoutInit()
-
-        # File object for saving frames
-        self.file = None
-
-        # Data variables
-        n_data = 128
-        self.xdata = np.array(list(range(n_data)))
-        # self.ydata_buffer = Queue()
-        # self.ydata_buffer.put(np.array([0 for i in range(n_data)]))
-        self.y_index = 0
-        self.centerDataX = np.array(list(range(500)))
-        self.centerData = np.ones((500,))
-        self.error_buffer = np.zeros((20,))
-        self.error_integral = 0
-        self.ydata_temp = None
-        self.popt = None
-        self.frames_saved = 0
-
-        # We need to store a reference to the plotted line
-        # somewhere, so we can apply the new data to it.
-        self._plot_ref = None
-        self._plotfit_ref = None
-        self._center_ref = None
 
         # Statues Bar Timer
         self.timer = QTimer()
@@ -147,11 +144,8 @@ class miEye_module(QMainWindow):
         self.timer.start()
 
         # Any other args, kwargs are passed to the run function
-        self.worker = thread_worker(self.worker_function)
-        self.worker.signals.progress.connect(self.update_graphs)
-        self.worker.signals.move_stage_z.connect(self.movez_stage)
-        # Execute
-        self._threadpool.start(self.worker)
+        FocusStabilizer.instance().moveStage.connect(self.moveStage)
+        FocusStabilizer.instance().startWorker()
 
         self.show()
 
@@ -166,96 +160,23 @@ class miEye_module(QMainWindow):
         qtRectangle.moveCenter(centerPoint)
         self.move(qtRectangle.topLeft())
 
-    def LayoutInit(self):
-        '''Initializes the window layout
-        '''
-
-        Hlayout = QHBoxLayout()
-
+    def init_devices_dock(self):
         # General settings groupbox
         self.devicesDock = QDockWidget('Devices', self)
         self.devicesDock.setFeatures(
             QDockWidget.DockWidgetFloatable |
             QDockWidget.DockWidgetMovable)
-        LPanel_GBox = QWidget()
-        self.devicesDock.setWidget(LPanel_GBox)
+        devicesWidget = QWidget()
+        self.devicesDock.setWidget(devicesWidget)
         self.addDockWidget(
             Qt.DockWidgetArea.TopDockWidgetArea,
             self.devicesDock)
 
         # vertical layout
-        Left_Layout = QFormLayout()
-        LPanel_GBox.setLayout(Left_Layout)
+        devicesLayout = QHBoxLayout()
+        devicesWidget.setLayout(devicesLayout)
 
-        # IR Cam combobox
-        self.ir_cam_cbox = QComboBox()
-        self.ir_cam_cbox.addItem('Parallax CCD (TSL1401)')
-        self.ir_cam_set_btn = QPushButton(
-            'Set',
-            clicked=self.setIRcam
-        )
-        self.ir_cam_reset_btn = QPushButton(
-            'Reset',
-            clicked=self.resetIRcam
-        )
-        self.ir_widget = None
-
-        # ALEX checkbox
-        self.ALEX = QCheckBox('ALEX')
-        self.ALEX.state = 'ALEX'
-        self.ALEX.setChecked(False)
-
-        # IR CCD array arduino buttons
-
-        # records IR peak-fit position
-        self.start_IR_btn = QPushButton(
-            'Start IR Acquisition',
-            clicked=self.start_IR
-        )
-        self.stop_IR_btn = QPushButton(
-            'Stop IR Acquisition',
-            clicked=self.stop_IR
-        )
-
-        # Add Laser controls
-        self.lasers_cbox = QComboBox()
-        self.lasers_cbox.addItem('IO MatchBox Single Laser')
-        self.lasers_cbox.addItem('IO MatchBox Laser Combiner')
-        self.add_laser_btn = QPushButton(
-            'Add Laser',
-            clicked=lambda: self.add_laser_panel()
-        )
-
-        # Arduino RelayBox controls
-        self.laser_relay_connect_btn = QPushButton(
-            'Connect',
-            clicked=lambda: self.connectToPort(self.laserRelay)
-        )
-        self.laser_relay_disconnect_btn = QPushButton(
-            'Disconnect',
-            clicked=lambda: self.disconnectFromPort(self.laserRelay)
-        )
-        self.laser_relay_btn = QPushButton(
-            'Config.',
-            clicked=lambda: self.open_dialog(self.laserRelay)
-        )
-        self.send_laser_relay_btn = QPushButton(
-            'Send Setting',
-            clicked=lambda: self.sendConfig(self.laserRelay)
-        )
-
-        # Piezostage controls
-        self.stage_cbox = QComboBox()
-        self.stage_cbox.addItem('PiezoConcept FOC100')
-        self.stage_set_btn = QPushButton(
-            'Set',
-            clicked=self.setStage
-        )
-        self.stage_widget = None
-        self.stage_dock = None
-        self.stage_set_btn.click()
-
-        self.hid_controller = hid_controller()
+        self.hid_controller = hidController()
         self.hid_controller.reportEvent.connect(self.hid_report)
         self.hid_controller.reportRStickPosition.connect(
             self.hid_RStick_report)
@@ -263,43 +184,21 @@ class miEye_module(QMainWindow):
             self.hid_LStick_report)
         self.hid_controller_toggle = False
 
-        Left_Layout.addWidget(self.hid_controller)
+        devicesLayout.addWidget(self.hid_controller)
 
-        Left_Layout.addRow(
-            QLabel('IR Camera:'), self.ir_cam_cbox)
+        self.devicesView = DevicesView()
+        self.devicesView.setDetectorActivated.connect(
+            self.setIRcam)
+        self.devicesView.resetDetectorActivated.connect(
+            self.resetIRcam)
+        self.devicesView.addLaserActivated.connect(
+            self.add_laser_panel)
+        self.devicesView.setStageActivated.connect(
+            self.setStage)
 
-        ir_cam_layout_0 = QHBoxLayout()
-        ir_cam_layout_0.addWidget(self.ir_cam_set_btn)
-        ir_cam_layout_0.addWidget(self.ir_cam_reset_btn)
-        Left_Layout.addRow(ir_cam_layout_0)
+        devicesLayout.addWidget(self.devicesView)
 
-        ir_cam_layout_1 = QHBoxLayout()
-        ir_cam_layout_1.addWidget(self.start_IR_btn)
-        ir_cam_layout_1.addWidget(self.stop_IR_btn)
-        Left_Layout.addRow(ir_cam_layout_1)
-
-        Left_Layout.addRow(
-            DragLabel('Stage:', parent_name='self.stage_set_btn'),
-            self.stage_cbox)
-        Left_Layout.addWidget(self.stage_set_btn)
-
-        Left_Layout.addRow(
-            QLabel('Lasers:'),
-            self.lasers_cbox)
-        Left_Layout.addWidget(
-            self.add_laser_btn)
-
-        relay_btns_0 = QHBoxLayout()
-        relay_btns_1 = QHBoxLayout()
-        relay_btns_0.addWidget(self.laser_relay_connect_btn)
-        relay_btns_0.addWidget(self.laser_relay_disconnect_btn)
-        relay_btns_0.addWidget(self.laser_relay_btn)
-        relay_btns_1.addWidget(self.ALEX)
-        relay_btns_1.addWidget(self.send_laser_relay_btn, 1)
-        Left_Layout.addRow(
-            QLabel('Laser Relay:'), relay_btns_0)
-        Left_Layout.addRow(relay_btns_1)
-
+    def init_stages_dock(self):
         # Stages Tab (Elliptec + Kinesis Tab + Scan Acquisition)
         self.stagesDock = QDockWidget('Stages', self)
         self.stagesDock.setFeatures(
@@ -309,6 +208,9 @@ class miEye_module(QMainWindow):
         self.stagesWidget = QWidget()
         self.stagesWidget.setLayout(self.stages_Layout)
         self.stagesDock.setWidget(self.stagesWidget)
+
+        self.setStage(
+            self.devicesView.get_param_value(devicesParams.STAGE))
 
         self.stages_Layout.addWidget(self._elliptec_controller.getQWidget())
         # Elliptec init config
@@ -332,11 +234,16 @@ class miEye_module(QMainWindow):
 
         self.scanAcqWidget.directoryChanged.connect(self.update_directories)
 
-        self.scanAcqWidget.moveZ.connect(self.movez_stage)
+        self.scanAcqWidget.moveZ.connect(self.moveStage)
 
         self.stages_Layout.addWidget(self.kinesisXY.getQWidget())
         self.stages_Layout.addWidget(self.scanAcqWidget)
 
+        self.addDockWidget(
+            Qt.DockWidgetArea.TopDockWidgetArea,
+            self.stagesDock)
+
+    def init_py_dock(self):
         # Py Script Editor
         self.pyDock = QDockWidget('PyScript', self)
         self.pyDock.setFeatures(
@@ -345,22 +252,19 @@ class miEye_module(QMainWindow):
         self.pyEditor = pyEditor()
         self.pyEditor.exec_btn.clicked.connect(lambda: self.scriptTest())
         self.pyDock.setWidget(self.pyEditor)
+
         self.addDockWidget(
             Qt.DockWidgetArea.TopDockWidgetArea,
             self.pyDock)
-        self.addDockWidget(
-            Qt.DockWidgetArea.TopDockWidgetArea,
-            self.stagesDock)
-        self.tabifyDockWidget(
-            self.pyDock, self.stagesDock)
 
+    def init_lasers_dock(self):
         # Lasers Tab
         self.lasersDock = QDockWidget('Lasers', self)
         self.lasersDock.setFeatures(
             QDockWidget.DockWidgetFloatable |
             QDockWidget.DockWidgetMovable)
         self.lasersLayout = QHBoxLayout()
-        self.lasersLayout.addStretch()
+        # self.lasersLayout.addStretch()
         self.lasersWidget = QWidget()
         self.lasersWidget.setLayout(self.lasersLayout)
 
@@ -368,6 +272,12 @@ class miEye_module(QMainWindow):
 
         self.laserPanels = []
 
+        self.lasersLayout.addWidget(self.laserRelayCtrllr.view)
+
+        self.addDockWidget(
+            Qt.DockWidgetArea.BottomDockWidgetArea, self.lasersDock)
+
+    def init_cam_dock(self):
         # cameras tab
         self.camDock = QDockWidget('Cameras List', self)
         self.camDock.setFeatures(
@@ -379,26 +289,19 @@ class miEye_module(QMainWindow):
         self.camList.cameraRemoved.connect(self.remove_camera)
 
         self.camDock.setWidget(self.camList)
-        self.setTabPosition(
-            Qt.DockWidgetArea.BottomDockWidgetArea,
-            QTabWidget.TabPosition.North)
 
-        # display tab
+        self.addDockWidget(
+            Qt.DockWidgetArea.BottomDockWidgetArea, self.camDock)
+
+    def init_focus_dock(self):
+        # focusWidget
         self.labelStyle = {'color': '#FFF', 'font-size': '10pt'}
         self.focus = focusWidget()
 
-        # Tabs
-        self.addDockWidget(0x8, self.lasersDock)
-        self.addDockWidget(0x8, self.camDock)
-        self.tabifyDockWidget(self.lasersDock, self.camDock)
-        self.addDockWidget(0x8, self.focus)
-        self.tabifyDockWidget(self.lasersDock, self.focus)
+        self.addDockWidget(
+            Qt.DockWidgetArea.BottomDockWidgetArea, self.focus)
 
-        AllWidgets = QWidget()
-        AllWidgets.setLayout(Hlayout)
-
-        # self.setCentralWidget(AllWidgets)
-
+    def init_menubar(self):
         # Create menu bar
         menu_bar = self.menuBar()
 
@@ -417,8 +320,6 @@ class miEye_module(QMainWindow):
         devices_act.setEnabled(True)
         pyDock_act = self.pyDock.toggleViewAction()
         pyDock_act.setEnabled(True)
-        stage_act = self.stage_dock.toggleViewAction()
-        stage_act.setEnabled(True)
         stages_act = self.stagesDock.toggleViewAction()
         stages_act.setEnabled(True)
         cams_act = self.camDock.toggleViewAction()
@@ -439,7 +340,6 @@ class miEye_module(QMainWindow):
         file_menu.addAction(save_config)
         file_menu.addAction(load_config)
         view_menu.addAction(devices_act)
-        view_menu.addAction(stage_act)
         view_menu.addAction(pyDock_act)
         view_menu.addAction(stages_act)
         view_menu.addAction(lasers_act)
@@ -448,6 +348,32 @@ class miEye_module(QMainWindow):
 
         help_menu.addAction(github)
         help_menu.addAction(pypi)
+
+    def tabifyDocks(self):
+        self.tabifyDockWidget(self.pyDock, self.devicesDock)
+        self.tabifyDockWidget(self.pyDock, self.stagesDock)
+
+        self.setTabPosition(
+            Qt.DockWidgetArea.BottomDockWidgetArea,
+            QTabWidget.TabPosition.North)
+
+        self.tabifyDockWidget(self.lasersDock, self.camDock)
+        self.tabifyDockWidget(self.lasersDock, self.focus)
+
+    def LayoutInit(self):
+        '''Initializes the window layout
+        '''
+
+        self.init_devices_dock()
+        # self.init_ir_dock()
+        self.init_stages_dock()
+        self.init_py_dock()
+        self.init_lasers_dock()
+        self.init_cam_dock()
+        self.init_focus_dock()
+        self.tabifyDocks()
+
+        self.init_menubar()
 
     def scriptTest(self):
         exec(self.pyEditor.toPlainText())
@@ -462,6 +388,7 @@ class miEye_module(QMainWindow):
 
     def add_camera(self, panel: Camera_Panel, ir: bool):
         if ir:
+            panel._frames = FocusStabilizer.instance().buffer
             self.cam_dock = self.getDockWidget(
                 panel._cam.name, panel)
             self.addDockWidget(
@@ -498,7 +425,7 @@ class miEye_module(QMainWindow):
         else:
             return False
 
-    def BufferGet(self) -> Queue:
+    def BufferGet(self):
         if self.camList.autofocusCam:
             return self.camList.autofocusCam.get(True)
         elif not self.IR_Cam.isDummy():
@@ -506,7 +433,7 @@ class miEye_module(QMainWindow):
         else:
             return np.zeros((256, 256), dtype=np.uint16)
 
-    def BufferSize(self) -> Queue:
+    def BufferSize(self):
         if self.camList.autofocusCam:
             return self.camList.autofocusCam.bufferSize
         elif not self.IR_Cam.isDummy():
@@ -514,7 +441,7 @@ class miEye_module(QMainWindow):
         else:
             return 0
 
-    def relaySettings(self):
+    def getRelaySettings(self):
         '''Returns the RelayBox setting command.
 
         Returns
@@ -522,181 +449,21 @@ class miEye_module(QMainWindow):
         str
             the RelayBox setting command.
         '''
-        settings = ''
+        config = ''
         for panel in self.laserPanels:
-            settings += panel.GetRelayState()
-        return settings + \
-            ('ALEXON' if self.ALEX.isChecked() else 'ALEXOFF') + '\r'
+            config += panel.GetRelayState()
+        return self.laserRelayCtrllr.getCommand(config)
 
-    def sendConfig(self, serial: QSerialPort):
-        '''Sends the RelayBox setting command.
-
-        Parameters
-        ----------
-        serial : QSerialPort
-            the RelayBox serial port.
-        '''
-        try:
-
-            message = self.relaySettings()
-
-            serial.write(message.encode('utf-8'))
-            self.laserRelay_last = message
-            print(str(serial.readAll(), encoding='utf-8'))
-        except Exception as e:
-            print('Failed Laser Relay Send Config: ' + str(e))
-
-    def add_laser_panel(self):
-        selected = self.lasers_cbox.currentText()
-        if 'IO MatchBox' in selected:
-            if 'Combiner' in selected:
+    def add_laser_panel(self, value: str):
+        if 'IO MatchBox' in value:
+            if 'Combiner' in value:
                 combiner = CombinerLaserWidget()
                 self.laserPanels.append(combiner)
-                self.lasersLayout.insertWidget(0, combiner)
-            elif 'Single' in selected:
-                laser = SingleLaserWidget()
+                self.lasersLayout.addWidget(combiner)
+            elif 'Single' in value:
+                laser = SingleMatchBox()
                 self.laserPanels.append(laser)
-                self.lasersLayout.insertWidget(0, laser)
-
-    def worker_function(self, progress_callback, movez_callback):
-        '''A worker function running in the threadpool.
-
-        Handles the IR peak fitting and piezo autofocus tracking.
-        '''
-        counter = 0
-        self._exec_time = 0
-        time = QDateTime.currentDateTime()
-        QThread.msleep(100)
-        while (self.isVisible()):
-            try:
-                # dt = Gaussian(
-                #     np.array(range(512)), 255, np.random.normal() + 256, 50)
-                # x, y = np.meshgrid(dt, dt)
-                # dt = x * y
-                # self.remote_img.setImage(dt)
-                # ax, pos = self.focus.roi.getArrayRegion(
-                #     dt, self.remote_img, returnMappedCoords=True)
-                # self.IR_Cam._buffer.put(ax)
-                # proceed only if the buffer is not empty
-                if not self.isEmpty():
-                    self._exec_time = time.msecsTo(QDateTime.currentDateTime())
-                    time = QDateTime.currentDateTime()
-
-                    data = self.BufferGet()
-
-                    if self.isImage():
-                        self.focus.remote_img.setImage(
-                            data.copy(), _callSync='off')
-                        data, _ = self.focus.roi.getArrayRegion(
-                            data, self.focus.remote_img,
-                            returnMappedCoords=True)
-                        data = np.squeeze(data)
-                    # self.ydata_temp = self.ydata
-                    self.peak_fit(movez_callback, data.copy())
-                    if (self.file is not None):
-                        np.savetxt(self.file,
-                                   np.array((self._exec_time, self.popt[1]))
-                                   .reshape((1, 2)), delimiter=';')
-                        self.frames_saved = 1 + self.frames_saved
-                    counter = counter + 1
-                    progress_callback.emit(data)
-                QThread.usleep(100)
-            except Exception as e:
-                traceback.print_exc()
-
-    def peak_fit(self, movez_callback: pyqtSignal(bool, int), data):
-        '''Finds the peak position through fitting
-        and adjsuts the piezostage accordingly.
-        '''
-        try:
-            # find IR peaks above a specific height
-            peaks = find_peaks(data, height=1)
-            popt = None  # fit parameters
-            nPeaks = len(peaks[0])  # number of peaks
-            maxPeakIdx = np.argmax(peaks[1]['peak_heights'])  # highest peak
-            x0 = 64 if nPeaks == 0 else peaks[0][maxPeakIdx]
-            a0 = 1 if nPeaks == 0 else peaks[1]['peak_heights'][maxPeakIdx]
-
-            # gmodel = Model(GaussianOffSet)
-            # self.result = gmodel.fit(
-            #     data, x=self.xdata, a=a0, x0=x0, sigma=1, offset=0)
-
-            # curve_fit to GaussianOffSet
-            self.popt, pcov = curve_fit(
-                GaussianOffSet,
-                self.xdata,
-                data,
-                p0=[a0, x0, 1, 0])
-            self.centerData = np.roll(self.centerData, -1)
-            self.centerData[-1] = self.popt[1]  # self.result.best_values['x0']
-
-            if self.stage.piezoTracking:
-                err = np.average(self.centerData[-1] - self.stage.center_pixel)
-                tau = self.stage.tau if self.stage.tau > 0 \
-                    else (self._exec_time / 1000)
-                self.error_integral += err * tau
-                diff = (err - self.error_buffer[-1]) / tau
-                self.error_buffer = np.roll(self.error_buffer, -1)
-                self.error_buffer[-1] = err
-                step = int((err * self.stage.pConst) +
-                           (self.error_integral * self.stage.iConst) +
-                           (diff * self.stage.dConst))
-                if abs(err) > self.stage.threshold:
-                    if step > 0:
-                        movez_callback.emit(False, abs(step))
-                    else:
-                        movez_callback.emit(True, abs(step))
-            else:
-                self.stage.center_pixel = self.centerData[-1]
-                self.error_buffer = np.zeros((20,))
-                self.error_integral = 0
-
-        except Exception as e:
-            pass
-            # print('Failed Gauss. fit: ' + str(e))
-
-    def movez_stage(self, dir: bool, step: int):
-        # print(up, step)
-        if self.stage._inverted.isChecked():
-            dir = not dir
-
-        if dir:
-            self.stage.UP(step)
-        else:
-            self.stage.DOWN(step)
-
-    def update_graphs(self, data):
-        '''Updates the graphs.
-        '''
-        self.xdata = range(len(data))
-        # updates the IR graph with data
-        if self._plot_ref is None:
-            # create plot reference when None
-            self._plot_ref = self.focus.graph_IR.plot(self.xdata, data)
-        else:
-            # use the plot reference to update the data for that line.
-            self._plot_ref.setData(self.xdata, data)
-
-        # updates the IR graph with data fit
-        if self._plotfit_ref is None:
-            # create plot reference when None
-            self._plotfit_ref = self.focus.graph_IR.plot(
-                self.xdata,
-                GaussianOffSet(self.xdata, *self.popt))
-        else:
-            # use the plot reference to update the data for that line.
-            self._plotfit_ref.setData(
-                self.xdata,
-                GaussianOffSet(self.xdata, *self.popt))
-
-        if self._center_ref is None:
-            # create plot reference when None
-            self._center_ref = self.focus.graph_Peak.plot(
-                self.centerDataX, self.centerData)
-        else:
-            # use the plot reference to update the data for that line.
-            self._center_ref.setData(
-                self.centerDataX, self.centerData)
+                self.lasersLayout.addWidget(laser)
 
     def update_gui(self):
         '''Recurring timer updates the status bar and GUI
@@ -704,124 +471,48 @@ class miEye_module(QMainWindow):
         IR = ('    |  IR Cam ' +
               ('connected' if self.IR_Cam.isOpen else 'disconnected'))
 
-        RelayBox = ('    |  Relay ' + ('connected' if self.laserRelay.isOpen()
+        RelayBox = ('    |  Relay ' + ('connected' if self.laserRelayCtrllr.isOpen()
                     else 'disconnected'))
-        Piezo = ('    |  Piezo ' + ('connected' if self.stage.isOpen()
-                 else 'disconnected'))
 
         Position = ''
-        if self.stage.isOpen():
-            # self.piezoConcept.GETZ()
-            Position = '    |  Position ' + self.stage.Received
-        Frames = '    | Frames Saved: ' + str(self.frames_saved)
+        Frames = '    | Frames Saved: ' + str(
+            FocusStabilizer.instance().num_frames_saved)
 
-        Worker = f'    | Execution time: {self._exec_time:d}'
+        Worker = f'    | Execution time: {FocusStabilizer.instance()._exec_time:.0f}'
         if self.camList.autofocusCam:
             Worker += f'    | Frames Buffer: {self.BufferSize():d}'
         self.statusBar().showMessage(
             'Time: ' + QDateTime.currentDateTime().toString('hh:mm:ss,zzz')
-            + IR + RelayBox
-            + Piezo + Position + Frames + Worker)
+            + IR + RelayBox + Position + Frames + Worker)
 
         # update indicators
         if self.IR_Cam.isOpen:
-            self.IR_Cam._connect_btn.setStyleSheet('background-color: green')
+            self.IR_Cam._connect_btn.setStyleSheet('background-color: #004CB6')
         else:
-            self.IR_Cam._connect_btn.setStyleSheet('background-color: red')
-        if self.stage.isOpen():
-            self.stage._connect_btn.setStyleSheet('background-color: green')
-        else:
-            self.stage._connect_btn.setStyleSheet('background-color: red')
-        if self.laserRelay.isOpen():
-            self.laser_relay_connect_btn.setStyleSheet(
-                'background-color: green')
-        else:
-            self.laser_relay_connect_btn.setStyleSheet('background-color: red')
+            self.IR_Cam._connect_btn.setStyleSheet('background-color: black')
         if self._elliptec_controller.isOpen():
             self._elliptec_controller._connect_btn.setStyleSheet(
-                'background-color: green')
+                'background-color: #004CB6')
         else:
             self._elliptec_controller._connect_btn.setStyleSheet(
-                'background-color: red')
+                'background-color: black')
 
-        if self.laserRelay.isOpen():
-            if self.laserRelay_last == self.relaySettings():
-                self.send_laser_relay_btn.setStyleSheet(
-                    'background-color: green')
-            else:
-                self.send_laser_relay_btn.setStyleSheet(
-                    'background-color: red')
+        self.laserRelayCtrllr.updatePortState()
+        if not self.laserRelayCtrllr.isOpen():
+            self.laserRelayCtrllr.refreshPorts()
+            self.laserRelayCtrllr.updateHighlight(self.getRelaySettings())
         else:
-            self.send_laser_relay_btn.setStyleSheet('')
+            self.laserRelayCtrllr.updateHighlight(self.getRelaySettings())
 
         for _, cam_list in CameraList.cameras.items():
             for cam in cam_list:
                 cam['Panel'].updateInfo()
 
-    @pyqtSlot()
-    def open_dialog(self, serial: QSerialPort):
-        '''Opens a port config dialog for the provided serial port.
+        if self.stage:
+            self.stage.updatePortState()
+            self.stage.refreshPorts()
 
-        Parameters
-        ----------
-        serial : QSerialPort
-            the serial port to be configured.
-        '''
-        dialog = port_config()
-        if not serial.isOpen():
-            if dialog.exec_():
-                portname, baudrate = dialog.get_results()
-                serial.setPortName(portname)
-                serial.setBaudRate(baudrate)
-
-    @pyqtSlot(QSerialPort)
-    def connectToPort(self, serial: QSerialPort):
-        '''Opens the supplied serial port.
-
-        Parameters
-        ----------
-        serial : QSerialPort
-            the serial port to open.
-        '''
-        serial.open(QIODevice.ReadWrite)
-
-    @pyqtSlot(QSerialPort)
-    def disconnectFromPort(self, serial: QSerialPort):
-        '''Closes the supplied serial port.
-
-        Parameters
-        ----------
-        serial : QSerialPort
-            the serial port to close.
-        '''
-        serial.close()
-
-    @pyqtSlot()
-    def start_IR(self):
-        '''Starts the IR peak position acquisition and
-        creates a file in the current directory.
-        '''
-        if (self.file is None):
-            filename = None
-            if filename is None:
-                filename, _ = QFileDialog.getSaveFileName(
-                    self, 'Save IR Track Data', filter='CSV Files (*.csv)')
-
-                if len(filename) > 0:
-                    with open(filename, 'ab') as f:
-                        self.file = f
-
-    @pyqtSlot()
-    def stop_IR(self):
-        '''Stops the IR peak position acquisition and closes the file.
-        '''
-        if (self.file is not None):
-            self.file.close()
-            self.file = None
-            self.frames_saved = 0
-
-    @pyqtSlot()
-    def setIRcam(self):
+    def setIRcam(self, value: str):
         if self.camList.autofocusCam:
             QMessageBox.warning(
                 self,
@@ -838,26 +529,25 @@ class miEye_module(QMainWindow):
                 QMessageBox.StandardButton.Ok)
             return
 
-        if 'TSL1401' in self.ir_cam_cbox.currentText():
+        if 'TSL1401' in value:
             self.IR_Cam = ParallaxLineScanner()
-            if self.ir_widget is not None:
-                self.removeDockWidget(self.ir_widget)
-                self.ir_widget.deleteLater()
-            self.ir_widget = QDockWidget('IR Cam')
-            self.ir_widget.setFeatures(
+            if self.IR_Widget is not None:
+                self.removeDockWidget(self.IR_Widget)
+                self.IR_Widget.deleteLater()
+            self.IR_Widget = QDockWidget('IR Cam')
+            self.IR_Widget.setFeatures(
                 QDockWidget.DockWidgetFloatable |
                 QDockWidget.DockWidgetMovable)
-            self.ir_widget.setWidget(
+            self.IR_Widget.setWidget(
                 self.IR_Cam.getQWidget())
             self.addDockWidget(
                 Qt.DockWidgetArea.TopDockWidgetArea,
-                self.ir_widget)
+                self.IR_Widget)
             self.tabifyDockWidget(
-                self.devicesDock, self.ir_widget)
+                self.devicesDock, self.IR_Widget)
             self.focus.graph_IR.setLabel(
                 'left', 'Signal', 'V', **self.labelStyle)
 
-    @pyqtSlot()
     def resetIRcam(self):
         if self.IR_Cam.isOpen:
             QMessageBox.warning(
@@ -867,56 +557,41 @@ class miEye_module(QMainWindow):
                 QMessageBox.StandardButton.Ok)
             return
 
-        if self.ir_widget is not None:
-            self.removeDockWidget(self.ir_widget)
-            self.ir_widget.deleteLater()
-        self.ir_widget = None
+        if self.IR_Widget is not None:
+            self.removeDockWidget(self.IR_Widget)
+            self.IR_Widget.deleteLater()
+        self.IR_Widget = None
         self.IR_Cam = IR_Cam()
 
-    @pyqtSlot()
-    def setStage(self):
-        if 'FOC100' in self.stage_cbox.currentText():
-            if not self.stage.isOpen():
-                self.stage = piezo_concept()
-                if self.stage_dock is not None:
-                    self.removeDockWidget(self.stage_dock)
-                    self.stage_dock.deleteLater()
-                self.stage_widget = self.stage.getQWidget()
-                self.stage_dock = QDockWidget('Z-Stage', self)
-                self.stage_dock.setFeatures(
-                    QDockWidget.DockWidgetFloatable |
-                    QDockWidget.DockWidgetMovable)
-                self.stage_dock.setWidget(self.stage_widget)
-                self.addDockWidget(
-                    Qt.DockWidgetArea.BottomDockWidgetArea,
-                    self.stage_dock)
-                # self.tabifyDockWidget(
-                #     self.devicesDock, self.stage_dock)
+    def setStage(self, value: str):
+        if self.stage and self.stage.isOpen():
+            return
+
+        if self.stage:
+            self.stage.view.remove_widget()
+
+        if 'FOC100' in value:
+            self.stage = PzFocController()
+            self.stages_Layout.insertWidget(0, self.stage.view)
+
+    def moveStage(self, dir: bool, steps: int):
+        if isinstance(self.stage, PzFocController):
+            self.stage.moveStage(dir, steps)
 
     def hid_report(self, reportedEvent: Buttons):
-        if type(self.stage) is piezo_concept:
+        if isinstance(self.stage, PzFocController):
             if reportedEvent == Buttons.X:
-                self.stage.piezo_B_UP_btn.click()
+                self.stage.moveStage(True, True, True)
             elif reportedEvent == Buttons.B:
-                self.stage.piezo_B_DOWN_btn.click()
+                self.stage.moveStage(False, True, True)
             elif reportedEvent == Buttons.Y:
-                self.stage.piezo_S_UP_btn.click()
+                self.stage.moveStage(True, False, True)
             elif reportedEvent == Buttons.A:
-                self.stage.piezo_S_DOWN_btn.click()
+                self.stage.moveStage(False, False, True)
             elif reportedEvent == Buttons.Options:
-                self.stage.piezo_HOME_btn.click()
+                self.stage.stage.HOME()
             elif reportedEvent == Buttons.R3:
                 self.hid_controller_toggle = not self.hid_controller_toggle
-                if self.hid_controller_toggle:
-                    self.stage.fine_steps_slider.setStyleSheet(
-                        '')
-                    self.stage.pixel_slider.setStyleSheet(
-                        'background-color: green')
-                else:
-                    self.stage.fine_steps_slider.setStyleSheet(
-                        'background-color: green')
-                    self.stage.pixel_slider.setStyleSheet(
-                        '')
 
         if reportedEvent == Buttons.LEFT:
             if not self.hid_controller_toggle:
@@ -946,13 +621,13 @@ class miEye_module(QMainWindow):
             self.hid_controller_toggle = not self.hid_controller_toggle
             if self.hid_controller_toggle:
                 self.kinesisXY.n_x_jump_btn.setStyleSheet(
-                    'background-color: green')
+                    'background-color: #004CB6')
                 self.kinesisXY.n_y_jump_btn.setStyleSheet(
-                    'background-color: green')
+                    'background-color: #004CB6')
                 self.kinesisXY.p_x_jump_btn.setStyleSheet(
-                    'background-color: green')
+                    'background-color: #004CB6')
                 self.kinesisXY.p_y_jump_btn.setStyleSheet(
-                    'background-color: green')
+                    'background-color: #004CB6')
                 self.kinesisXY.n_x_step_btn.setStyleSheet(
                     '')
                 self.kinesisXY.n_y_step_btn.setStyleSheet(
@@ -971,13 +646,13 @@ class miEye_module(QMainWindow):
                 self.kinesisXY.p_y_jump_btn.setStyleSheet(
                     '')
                 self.kinesisXY.n_x_step_btn.setStyleSheet(
-                    'background-color: green')
+                    'background-color: #004CB6')
                 self.kinesisXY.n_y_step_btn.setStyleSheet(
-                    'background-color: green')
+                    'background-color: #004CB6')
                 self.kinesisXY.p_x_step_btn.setStyleSheet(
-                    'background-color: green')
+                    'background-color: #004CB6')
                 self.kinesisXY.p_y_step_btn.setStyleSheet(
-                    'background-color: green')
+                    'background-color: #004CB6')
 
     def hid_LStick_report(self, x, y):
         diff_x = x - 128
@@ -1011,19 +686,17 @@ class miEye_module(QMainWindow):
         res = dz_hybrid([diff_x, diff_y], deadzone)
         diff = res[1]
         if self.hid_controller_toggle:
-            if self.stage.piezoTracking:
-                val = 1e-3 * diff
-                self.stage.center_pixel += val
+            if FocusStabilizer.instance().isFocusStabilized():
+                value = 1e-3 * diff
+                FocusStabilizer.instance().setPeakPosition(value, True)
         else:
             if abs(diff) > 0 and abs(diff) < 100:
-                val = 0.25 * diff
-                val += self.stage.fine_steps_slider.value()
-                # val -= val % 5
-                self.stage.fine_steps_slider.setValue(val)
+                value = 0.25 * diff
+                self.stage.setStep(value, True)
             else:
-                val = self.stage.fine_steps_slider.value()
-                val -= val % 5
-                self.stage.fine_steps_slider.setValue(val)
+                value = self.stage.getStep()
+                value -= value % 5
+                self.stage.setStep(value)
 
     def StartGUI():
         '''Initializes a new QApplication and miEye_module.
@@ -1032,6 +705,7 @@ class miEye_module(QMainWindow):
         -------
         app, window = miEye_module.StartGUI()
 
+
         app.exec_()
 
         Returns
@@ -1039,46 +713,11 @@ class miEye_module(QMainWindow):
         tuple (QApplication, microEye.miEye_module)
             Returns a tuple with QApp and miEye_module main window.
         '''
-        # create a QApp
-        app = QApplication(sys.argv)
-        # set darkmode from *qdarkstyle* (not compatible with pyqt6)
-        app.setStyleSheet(qdarkstyle.load_stylesheet(qt_api='pyqt5'))
-        # sets the app icon
-        dirname = os.path.dirname(os.path.abspath(__file__))
-        app_icon = QIcon()
-        app_icon.addFile(
-            os.path.join(dirname, '../icons/16.png'), QSize(16, 16))
-        app_icon.addFile(
-            os.path.join(dirname, '../icons/24.png'), QSize(24, 24))
-        app_icon.addFile(
-            os.path.join(dirname, '../icons/32.png'), QSize(32, 32))
-        app_icon.addFile(
-            os.path.join(dirname, '../icons/48.png'), QSize(48, 48))
-        app_icon.addFile(
-            os.path.join(dirname, '../icons/64.png'), QSize(64, 64))
-        app_icon.addFile(
-            os.path.join(dirname, '../icons/128.png'), QSize(128, 128))
-        app_icon.addFile(
-            os.path.join(dirname, '../icons/256.png'), QSize(256, 256))
-        app_icon.addFile(
-            os.path.join(dirname, '../icons/512.png'), QSize(512, 512))
-
-        app.setWindowIcon(app_icon)
-
-        if sys.platform.startswith('win'):
-            import ctypes
-            myappid = 'samhitech.mircoEye.miEye_module'  # appid
-            ctypes.windll.shell32.\
-                SetCurrentProcessExplicitAppUserModelID(myappid)
-
-        window = miEye_module()
-        return app, window
+        return StartGUI(miEye_module)
 
     def result_scan_acquisition(self, data):
         self._scanning = False
-        self.scanAcqWidget.acquire_btn.setEnabled(True)
-        self.scanAcqWidget.z_acquire_btn.setEnabled(True)
-        self.scanAcqWidget.z_cal_btn.setEnabled(True)
+        self.scanAcqWidget.setActionsStatus(True)
 
         if data:
             self.lastTile = TiledImageSelector(data)
@@ -1090,20 +729,16 @@ class miEye_module(QMainWindow):
 
     def result_z_calibration(self, data):
         self._scanning = False
-        self.scanAcqWidget.acquire_btn.setEnabled(True)
-        self.scanAcqWidget.z_acquire_btn.setEnabled(True)
-        self.scanAcqWidget.z_cal_btn.setEnabled(True)
+        self.scanAcqWidget.setActionsStatus(True)
 
         if data is not None:
             coeff = np.polyfit(data[:, 0], data[:, 1], 1)
-            self.stage.coeff_pixel = coeff[0]
+            FocusStabilizer.instance().setPixelCalCoeff(coeff[0])
             plot_z_cal(data, coeff)
 
     def result_scan_export(self, data: list[TileImage]):
         self._scanning = False
-        self.scanAcqWidget.acquire_btn.setEnabled(True)
-        self.scanAcqWidget.z_acquire_btn.setEnabled(True)
-        self.scanAcqWidget.z_cal_btn.setEnabled(True)
+        self.scanAcqWidget.setActionsStatus(True)
 
         if data:
             if len(self.scanAcqWidget._directory) > 0:
@@ -1138,9 +773,7 @@ class miEye_module(QMainWindow):
             # Execute
             self._threadpool.start(self.scan_worker)
 
-            self.scanAcqWidget.acquire_btn.setEnabled(False)
-            self.scanAcqWidget.z_acquire_btn.setEnabled(False)
-            self.scanAcqWidget.z_cal_btn.setEnabled(False)
+            self.scanAcqWidget.setActionsStatus(False)
 
     def start_scan_acquisitionZ(
             self, params):
@@ -1158,9 +791,7 @@ class miEye_module(QMainWindow):
             # Execute
             self._threadpool.start(self.scan_worker)
 
-            self.scanAcqWidget.acquire_btn.setEnabled(False)
-            self.scanAcqWidget.z_acquire_btn.setEnabled(False)
-            self.scanAcqWidget.z_cal_btn.setEnabled(False)
+            self.scanAcqWidget.setActionsStatus(False)
 
     def start_calibration_Z(
             self, params):
@@ -1178,23 +809,18 @@ class miEye_module(QMainWindow):
             # Execute
             self._threadpool.start(self.scan_worker)
 
-            self.scanAcqWidget.acquire_btn.setEnabled(False)
-            self.scanAcqWidget.z_acquire_btn.setEnabled(False)
-            self.scanAcqWidget.z_cal_btn.setEnabled(False)
+            self.scanAcqWidget.setActionsStatus(False)
 
     def stop_scan_acquisition(self):
         self._stop_scan = True
 
     def update_directories(self, value: str):
-        for panel in self.vimba_panels:
-            panel._directory = value
-            panel.save_dir_edit.setText(value)
-        for panel in self.ids_panels:
-            panel._directory = value
-            panel.save_dir_edit.setText(value)
-        for panel in self.thor_panels:
-            panel._directory = value
-            panel.save_dir_edit.setText(value)
+        for _, cam_list in CameraList.cameras.items():
+            for cam in cam_list:
+                panel: Camera_Panel = cam['Panel']
+                panel._directory = value
+                panel.camera_options.set_param_value(
+                    CamParams.SAVE_DIRECTORY, value)
 
     def show_last_tile(self):
         if self.lastTile is not None:
@@ -1224,9 +850,10 @@ def scan_acquisition(miEye: miEye_module, steps, step_size, delay, average=1):
     '''
     try:
         data = []
+        vimba_cams = [cam for cam in CameraList.cameras['Vimba'] if not cam['IR']]
         if miEye.kinesisXY.isOpen()[0] and miEye.kinesisXY.isOpen()[1] \
-                and len(miEye.vimba_cams) > 0:
-            cam = miEye.vimba_cams[0]
+                and len(vimba_cams) > 0:
+            cam: vimba_cam = vimba_cams[0]['Camera']
             for x in range(steps[0]):
                 miEye.kinesisXY.move_relative(
                     round(step_size[0] / 1000, 4), 0)
@@ -1241,19 +868,20 @@ def scan_acquisition(miEye: miEye_module, steps, step_size, delay, average=1):
                             frames_avg = []
                             for _n in range(average):
                                 frames_avg.append(
-                                    cam.cam.get_frame().as_numpy_ndarray())
+                                    cam.cam.get_frame().as_numpy_ndarray()[..., 0])
                             frame = uImage(
                                 np.array(
                                     frames_avg).mean(
                                         axis=0, dtype=np.uint16))
                         else:
                             frame = uImage(
-                                cam.cam.get_frame().as_numpy_ndarray())
+                                cam.cam.get_frame().as_numpy_ndarray()[..., 0])
                         frame.equalizeLUT(None, True)
                     frame._view = cv2.resize(
                         frame._view, (0, 0),
                         fx=0.5,
-                        fy=0.5)
+                        fy=0.5,
+                        interpolation=cv2.INTER_NEAREST)
                     Y = (x % 2) * (steps[1] - 1) + ((-1)**x) * y
                     data.append(
                         TileImage(frame, [Y, x], miEye.kinesisXY.position))
@@ -1264,6 +892,12 @@ def scan_acquisition(miEye: miEye_module, steps, step_size, delay, average=1):
 
     except Exception:
         traceback.print_exc()
+    finally:
+        try:
+            cv2.destroyAllWindows()
+        except Exception:
+            traceback.print_exc()
+
     return data
 
 
@@ -1288,39 +922,57 @@ def z_stack_acquisition(
     '''
     try:
         data = []
-        if miEye.stage.isOpen() and len(miEye.vimba_cams) > 0 and nFrames > 0:
-            cam = miEye.vimba_cams[0]
-            cam_pan = miEye.vimba_panels[0]
+        peak = None
+        vimba_cams = [cam for cam in CameraList.cameras['Vimba'] if not cam['IR']]
+        if miEye.stage.isOpen() and len(vimba_cams) > 0 and nFrames > 0:
+            cam: miCamera = vimba_cams[0]['Camera']
+            cam_pan: Camera_Panel = vimba_cams[0]['Panel']
             if cam.acquisition:
                 return
 
-            peak = miEye.stage.center_pixel
+            cam_pan.camera_options.set_param_value(
+                CamParams.FRAMES, nFrames)
+            cam_pan.camera_options.set_param_value(
+                CamParams.SAVE_DATA, True)
+
+            peak = FocusStabilizer.instance().getPeakPosition()
             for x in range(n):
                 if x > 0:
-                    if miEye.stage.piezoTracking and \
-                            miEye.stage.pixel_translation.isChecked():
-                        value = miEye.stage.coeff_pixel * step_size
+                    if FocusStabilizer.instance().isFocusStabilized() and \
+                            FocusStabilizer.instance().useCal():
+                        value = FocusStabilizer.instance().pixelCalCoeff() * step_size
                         if reverse:
                             value *= -1
-                        miEye.stage.center_pixel += value
+                        FocusStabilizer.instance().setPeakPosition(value, True)
                         QThread.msleep(delay)
                     else:
-                        if miEye.stage.piezoTracking:
-                            miEye.stage.autoFocusTracking()
+                        if FocusStabilizer.instance().isFocusStabilized():
+                            FocusStabilizer.instance().toggleFocusStabilization(False)
                         miEye.scanAcqWidget.moveZ.emit(reverse, step_size)
                         QThread.msleep(delay)
-                        miEye.stage.autoFocusTracking()
+                        FocusStabilizer.instance().toggleFocusStabilization(True)
                 frame = None
-                cam_pan.frames_tbox.setValue(nFrames)
-                cam_pan.save_data_chbx.setChecked(True)
                 prefix = f'Z_{x:04d}_'
-                cam_pan.start_free_run(prefix)
 
-                cam_pan.s_event.wait()
+                event = threading.Event()
+
+                cam_pan.asyncFreerun.emit(prefix, event)
+
+                event.wait()
+                QThread.msleep(100)
+        else:
+            print('Z-scan failed!')
+            info = [{
+                'Z-Stage Open' : miEye.stage.isOpen(),
+                'Camera Available' : len(vimba_cams) > 0,
+                'Frames > 0' : nFrames > 0,
+            }]
+            print(tabulate.tabulate(info, headers='keys', tablefmt='rounded_grid'))
     except Exception:
         traceback.print_exc()
     finally:
-        miEye.stage.center_pixel = peak
+        if peak:
+            FocusStabilizer.instance().setPeakPosition(value, True)
     return
 
 
@@ -1347,14 +999,15 @@ def z_calibration(
     try:
         data = []
         if miEye.stage.isOpen():
-            if miEye.stage.piezoTracking:
-                miEye.stage.autoFocusTracking()
+            if FocusStabilizer.instance().isFocusStabilized():
+                FocusStabilizer.instance().toggleFocusStabilization(False)
             for x in range(n):
                 if x > 0:
                     miEye.scanAcqWidget.moveZ.emit(reverse, step_size)
                 QThread.msleep(delay * nFrames)
                 positions[x, 0] = x * step_size
-                positions[x, 1] = np.mean(miEye.centerData[-nFrames:])
+                positions[x, 1] = np.mean(
+                    FocusStabilizer.instance().peak_positions[-nFrames:])
     except Exception:
         traceback.print_exc()
         positions = None
@@ -1401,25 +1054,27 @@ def plot_z_cal(data, coeff):
 def generateConfig(mieye: miEye_module):
     filename = 'config.json'
     config = {
-            'ROI_x': mieye.focus.ROI_x.value(),
-            'ROI_y': mieye.focus.ROI_y.value(),
-            'ROI_length': mieye.focus.ROI_length.value(),
-            'ROI_angle': mieye.focus.ROI_angle.value(),
-            'LaserRelay': (mieye.laserRelay.portName(),
-                           mieye.laserRelay.baudRate()),
+            'LaserRelay': (mieye.laserRelayCtrllr.portName(),
+                           mieye.laserRelayCtrllr.baudRate()),
             'Elliptic': (mieye._elliptec_controller.serial.portName(),
                          mieye._elliptec_controller.serial.baudRate()),
-            'PiezoStage': (mieye.stage.serial.portName(),
-                           mieye.stage.serial.baudRate(),
-                           mieye.stage.pConst,
-                           mieye.stage.iConst,
-                           mieye.stage.dConst,
-                           mieye.stage.tau,
-                           mieye.stage.threshold),
+            'PiezoStage': (mieye.stage.stage.serial.portName(),
+                           mieye.stage.stage.serial.baudRate()),
             'KinesisX': (mieye.kinesisXY.X_Kinesis.serial.port,
                          mieye.kinesisXY.X_Kinesis.serial.baudrate),
             'KinesisY': (mieye.kinesisXY.Y_Kinesis.serial.port,
-                         mieye.kinesisXY.Y_Kinesis.serial.baudrate)
+                         mieye.kinesisXY.Y_Kinesis.serial.baudrate),
+            'FocusStabilizer' : {
+                'ROI_x': mieye.focus.roi.x(),
+                'ROI_y': mieye.focus.roi.y(),
+                'ROI_length': mieye.focus.roi.state['size'][1],
+                'ROI_angle': mieye.focus.roi.state['angle'] % 360,
+                'ROI_Width': FocusStabilizer.instance().line_width,
+                'PID': FocusStabilizer.instance().getPID(),
+                'PixelCalCoeff': FocusStabilizer.instance().pixelCalCoeff(),
+                'UseCal': FocusStabilizer.instance().useCal(),
+                'Inverted': FocusStabilizer.instance().isInverted(),
+            }
         }
 
     config['miEye_module'] = (
@@ -1449,13 +1104,6 @@ def generateConfig(mieye: miEye_module):
         (mieye.devicesDock.geometry().width(),
          mieye.devicesDock.geometry().height()),
         mieye.devicesDock.isVisible())
-    config['stage_dock'] = (
-        mieye.stage_dock.isFloating(),
-        (mieye.stage_dock.mapToGlobal(QPoint(0, 0)).x(),
-         mieye.stage_dock.mapToGlobal(QPoint(0, 0)).y()),
-        (mieye.stage_dock.geometry().width(),
-         mieye.stage_dock.geometry().height()),
-        mieye.stage_dock.isVisible())
     config['stagesDock'] = (
         mieye.stagesDock.isFloating(),
         (mieye.stagesDock.mapToGlobal(QPoint(0, 0)).x(),
@@ -1513,35 +1161,23 @@ def loadConfig(mieye: miEye_module):
                 config['miEye_module'][1][0],
                 config['miEye_module'][1][1])
 
-    if 'ROI_x' in config:
-        mieye.focus.ROI_x.setValue(float(config['ROI_x']))
-    if 'ROI_y' in config:
-        mieye.focus.ROI_y.setValue(float(config['ROI_y']))
-    if 'ROI_length' in config:
-        mieye.focus.ROI_length.setValue(float(config['ROI_length']))
-    if 'ROI_angle' in config:
-        mieye.focus.ROI_angle.setValue(float(config['ROI_angle']))
-    if 'ROI_x' in config:
-        mieye.focus.ROI_x.setValue(float(config['ROI_x']))
-    mieye.focus.set_roi()
+    if 'FocusStabilizer' in config:
+        fStabilizer = config['FocusStabilizer']
+        if isinstance(fStabilizer, dict):
+            mieye.focus.updateRoiParams(fStabilizer)
+            mieye.focus.set_roi()
 
     if 'LaserRelay' in config:
-        mieye.laserRelay.setPortName(str(config['LaserRelay'][0]))
-        mieye.laserRelay.setBaudRate(int(config['LaserRelay'][1]))
+        mieye.laserRelayCtrllr.setPortName(str(config['LaserRelay'][0]))
+        mieye.laserRelayCtrllr.setBaudRate(int(config['LaserRelay'][1]))
     if 'Elliptic' in config:
         mieye._elliptec_controller.serial.setPortName(
             config['Elliptic'][0])
         mieye._elliptec_controller.serial.setBaudRate(
             int(config['Elliptic'][1]))
     if 'PiezoStage' in config:
-        mieye.stage.serial.setPortName(str(config['PiezoStage'][0]))
-        mieye.stage.serial.setBaudRate(int(config['PiezoStage'][1]))
-        if len(config['PiezoStage']) > 2:
-            mieye.stage.pConst = float(config['PiezoStage'][2])
-            mieye.stage.iConst = float(config['PiezoStage'][3])
-            mieye.stage.dConst = float(config['PiezoStage'][4])
-            mieye.stage.tau = float(config['PiezoStage'][5])
-            mieye.stage.threshold = float(config['PiezoStage'][6])
+        mieye.stage.stage.serial.setPortName(str(config['PiezoStage'][0]))
+        mieye.stage.stage.serial.setBaudRate(int(config['PiezoStage'][1]))
     if 'KinesisX' in config:
         mieye.kinesisXY.X_Kinesis.serial.port = str(config['KinesisX'][0])
         mieye.kinesisXY.X_Kinesis.serial.baudrate = int(config['KinesisX'][1])
@@ -1552,24 +1188,18 @@ def loadConfig(mieye: miEye_module):
     if 'LaserPanels' in config:
         if config['LaserPanels'] is not None:
             for panel in mieye.laserPanels:
-                mieye.lasersLayout.removeWidget(panel)
                 panel.Laser.CloseCOM()
+                panel.remove_widget()
 
             mieye.laserPanels.clear()
 
             for panel in config['LaserPanels']:
-                if bool(panel[2]):
-                    combiner = CombinerLaserWidget()
-                    mieye.laserPanels.append(combiner)
-                    mieye.lasersLayout.insertWidget(0, combiner)
-                    combiner.Laser.setPortName(str(panel[0]))
-                    combiner.Laser.setBaudRate(int(panel[1]))
-                else:
-                    laser = SingleLaserWidget()
-                    mieye.laserPanels.append(laser)
-                    mieye.lasersLayout.insertWidget(0, laser)
-                    laser.Laser.setPortName(str(panel[0]))
-                    laser.Laser.setBaudRate(int(panel[1]))
+                panel = CombinerLaserWidget() if bool(panel[2]) else SingleMatchBox()
+                mieye.laserPanels.append(panel)
+                mieye.lasersLayout.insertWidget(0, panel)
+                panel.set_param_value(RelayParams.PORT, str(panel[0]))
+                panel.set_param_value(RelayParams.BAUDRATE, int(panel[1]))
+                panel.set_config()
 
     if 'LasersDock' in config:
         mieye.lasersDock.setVisible(
@@ -1595,18 +1225,6 @@ def loadConfig(mieye: miEye_module):
                 config['devicesDock'][2][1])
         else:
             mieye.devicesDock.setFloating(False)
-    if 'stage_dock' in config:
-        mieye.stage_dock.setVisible(
-            bool(config['stage_dock'][3]))
-        if bool(config['stage_dock'][0]):
-            mieye.stage_dock.setFloating(True)
-            mieye.stage_dock.setGeometry(
-                config['stage_dock'][1][0],
-                config['stage_dock'][1][1],
-                config['stage_dock'][2][0],
-                config['stage_dock'][2][1])
-        else:
-            mieye.stage_dock.setFloating(False)
     if 'stagesDock' in config:
         mieye.stagesDock.setVisible(
             bool(config['stagesDock'][3]))

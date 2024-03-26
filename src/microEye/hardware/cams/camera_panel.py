@@ -33,6 +33,7 @@ class Camera_Panel(QGroupBox):
     '''
 
     exposureChanged = pyqtSignal()
+    asyncFreerun = pyqtSignal(str, threading.Event)
     updateStatsSignal = pyqtSignal(tuple)
     updateRangeSignal = pyqtSignal(int, int)
 
@@ -68,8 +69,9 @@ class Camera_Panel(QGroupBox):
         self.d_worker = None  # worker for display
         self.s_worker = None  # worker for saving
 
-        self.c_event = None
-        self.s_event = None
+        self.asyncFreerun.connect(
+            lambda prefix, event: self.start_free_run(
+                Prefix=prefix, Event=event))
 
         # number of bins for the histogram (4096 is set for 12bit mono-camera)
         self._nBins = 2**12
@@ -160,7 +162,6 @@ class Camera_Panel(QGroupBox):
 
         self.save_dir_layout = QHBoxLayout()
 
-        self._directory = os.path.dirname(os.path.realpath(__file__))
         self.camera_options.set_param_value(
             CamParams.SAVE_DIRECTORY, self._directory)
         self.camera_options.directoryChanged.connect(
@@ -366,10 +367,9 @@ class Camera_Panel(QGroupBox):
             'The select_ROIs function is not implemented yet.')
 
     def get_meta(self):
-        meta = dict[str, any]()
-        return meta
+        return self.camera_options.get_json()
 
-    def getAcquisitionJob(self) -> AcquisitionJob:
+    def getAcquisitionJob(self, event=None) -> AcquisitionJob:
         self._save_path = os.path.join(
             self._directory,
             self.camera_options.get_param_value(CamParams.EXPERIMENT_NAME) + '\\')
@@ -393,7 +393,8 @@ class Camera_Panel(QGroupBox):
             seperate_rois=self.camera_options.get_param_value(
                 CamParams.EXPORT_ROIS_SEPERATE),
             flip_rois=self.camera_options.get_param_value(
-                CamParams.EXPORT_ROIS_FLIPPED)
+                CamParams.EXPORT_ROIS_FLIPPED),
+            s_event=event if event else threading.Event()
         )
 
     def view_toggled(self):
@@ -413,7 +414,7 @@ class Camera_Panel(QGroupBox):
         if len(value) > 0:
             self._directory = value
 
-    def start_free_run(self, param=None, Prefix=''):
+    def start_free_run(self, param=None, Prefix='', Event=None):
         '''
         Starts free run acquisition mode
 
@@ -428,7 +429,7 @@ class Camera_Panel(QGroupBox):
             return  # if acquisition is already going on
 
         self._save_prefix = Prefix
-        self.acq_job = self.getAcquisitionJob()
+        self.acq_job = self.getAcquisitionJob(Event)
 
         self._cam.acquisition = True  # set acquisition flag to true
 
@@ -436,8 +437,8 @@ class Camera_Panel(QGroupBox):
         self.start_all_workers()
 
     def stop(self):
-        if self.c_event is not None:
-            self.c_event.set()
+        if self.acq_job is not None:
+            self.acq_job.c_event.set()
         # set stop acquisition workers flag to true
         if self.acq_job is not None:
             self.acq_job.stop_threads = True
@@ -450,8 +451,6 @@ class Camera_Panel(QGroupBox):
         self._buffer.queue.clear()
         self._temps.queue.clear()
         self._frames.queue.clear()
-        self.c_event = threading.Event()
-        self.s_event = threading.Event()
         self.time = QDateTime.currentDateTime()
 
         # Pass the display function to be executed
@@ -500,15 +499,12 @@ class Camera_Panel(QGroupBox):
                 f'T {self._cam.temperature:.2f} °C')
             self.camera_options.set_param_value(
                 CamParams.CAPTURE_STATS,
-                'Capture {:d}/{:d} {:.2%} | {:.2f} ms '.format(
-                    self.acq_job.frames_captured,
-                    self.acq_job.frames,
-                    self.acq_job.frames_captured / self.acq_job.frames,
-                    self.acq_job.capture_time))
+                (f'Capture {self.acq_job.frames_captured}/{self.acq_job.frames} ' +
+                 f'{self.acq_job.frames_captured / self.acq_job.frames:.2%} ' +
+                 f'| {self.acq_job.capture_time:.2f} ms'))
             self.camera_options.set_param_value(
                 CamParams.DISPLAY_STATS,
-                'Display {:d} | {:.2f} ms '.format(
-                    self._buffer.qsize(), self.acq_job.display_time))
+                f'Display {self._buffer.qsize()} | {self.acq_job.display_time:.2f} ms')
             self.camera_options.set_param_value(
                 CamParams.SAVE_STATS,
                 f'Save {self._frames.qsize():d} | {self.acq_job.save_time:.2f} ms ')
@@ -630,6 +626,7 @@ def cam_save(params: AcquisitionJob):
     except Exception:
         traceback.print_exc()
     finally:
+        params.s_event.set()
         params.finalize()
         print('Save thread finally finished.')
 
@@ -850,7 +847,7 @@ def cam_display(params: AcquisitionJob, camp: Camera_Panel):
             QThread.usleep(100)
             # Flag that ends the loop
             if params.stop_threads and params.display_queue.empty() \
-                    and camp.c_worker.done:
+                    and params.capture_done:
                 print('Display thread break.')
                 break
     except Exception:
