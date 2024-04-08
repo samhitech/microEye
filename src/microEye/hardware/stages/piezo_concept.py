@@ -162,7 +162,7 @@ class PzFoc(stage):
         '''Centers the stage position along the Z axis.
         '''
         if (self.isOpen()):
-            self.ZPosition = 1000 * self.max // 2
+            self.ZPosition = self.max // 2
             self.write(b'MOVEZ 50u\n')
             self.LastCmd = 'MOVRZ'
 
@@ -296,7 +296,7 @@ class PzFocView(Tree):
             ]},
             {'name': str(StageParams.READINGS), 'type': 'group', 'children': [
                 {'name': str(StageParams.Z_POSITION),
-                 'type': 'float', 'value': 0.0, 'readonly': True},
+                 'type': 'float', 'value': 0.0, 'readonly': True, 'decimals': 6},
             ]},
             {'name': str(StageParams.OPTIONS), 'type': 'group', 'children': [
                 {'name': str(StageParams.STEP),
@@ -462,7 +462,7 @@ class PzFocController:
                 step_arg = self.view.get_param_value(StageParams.STEP)
 
         focusStabilizer = FocusStabilizer.instance()
-        if focusStabilizer and focusStabilizer.isFocusStabilized() \
+        if focusStabilizer is not None and focusStabilizer.isFocusStabilized() \
                 and focusStabilizer.useCal() and interface:
             sign = 1 if dir else -1
             focusStabilizer.setPeakPosition(

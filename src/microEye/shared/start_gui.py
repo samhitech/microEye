@@ -18,7 +18,7 @@ def splash(module):
     print(
         pyfiglet.Figlet(
             font=random.choice(fonts), width=250).renderText(
-                 f'MicroEye v1.1.0\n{module}'))
+                 f'MicroEye v2.0.0\n{module}'))
 
 def StartGUI(cls: type, *args, **kwargs):
         '''Initializes a new QApplication and module.

@@ -763,7 +763,7 @@ class miEye_module(QMainWindow):
             self._scanning = True
 
             self.scan_worker = thread_worker(
-                scan_acquisition, self,
+                scanAcquisition, self,
                 [params[0], params[1]],
                 [params[2], params[3]],
                 params[4],
@@ -827,7 +827,7 @@ class miEye_module(QMainWindow):
             self.lastTile.show()
 
 
-def scan_acquisition(miEye: miEye_module, steps, step_size, delay, average=1):
+def scanAcquisition(miEye: miEye_module, steps, step_size, delay, average=1):
     '''Scan Acquisition (works with Allied Vision Cams only)
 
     Parameters
@@ -889,7 +889,8 @@ def scan_acquisition(miEye: miEye_module, steps, step_size, delay, average=1):
                     cv2.waitKey(1)
 
             miEye.kinesisXY.update()
-
+        else:
+            return
     except Exception:
         traceback.print_exc()
     finally:
@@ -899,7 +900,6 @@ def scan_acquisition(miEye: miEye_module, steps, step_size, delay, average=1):
             traceback.print_exc()
 
     return data
-
 
 def z_stack_acquisition(
         miEye: miEye_module, n,
@@ -972,7 +972,7 @@ def z_stack_acquisition(
         traceback.print_exc()
     finally:
         if peak:
-            FocusStabilizer.instance().setPeakPosition(value, True)
+            FocusStabilizer.instance().setPeakPosition(peak)
     return
 
 
@@ -1193,12 +1193,12 @@ def loadConfig(mieye: miEye_module):
 
             mieye.laserPanels.clear()
 
-            for panel in config['LaserPanels']:
-                panel = CombinerLaserWidget() if bool(panel[2]) else SingleMatchBox()
+            for _panel in config['LaserPanels']:
+                panel = CombinerLaserWidget() if bool(_panel[2]) else SingleMatchBox()
                 mieye.laserPanels.append(panel)
-                mieye.lasersLayout.insertWidget(0, panel)
-                panel.set_param_value(RelayParams.PORT, str(panel[0]))
-                panel.set_param_value(RelayParams.BAUDRATE, int(panel[1]))
+                mieye.lasersLayout.addWidget(panel)
+                panel.set_param_value(RelayParams.PORT, str(_panel[0]))
+                panel.set_param_value(RelayParams.BAUDRATE, int(_panel[1]))
                 panel.set_config()
 
     if 'LasersDock' in config:

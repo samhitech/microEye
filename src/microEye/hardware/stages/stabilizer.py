@@ -319,6 +319,7 @@ class FocusStabilizer(QObject):
             self.__peak_position += value
         else:
             self.__peak_position = value
+        self.peakPositionChanged.emit(self.__peak_position)
 
     def isFocusStabilized(self):
         '''
@@ -451,7 +452,6 @@ class FocusStabilizer(QObject):
                     self.moveStage.emit(direction, abs(step))
             else:
                 self.setPeakPosition(self.peak_positions[-1])
-                self.peakPositionChanged.emit(self.peak_positions[-1])
                 self.error_buffer = np.zeros((20,))
                 self.error_integral = 0
 

@@ -223,4 +223,11 @@ class focusWidget(QDockWidget):
         self.roi.setAngle(
             self.focusStabilizerView.get_param_value(
                 FocusStabilizerParams.ANGLE))
+        
+        x, y = self.getRoiCoords()
+        self.focusStabilizerView.set_param_value(
+            FocusStabilizerParams.X2, x[1])
+        self.focusStabilizerView.set_param_value(
+            FocusStabilizerParams.Y2, y[1])
+
         self.roi.updateFlag = False

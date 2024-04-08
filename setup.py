@@ -5,7 +5,7 @@ with open('README.md', encoding='utf-8') as fh:
 
 setuptools.setup(
     name='microEye',
-    version='1.1.0',
+    version='2.0.0',
     author='Mohammad Nour Alsamsam',
     author_email='nour.alsamsam@gmail.com',
     description='A python toolkit for fluorescence microscopy \
@@ -28,7 +28,7 @@ setuptools.setup(
     packages=setuptools.find_packages(where='src'),
     python_requires='>=3.9.4',
     include_package_data=True,
-    requires=[
+    install_requires=[
         'autopep8 (==2.0.4)',
         'dask (==2022.1.0)',
         'h5py (==3.10.0)',
@@ -54,7 +54,7 @@ setuptools.setup(
         'setuptools (==69.0.2)',
         'tables (==3.9.1)',
         'tabulate (==0.9.0)',
-        'tifffile (==2022.2.2)',
+        'tifffile (==2024.2.12)',
         'vispy (==0.14.1)',
         'zarr (==2.10.3)',
     ],
