@@ -6,7 +6,6 @@ import numpy as np
 import tifffile as tf
 import zarr
 from numba import cuda
-from PyQt5.QtCore import *
 
 BYTE = 256
 WORD = 2**16

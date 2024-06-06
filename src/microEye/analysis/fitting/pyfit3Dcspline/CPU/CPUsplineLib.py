@@ -3,10 +3,10 @@ import math
 import numba as nb
 import numpy as np
 
-from .CPUfunctions import *
+from microEye.analysis.fitting.pyfit3Dcspline.CPU.CPUfunctions import *
 
 
-@nb.njit
+@nb.njit(cache=True)
 def kernel_computeDelta3D(
         x_delta, y_delta, z_delta, delta_f, delta_dxf, delta_dyf, delta_dzf):
     '''
@@ -65,7 +65,7 @@ def kernel_computeDelta3D(
     return delta_f, delta_dxf, delta_dyf, delta_dzf
 
 
-@nb.njit
+@nb.njit(cache=True)
 def kernel_cholesky(A, n, L, U) -> int:
     '''
     Parameters
@@ -104,7 +104,7 @@ def kernel_cholesky(A, n, L, U) -> int:
     return info
 
 
-@nb.njit
+@nb.njit(cache=True)
 def kernel_luEvaluate(L, U, b, n, x):
     '''_summary_
 
@@ -152,7 +152,7 @@ def kernel_luEvaluate(L, U, b, n, x):
         nb.int32, nb.int32, nb.int32,
         nb.int32, nb.int32, nb.int32,
         nb.float32[:], nb.float32[:], nb.float32[:],
-        nb.float32[:], nb.float32[:], nb.float32[:], nb.float32[:]))
+        nb.float32[:], nb.float32[:], nb.float32[:], nb.float32[:]), cache=True)
 def kernel_DerivativeSpline(
         xc, yc, zc, xsize, ysize, zsize,
         delta_f, delta_dxf, delta_dyf, delta_dzf, coeff, theta, dudt):

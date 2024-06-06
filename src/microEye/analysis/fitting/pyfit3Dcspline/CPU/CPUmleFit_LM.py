@@ -1,11 +1,11 @@
 import numba as nb
 import numpy as np
 
-from .CPUfunctions import *
-from .CPUsplineLib import *
+from microEye.analysis.fitting.pyfit3Dcspline.CPU.CPUfunctions import *
+from microEye.analysis.fitting.pyfit3Dcspline.CPU.CPUsplineLib import *
 
 
-@nb.njit
+@nb.njit(cache=True)
 def kernel_MLEFit_LM(
         d_data, PSFSigma, sz, iterations, d_varim=None):
     '''
@@ -239,7 +239,7 @@ def kernel_MLEFit_LM(
     return d_Parameters, d_CRLBs, d_LogLikelihood
 
 
-@nb.njit
+@nb.njit(cache=True)
 def kernel_MLEFit_LM_Sigma(
         d_data, PSFSigma, sz, iterations, d_varim=None):
     '''
@@ -476,7 +476,7 @@ def kernel_MLEFit_LM_Sigma(
     return d_Parameters, d_CRLBs, d_LogLikelihood
 
 
-@nb.njit
+@nb.njit(cache=True)
 def kernel_MLEFit_LM_z(
         d_data, PSFSigma_x, Ax, Ay, Bx, By, gamma, d,
         PSFSigma_y, sz, iterations, d_varim=None):
@@ -736,7 +736,7 @@ def kernel_MLEFit_LM_z(
     return d_Parameters, d_CRLBs, d_LogLikelihood
 
 
-@nb.njit
+@nb.njit(cache=True)
 def kernel_MLEFit_LM_sigmaxy(
         d_data, PSFSigma, sz, iterations, d_varim=None):
     '''
@@ -978,7 +978,7 @@ def kernel_MLEFit_LM_sigmaxy(
     return d_Parameters, d_CRLBs, d_LogLikelihood
 
 
-@nb.njit
+@nb.njit(cache=True)
 def kernel_splineMLEFit_z(
         d_data, d_coeff, spline_xsize, spline_ysize, spline_zsize, sz,
         iterations, initZ, d_varim=None):

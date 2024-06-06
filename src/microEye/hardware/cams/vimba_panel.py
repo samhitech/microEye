@@ -1,48 +1,41 @@
-import json
 import logging
 import traceback
 from enum import Enum
-from typing import overload
 
-import cv2
-import numpy as np
-from PyQt5.QtCore import *
-from PyQt5.QtGui import *
-from PyQt5.QtWidgets import *
-
-from ...analysis.tools.roi_selectors import (
+from microEye.analysis.tools.roi_selectors import (
     MultiRectangularROISelector,
     convert_pos_size_to_rois,
     convert_rois_to_pos_size,
 )
-from ...shared.gui_helper import get_scaling_factor
-from ...shared.metadata_tree import MetaParams
-from ...shared.thread_worker import thread_worker
-from ...shared.uImage import uImage
-from ..widgets.qlist_slider import *
-from .camera_options import CamParams
-from .camera_panel import Camera_Panel
-from .vimba_cam import vimba_cam
+from microEye.hardware.cams.camera_options import CamParams
+from microEye.hardware.cams.camera_panel import Camera_Panel
+from microEye.hardware.cams.vimba_cam import vimba_cam
+from microEye.qt import QDateTime, QtCore, QtWidgets, getOpenFileName, getSaveFileName
+from microEye.utils.gui_helper import get_scaling_factor
+from microEye.utils.metadata_tree import MetaParams
+from microEye.utils.thread_worker import thread_worker
+from microEye.utils.uImage import uImage
 
 try:
     import vimba as vb
 except Exception:
     vb = None
 
+
 class VimbaParams(Enum):
-    EXPOSURE_MODE = 'Camera.Exposure Mode'
-    EXPOSURE_AUTO = 'Camera.Exposure Auto'
-    FRAMERATE_ENABLED = 'Camera.Frame Rate Enabled'
-    FRAMERATE = 'Camera.Frame Rate'
-    TRIGGER_MODE = 'Camera.Trigger Mode'
-    TRIGGER_SOURCE = 'Camera.Trigger Source'
-    TRIGGER_SELECTOR = 'Camera.Trigger Selector'
-    TRIGGER_ACTIVATION = 'Camera.Trigger Activation'
-    PIXEL_FORMAT = 'Camera.Pixel Format'
-    FREERUN = 'Camera.Freerun'
-    LOAD = 'Camera.Load Config'
-    SAVE = 'Camera.Save Config'
-    STOP = 'Camera.Stop'
+    FREERUN = 'Acquisition.Freerun'
+    STOP = 'Acquisition.Stop'
+    EXPOSURE_MODE = 'Acquisition Settings.Exposure Mode'
+    EXPOSURE_AUTO = 'Acquisition Settings.Exposure Auto'
+    FRAMERATE_ENABLED = 'Acquisition Settings.Frame Rate Enabled'
+    FRAMERATE = 'Acquisition Settings.Frame Rate'
+    TRIGGER_MODE = 'Acquisition Settings.Trigger Mode'
+    TRIGGER_SOURCE = 'Acquisition Settings.Trigger Source'
+    TRIGGER_SELECTOR = 'Acquisition Settings.Trigger Selector'
+    TRIGGER_ACTIVATION = 'Acquisition Settings.Trigger Activation'
+    PIXEL_FORMAT = 'Acquisition Settings.Pixel Format'
+    LOAD = 'Acquisition Settings.Load Config'
+    SAVE = 'Acquisition Settings.Save Config'
     LINE_SELECTOR = 'GPIOs.Line Selector'
     LINE_MODE = 'GPIOs.Line Mode'
     LINE_SOURCE = 'GPIOs.Line Source'
@@ -68,14 +61,14 @@ class VimbaParams(Enum):
         '''
         return self.value.split('.')
 
+
 class Vimba_Panel(Camera_Panel):
     '''
     A Qt Widget for controlling an Allied Vision Camera through Vimba
      | Inherits Camera_Panel
     '''
 
-    def __init__(self, cam: vimba_cam, mini=False,
-                 *args, **kwargs):
+    def __init__(self, cam: vimba_cam, mini=False, *args, **kwargs):
         '''
         Initializes a new Vimba_Panel Qt widget.
 
@@ -102,169 +95,182 @@ class Vimba_Panel(Camera_Panel):
         self.OME_tab.set_param_value(MetaParams.CHANNEL_NAME, self._cam.name)
         self.OME_tab.set_param_value(MetaParams.DET_MANUFACTURER, 'Allied Vision')
         self.OME_tab.set_param_value(MetaParams.DET_MODEL, self._cam.cam.get_model())
-        self.OME_tab.set_param_value(MetaParams.DET_SERIAL,
-            self._cam.cam.get_serial())
-        self.OME_tab.set_param_value(MetaParams.DET_TYPE,
-            'CMOS')
+        self.OME_tab.set_param_value(MetaParams.DET_SERIAL, self._cam.cam.get_serial())
+        self.OME_tab.set_param_value(MetaParams.DET_TYPE, 'CMOS')
 
         # exposure init
         exposure = self.camera_options.get_param(CamParams.EXPOSURE)
-        exposure.setLimits(
-            (self._cam.exposure_range[0], self._cam.exposure_range[1]))
+        exposure.setLimits((self._cam.exposure_range[0], self._cam.exposure_range[1]))
         exposure.setOpts(
-            step=self._cam.exposure_increment,
-            suffix=self._cam.exposure_unit)
+            step=self._cam.exposure_increment, suffix=self._cam.exposure_unit
+        )
         exposure.setValue(self._cam.exposure_current)
         exposure.sigValueChanged.connect(self.exposure_spin_changed)
 
         # exposure mode combobox
         exposure_mode = {
-            'name': str(VimbaParams.EXPOSURE_MODE), 'type': 'list',
-            'values': self._cam.exposure_modes[0]
+            'name': str(VimbaParams.EXPOSURE_MODE),
+            'type': 'list',
+            'limits': self._cam.exposure_modes[0],
         }
-        self.camera_options.add_param_child(
-            CamParams.CAMERA_OPTIONS, exposure_mode)
+        self.camera_options.add_param_child(CamParams.ACQ_SETTINGS, exposure_mode)
         # for x in range(len(self._cam.exposure_modes[2])):
         #     self.cam_exposure_mode_cbox.setItemData(
         #         x, self._cam.exposure_modes[2][x], Qt.ToolTipRole)
         self.camera_options.get_param(
-            VimbaParams.EXPOSURE_MODE).sigValueChanged.connect(
-                lambda: self.cam_cbox_changed(VimbaParams.EXPOSURE_MODE))
+            VimbaParams.EXPOSURE_MODE
+        ).sigValueChanged.connect(
+            lambda: self.cam_cbox_changed(VimbaParams.EXPOSURE_MODE)
+        )
 
         # exposure auto mode combobox
         exposure_auto = {
-            'name': str(VimbaParams.EXPOSURE_AUTO), 'type': 'list',
-            'values': self._cam.exposure_auto_entries[0]
+            'name': str(VimbaParams.EXPOSURE_AUTO),
+            'type': 'list',
+            'limits': self._cam.exposure_auto_entries[0],
         }
-        self.camera_options.add_param_child(
-            CamParams.CAMERA_OPTIONS, exposure_auto)
+        self.camera_options.add_param_child(CamParams.ACQ_SETTINGS, exposure_auto)
         # for x in range(len(self._cam.exposure_auto_entries[2])):
         #     self.cam_exposure_auto_cbox.setItemData(
         #         x, self._cam.exposure_auto_entries[2][x], Qt.ToolTipRole)
         self.camera_options.get_param(
-            VimbaParams.EXPOSURE_AUTO).sigValueChanged.connect(
-                lambda: self.cam_cbox_changed(VimbaParams.EXPOSURE_AUTO))
+            VimbaParams.EXPOSURE_AUTO
+        ).sigValueChanged.connect(
+            lambda: self.cam_cbox_changed(VimbaParams.EXPOSURE_AUTO)
+        )
 
         # Frame Rate
         framerate_enabled = {
-            'name': str(VimbaParams.FRAMERATE_ENABLED), 'type': 'bool',
-            'value': False}
-        self.camera_options.add_param_child(
-            CamParams.CAMERA_OPTIONS, framerate_enabled)
+            'name': str(VimbaParams.FRAMERATE_ENABLED),
+            'type': 'bool',
+            'value': False,
+        }
+        self.camera_options.add_param_child(CamParams.ACQ_SETTINGS, framerate_enabled)
         self.camera_options.get_param(
-            VimbaParams.FRAMERATE_ENABLED).sigStateChanged.connect(
-            self.cam_framerate_changed)
+            VimbaParams.FRAMERATE_ENABLED
+        ).sigStateChanged.connect(self.cam_framerate_changed)
 
         framerate = {
-            'name': str(VimbaParams.FRAMERATE), 'type': 'float',
-            'value': self._cam.frameRate, 'dec': False, 'decimals': 6, 'step': 0.1,
+            'name': str(VimbaParams.FRAMERATE),
+            'type': 'float',
+            'value': self._cam.frameRate,
+            'dec': False,
+            'decimals': 6,
+            'step': 0.1,
             'limits': [self._cam.frameRate_range[0], self._cam.frameRate_range[1]],
-            'suffix': self._cam.frameRate_unit, 'enabled': False}
-        self.camera_options.add_param_child(
-            CamParams.CAMERA_OPTIONS, framerate)
-        self.camera_options.get_param(
-            VimbaParams.FRAMERATE).sigValueChanged.connect(
-                self.framerate_spin_changed)
+            'suffix': self._cam.frameRate_unit,
+            'enabled': False,
+        }
+        self.camera_options.add_param_child(CamParams.ACQ_SETTINGS, framerate)
+        self.camera_options.get_param(VimbaParams.FRAMERATE).sigValueChanged.connect(
+            self.framerate_spin_changed
+        )
 
         # trigger mode combobox
         trigger_mode = {
-            'name': str(VimbaParams.TRIGGER_MODE), 'type': 'list',
-            'values': self._cam.trigger_modes[0]}
-        self.camera_options.add_param_child(
-            CamParams.CAMERA_OPTIONS, trigger_mode)
+            'name': str(VimbaParams.TRIGGER_MODE),
+            'type': 'list',
+            'limits': self._cam.trigger_modes[0],
+        }
+        self.camera_options.add_param_child(CamParams.ACQ_SETTINGS, trigger_mode)
         # for x in range(len(self._cam.trigger_modes[2])):
         #     self.cam_trigger_mode_cbox.setItemData(
         #         x, self._cam.trigger_modes[2][x], Qt.ToolTipRole)
-        self.camera_options.get_param(
-            VimbaParams.TRIGGER_MODE).sigValueChanged.connect(
-                lambda: self.cam_cbox_changed(VimbaParams.TRIGGER_MODE))
+        self.camera_options.get_param(VimbaParams.TRIGGER_MODE).sigValueChanged.connect(
+            lambda: self.cam_cbox_changed(VimbaParams.TRIGGER_MODE)
+        )
 
         # trigger source combobox
         trigger_source = {
-            'name': str(VimbaParams.TRIGGER_SOURCE), 'type': 'list',
-            'values': self._cam.trigger_sources[0]}
-        self.camera_options.add_param_child(
-            CamParams.CAMERA_OPTIONS, trigger_source)
+            'name': str(VimbaParams.TRIGGER_SOURCE),
+            'type': 'list',
+            'limits': self._cam.trigger_sources[0],
+        }
+        self.camera_options.add_param_child(CamParams.ACQ_SETTINGS, trigger_source)
         # for x in range(len(self._cam.trigger_sources[2])):
         #     self.cam_trigger_source_cbox.setItemData(
         #         x, self._cam.trigger_sources[2][x], Qt.ToolTipRole)
         self.camera_options.get_param(
-            VimbaParams.TRIGGER_SOURCE).sigValueChanged.connect(
-                lambda: self.cam_cbox_changed(VimbaParams.TRIGGER_SOURCE))
+            VimbaParams.TRIGGER_SOURCE
+        ).sigValueChanged.connect(
+            lambda: self.cam_cbox_changed(VimbaParams.TRIGGER_SOURCE)
+        )
 
         # trigger selector combobox
         trigger_selector = {
-            'name': str(VimbaParams.TRIGGER_SELECTOR), 'type': 'list',
-            'values': self._cam.trigger_selectors[0]}
-        self.camera_options.add_param_child(
-            CamParams.CAMERA_OPTIONS, trigger_selector)
+            'name': str(VimbaParams.TRIGGER_SELECTOR),
+            'type': 'list',
+            'limits': self._cam.trigger_selectors[0],
+        }
+        self.camera_options.add_param_child(CamParams.ACQ_SETTINGS, trigger_selector)
         # for x in range(len(self._cam.trigger_selectors[2])):
         #     self.cam_trigger_selector_cbox.setItemData(
         #         x, self._cam.trigger_selectors[2][x], Qt.ToolTipRole)
         self.camera_options.get_param(
-            VimbaParams.TRIGGER_SELECTOR).sigValueChanged.connect(
-                lambda: self.cam_cbox_changed(VimbaParams.TRIGGER_SELECTOR))
+            VimbaParams.TRIGGER_SELECTOR
+        ).sigValueChanged.connect(
+            lambda: self.cam_cbox_changed(VimbaParams.TRIGGER_SELECTOR)
+        )
 
         # trigger activation combobox
         trigger_activation = {
-            'name': str(VimbaParams.TRIGGER_ACTIVATION), 'type': 'list',
-            'values': self._cam.trigger_activations[0]}
-        self.camera_options.add_param_child(
-            CamParams.CAMERA_OPTIONS, trigger_activation)
+            'name': str(VimbaParams.TRIGGER_ACTIVATION),
+            'type': 'list',
+            'limits': self._cam.trigger_activations[0],
+        }
+        self.camera_options.add_param_child(CamParams.ACQ_SETTINGS, trigger_activation)
         # for x in range(len(self._cam.trigger_activations[2])):
         #     self.cam_trigger_activation_cbox.setItemData(
         #         x, self._cam.trigger_activations[2][x], Qt.ToolTipRole)
         self.camera_options.get_param(
-            VimbaParams.TRIGGER_ACTIVATION).sigValueChanged.connect(
-                lambda: self.cam_cbox_changed(VimbaParams.TRIGGER_ACTIVATION))
+            VimbaParams.TRIGGER_ACTIVATION
+        ).sigValueChanged.connect(
+            lambda: self.cam_cbox_changed(VimbaParams.TRIGGER_ACTIVATION)
+        )
 
         # pixel formats combobox
         pixel_format = {
-            'name': str(VimbaParams.PIXEL_FORMAT), 'type': 'list',
-            'values': self._cam.pixel_formats}
-        self.camera_options.add_param_child(
-            CamParams.CAMERA_OPTIONS, pixel_format)
-        self.camera_options.get_param(
-            VimbaParams.PIXEL_FORMAT).sigValueChanged.connect(
-                lambda: self.cam_cbox_changed(VimbaParams.PIXEL_FORMAT))
+            'name': str(VimbaParams.PIXEL_FORMAT),
+            'type': 'list',
+            'limits': self._cam.pixel_formats,
+        }
+        self.camera_options.add_param_child(CamParams.ACQ_SETTINGS, pixel_format)
+        self.camera_options.get_param(VimbaParams.PIXEL_FORMAT).sigValueChanged.connect(
+            lambda: self.cam_cbox_changed(VimbaParams.PIXEL_FORMAT)
+        )
 
         # start freerun mode button
         freerun = {'name': str(VimbaParams.FREERUN), 'type': 'action'}
-        self.camera_options.add_param_child(
-            CamParams.CAMERA_OPTIONS, freerun)
-        self.camera_options.get_param(
-            VimbaParams.FREERUN).sigActivated.connect(
-                self.start_free_run)
+        self.camera_options.add_param_child(CamParams.ACQUISITION, freerun)
+        self.camera_options.get_param(VimbaParams.FREERUN).sigActivated.connect(
+            self.start_free_run
+        )
 
         # stop acquisition button
         stop = {'name': str(VimbaParams.STOP), 'type': 'action'}
-        self.camera_options.add_param_child(
-            CamParams.CAMERA_OPTIONS, stop)
-        self.camera_options.get_param(
-            VimbaParams.STOP).sigActivated.connect(
-                self.stop)
+        self.camera_options.add_param_child(CamParams.ACQUISITION, stop)
+        self.camera_options.get_param(VimbaParams.STOP).sigActivated.connect(self.stop)
 
         # config buttons
         load = {'name': str(VimbaParams.LOAD), 'type': 'action'}
-        self.camera_options.add_param_child(
-            CamParams.CAMERA_OPTIONS, load)
-        self.camera_options.get_param(
-            VimbaParams.LOAD).sigActivated.connect(
-                self.load_config)
+        self.camera_options.add_param_child(CamParams.ACQ_SETTINGS, load)
+        self.camera_options.get_param(VimbaParams.LOAD).sigActivated.connect(
+            self.load_config
+        )
 
         save = {'name': str(VimbaParams.SAVE), 'type': 'action'}
-        self.camera_options.add_param_child(
-            CamParams.CAMERA_OPTIONS, save)
-        self.camera_options.get_param(
-            VimbaParams.SAVE).sigActivated.connect(
-                self.save_config)
+        self.camera_options.add_param_child(CamParams.ACQ_SETTINGS, save)
+        self.camera_options.get_param(VimbaParams.SAVE).sigActivated.connect(
+            self.save_config
+        )
 
         # ROI
         self.camera_options.set_roi_limits(
             (0, self.cam.width_range[1]),
             (0, self.cam.height_range[1]),
             (self.cam.width_range[0], self.cam.width_range[1]),
-            (self.cam.height_range[0], self.cam.height_range[1]))
+            (self.cam.height_range[0], self.cam.height_range[1]),
+        )
 
         # GPIOs
         lineSelector = {'name': str(VimbaParams.LINE_SELECTOR), 'type': 'list'}
@@ -272,67 +278,63 @@ class Vimba_Panel(Camera_Panel):
         lineSource = {'name': str(VimbaParams.LINE_SOURCE), 'type': 'list'}
         lineInverter = {
             'name': str(VimbaParams.LINE_INVERTER),
-            'type': 'bool', 'value': False}
+            'type': 'bool',
+            'value': False,
+        }
 
         with self._cam.cam:
-            lineSelector['values'] = self.cam.get_io_lines()
-            lineMode['values'] = self.cam.get_line_modes()
-            lineSource['values'] = self.cam.get_line_sources()
+            lineSelector['limits'] = self.cam.get_io_lines()
+            lineMode['limits'] = self.cam.get_line_modes()
+            lineSource['limits'] = self.cam.get_line_sources()
 
-        self.camera_options.add_param_child(
-            CamParams.CAMERA_GPIO, lineSelector)
-        self.camera_options.add_param_child(
-            CamParams.CAMERA_GPIO, lineMode)
-        self.camera_options.add_param_child(
-            CamParams.CAMERA_GPIO, lineSource)
-        self.camera_options.add_param_child(
-            CamParams.CAMERA_GPIO, lineInverter)
+        self.camera_options.add_param_child(CamParams.CAMERA_GPIO, lineSelector)
+        self.camera_options.add_param_child(CamParams.CAMERA_GPIO, lineMode)
+        self.camera_options.add_param_child(CamParams.CAMERA_GPIO, lineSource)
+        self.camera_options.add_param_child(CamParams.CAMERA_GPIO, lineInverter)
 
         self.camera_options.get_param(
-            VimbaParams.LINE_SELECTOR).sigValueChanged.connect(self.io_line_changed)
+            VimbaParams.LINE_SELECTOR
+        ).sigValueChanged.connect(self.io_line_changed)
 
         set_io_config = {'name': str(VimbaParams.SET_IO_CONFIG), 'type': 'action'}
-        self.camera_options.add_param_child(
-            CamParams.CAMERA_GPIO, set_io_config)
-        self.camera_options.get_param(
-            VimbaParams.SET_IO_CONFIG).sigActivated.connect(
-                self.set_io_line_config)
+        self.camera_options.add_param_child(CamParams.CAMERA_GPIO, set_io_config)
+        self.camera_options.get_param(VimbaParams.SET_IO_CONFIG).sigActivated.connect(
+            self.set_io_line_config
+        )
 
         # Timers
         timerSelector = {'name': str(VimbaParams.TIMER_SELECTOR), 'type': 'list'}
         timerActivation = {'name': str(VimbaParams.TIMER_ACTIVATION), 'type': 'list'}
         timerSource = {'name': str(VimbaParams.TIMER_SOURCE), 'type': 'list'}
         timerDelay = {
-            'name': str(VimbaParams.TIMER_DELAY), 'type': 'float',
-            'dec': False, 'decimals': 6}
+            'name': str(VimbaParams.TIMER_DELAY),
+            'type': 'float',
+            'dec': False,
+            'decimals': 6,
+        }
         timerDuration = {
-            'name': str(VimbaParams.TIMER_DURATION), 'type': 'float',
-            'dec': False, 'decimals': 6}
+            'name': str(VimbaParams.TIMER_DURATION),
+            'type': 'float',
+            'dec': False,
+            'decimals': 6,
+        }
         timerReset = {'name': str(VimbaParams.TIMER_RESET), 'type': 'action'}
         set_timer_config = {'name': str(VimbaParams.SET_TIMER_CONFIG), 'type': 'action'}
-
 
         with self._cam.cam:
             timers = self.cam.get_timers()
             if timers:
-                timerSelector['values'] = timers
-                timerActivation['values'] = self.cam.get_timer_trigger_activations()
-                timerSource['values'] = self.cam.get_timer_trigger_sources()
+                timerSelector['limits'] = timers
+                timerActivation['limits'] = self.cam.get_timer_trigger_activations()
+                timerSource['limits'] = self.cam.get_timer_trigger_sources()
 
-        self.camera_options.add_param_child(
-            CamParams.CAMERA_TIMERS, timerSelector)
-        self.camera_options.add_param_child(
-            CamParams.CAMERA_TIMERS, timerActivation)
-        self.camera_options.add_param_child(
-            CamParams.CAMERA_TIMERS, timerSource)
-        self.camera_options.add_param_child(
-            CamParams.CAMERA_TIMERS, timerDelay)
-        self.camera_options.add_param_child(
-            CamParams.CAMERA_TIMERS, timerDuration)
-        self.camera_options.add_param_child(
-            CamParams.CAMERA_TIMERS, timerReset)
-        self.camera_options.add_param_child(
-            CamParams.CAMERA_TIMERS, set_timer_config)
+        self.camera_options.add_param_child(CamParams.CAMERA_TIMERS, timerSelector)
+        self.camera_options.add_param_child(CamParams.CAMERA_TIMERS, timerActivation)
+        self.camera_options.add_param_child(CamParams.CAMERA_TIMERS, timerSource)
+        self.camera_options.add_param_child(CamParams.CAMERA_TIMERS, timerDelay)
+        self.camera_options.add_param_child(CamParams.CAMERA_TIMERS, timerDuration)
+        self.camera_options.add_param_child(CamParams.CAMERA_TIMERS, timerReset)
+        self.camera_options.add_param_child(CamParams.CAMERA_TIMERS, set_timer_config)
 
         def reset_timer():
             with self._cam.cam:
@@ -350,16 +352,18 @@ class Vimba_Panel(Camera_Panel):
                 delay_param.setValue(delay[0])
 
                 duration_param = self.camera_options.get_param(
-                    VimbaParams.TIMER_DURATION)
+                    VimbaParams.TIMER_DURATION
+                )
                 duration_param.setLimits((duration[1][0], duration[1][1]))
                 duration_param.setValue(duration[0])
 
                 self.camera_options.set_param_value(
                     VimbaParams.TIMER_ACTIVATION,
-                    self.cam.get_timer_trigger_activation())
+                    self.cam.get_timer_trigger_activation(),
+                )
                 self.camera_options.set_param_value(
-                    VimbaParams.TIMER_SOURCE,
-                    self.cam.get_timer_trigger_source())
+                    VimbaParams.TIMER_SOURCE, self.cam.get_timer_trigger_source()
+                )
 
         def set_timer():
             with self._cam.cam:
@@ -370,16 +374,21 @@ class Vimba_Panel(Camera_Panel):
                 self.cam.set_timer_trigger_activation(act)
                 self.cam.set_timer_trigger_source(source)
                 self.cam.set_timer_duration(
-                    self.camera_options.get_param_value(VimbaParams.TIMER_DURATION))
+                    self.camera_options.get_param_value(VimbaParams.TIMER_DURATION)
+                )
                 self.cam.set_timer_delay(
-                    self.camera_options.get_param_value(VimbaParams.TIMER_DELAY))
+                    self.camera_options.get_param_value(VimbaParams.TIMER_DELAY)
+                )
 
         self.camera_options.get_param(
-            VimbaParams.TIMER_SELECTOR).sigValueChanged.connect(update_timer)
+            VimbaParams.TIMER_SELECTOR
+        ).sigValueChanged.connect(update_timer)
+        self.camera_options.get_param(VimbaParams.TIMER_RESET).sigActivated.connect(
+            reset_timer
+        )
         self.camera_options.get_param(
-            VimbaParams.TIMER_RESET).sigActivated.connect(reset_timer)
-        self.camera_options.get_param(
-            VimbaParams.SET_TIMER_CONFIG).sigActivated.connect(set_timer)
+            VimbaParams.SET_TIMER_CONFIG
+        ).sigActivated.connect(set_timer)
 
     @property
     def cam(self):
@@ -411,35 +420,36 @@ class Vimba_Panel(Camera_Panel):
         value : float
             selected exposure time
         '''
-        super().setExposure(value*1e3)
+        super().setExposure(value * 1e3)
 
     def set_ROI(self):
-        '''Sets the ROI for the slected vimba_cam
-        '''
+        '''Sets the ROI for the slected vimba_cam'''
         if self.cam.acquisition:
-            QMessageBox.warning(
-                self, 'Warning', 'Cannot set ROI while acquiring images!')
+            QtWidgets.QMessageBox.warning(
+                self, 'Warning', 'Cannot set ROI while acquiring images!'
+            )
             return  # if acquisition is already going on
 
         with self._cam.cam:
-            self.cam.set_roi(
-                *self.camera_options.get_roi_info(True))
+            self.cam.set_roi(*self.camera_options.get_roi_info(True))
 
             self.cam.get_roi()
 
-
         self.camera_options.set_roi_info(
-            int(self.cam.offsetX), int(self.cam.offsetY),
-            int(self.cam.width), int(self.cam.height))
+            int(self.cam.offsetX),
+            int(self.cam.offsetY),
+            int(self.cam.width),
+            int(self.cam.height),
+        )
 
         self.refresh_framerate()
 
     def reset_ROI(self):
-        '''Resets the ROI for the slected IDS_Camera
-        '''
+        '''Resets the ROI for the slected IDS_Camera'''
         if self.cam.acquisition:
-            QMessageBox.warning(
-                self, 'Warning', 'Cannot reset ROI while acquiring images!')
+            QtWidgets.QMessageBox.warning(
+                self, 'Warning', 'Cannot reset ROI while acquiring images!'
+            )
             return  # if acquisition is already going on
 
         with self._cam.cam:
@@ -448,31 +458,32 @@ class Vimba_Panel(Camera_Panel):
             self.cam.get_roi()
 
         self.camera_options.set_roi_info(
-            0, 0, int(self.cam.width), int(self.cam.height))
+            0, 0, int(self.cam.width), int(self.cam.height)
+        )
 
         self.refresh_framerate()
 
     def center_ROI(self):
-        '''Sets the ROI for the slected vimba_cam
-        '''
+        '''Sets the ROI for the slected vimba_cam'''
         if self.cam.acquisition:
-            QMessageBox.warning(
-                self, 'Warning', 'Cannot set ROI while acquiring images!')
+            QtWidgets.QMessageBox.warning(
+                self, 'Warning', 'Cannot set ROI while acquiring images!'
+            )
             return  # if acquisition is already going on
 
         with self._cam.cam:
-            self.cam.set_roi(
-                *self.camera_options.get_roi_info(True)[:2])
+            self.cam.set_roi(*self.camera_options.get_roi_info(True)[:2])
 
         self.camera_options.set_roi_info(
-            self.cam.offsetX, self.cam.offsetY,
-            self.cam.width, self.cam.height)
+            self.cam.offsetX, self.cam.offsetY, self.cam.width, self.cam.height
+        )
 
         self.refresh_framerate()
 
     def select_ROI(self):
         if self.acq_job is not None:
             try:
+
                 def work_func():
                     try:
                         image = uImage(self.acq_job.frame.image)
@@ -482,7 +493,8 @@ class Vimba_Panel(Camera_Panel):
                         scale_factor = get_scaling_factor(image.height, image.width)
 
                         selector = MultiRectangularROISelector.get_selector(
-                            image._view, scale_factor, max_rois=1)
+                            image._view, scale_factor, max_rois=1
+                        )
                         # if old_rois:
                         #     selector.rois = old_rois
 
@@ -503,9 +515,7 @@ class Vimba_Panel(Camera_Panel):
                         # x, y, w, h = result
                         self.camera_options.set_roi_info(*result)
 
-                self.worker = thread_worker(
-                    work_func,
-                    progress=False, z_stage=False)
+                self.worker = thread_worker(work_func, progress=False, z_stage=False)
                 self.worker.signals.result.connect(done)
                 # Execute
                 self._threadpool.start(self.worker)
@@ -515,6 +525,7 @@ class Vimba_Panel(Camera_Panel):
     def select_ROIs(self):
         if self.acq_job is not None:
             try:
+
                 def work_func():
                     try:
                         image = uImage(self.acq_job.frame.image)
@@ -524,7 +535,8 @@ class Vimba_Panel(Camera_Panel):
                         scale_factor = get_scaling_factor(image.height, image.width)
 
                         selector = MultiRectangularROISelector.get_selector(
-                            image._view, scale_factor, max_rois=4, one_size=True)
+                            image._view, scale_factor, max_rois=4, one_size=True
+                        )
 
                         old_rois = self.camera_options.get_export_rois()
 
@@ -547,19 +559,22 @@ class Vimba_Panel(Camera_Panel):
                 def done(results: list[list]):
                     if results is not None:
                         rois_param = self.camera_options.get_param(
-                            CamParams.EXPORTED_ROIS)
+                            CamParams.EXPORTED_ROIS
+                        )
                         rois_param.clearChildren()
                         for x, y, w, h in results:
                             self.camera_options.add_param_child(
                                 CamParams.EXPORTED_ROIS,
-                                {'name': 'ROI 1', 'type': 'str',
-                                 'readonly': True, 'removable': True,
-                                 'value': f'{x}, {y}, {w}, {h}'}
+                                {
+                                    'name': 'ROI 1',
+                                    'type': 'str',
+                                    'readonly': True,
+                                    'removable': True,
+                                    'value': f'{x}, {y}, {w}, {h}',
+                                },
                             )
 
-                self.worker = thread_worker(
-                    work_func,
-                    progress=False, z_stage=False)
+                self.worker = thread_worker(work_func, progress=False, z_stage=False)
                 self.worker.signals.result.connect(done)
                 # Execute
                 self._threadpool.start(self.worker)
@@ -615,15 +630,15 @@ class Vimba_Panel(Camera_Panel):
         self.refresh_framerate()
 
         self.OME_tab.set_param_value(
-            MetaParams.EXPOSURE, float(self._cam.exposure_current / 1000))
+            MetaParams.EXPOSURE, float(self._cam.exposure_current / 1000)
+        )
         if self.master:
             self.exposureChanged.emit()
 
     def refresh_exposure(self):
         self.camera_options.set_param_value(
-            CamParams.EXPOSURE,
-            self._cam.exposure_current,
-            self.exposure_spin_changed)
+            CamParams.EXPOSURE, self._cam.exposure_current, self.exposure_spin_changed
+        )
 
     def refresh_framerate(self, value=None):
         with self._cam.cam:
@@ -633,17 +648,19 @@ class Vimba_Panel(Camera_Panel):
 
         framerate = self.camera_options.get_param(VimbaParams.FRAMERATE)
         framerate.setLimits(
-            (self._cam.frameRate_range[0], self._cam.frameRate_range[1]))
+            (self._cam.frameRate_range[0], self._cam.frameRate_range[1])
+        )
         framerate.setValue(self._cam.frameRate)
 
     def cam_framerate_changed(self, value):
         with self._cam.cam:
             self.cam.setAcquisitionFrameRateEnable(
-                self.camera_options.get_param_value(
-                    VimbaParams.FRAMERATE_ENABLED))
+                self.camera_options.get_param_value(VimbaParams.FRAMERATE_ENABLED)
+            )
 
         self.camera_options.get_param(VimbaParams.FRAMERATE).setOpts(
-            enabled=self.camera_options.get_param_value(VimbaParams.FRAMERATE_ENABLED))
+            enabled=self.camera_options.get_param_value(VimbaParams.FRAMERATE_ENABLED)
+        )
         self.refresh_framerate()
 
     def framerate_spin_changed(self, param, value: float):
@@ -651,50 +668,40 @@ class Vimba_Panel(Camera_Panel):
 
     def io_line_changed(self, value):
         with self._cam.cam:
-            line = self.camera_options.get_param_value(
-                VimbaParams.LINE_SELECTOR)
+            line = self.camera_options.get_param_value(VimbaParams.LINE_SELECTOR)
             self.cam.select_io_line(line)
             mode = self.cam.get_line_mode()
-            self.camera_options.set_param_value(
-                VimbaParams.LINE_MODE,
-                mode)
+            self.camera_options.set_param_value(VimbaParams.LINE_MODE, mode)
             if 'Out' in mode:
                 self.camera_options.set_param_value(
-                    VimbaParams.LINE_SOURCE,
-                    self.cam.get_line_source()
+                    VimbaParams.LINE_SOURCE, self.cam.get_line_source()
                 )
                 self.camera_options.set_param_value(
-                    VimbaParams.LINE_INVERTER,
-                    self.cam.get_line_inverter()
+                    VimbaParams.LINE_INVERTER, self.cam.get_line_inverter()
                 )
 
     def set_io_line_config(self):
         with self._cam.cam:
-            line = self.camera_options.get_param_value(
-                VimbaParams.LINE_SELECTOR)
+            line = self.camera_options.get_param_value(VimbaParams.LINE_SELECTOR)
             self.cam.select_io_line(line)
-            mode = self.camera_options.get_param_value(
-                VimbaParams.LINE_MODE)
-            self.cam.set_line_mode(
-                mode)
+            mode = self.camera_options.get_param_value(VimbaParams.LINE_MODE)
+            self.cam.set_line_mode(mode)
             if 'Out' in mode:
                 self.cam.set_line_source(
-                    self.camera_options.get_param_value(
-                        VimbaParams.LINE_SOURCE))
+                    self.camera_options.get_param_value(VimbaParams.LINE_SOURCE)
+                )
                 self.cam.set_line_inverter(
-                    self.camera_options.get_param_value(
-                        VimbaParams.LINE_INVERTER))
+                    self.camera_options.get_param_value(VimbaParams.LINE_INVERTER)
+                )
 
     def _capture_handler(self, cam, frame):
-        if self.acq_job.frames_captured < self.acq_job.frames or \
-                self.mini:
+        if self.acq_job.frames_captured < self.acq_job.frames or self.mini:
             self._buffer.put(frame.as_numpy_ndarray()[..., 0])
             cam.queue_frame(frame)
             # add sensor temperature to the stack
             self._temps.put(self.cam.get_temperature())
             self.acq_job.frames_captured = self.acq_job.frames_captured + 1
-        if self.acq_job.frames_captured > self.acq_job.frames - 1 and \
-                not self.mini:
+        if self.acq_job.frames_captured > self.acq_job.frames - 1 and not self.mini:
             self.acq_job.c_event.set()
             self.acq_job.stop_threads = True
             logging.debug('Stop')
@@ -724,7 +731,7 @@ class Vimba_Panel(Camera_Panel):
             with self._cam.cam:
                 self._cam.cam.stop_streaming()
             self._cam.acquisition = False
-            QThreadPool.globalInstance().releaseThread()
+            QtCore.QThreadPool.globalInstance().releaseThread()
         return QDateTime.currentDateTime()
 
     def getCaptureArgs(self) -> list:
@@ -750,23 +757,22 @@ class Vimba_Panel(Camera_Panel):
         return args
 
     def save_config(self):
-        filename, _ = QFileDialog.getSaveFileName(
-            self, 'Save config', filter='XML Files (*.xml);;')
+        filename, _ = getSaveFileName(
+            self, 'Save config', filter='XML Files (*.xml);;'
+        )
 
         if len(filename) > 0:
-
             with self.cam.cam:
                 self.cam.cam.save_settings(filename, vb.PersistType.All)
 
-            QMessageBox.information(
-                self, 'Info', 'Config saved.')
+            QtWidgets.QMessageBox.information(self, 'Info', 'Config saved.')
         else:
-            QMessageBox.warning(
-                self, 'Warning', 'Config not saved.')
+            QtWidgets.QMessageBox.warning(self, 'Warning', 'Config not saved.')
 
     def load_config(self):
-        filename, _ = QFileDialog.getOpenFileName(
-            self, 'Load config', filter='XML Files (*.xml);;')
+        filename, _ = getOpenFileName(
+            self, 'Load config', filter='XML Files (*.xml);;'
+        )
 
         if len(filename) > 0:
             with self.cam.cam:
@@ -777,14 +783,12 @@ class Vimba_Panel(Camera_Panel):
 
                 w, h, x, y = self.cam.get_roi()
 
-                self.camera_options.set_roi_info(
-                    int(x), int(y), int(w), int(h))
+                self.camera_options.set_roi_info(int(x), int(y), int(w), int(h))
 
-                self.cam_trigger_mode_cbox.setCurrentText(
-                    self.cam.get_trigger_mode())
+                self.cam_trigger_mode_cbox.setCurrentText(self.cam.get_trigger_mode())
 
                 self.camera_options.set_param_value(
-                    CamParams.EXPOSURE, self.cam.get_exposure())
+                    CamParams.EXPOSURE, self.cam.get_exposure()
+                )
         else:
-            QMessageBox.warning(
-                self, 'Warning', 'No file selected.')
+            QtWidgets.QMessageBox.warning(self, 'Warning', 'No file selected.')

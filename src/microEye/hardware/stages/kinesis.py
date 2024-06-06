@@ -1,11 +1,8 @@
 import serial
-from PyQt5.QtCore import *
-from PyQt5.QtGui import *
-from PyQt5.QtSerialPort import *
-from PyQt5.QtWidgets import *
 
-from ...shared.thread_worker import *
-from ..port_config import port_config
+from microEye.hardware.port_config import port_config
+from microEye.qt import QtCore, QtWidgets
+from microEye.utils.thread_worker import *
 
 
 class KinesisDevice:
@@ -88,7 +85,7 @@ class KinesisXY:
         self.min = [0, 0]
         self.max = [25, 25]
         self.prec = 4
-        self.threadpool = QThreadPool.globalInstance()
+        self.threadpool = QtCore.QThreadPool.globalInstance()
 
     def home(self):
         self.X_Kinesis.home()
@@ -143,11 +140,11 @@ class KinesisXY:
         if not self.X_Kinesis.isOpen() and not self.Y_Kinesis.isOpen():
             x_dialog = port_config(title='X Controller Config.')
             y_dialog = port_config(title='Y Controller Config.')
-            if x_dialog.exec_():
+            if x_dialog.exec():
                 portname, baudrate = x_dialog.get_results()
                 self.X_Kinesis.serial.port = portname
                 self.X_Kinesis.serial.baudrate = baudrate
-            if y_dialog.exec_():
+            if y_dialog.exec():
                 portname, baudrate = y_dialog.get_results()
                 self.Y_Kinesis.serial.port = portname
                 self.Y_Kinesis.serial.baudrate = baudrate
@@ -181,45 +178,45 @@ class KinesisXY:
     def getQWidget(self):
         '''Generates a QGroupBox with XY
         stage controls.'''
-        group = QGroupBox('Kinesis XY Stage')
-        container = QVBoxLayout()
+        group = QtWidgets.QGroupBox('Kinesis XY Stage')
+        container = QtWidgets.QVBoxLayout()
         group.setLayout(container)
 
-        self._connect_btn = QPushButton(
+        self._connect_btn = QtWidgets.QPushButton(
             'Connect',
             clicked=lambda: self.open()
         )
-        self._disconnect_btn = QPushButton(
+        self._disconnect_btn = QtWidgets.QPushButton(
             'Disconnect',
             clicked=lambda: self.close()
         )
-        self._config_btn = QPushButton(
+        self._config_btn = QtWidgets.QPushButton(
             'Config.',
             clicked=lambda: self.open_dialog()
         )
 
-        self._stop_btn = QPushButton(
+        self._stop_btn = QtWidgets.QPushButton(
             'STOP!',
             clicked=lambda: self.stop()
         )
 
-        btns = QHBoxLayout()
+        btns = QtWidgets.QHBoxLayout()
         btns.addWidget(self._connect_btn)
         btns.addWidget(self._disconnect_btn)
         btns.addWidget(self._config_btn)
         btns.addWidget(self._stop_btn)
         container.addLayout(btns)
 
-        controlsWidget = QWidget()
-        hLayout = QVBoxLayout()
+        controlsWidget = QtWidgets.QWidget()
+        hLayout = QtWidgets.QVBoxLayout()
         controlsWidget.setLayout(hLayout)
-        formLayout = QFormLayout()
+        formLayout = QtWidgets.QFormLayout()
         hLayout.addLayout(formLayout, 3)
         container.addWidget(controlsWidget)
         container.addStretch()
 
-        self.x_spin = QDoubleSpinBox()
-        self.y_spin = QDoubleSpinBox()
+        self.x_spin = QtWidgets.QDoubleSpinBox()
+        self.y_spin = QtWidgets.QDoubleSpinBox()
         self.x_spin.setDecimals(self.prec)
         self.y_spin.setDecimals(self.prec)
         self.x_spin.setSingleStep(10**(-self.prec))
@@ -232,16 +229,16 @@ class KinesisXY:
         self.y_spin.setMaximum(self.max[1])
 
         formLayout.addRow(
-            QLabel('X [mm]'),
+            QtWidgets.QLabel('X [mm]'),
             self.x_spin
         )
         formLayout.addRow(
-            QLabel('Y [mm]'),
+            QtWidgets.QLabel('Y [mm]'),
             self.y_spin
         )
 
-        self.step_spin = QDoubleSpinBox()
-        self.jump_spin = QDoubleSpinBox()
+        self.step_spin = QtWidgets.QDoubleSpinBox()
+        self.jump_spin = QtWidgets.QDoubleSpinBox()
         self.step_spin.setDecimals(self.prec)
         self.jump_spin.setDecimals(self.prec)
         self.step_spin.setSingleStep(10**(-self.prec))
@@ -254,15 +251,15 @@ class KinesisXY:
         self.jump_spin.setValue(0.5)
 
         formLayout.addRow(
-            QLabel('Step [mm]'),
+            QtWidgets.QLabel('Step [mm]'),
             self.step_spin
         )
         formLayout.addRow(
-            QLabel('Jump [mm]'),
+            QtWidgets.QLabel('Jump [mm]'),
             self.jump_spin
         )
 
-        self._move_btn = QPushButton(
+        self._move_btn = QtWidgets.QPushButton(
             'Move',
             clicked=lambda: self.doAsync(
                 controlsWidget,
@@ -271,30 +268,30 @@ class KinesisXY:
                 self.y_spin.value()
             )
         )
-        self._home_btn = QPushButton(
+        self._home_btn = QtWidgets.QPushButton(
             'Home',
             clicked=lambda: self.doAsync(
                 controlsWidget,
                 self.home
             )
         )
-        self._center_btn = QPushButton(
+        self._center_btn = QtWidgets.QPushButton(
             'Center',
             clicked=lambda: self.doAsync(
                 controlsWidget,
                 self.center
             )
         )
-        self.x_id_btn = QPushButton(
+        self.x_id_btn = QtWidgets.QPushButton(
             'ID X',
             clicked=lambda: self.X_Kinesis.identify()
         )
-        self.y_id_btn = QPushButton(
+        self.y_id_btn = QtWidgets.QPushButton(
             'ID Y',
             clicked=lambda: self.Y_Kinesis.identify()
         )
 
-        controls = QHBoxLayout()
+        controls = QtWidgets.QHBoxLayout()
         controls.addWidget(self._move_btn)
         controls.addWidget(self._home_btn)
         controls.addWidget(self._center_btn)
@@ -302,7 +299,7 @@ class KinesisXY:
         controls.addWidget(self.y_id_btn)
         formLayout.addRow(controls)
 
-        self.n_x_jump_btn = QPushButton(
+        self.n_x_jump_btn = QtWidgets.QPushButton(
             'x--',
             clicked=lambda: self.doAsync(
                 controlsWidget,
@@ -311,7 +308,7 @@ class KinesisXY:
                 0
             )
         )
-        self.n_x_step_btn = QPushButton(
+        self.n_x_step_btn = QtWidgets.QPushButton(
             'x-',
             clicked=lambda: self.doAsync(
                 controlsWidget,
@@ -320,7 +317,7 @@ class KinesisXY:
                 0
             )
         )
-        self.p_x_step_btn = QPushButton(
+        self.p_x_step_btn = QtWidgets.QPushButton(
             'x+',
             clicked=lambda: self.doAsync(
                 controlsWidget,
@@ -329,7 +326,7 @@ class KinesisXY:
                 0
             )
         )
-        self.p_x_jump_btn = QPushButton(
+        self.p_x_jump_btn = QtWidgets.QPushButton(
             'x++',
             clicked=lambda: self.doAsync(
                 controlsWidget,
@@ -339,7 +336,7 @@ class KinesisXY:
             )
         )
 
-        self.n_y_jump_btn = QPushButton(
+        self.n_y_jump_btn = QtWidgets.QPushButton(
             'y--',
             clicked=lambda: self.doAsync(
                 controlsWidget,
@@ -348,7 +345,7 @@ class KinesisXY:
                 - self.jump_spin.value()
             )
         )
-        self.n_y_step_btn = QPushButton(
+        self.n_y_step_btn = QtWidgets.QPushButton(
             'y-',
             clicked=lambda: self.doAsync(
                 controlsWidget,
@@ -357,7 +354,7 @@ class KinesisXY:
                 - self.step_spin.value()
             )
         )
-        self.p_y_step_btn = QPushButton(
+        self.p_y_step_btn = QtWidgets.QPushButton(
             'y+',
             clicked=lambda: self.doAsync(
                 controlsWidget,
@@ -366,7 +363,7 @@ class KinesisXY:
                 self.step_spin.value()
             )
         )
-        self.p_y_jump_btn = QPushButton(
+        self.p_y_jump_btn = QtWidgets.QPushButton(
             'y++',
             clicked=lambda: self.doAsync(
                 controlsWidget,
@@ -385,7 +382,7 @@ class KinesisXY:
         self.p_y_step_btn.setStyleSheet(
             'background-color: #004CB6')
 
-        grid = QGridLayout()
+        grid = QtWidgets.QGridLayout()
         grid.addWidget(self.n_x_jump_btn, 2, 0)
         grid.addWidget(self.n_x_step_btn, 2, 1)
         grid.addWidget(self.p_x_step_btn, 2, 3)

@@ -1,10 +1,9 @@
 import numpy as np
-from PyQt5.QtCore import *
-from PyQt5.QtGui import *
-from PyQt5.QtWidgets import *
+
+from microEye.qt import QApplication, Qt, QtCore, QtGui, QtWidgets, Signal, Slot
 
 
-class QListSlider(QSlider):
+class QListSlider(QtWidgets.QSlider):
     '''QList Slider
 
     Inherits QSlider allows selecting over a range of
@@ -15,7 +14,7 @@ class QListSlider(QSlider):
     values : list | ndarray
         list or array of values.
     '''
-    elementChanged = pyqtSignal([int, int], [int, float])
+    elementChanged = Signal([int, int], [int, float])
     '''Element changed pyqtSignal,
     supports (index: int, value: int) or (index: int, value: float) functions.
     '''
@@ -52,7 +51,7 @@ class QListSlider(QSlider):
         self.setMaximum(maximum)
         self.setValue(0)
 
-    @pyqtSlot(int)
+    @Slot(int)
     def _on_value_changed(self, index):
         '''On value changed emits the element changed signal.
 
@@ -85,9 +84,9 @@ class QListSlider(QSlider):
                         float(value)))
 
 
-class DragLabel(QLabel):
+class DragLabel(QtWidgets.QLabel):
     def __init__(self, parent=None, parent_name: str = ''):
-        super(QLabel, self).__init__(parent)
+        super(QtWidgets.QLabel, self).__init__(parent)
         self.parent_name = parent_name
         self.show()
 
@@ -101,12 +100,12 @@ class DragLabel(QLabel):
         if (event.pos() - self.drag_start_position).manhattanLength() < \
                 QApplication.startDragDistance():
             return
-        drag = QDrag(self)
-        mimedata = QMimeData()
+        drag = QtGui.QDrag(self)
+        mimedata = QtCore.QMimeData()
         mimedata.setText(self.parent_name)
         drag.setMimeData(mimedata)
-        pixmap = QPixmap(self.size())
-        painter = QPainter(pixmap)
+        pixmap = QtGui.QPixmap(self.size())
+        painter = QtGui.QPainter(pixmap)
         painter.drawPixmap(self.rect(), self.grab())
         painter.end()
         drag.setPixmap(pixmap)

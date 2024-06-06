@@ -1,45 +1,48 @@
-from PyQt5.QtCore import *
-from PyQt5.QtGui import *
-from PyQt5.QtSerialPort import *
-from PyQt5.QtWidgets import *
+from microEye.qt import Qt, QtSerialPort, QtWidgets
 
 
-class port_config(QDialog):
-    '''A dialog for setting the serial port config | Inherits QDialog
-    '''
-    def __init__(self, parent=None, title='Serial Port Config.'):
+class port_config(QtWidgets.QDialog):
+    '''A dialog for setting the serial port config | Inherits QDialog'''
+
+    def __init__(self, parent=None, title='Serial Port Config.', **kwargs):
         super().__init__(parent)
 
         self.setWindowTitle(title)
-        self.portname_comboBox = QComboBox()    # port name combobox
-        self.baudrate_comboBox = QComboBox()    # baudrate combobox
+        self.portname_comboBox = QtWidgets.QComboBox()  # port name combobox
+        self.baudrate_comboBox = QtWidgets.QComboBox()  # baudrate combobox
 
         # adding available serial ports
-        for info in QSerialPortInfo.availablePorts():
+        for info in QtSerialPort.QSerialPortInfo.availablePorts():
             self.portname_comboBox.addItem(info.portName())
 
+        self.portname_comboBox.setCurrentText(
+            kwargs.get(
+                'portname', QtSerialPort.QSerialPortInfo.availablePorts()[0].portName()
+            )
+        )
+
         # adding default baudrates (default 115200)
-        for baudrate in QSerialPortInfo.standardBaudRates():
+        for baudrate in QtSerialPort.QSerialPortInfo.standardBaudRates():
             # if baudrate == 115200:
             self.baudrate_comboBox.addItem(str(baudrate), baudrate)
 
-        self.baudrate_comboBox.setCurrentText('115200')
+        self.baudrate_comboBox.setCurrentText(kwargs.get('baudrate', '115200'))
 
         # dialog buttons
-        buttonBox = QDialogButtonBox()
+        buttonBox = QtWidgets.QDialogButtonBox()
         buttonBox.setOrientation(Qt.Horizontal)
         buttonBox.setStandardButtons(
-            QDialogButtonBox.Cancel | QDialogButtonBox.Ok)
+            QtWidgets.QDialogButtonBox.Cancel | QtWidgets.QDialogButtonBox.Ok
+        )
         buttonBox.accepted.connect(self.accept)
         buttonBox.rejected.connect(self.reject)
 
         # dialog layout
-        lay = QFormLayout(self)
+        lay = QtWidgets.QFormLayout(self)
         lay.addRow('Port Name:', self.portname_comboBox)
         lay.addRow('BaudRate:', self.baudrate_comboBox)
         lay.addRow(buttonBox)
-        self.setFixedSize(
-            self.sizeHint().width() + 50, self.sizeHint().height())
+        self.setFixedSize(self.sizeHint().width() + 50, self.sizeHint().height())
         self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowTitleHint)
 
     def get_results(self):
@@ -50,5 +53,7 @@ class port_config(QDialog):
         tuple (str, int)
             the selected port and baudrate respectively.
         '''
-        return self.portname_comboBox.currentText(), \
-            self.baudrate_comboBox.currentData()
+        return (
+            self.portname_comboBox.currentText(),
+            self.baudrate_comboBox.currentData(),
+        )

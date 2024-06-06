@@ -1,23 +1,25 @@
 import json
 import os
-import sys
 import webbrowser
 from enum import Enum
-from typing import Optional
+from typing import Optional, Union
 
 import cv2
-import qdarkstyle
-from PyQt5.QtCore import *
-from PyQt5.QtGui import QIcon
-from PyQt5.QtWidgets import *
 
-from ..shared import StartGUI
-from ..shared.gui_helper import *
-from ..shared.thread_worker import *
-from ..shared.uImage import *
-from .fitting.results import FittingResults
-from .viewer.images import StackView
-from .viewer.localizations import LocalizationsView
+from microEye.analysis.fitting.results import FittingResults
+from microEye.analysis.viewer.images import StackView
+from microEye.analysis.viewer.localizations import LocalizationsView
+from microEye.qt import (
+    QAction,
+    QApplication,
+    QDateTime,
+    QFileSystemModel,
+    QMainWindow,
+    Qt,
+    QtCore,
+    QtWidgets,
+)
+from microEye.utils import StartGUI
 
 
 class DockKeys(Enum):
@@ -27,11 +29,10 @@ class DockKeys(Enum):
 
 
 class multi_viewer(QMainWindow):
-
     def __init__(self, path=None):
         super().__init__()
         # Set window properties
-        self.title = 'microEye tiff viewer'
+        self.title = 'Multi Viewer Module'
         self.left = 0
         self.top = 0
         self._width = 1600
@@ -43,9 +44,10 @@ class multi_viewer(QMainWindow):
         self.fittingResults = None
 
         # Threading
-        self._threadpool = QThreadPool.globalInstance()
-        print('Multithreading with maximum %d threads'
-              % self._threadpool.maxThreadCount())
+        self._threadpool = QtCore.QThreadPool.globalInstance()
+        print(
+            'Multithreading with maximum %d threads' % self._threadpool.maxThreadCount()
+        )
 
         # Set the path
         if path is None:
@@ -56,7 +58,7 @@ class multi_viewer(QMainWindow):
         self.status()
 
         # Status Bar Timer
-        self.timer = QTimer(self)
+        self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self.status)
         self.timer.start(10)
 
@@ -90,42 +92,48 @@ class multi_viewer(QMainWindow):
         self.center()
 
     def setupMainWindowLayout(self):
-        self.main_widget = QWidget()
-        self.main_layout = QHBoxLayout()
+        self.main_widget = QtWidgets.QWidget()
+        self.main_layout = QtWidgets.QHBoxLayout()
         self.main_widget.setLayout(self.main_layout)
         self.setCentralWidget(self.main_widget)
 
         # # Create the MDI area
-        self.mdi_area = QMdiArea(self.main_widget)
-        self.mdi_area.setViewMode(QMdiArea.TabbedView)
+        self.mdi_area = QtWidgets.QMdiArea(self.main_widget)
+        self.mdi_area.setViewMode(QtWidgets.QMdiArea.ViewMode.TabbedView)
         self.mdi_area.setTabsClosable(True)
         self.mdi_area.setTabsMovable(True)
-        self.mdi_area.setBackground(Qt.transparent)
-        tabs = self.mdi_area.findChild(QTabBar)
+        self.mdi_area.setBackground(Qt.GlobalColor.transparent)
+        tabs = self.mdi_area.findChild(QtWidgets.QTabBar)
         tabs.setExpanding(False)
-
 
         # # Add the two sub-main layouts
         self.main_layout.addWidget(self.mdi_area, 1)
 
-        self.docks : dict[str, QDockWidget] = {}  # Dictionary to store created docks
+        self.docks: dict[
+            str, QtWidgets.QDockWidget
+        ] = {}  # Dictionary to store created docks
         self.layouts = {}
 
     def setupFileSystemTab(self, path):
         # Tiff File system tree viewer tab layout
         self.file_tree_layout = self.create_tab(
-            DockKeys.FILE_SYSTEM, QVBoxLayout,
-            'LeftDockWidgetArea', widget=None)
+            DockKeys.FILE_SYSTEM,
+            QtWidgets.QVBoxLayout,
+            'LeftDockWidgetArea',
+            widget=None,
+        )
 
         self.path = path
         self.model = QFileSystemModel()
         self.model.setRootPath(self.path)
         self.model.setFilter(
-            QDir.Filter.AllDirs | QDir.Filter.Files |
-            QDir.Filter.NoDotAndDotDot)
+            QtCore.QDir.Filter.AllDirs
+            | QtCore.QDir.Filter.Files
+            | QtCore.QDir.Filter.NoDotAndDotDot
+        )
         self.model.setNameFilters(['*.tif', '*.tiff', '*.tsv', '*.h5'])
         self.model.setNameFilterDisables(False)
-        self.tree = QTreeView()
+        self.tree = QtWidgets.QTreeView()
         self.tree.setModel(self.model)
         self.tree.setRootIndex(self.model.index(self.path))
 
@@ -144,9 +152,9 @@ class multi_viewer(QMainWindow):
         self.tree.resize(512, 256)
 
         # Add the File system tab contents
-        self.imsq_pattern = QLineEdit('/image_0*.ome.tif')
+        self.imsq_pattern = QtWidgets.QLineEdit('/image_0*.ome.tif')
 
-        self.file_tree_layout.addWidget(QLabel('Image Sequence pattern:'))
+        self.file_tree_layout.addWidget(QtWidgets.QLabel('Image Sequence pattern:'))
         self.file_tree_layout.addWidget(self.imsq_pattern)
         self.file_tree_layout.addWidget(self.tree)
 
@@ -156,9 +164,11 @@ class multi_viewer(QMainWindow):
 
     def setTabPositions(self):
         self.setTabPosition(
-            Qt.LeftDockWidgetArea, QTabWidget.East)
+            Qt.DockWidgetArea.LeftDockWidgetArea, QtWidgets.QTabWidget.TabPosition.East
+        )
         self.setTabPosition(
-            Qt.RightDockWidgetArea, QTabWidget.West)
+            Qt.DockWidgetArea.RightDockWidgetArea, QtWidgets.QTabWidget.TabPosition.West
+        )
 
     def raiseDocks(self):
         # Raise docks
@@ -180,10 +190,12 @@ class multi_viewer(QMainWindow):
 
         github = QAction('microEye Github', self)
         github.triggered.connect(
-            lambda: webbrowser.open('https://github.com/samhitech/microEye'))
+            lambda: webbrowser.open('https://github.com/samhitech/microEye')
+        )
         pypi = QAction('microEye PYPI', self)
         pypi.triggered.connect(
-            lambda: webbrowser.open('https://pypi.org/project/microEye/'))
+            lambda: webbrowser.open('https://pypi.org/project/microEye/')
+        )
 
         # Add exit action to file menu
         file_menu.addAction(save_config)
@@ -203,11 +215,13 @@ class multi_viewer(QMainWindow):
     def create_tab(
         self,
         key: DockKeys,
-        layout_type: Optional[type[Union[QVBoxLayout, QFormLayout]]] = None,
+        layout_type: Optional[
+            type[Union[QtWidgets.QVBoxLayout, QtWidgets.QFormLayout]]
+        ] = None,
         dock_area: str = 'LeftDockWidgetArea',
-        widget: Optional[QWidget] = None,
+        widget: Optional[QtWidgets.QWidget] = None,
         visible: bool = True,
-    ) -> Optional[type[Union[QVBoxLayout, QFormLayout]]]:
+    ) -> Optional[type[Union[QtWidgets.QVBoxLayout, QtWidgets.QFormLayout]]]:
         '''
         Create a tab with a dock widget.
 
@@ -234,14 +248,16 @@ class multi_viewer(QMainWindow):
         if widget:
             group = widget
         else:
-            group = QWidget()
-            group_layout = layout_type() if layout_type else QVBoxLayout()
+            group = QtWidgets.QWidget()
+            group_layout = layout_type() if layout_type else QtWidgets.QVBoxLayout()
             group.setLayout(group_layout)
             self.layouts[key] = group_layout
 
-        dock = QDockWidget(str(key.value), self)
+        dock = QtWidgets.QDockWidget(str(key.value), self)
         dock.setFeatures(
-            QDockWidget.DockWidgetFloatable | QDockWidget.DockWidgetMovable)
+            QtWidgets.QDockWidget.DockWidgetFeature.DockWidgetFloatable
+            | QtWidgets.QDockWidget.DockWidgetFeature.DockWidgetMovable
+        )
         dock.setWidget(group)
         dock.setVisible(visible)
         self.addDockWidget(getattr(Qt.DockWidgetArea, dock_area), dock)
@@ -255,7 +271,7 @@ class multi_viewer(QMainWindow):
     def center(self):
         '''Centers the window within the screen using setGeometry.'''
         # Get the screen geometry
-        screen_geometry = QDesktopWidget().availableGeometry()
+        screen_geometry = QApplication.primaryScreen().availableGeometry()
 
         # Calculate the center point
         center_point = screen_geometry.center()
@@ -265,13 +281,14 @@ class multi_viewer(QMainWindow):
             center_point.x() - self.width() / 2,
             center_point.y() - self.height() / 2,
             self.width(),
-            self.height()
+            self.height(),
         )
 
     def status(self):
         # Statusbar time
         self.statusBar().showMessage(
-            'Time: ' + QDateTime.currentDateTime().toString('hh:mm:ss,zzz'))
+            'Time: ' + QDateTime.currentDateTime().toString('hh:mm:ss,zzz')
+        )
 
     def _open_file(self, i):
         # Set the Qt.WindowFlags for making the subwindow resizable
@@ -299,13 +316,12 @@ class multi_viewer(QMainWindow):
             if path.endswith('.zarr'):
                 view = StackView.FromZarr(path)
             else:
-                view = StackView.FromImageSequence(
-                    path, self.imsq_pattern.text())
+                view = StackView.FromImageSequence(path, self.imsq_pattern.text())
 
             view.localizedData.connect(self.localizedData)
 
         if view:
-            window = self.mdi_area.addSubWindow(view, Qt.SubWindow)
+            window = self.mdi_area.addSubWindow(view, Qt.WindowType.SubWindow)
             window.show()
 
     def localizedData(self, path):
@@ -328,7 +344,8 @@ class multi_viewer(QMainWindow):
         '''
         return StartGUI(multi_viewer, path)
 
-def get_dock_config(dock: QDockWidget):
+
+def get_dock_config(dock: QtWidgets.QDockWidget):
     '''
     Get the configuration dictionary for a QDockWidget.
 
@@ -347,13 +364,15 @@ def get_dock_config(dock: QDockWidget):
         return {
             'isFloating': dock.isFloating(),
             'position': (
-                dock.mapToGlobal(QPoint(0, 0)).x(),
-                dock.mapToGlobal(QPoint(0, 0)).y()),
+                dock.mapToGlobal(QtCore.QPoint(0, 0)).x(),
+                dock.mapToGlobal(QtCore.QPoint(0, 0)).y(),
+            ),
             'size': (dock.geometry().width(), dock.geometry().height()),
-            'isVisible': dock.isVisible()
+            'isVisible': dock.isVisible(),
         }
 
-def get_widget_config(widget: QWidget):
+
+def get_widget_config(widget: QtWidgets.QWidget):
     '''
     Get the configuration dictionary for a QWidget.
 
@@ -370,11 +389,13 @@ def get_widget_config(widget: QWidget):
     if widget:
         return {
             'position': (
-                widget.mapToGlobal(QPoint(0, 0)).x(),
-                widget.mapToGlobal(QPoint(0, 0)).y()),
+                widget.mapToGlobal(QtCore.QPoint(0, 0)).x(),
+                widget.mapToGlobal(QtCore.QPoint(0, 0)).y(),
+            ),
             'size': (widget.geometry().width(), widget.geometry().height()),
-            'isMaximized': widget.isMaximized()
+            'isMaximized': widget.isMaximized(),
         }
+
 
 def saveConfig(window: multi_viewer, filename: str = 'config_tiff.json'):
     """
@@ -403,7 +424,8 @@ def saveConfig(window: multi_viewer, filename: str = 'config_tiff.json'):
 
     print(f'{filename} file generated!')
 
-def load_widget_config(widget: QWidget, widget_config):
+
+def load_widget_config(widget: QtWidgets.QWidget, widget_config):
     '''
     Load configuration for a QWidget.
 
@@ -422,10 +444,11 @@ def load_widget_config(widget: QWidget, widget_config):
         widget_config['position'][0],
         widget_config['position'][1],
         widget_config['size'][0],
-        widget_config['size'][1]
+        widget_config['size'][1],
     )
     if bool(widget_config['isMaximized']):
         widget.showMaximized()
+
 
 def loadConfig(window: multi_viewer, filename: str = 'config_tiff.json'):
     """
@@ -469,7 +492,7 @@ def loadConfig(window: multi_viewer, filename: str = 'config_tiff.json'):
                     dock_config.get('position', (0, 0))[0],
                     dock_config.get('position', (0, 0))[1],
                     dock_config.get('size', (0, 0))[0],
-                    dock_config.get('size', (0, 0))[1]
+                    dock_config.get('size', (0, 0))[1],
                 )
             else:
                 dock.setFloating(False)
@@ -479,4 +502,4 @@ def loadConfig(window: multi_viewer, filename: str = 'config_tiff.json'):
 
 if __name__ == '__main__':
     app, window = multi_viewer.StartGUI()
-    app.exec_()
+    app.exec()

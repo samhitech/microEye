@@ -1,15 +1,18 @@
-import concurrent.futures
-import threading
 from typing import Union
 
 import cv2
 import numpy as np
 
-from ...shared.uImage import TiffSeqHandler, ZarrImageSequence, uImage
-from ..filters import *
-from .phasor_fit import *
-from .pyfit3Dcspline import CPUmleFit_LM, get_roi_list, get_roi_list_CMOS
-from .results import *
+from microEye.analysis.filters import *
+from microEye.analysis.fitting.phasor_fit import *
+from microEye.analysis.fitting.pyfit3Dcspline import (
+    CPUmleFit_LM,
+    get_roi_list,
+    get_roi_list_CMOS,
+)
+from microEye.analysis.fitting.results import *
+from microEye.qt import QtWidgets, Signal
+from microEye.utils.uImage import TiffSeqHandler, ZarrImageSequence, uImage
 
 
 def get_blob_detector(
@@ -198,55 +201,55 @@ class CV_BlobDetector(AbstractDetector):
         return cv2.KeyPoint_convert(keypoints), im_with_keypoints
 
 
-class BlobDetectionWidget(QGroupBox):
-    update = pyqtSignal()
+class BlobDetectionWidget(QtWidgets.QGroupBox):
+    update = Signal()
 
     def __init__(self) -> None:
         super().__init__()
 
         self.detector = CV_BlobDetector()
 
-        self._layout = QHBoxLayout()
+        self._layout = QtWidgets.QHBoxLayout()
         self.setTitle('OpenCV Blob Approx. Localization')
         self.setLayout(self._layout)
 
-        self.minArea = QDoubleSpinBox()
+        self.minArea = QtWidgets.QDoubleSpinBox()
         self.minArea.setMinimum(0)
         self.minArea.setMaximum(1024)
         self.minArea.setSingleStep(0.05)
         self.minArea.setValue(1.5)
         self.minArea.valueChanged.connect(self.value_changed)
 
-        self.maxArea = QDoubleSpinBox()
+        self.maxArea = QtWidgets.QDoubleSpinBox()
         self.maxArea.setMinimum(0)
         self.maxArea.setMaximum(1024)
         self.maxArea.setSingleStep(0.05)
         self.maxArea.setValue(80.0)
         self.maxArea.valueChanged.connect(self.value_changed)
 
-        self.minCircularity = QDoubleSpinBox()
+        self.minCircularity = QtWidgets.QDoubleSpinBox()
         self.minCircularity.setMinimum(0)
         self.minCircularity.setMaximum(1)
         self.minCircularity.setSingleStep(0.05)
         self.minCircularity.setValue(0)
         self.minCircularity.valueChanged.connect(self.value_changed)
 
-        self.minConvexity = QDoubleSpinBox()
+        self.minConvexity = QtWidgets.QDoubleSpinBox()
         self.minConvexity.setMinimum(0)
         self.minConvexity.setMaximum(1)
         self.minConvexity.setSingleStep(0.05)
         self.minConvexity.setValue(0)
         self.minConvexity.valueChanged.connect(self.value_changed)
 
-        self.minInertiaRatio = QDoubleSpinBox()
+        self.minInertiaRatio = QtWidgets.QDoubleSpinBox()
         self.minInertiaRatio.setMinimum(0)
         self.minInertiaRatio.setMaximum(1)
         self.minInertiaRatio.setSingleStep(0.05)
         self.minInertiaRatio.setValue(0)
         self.minInertiaRatio.valueChanged.connect(self.value_changed)
 
-        min_label = QLabel('Min area:')
-        max_label = QLabel('Max area:')
+        min_label = QtWidgets.QLabel('Min area:')
+        max_label = QtWidgets.QLabel('Max area:')
         min_label.setAlignment(Qt.AlignmentFlag.AlignRight)
         max_label.setAlignment(Qt.AlignmentFlag.AlignRight)
 

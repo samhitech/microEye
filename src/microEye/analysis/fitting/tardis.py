@@ -4,15 +4,14 @@ import traceback
 import numba as nb
 import numpy as np
 import pyqtgraph as pg
-from PyQt5.QtCore import *
-from PyQt5.QtWidgets import *
 
-from ...shared.thread_worker import thread_worker
-from .processing import tardis_data
+from microEye.analysis.fitting.processing import tardis_data
+from microEye.qt import QDateTime, Qt, QtWidgets, Signal
+from microEye.utils.thread_worker import thread_worker
 
 
-class TARDIS_Widget(QWidget):
-    startWorker = pyqtSignal(thread_worker)
+class TARDIS_Widget(QtWidgets.QWidget):
+    startWorker = Signal(thread_worker)
 
     def __init__(
             self,
@@ -31,21 +30,21 @@ class TARDIS_Widget(QWidget):
         self.locZ = locZ
         self.res = None
 
-        self.hlayout = QHBoxLayout()
+        self.hlayout = QtWidgets.QHBoxLayout()
         self.setLayout(self.hlayout)
 
         self.histogram = pg.PlotWidget()
         self.hlayout.addWidget(self.histogram)
 
-        self.vlayout = QVBoxLayout()
+        self.vlayout = QtWidgets.QVBoxLayout()
         self.hlayout.addLayout(self.vlayout)
 
-        self.tardis_group = QGroupBox('TARDIS parameters')
+        self.tardis_group = QtWidgets.QGroupBox('TARDIS parameters')
         self.vlayout.addWidget(self.tardis_group)
-        self.tardis_lay = QFormLayout()
+        self.tardis_lay = QtWidgets.QFormLayout()
         self.tardis_group.setLayout(self.tardis_lay)
 
-        self.dt = QComboBox()
+        self.dt = QtWidgets.QComboBox()
         self.dt.setEditable(True)
         self.dt.addItem('[1, 30, 100, 300, 1000]')
         self.dt.addItem('np.linspace(1, 10, 10, dtype=np.int32)')
@@ -53,58 +52,58 @@ class TARDIS_Widget(QWidget):
             'Enter here a Python expression that provides a list|array of dt values.')
 
         self.tardis_lay.addRow(
-            QLabel('Δt [frames]:'), self.dt)
+            QtWidgets.QLabel('Δt [frames]:'), self.dt)
 
-        self.exposure = QDoubleSpinBox()
+        self.exposure = QtWidgets.QDoubleSpinBox()
         self.exposure.setDecimals(4)
         self.exposure.setMinimum(1)
         self.exposure.setMaximum(1e10)
         self.exposure.setValue(50)
 
         self.tardis_lay.addRow(
-            QLabel('Exposure [ms]:'), self.exposure)
+            QtWidgets.QLabel('Exposure [ms]:'), self.exposure)
 
-        self.bins = QSpinBox()
+        self.bins = QtWidgets.QSpinBox()
         self.bins.setMinimum(5)
         self.bins.setMaximum(1e4)
         self.bins.setValue(1200)
 
         self.tardis_lay.addRow(
-            QLabel('N of bins:'), self.bins)
+            QtWidgets.QLabel('N of bins:'), self.bins)
 
 
-        self.maxDist = QSpinBox()
+        self.maxDist = QtWidgets.QSpinBox()
         self.maxDist.setMinimum(5)
         self.maxDist.setMaximum(1e4)
         self.maxDist.setValue(1200)
 
         self.tardis_lay.addRow(
-            QLabel('Max Distance:'), self.maxDist)
+            QtWidgets.QLabel('Max Distance:'), self.maxDist)
 
-        self.clear_plot = QCheckBox('Clear plot?')
+        self.clear_plot = QtWidgets.QCheckBox('Clear plot?')
         self.clear_plot.setChecked(True)
         self.tardis_lay.addWidget(self.clear_plot)
 
-        self.compute_btn = QPushButton('Compute', clicked=self.compute)
+        self.compute_btn = QtWidgets.QPushButton('Compute', clicked=self.compute)
         self.tardis_lay.addWidget(self.compute_btn)
 
-        self.fitgroup = QGroupBox('Fitting parameters')
+        self.fitgroup = QtWidgets.QGroupBox('Fitting parameters')
         self.vlayout.addWidget(self.fitgroup)
 
-        self.fitlay = QFormLayout()
+        self.fitlay = QtWidgets.QFormLayout()
         self.fitgroup.setLayout(self.fitlay)
 
 
-        self.res_guess = QCheckBox('Result as initial guess.')
+        self.res_guess = QtWidgets.QCheckBox('Result as initial guess.')
         self.fitlay.addWidget(self.res_guess)
 
-        self.fit_btn = QPushButton('Fit', clicked=self.fit_data)
+        self.fit_btn = QtWidgets.QPushButton('Fit', clicked=self.fit_data)
         self.fitlay.addWidget(self.fit_btn)
 
-        self.log = QPlainTextEdit()
+        self.log = QtWidgets.QPlainTextEdit()
         self.log.setReadOnly(True)
-        self.log.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
-        self.log.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.log.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        self.log.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.fitlay.addRow(self.log)
 
         label_style = {'color': '#EEE', 'font-size': '10pt'}

@@ -1,7 +1,7 @@
-from PyQt5.QtWidgets import QApplication, QGroupBox, QPushButton, QVBoxLayout, QWidget
+from microEye.qt import QApplication, QtWidgets
 
 
-class ExpandableGroupBox(QGroupBox):
+class ExpandableGroupBox(QtWidgets.QGroupBox):
     """
     Custom QGroupBox with expandable functionality.
 
@@ -42,7 +42,7 @@ class ExpandableGroupBox(QGroupBox):
     >>> expandable_group.layout().addWidget(button2)
     >>> main_layout.addWidget(expandable_group)
     >>> main_widget.show()
-    >>> app.exec_()
+    >>> app.exec()
     """
 
     def __init__(self, title: str, parent=None):
@@ -59,7 +59,7 @@ class ExpandableGroupBox(QGroupBox):
 
     def init_ui(self):
         '''Initialize the user interface.'''
-        group_layout = QVBoxLayout()
+        group_layout = QtWidgets.QVBoxLayout()
         self.setLayout(group_layout)
         self.expanded = True
 
@@ -81,13 +81,13 @@ class ExpandableGroupBox(QGroupBox):
 
 if __name__ == '__main__':
     app = QApplication([])
-    main_widget = QWidget()
-    main_layout = QVBoxLayout(main_widget)
+    main_widget = QtWidgets.QWidget()
+    main_layout = QtWidgets.QVBoxLayout(main_widget)
     expandable_group = ExpandableGroupBox('Expandable Group')
-    button1 = QPushButton('Button 1')
-    button2 = QPushButton('Button 2')
+    button1 = QtWidgets.QPushButton('Button 1')
+    button2 = QtWidgets.QPushButton('Button 2')
     expandable_group.layout().addWidget(button1)
     expandable_group.layout().addWidget(button2)
     main_layout.addWidget(expandable_group)
     main_widget.show()
-    app.exec_()
+    app.exec()

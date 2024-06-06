@@ -1,6 +1,10 @@
 from numba import cuda
 
-from .mainfunctions import CPUmleFit_LM, get_roi_list, get_roi_list_CMOS
+from microEye.analysis.fitting.pyfit3Dcspline.mainfunctions import (
+    CPUmleFit_LM,
+    get_roi_list,
+    get_roi_list_CMOS,
+)
 
 if cuda.is_available():
-    from .mainfunctions import GPUmleFit_LM
+    from microEye.analysis.fitting.pyfit3Dcspline.mainfunctions import GPUmleFit_LM

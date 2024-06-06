@@ -9,11 +9,8 @@ import numpy as np
 import ome_types.model as om
 import tifffile as tf
 import zarr
-from PyQt5.QtCore import *
-from PyQt5.QtGui import *
-from PyQt5.QtWidgets import *
 
-from .camera_calibration import dark_calibration
+from microEye.hardware.cams.camera_calibration import dark_calibration
 
 
 class AcquisitionJob:

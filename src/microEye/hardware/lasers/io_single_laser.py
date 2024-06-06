@@ -1,23 +1,17 @@
-import os
-import sys
-from enum import Enum
 from typing import Optional
 
-import qdarkstyle
-from PyQt5.QtCore import *
-from PyQt5.QtGui import *
-from PyQt5.QtSerialPort import *
-from PyQt5.QtWidgets import *
 from pyqtgraph.parametertree import Parameter
 
-from ...shared import StartGUI, Tree
-from .io_params import *
+from microEye.hardware.lasers.io_params import LaserState, MB_Params
+from microEye.qt import QtCore, QtSerialPort, QtWidgets, Signal
+from microEye.utils import StartGUI, Tree
 
 
-class io_single_laser(QSerialPort):
+class io_single_laser(QtSerialPort.QSerialPort):
     '''
     Class representing a single laser MatchBox device | Inherits QSerialPort
     '''
+
     INFO = b'r i'
     '''Get MatchBox Info
     '''
@@ -50,7 +44,7 @@ class io_single_laser(QSerialPort):
     '''TBA
     '''
 
-    DataReady = pyqtSignal(str, bytes)
+    DataReady = Signal(str, bytes)
 
     Max_Power = 0.0
 
@@ -105,15 +99,14 @@ class io_single_laser(QSerialPort):
         delay : int, optional
             Delay in milliseconds before reading the response.
         '''
-        if (self.isOpen()):
+        if self.isOpen():
             self.write(command)
             self.waitForBytesWritten(500)
-            QThread.msleep(delay)
+            QtCore.QThread.msleep(delay)
             while self.bytesAvailable() < 5:
                 self.waitForReadyRead(500)
 
-            response = str(self.readAll(),
-                           encoding='utf8').strip('\r\n').strip()
+            response = str(self.readAll(), encoding='utf8').strip('\r\n').strip()
             if log_print:
                 print(response, command)
 
@@ -122,13 +115,12 @@ class io_single_laser(QSerialPort):
             return response
 
     def OpenCOM(self):
-        '''Opens the serial port and initializes the combiner.
-        '''
+        '''Opens the serial port and initializes the combiner.'''
         if not self.isOpen():
-            self.open(QIODevice.ReadWrite)
+            self.open(QtCore.QIODevice.OpenModeFlag.ReadWrite)
             self.flush()
 
-            if (self.isOpen()):
+            if self.isOpen():
                 self.SendCommand(io_single_laser.ON_DIS)
                 self.SendCommand(io_single_laser.START)
                 # self.SendCommand(io_single_laser.STATUS)
@@ -137,9 +129,8 @@ class io_single_laser(QSerialPort):
                 self.GetMaxPower()
 
     def CloseCOM(self):
-        '''Closes the serial port.
-        '''
-        if (self.isOpen()):
+        '''Closes the serial port.'''
+        if self.isOpen():
             self.SendCommand(io_single_laser.OFF)
             self.waitForBytesWritten(500)
 
@@ -154,7 +145,7 @@ class io_single_laser(QSerialPort):
         the method sets the `Max_Power` attribute of the `io_single_laser`
         instance to the value contained in the response.
         '''
-        if (self.isOpen()):
+        if self.isOpen():
             res = self.SendCommand(io_single_laser.P_MAX)
 
             if not ('<ERR>' in res or '<ACK>' in res):
@@ -170,10 +161,8 @@ class io_single_laser(QSerialPort):
         of the `io_single_laser` instance with the values contained in the
         response.
         '''
-        if (self.isOpen()):
-            res = self.SendCommand(
-                io_single_laser.READ,
-                log_print)
+        if self.isOpen():
+            res = self.SendCommand(io_single_laser.READ, log_print)
 
             if not ('<ERR>' in res or '<ACK>' in res):
                 readings = res.split(' ')
@@ -189,15 +178,15 @@ class io_single_laser(QSerialPort):
                     self.R_Input_Voltage = readings[9]
 
                     return {
-                        MB_Params.LD_TEMP : self.R_Diode_Temp,
-                        MB_Params.CRYSTAL_TEMP : self.R_Crystal_Temp,
-                        MB_Params.BODY_TEMP : self.R_Body_Temp,
-                        MB_Params.LD_CURRENT : self.R_LD_Current,
-                        MB_Params.CRYSTAL_TEC_LOAD : self.R_Crystal_TEC_Load,
-                        MB_Params.LD_TEC_LOAD : self.R_LD_TEC_Load,
-                        MB_Params.STATUS : self.R_Status,
-                        MB_Params.FAN_LOAD : self.R_Fan_Load,
-                        MB_Params.IN_VOLTAGE : self.R_Input_Voltage,
+                        MB_Params.LD_TEMP: self.R_Diode_Temp,
+                        MB_Params.CRYSTAL_TEMP: self.R_Crystal_Temp,
+                        MB_Params.BODY_TEMP: self.R_Body_Temp,
+                        MB_Params.LD_CURRENT: self.R_LD_Current,
+                        MB_Params.CRYSTAL_TEC_LOAD: self.R_Crystal_TEC_Load,
+                        MB_Params.LD_TEC_LOAD: self.R_LD_TEC_Load,
+                        MB_Params.STATUS: self.R_Status,
+                        MB_Params.FAN_LOAD: self.R_Fan_Load,
+                        MB_Params.IN_VOLTAGE: self.R_Input_Voltage,
                     }
 
         return {}
@@ -211,10 +200,8 @@ class io_single_laser(QSerialPort):
         of the `io_single_laser` instance with the values contained in the
         response.
         '''
-        if (self.isOpen()):
-            res = self.SendCommand(
-                io_single_laser.SETTINGS,
-                log_print)
+        if self.isOpen():
+            res = self.SendCommand(io_single_laser.SETTINGS, log_print)
 
             if not ('<ERR>' in res or '<ACK>' in res):
                 readings = res.split(' ')
@@ -230,15 +217,15 @@ class io_single_laser(QSerialPort):
                     self.S_Fan_Temp = float(readings[9]) / 100
 
                     return {
-                        MB_Params.CRYSTAL_TEMP_SET : self.S_Crystal_Temp,
-                        MB_Params.LD_TEMP_SET : self.S_Diode_Temp,
-                        MB_Params.LD_CURRENT_SET : self.S_LD_Current,
-                        MB_Params.FEEDBACK_DAC : self.S_Feedback_DAC,
-                        MB_Params.POWER_READ : self.S_Power,
-                        MB_Params.LD_CURRENT_MAX : self.S_LD_MaxCurrent,
-                        MB_Params.AUTO_MODE : self.S_Autostart_Mode,
-                        MB_Params.ACCESS_LEVEL : self.S_Access_Level,
-                        MB_Params.FAN_TEMP_SET : self.S_Fan_Temp,
+                        MB_Params.CRYSTAL_TEMP_SET: self.S_Crystal_Temp,
+                        MB_Params.LD_TEMP_SET: self.S_Diode_Temp,
+                        MB_Params.LD_CURRENT_SET: self.S_LD_Current,
+                        MB_Params.FEEDBACK_DAC: self.S_Feedback_DAC,
+                        MB_Params.POWER_READ: self.S_Power,
+                        MB_Params.LD_CURRENT_MAX: self.S_LD_MaxCurrent,
+                        MB_Params.AUTO_MODE: self.S_Autostart_Mode,
+                        MB_Params.ACCESS_LEVEL: self.S_Access_Level,
+                        MB_Params.FAN_TEMP_SET: self.S_Fan_Temp,
                     }
 
         return {}
@@ -261,15 +248,13 @@ class io_single_laser(QSerialPort):
         bool
             `True` if the command was successful, `False` otherwise.
         '''
-        if (self.isOpen()):
+        if self.isOpen():
             if not isinstance(value, (int, float)):
                 raise TypeError('Power must be a number!')
             if value < 0 or value > self.Max_Power:
                 raise ValueError(f'Power must be between 0 and {self.Max_Power}')
 
-            res = self.SendCommand(
-                io_single_laser.P_SET +
-                f'{value:.2f}'.encode())
+            res = self.SendCommand(io_single_laser.P_SET + f'{value:.2f}'.encode())
 
             return '<ACK>' in res
 
@@ -282,10 +267,8 @@ class io_single_laser(QSerialPort):
         attributes of the `io_single_laser` instance with the values contained in
         the response.
         '''
-        if (self.isOpen()):
-            res = self.SendCommand(
-                io_single_laser.INFO,
-                delay=50)
+        if self.isOpen():
+            res = self.SendCommand(io_single_laser.INFO, delay=50)
 
             if not ('<ERR>' in res or '<ACK>' in res):
                 info = res.split('\r\n')
@@ -333,7 +316,7 @@ class SingleMatchBox(Tree):
         Gets the state of the relay.
     '''
 
-    def __init__(self, parent: Optional['QWidget'] = None):
+    def __init__(self, parent: Optional['QtWidgets.QWidget'] = None):
         '''Initializes a new SingleMatchBox instance.
 
         Parameters
@@ -353,7 +336,7 @@ class SingleMatchBox(Tree):
         self.wavelength = '000'
 
         # Statues Bar Timer
-        self.timer = QTimer()
+        self.timer = QtCore.QTimer()
         self.timer.setInterval(500)
         self.timer.timeout.connect(self.update_stats)
         self.timer.start()
@@ -363,102 +346,236 @@ class SingleMatchBox(Tree):
         Create the parameter tree structure.
         '''
         params = [
-            {'name': str(MB_Params.MODEL),
-                'type': 'str', 'value': 'N/A', 'readonly': True},
-            {'name': str(MB_Params.WAVELENGTH),
-                'type': 'int', 'value': 0, 'suffix': 'nm', 'readonly': True},
-            {'name': str(MB_Params.SERIAL_PORT), 'type': 'group', 'children': [
-                {'name': str(MB_Params.PORT), 'type': 'list',
-                 'values': [
-                     info.portName() for info in QSerialPortInfo.availablePorts()]},
-                {'name': str(MB_Params.BAUDRATE), 'type': 'list', 'value': 115200,
-                 'values': [
-                     baudrate for baudrate in QSerialPortInfo.standardBaudRates()]},
-                {'name': str(MB_Params.SET_PORT), 'type': 'action'},
-                {'name': str(MB_Params.OPEN), 'type': 'action'},
-                {'name': str(MB_Params.CLOSE), 'type': 'action'},
-                {'name': str(MB_Params.PORT_STATE),
-                 'type': 'str', 'value': 'closed', 'readonly': True},
-            ]},
-            {'name': str(MB_Params.OPTIONS), 'type': 'group', 'children': [
-                {'name': str(MB_Params.STATE), 'type': 'list', 'value': LaserState.OFF,
-                 'values': LaserState.get_list()},
-                {'name': str(MB_Params.POWER),
-                'type': 'float', 'value': 0, 'limits': [0, 100],
-                'step': 0.1, 'dec': False},
-                {'name': str(MB_Params.SET_POWER), 'type': 'action'},
-            ]},
-            {'name': str(MB_Params.READINGS), 'type': 'group', 'children': [
-                {'name': str(MB_Params.POWER_READ),
-                'type': 'str', 'value': '0', 'readonly': True},
-                {'name': str(MB_Params.LD_CURRENT),
-                'type': 'str', 'value': '0', 'readonly': True},
-                {'name': str(MB_Params.LD_CURRENT_SET),
-                'type': 'str', 'value': '0', 'readonly': True},
-                {'name': str(MB_Params.LD_CURRENT_MAX),
-                'type': 'str', 'value': '0', 'readonly': True},
-                {'name': str(MB_Params.LD_TEMP),
-                'type': 'str', 'value': '0', 'readonly': True},
-                {'name': str(MB_Params.LD_TEMP_SET),
-                'type': 'str', 'value': '0', 'readonly': True},
-                {'name': str(MB_Params.LD_TEC_LOAD),
-                'type': 'str', 'value': '0', 'readonly': True},
-                {'name': str(MB_Params.CRYSTAL_TEMP),
-                'type': 'str', 'value': '0', 'readonly': True},
-                {'name': str(MB_Params.CRYSTAL_TEMP_SET),
-                'type': 'str', 'value': '0', 'readonly': True},
-                {'name': str(MB_Params.CRYSTAL_TEC_LOAD),
-                'type': 'str', 'value': '0', 'readonly': True},
-                {'name': str(MB_Params.BODY_TEMP),
-                'type': 'str', 'value': '0', 'readonly': True},
-                {'name': str(MB_Params.FAN_TEMP_SET),
-                'type': 'str', 'value': '0', 'readonly': True},
-                {'name': str(MB_Params.FAN_LOAD),
-                'type': 'str', 'value': '0', 'readonly': True},
-                {'name': str(MB_Params.FEEDBACK_DAC),
-                'type': 'str', 'value': '0', 'readonly': True},
-                {'name': str(MB_Params.AUTO_MODE),
-                'type': 'str', 'value': '0', 'readonly': True},
-                {'name': str(MB_Params.ACCESS_LEVEL),
-                'type': 'str', 'value': '0', 'readonly': True},
-                {'name': str(MB_Params.STATUS),
-                'type': 'str', 'value': '0', 'readonly': True},
-                {'name': str(MB_Params.IN_VOLTAGE),
-                'type': 'str', 'value': '0', 'readonly': True},
-            ]},
-            {'name': str(MB_Params.INFO), 'type': 'group', 'children': [
-                {'name': str(MB_Params.FIRMWARE),
-                'type': 'str', 'value': 'N/A', 'readonly': True},
-                {'name': str(MB_Params.SERIAL),
-                'type': 'str', 'value': 'N/A', 'readonly': True},
-                {'name': str(MB_Params.OPERATION_TIME),
-                'type': 'str', 'value': 'N/A', 'readonly': True},
-                {'name': str(MB_Params.ON_TIMES),
-                'type': 'str', 'value': 'N/A', 'readonly': True},
-            ]},
+            {
+                'name': str(MB_Params.MODEL),
+                'type': 'str',
+                'value': 'N/A',
+                'readonly': True,
+            },
+            {
+                'name': str(MB_Params.WAVELENGTH),
+                'type': 'int',
+                'value': 0,
+                'suffix': 'nm',
+                'readonly': True,
+            },
+            {
+                'name': str(MB_Params.SERIAL_PORT),
+                'type': 'group',
+                'children': [
+                    {
+                        'name': str(MB_Params.PORT),
+                        'type': 'list',
+                        'limits': [
+                            info.portName()
+                            for info in QtSerialPort.QSerialPortInfo.availablePorts()
+                        ],
+                    },
+                    {
+                        'name': str(MB_Params.BAUDRATE),
+                        'type': 'list',
+                        'value': 115200,
+                        'limits': [
+                            baudrate
+                            for baudrate in \
+                                QtSerialPort.QSerialPortInfo.standardBaudRates()
+                        ],
+                    },
+                    {'name': str(MB_Params.SET_PORT), 'type': 'action'},
+                    {'name': str(MB_Params.OPEN), 'type': 'action'},
+                    {'name': str(MB_Params.CLOSE), 'type': 'action'},
+                    {
+                        'name': str(MB_Params.PORT_STATE),
+                        'type': 'str',
+                        'value': 'closed',
+                        'readonly': True,
+                    },
+                ],
+            },
+            {
+                'name': str(MB_Params.OPTIONS),
+                'type': 'group',
+                'children': [
+                    {
+                        'name': str(MB_Params.STATE),
+                        'type': 'list',
+                        'value': LaserState.OFF,
+                        'limits': LaserState.get_list(),
+                    },
+                    {
+                        'name': str(MB_Params.POWER),
+                        'type': 'float',
+                        'value': 0,
+                        'limits': [0, 100],
+                        'step': 0.1,
+                        'dec': False,
+                    },
+                    {'name': str(MB_Params.SET_POWER), 'type': 'action'},
+                ],
+            },
+            {
+                'name': str(MB_Params.READINGS),
+                'type': 'group',
+                'children': [
+                    {
+                        'name': str(MB_Params.POWER_READ),
+                        'type': 'str',
+                        'value': '0',
+                        'readonly': True,
+                    },
+                    {
+                        'name': str(MB_Params.LD_CURRENT),
+                        'type': 'str',
+                        'value': '0',
+                        'readonly': True,
+                    },
+                    {
+                        'name': str(MB_Params.LD_CURRENT_SET),
+                        'type': 'str',
+                        'value': '0',
+                        'readonly': True,
+                    },
+                    {
+                        'name': str(MB_Params.LD_CURRENT_MAX),
+                        'type': 'str',
+                        'value': '0',
+                        'readonly': True,
+                    },
+                    {
+                        'name': str(MB_Params.LD_TEMP),
+                        'type': 'str',
+                        'value': '0',
+                        'readonly': True,
+                    },
+                    {
+                        'name': str(MB_Params.LD_TEMP_SET),
+                        'type': 'str',
+                        'value': '0',
+                        'readonly': True,
+                    },
+                    {
+                        'name': str(MB_Params.LD_TEC_LOAD),
+                        'type': 'str',
+                        'value': '0',
+                        'readonly': True,
+                    },
+                    {
+                        'name': str(MB_Params.CRYSTAL_TEMP),
+                        'type': 'str',
+                        'value': '0',
+                        'readonly': True,
+                    },
+                    {
+                        'name': str(MB_Params.CRYSTAL_TEMP_SET),
+                        'type': 'str',
+                        'value': '0',
+                        'readonly': True,
+                    },
+                    {
+                        'name': str(MB_Params.CRYSTAL_TEC_LOAD),
+                        'type': 'str',
+                        'value': '0',
+                        'readonly': True,
+                    },
+                    {
+                        'name': str(MB_Params.BODY_TEMP),
+                        'type': 'str',
+                        'value': '0',
+                        'readonly': True,
+                    },
+                    {
+                        'name': str(MB_Params.FAN_TEMP_SET),
+                        'type': 'str',
+                        'value': '0',
+                        'readonly': True,
+                    },
+                    {
+                        'name': str(MB_Params.FAN_LOAD),
+                        'type': 'str',
+                        'value': '0',
+                        'readonly': True,
+                    },
+                    {
+                        'name': str(MB_Params.FEEDBACK_DAC),
+                        'type': 'str',
+                        'value': '0',
+                        'readonly': True,
+                    },
+                    {
+                        'name': str(MB_Params.AUTO_MODE),
+                        'type': 'str',
+                        'value': '0',
+                        'readonly': True,
+                    },
+                    {
+                        'name': str(MB_Params.ACCESS_LEVEL),
+                        'type': 'str',
+                        'value': '0',
+                        'readonly': True,
+                    },
+                    {
+                        'name': str(MB_Params.STATUS),
+                        'type': 'str',
+                        'value': '0',
+                        'readonly': True,
+                    },
+                    {
+                        'name': str(MB_Params.IN_VOLTAGE),
+                        'type': 'str',
+                        'value': '0',
+                        'readonly': True,
+                    },
+                ],
+            },
+            {
+                'name': str(MB_Params.INFO),
+                'type': 'group',
+                'children': [
+                    {
+                        'name': str(MB_Params.FIRMWARE),
+                        'type': 'str',
+                        'value': 'N/A',
+                        'readonly': True,
+                    },
+                    {
+                        'name': str(MB_Params.SERIAL),
+                        'type': 'str',
+                        'value': 'N/A',
+                        'readonly': True,
+                    },
+                    {
+                        'name': str(MB_Params.OPERATION_TIME),
+                        'type': 'str',
+                        'value': 'N/A',
+                        'readonly': True,
+                    },
+                    {
+                        'name': str(MB_Params.ON_TIMES),
+                        'type': 'str',
+                        'value': 'N/A',
+                        'readonly': True,
+                    },
+                ],
+            },
             {'name': str(MB_Params.REMOVE), 'type': 'action'},
         ]
 
-        self.param_tree = Parameter.create(name='root', type='group', children=params)
+        self.param_tree = Parameter.create(name='', type='group', children=params)
         self.param_tree.sigTreeStateChanged.connect(self.change)
-        self.header().setSectionResizeMode(
-            QHeaderView.ResizeMode.ResizeToContents)
+        self.header().setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
 
-        self.get_param(
-            MB_Params.STATE).sigValueChanged.connect(
-                lambda: self.laser_state_changed())
+        self.get_param(MB_Params.STATE).sigValueChanged.connect(
+            lambda: self.laser_state_changed()
+        )
 
-        self.get_param(
-            MB_Params.SET_PORT).sigActivated.connect(self.set_config)
-        self.get_param(
-            MB_Params.OPEN).sigActivated.connect(self.laser_connect)
-        self.get_param(
-            MB_Params.CLOSE).sigActivated.connect(lambda: self.Laser.CloseCOM())
-        self.get_param(
-            MB_Params.SET_POWER).sigActivated.connect(self.set_power)
+        self.get_param(MB_Params.SET_PORT).sigActivated.connect(self.set_config)
+        self.get_param(MB_Params.OPEN).sigActivated.connect(self.laser_connect)
+        self.get_param(MB_Params.CLOSE).sigActivated.connect(
+            lambda: self.Laser.CloseCOM()
+        )
+        self.get_param(MB_Params.SET_POWER).sigActivated.connect(self.set_power)
 
-        self.get_param(
-            MB_Params.REMOVE).sigActivated.connect(self.remove_widget)
+        self.get_param(MB_Params.REMOVE).sigActivated.connect(self.remove_widget)
 
     def set_config(self):
         '''Sets the serial port configuration.
@@ -467,10 +584,8 @@ class SingleMatchBox(Tree):
         settings in the parameter tree.
         '''
         if not self.Laser.isOpen():
-            self.Laser.setPortName(
-                self.get_param_value(MB_Params.PORT))
-            self.Laser.setBaudRate(
-                self.get_param_value(MB_Params.BAUDRATE))
+            self.Laser.setPortName(self.get_param_value(MB_Params.PORT))
+            self.Laser.setBaudRate(self.get_param_value(MB_Params.BAUDRATE))
 
     def laser_connect(self):
         '''Connects to the MatchBox device.
@@ -480,8 +595,7 @@ class SingleMatchBox(Tree):
         self.Laser.OpenCOM()
 
         self.wavelength = self.Laser.Model.split('L')[0]
-        self.get_param(MB_Params.POWER).setLimits(
-            [0, self.Laser.Max_Power])
+        self.get_param(MB_Params.POWER).setLimits([0, self.Laser.Max_Power])
 
         self.set_param_value(MB_Params.MODEL, self.Laser.Model)
         self.set_param_value(MB_Params.WAVELENGTH, int(self.wavelength))
@@ -489,7 +603,7 @@ class SingleMatchBox(Tree):
         self.set_param_value(MB_Params.SERIAL, self.Laser.Serial)
 
     def update_stats(self):
-        '''
+        """
         Updates the statistics displayed in the MatchBox GUI.
 
         This method retrieves the current readings and settings from the device, and
@@ -499,7 +613,7 @@ class SingleMatchBox(Tree):
 
         If the laser is not connected, the method sets the 'Port State' parameter to
         'closed'.
-        '''
+        """
         if self.Laser.isOpen():
             readings = self.Laser.GetReadings(False)
             settings = self.Laser.GetSettings(False)
@@ -526,16 +640,20 @@ class SingleMatchBox(Tree):
         self.RefreshPorts()
 
     def RefreshPorts(self):
-        '''
+        """
         Refreshes the available serial ports list in the GUI.
 
         This method updates the list of available serial ports in the GUI by fetching
         the current list of available ports and setting it as the options for the
         'Serial Port' parameter in the parameter tree.
-        '''
+        """
         if not self.Laser.isOpen():
-            self.get_param(MB_Params.PORT).setLimits([
-                info.portName() for info in QSerialPortInfo.availablePorts()])
+            self.get_param(MB_Params.PORT).setLimits(
+                [
+                    info.portName()
+                    for info in QtSerialPort.QSerialPortInfo.availablePorts()
+                ]
+            )
 
     def laser_state_changed(self):
         '''Sends enable/disable signals to the
@@ -551,8 +669,7 @@ class SingleMatchBox(Tree):
         Sets the power level of the laser diode
         based on the current value in the GUI
         '''
-        self.Laser.SetPower(
-            self.get_param_value(MB_Params.POWER))
+        self.Laser.SetPower(self.get_param_value(MB_Params.POWER))
 
     def GetRelayState(self):
         '''
@@ -577,7 +694,7 @@ class SingleMatchBox(Tree):
         -------
         app, window = SingleMatchBox.StartGUI()
 
-        app.exec_()
+        app.exec()
 
         Returns
         -------
@@ -590,4 +707,4 @@ class SingleMatchBox(Tree):
 if __name__ == '__main__':
     app, widget = SingleMatchBox.StartGUI()
 
-    app.exec_()
+    app.exec()

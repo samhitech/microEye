@@ -10,8 +10,8 @@ if vb:
     with vb.Vimba.get_instance() as vimba:
         app, window = miEye_module.StartGUI()
 
-        app.exec_()
+        app.exec()
 else:
     app, window = miEye_module.StartGUI()
 
-    app.exec_()
+    app.exec()

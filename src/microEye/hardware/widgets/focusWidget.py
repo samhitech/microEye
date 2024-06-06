@@ -2,18 +2,15 @@ import json
 
 import numpy as np
 import pyqtgraph as pg
-from PyQt5.QtCore import *
-from PyQt5.QtGui import *
-from PyQt5.QtSerialPort import *
-from PyQt5.QtWidgets import *
 from pyqtgraph.widgets.PlotWidget import PlotWidget
 from pyqtgraph.widgets.RemoteGraphicsView import RemoteGraphicsView
 
-from ...shared.gui_helper import GaussianOffSet
-from ..stages.stabilizer import *
+from microEye.hardware.stages.stabilizer import *
+from microEye.qt import QtWidgets
+from microEye.utils.gui_helper import GaussianOffSet
 
 
-class focusWidget(QDockWidget):
+class focusWidget(QtWidgets.QDockWidget):
     def __init__(self):
         '''
         Initialize the focusWidget instance.
@@ -24,8 +21,9 @@ class focusWidget(QDockWidget):
 
         # Remove close button from dock widgets
         self.setFeatures(
-            QDockWidget.DockWidgetFloatable |
-            QDockWidget.DockWidgetMovable)
+            QtWidgets.QDockWidget.DockWidgetFeature.DockWidgetFloatable
+            | QtWidgets.QDockWidget.DockWidgetFeature.DockWidgetMovable
+        )
 
         self.focusStabilizerView = FocusStabilizerView()
 
@@ -44,7 +42,7 @@ class focusWidget(QDockWidget):
     def init_layout(self):
         # display tab
         self.labelStyle = {'color': '#FFF', 'font-size': '10pt'}
-        graphs_layout = QGridLayout()
+        graphs_layout = QtWidgets.QGridLayout()
 
         # IR LineROI Graph
         self.graph_IR = PlotWidget()
@@ -53,24 +51,18 @@ class focusWidget(QDockWidget):
         # IR Peak Position Graph
         self.graph_Peak = PlotWidget()
         self.graph_Peak.setLabel('bottom', 'Frame', **self.labelStyle)
-        self.graph_Peak.setLabel(
-            'left', 'Center Pixel Error', **self.labelStyle)
+        self.graph_Peak.setLabel('left', 'Center Pixel Error', **self.labelStyle)
         # IR Camera GraphView
         self.remote_view = pg.GraphicsView()
-        pg.setConfigOptions(
-            antialias=True, imageAxisOrder='row-major')
+        pg.setConfigOptions(antialias=True, imageAxisOrder='row-major')
         pg.setConfigOption('imageAxisOrder', 'row-major')
         self.remote_plt = pg.ViewBox(invertY=True)
         self.remote_view.setCentralItem(self.remote_plt)
         self.remote_plt.setAspectLocked()
         self.remote_img = pg.ImageItem(axisOrder='row-major')
-        self.remote_img.setImage(
-            np.random.normal(size=(512, 512)))
+        self.remote_img.setImage(np.random.normal(size=(512, 512)))
         # IR LineROI
-        self.roi = pg.ROI(
-            pg.Point(25.5, 25.5),
-            pg.Point(0, 256),
-            angle=0, pen='r')
+        self.roi = pg.ROI(pg.Point(25.5, 25.5), pg.Point(0, 256), angle=0, pen='r')
         self.roi.addTranslateHandle([0, 0], [0, 1])
         self.roi.addScaleRotateHandle([0, 1], [0, 0])
         self.roi.updateFlag = False
@@ -80,18 +72,20 @@ class focusWidget(QDockWidget):
             if not self.roi.updateFlag:
                 pos = self.roi.pos()
                 self.focusStabilizerView.set_param_value(
-                    FocusStabilizerParams.X1, pos[0])
+                    FocusStabilizerParams.X1, pos[0]
+                )
                 self.focusStabilizerView.set_param_value(
-                    FocusStabilizerParams.Y1, pos[1])
+                    FocusStabilizerParams.Y1, pos[1]
+                )
                 self.focusStabilizerView.set_param_value(
-                    FocusStabilizerParams.LENGTH, self.roi.size()[1])
+                    FocusStabilizerParams.LENGTH, self.roi.size()[1]
+                )
                 self.focusStabilizerView.set_param_value(
-                    FocusStabilizerParams.ANGLE, self.roi.angle() % 360)
+                    FocusStabilizerParams.ANGLE, self.roi.angle() % 360
+                )
                 x, y = self.getRoiCoords()
-                self.focusStabilizerView.set_param_value(
-                    FocusStabilizerParams.X2, x[1])
-                self.focusStabilizerView.set_param_value(
-                    FocusStabilizerParams.Y2, y[1])
+                self.focusStabilizerView.set_param_value(FocusStabilizerParams.X2, x[1])
+                self.focusStabilizerView.set_param_value(FocusStabilizerParams.Y2, y[1])
                 if self.roi.size()[0] > 0:
                     self.roi.setSize((0, self.roi.size()[1]))
 
@@ -106,7 +100,7 @@ class focusWidget(QDockWidget):
         graphs_layout.addWidget(self.graph_IR, 0, 2)
         graphs_layout.addWidget(self.graph_Peak, 1, 2)
 
-        container = QWidget(self)
+        container = QtWidgets.QWidget(self)
         container.setLayout(graphs_layout)
         self.setWidget(container)
 
@@ -119,12 +113,10 @@ class focusWidget(QDockWidget):
         FocusStabilizer.instance().updatePlots.connect(self.updatePlots)
 
     def updateViewBox(self, data: np.ndarray):
-        self.remote_img.setImage(
-            data, _callSync='off')
+        self.remote_img.setImage(data, _callSync='off')
 
     def updatePlots(self, data):
-        '''Updates the graphs.
-        '''
+        '''Updates the graphs.'''
         xdata = np.arange(len(data))
         # updates the IR graph with data
         if self.__plot_ref is None:
@@ -138,72 +130,85 @@ class focusWidget(QDockWidget):
         if self.__plotfit_ref is None:
             # create plot reference when None
             self.__plotfit_ref = self.graph_IR.plot(
-                xdata,
-                GaussianOffSet(xdata, *FocusStabilizer.instance().fit_params))
+                xdata, GaussianOffSet(xdata, *FocusStabilizer.instance().fit_params)
+            )
         else:
             # use the plot reference to update the data for that line.
             self.__plotfit_ref.setData(
-                xdata,
-                GaussianOffSet(xdata, *FocusStabilizer.instance().fit_params))
+                xdata, GaussianOffSet(xdata, *FocusStabilizer.instance().fit_params)
+            )
 
         if self.__center_ref is None:
             # create plot reference when None
             self.__center_ref = self.graph_Peak.plot(
                 FocusStabilizer.instance().peak_time,
-                FocusStabilizer.instance().peak_positions)
+                FocusStabilizer.instance().peak_positions,
+            )
         else:
             # use the plot reference to update the data for that line.
             self.__center_ref.setData(
                 FocusStabilizer.instance().peak_time,
-                FocusStabilizer.instance().peak_positions)
+                FocusStabilizer.instance().peak_positions,
+            )
 
     def updateRoiParams(self, params: dict):
         if 'ROI_x' in params:
             self.focusStabilizerView.set_param_value(
-                FocusStabilizerParams.X1, float(params['ROI_x']))
+                FocusStabilizerParams.X1, float(params['ROI_x'])
+            )
         if 'ROI_y' in params:
             self.focusStabilizerView.set_param_value(
-                FocusStabilizerParams.Y1, float(params['ROI_y']))
+                FocusStabilizerParams.Y1, float(params['ROI_y'])
+            )
         if 'ROI_length' in params:
             self.focusStabilizerView.set_param_value(
-                FocusStabilizerParams.LENGTH, int(params['ROI_length']))
+                FocusStabilizerParams.LENGTH, int(params['ROI_length'])
+            )
         if 'ROI_angle' in params:
             self.focusStabilizerView.set_param_value(
-                FocusStabilizerParams.ANGLE, float(params['ROI_angle']))
+                FocusStabilizerParams.ANGLE, float(params['ROI_angle'])
+            )
         if 'ROI_Width' in params:
             self.focusStabilizerView.set_param_value(
-                FocusStabilizerParams.LINE_WIDTH, int(params['ROI_Width']))
+                FocusStabilizerParams.LINE_WIDTH, int(params['ROI_Width'])
+            )
         x, y = self.getRoiCoords()
-        self.focusStabilizerView.set_param_value(
-            FocusStabilizerParams.X2, x[1])
-        self.focusStabilizerView.set_param_value(
-            FocusStabilizerParams.Y2, y[1])
+        self.focusStabilizerView.set_param_value(FocusStabilizerParams.X2, x[1])
+        self.focusStabilizerView.set_param_value(FocusStabilizerParams.Y2, y[1])
 
         if 'PixelCalCoeff' in params:
             self.focusStabilizerView.set_param_value(
-                FocusStabilizerParams.PIXEL_CAL, float(params['PixelCalCoeff']))
+                FocusStabilizerParams.PIXEL_CAL, float(params['PixelCalCoeff'])
+            )
         if 'UseCal' in params:
             self.focusStabilizerView.set_param_value(
-                FocusStabilizerParams.USE_CAL, bool(params['UseCal']))
+                FocusStabilizerParams.USE_CAL, bool(params['UseCal'])
+            )
         if 'Inverted' in params:
             self.focusStabilizerView.set_param_value(
-                FocusStabilizerParams.INVERTED, bool(params['Inverted']))
+                FocusStabilizerParams.INVERTED, bool(params['Inverted'])
+            )
         if 'PID' in params:
             _P, _I, _D, _tau, _err_th = params['PID']
             self.focusStabilizerView.set_param_value(
-                FocusStabilizerParams.FT_P, float(_P))
+                FocusStabilizerParams.FT_P, float(_P)
+            )
             self.focusStabilizerView.set_param_value(
-                FocusStabilizerParams.FT_I, float(_I))
+                FocusStabilizerParams.FT_I, float(_I)
+            )
             self.focusStabilizerView.set_param_value(
-                FocusStabilizerParams.FT_D, float(_D))
+                FocusStabilizerParams.FT_D, float(_D)
+            )
             self.focusStabilizerView.set_param_value(
-                FocusStabilizerParams.FT_TAU, float(_tau))
+                FocusStabilizerParams.FT_TAU, float(_tau)
+            )
             self.focusStabilizerView.set_param_value(
-                FocusStabilizerParams.FT_ERROR_TH, float(_err_th))
+                FocusStabilizerParams.FT_ERROR_TH, float(_err_th)
+            )
 
     def getRoiCoords(self):
-        dy = self.roi.state['size'][1] * np.cos(np.pi*self.roi.state['angle']/180)
-        dx = self.roi.state['size'][1] * np.sin(np.pi*self.roi.state['angle']/180)
+        dy = self.roi.state['size'][1] * np.cos(np.pi * self.roi.state['angle'] / 180)
+        dx = self.roi.state['size'][1] * np.sin(np.pi * self.roi.state['angle'] / 180)
         x = self.roi.x()
         y = self.roi.y()
         return [x, x - dx], [y, y + dy]
@@ -215,19 +220,17 @@ class focusWidget(QDockWidget):
         self.roi.updateFlag = True
         self.roi.setPos(
             self.focusStabilizerView.get_param_value(FocusStabilizerParams.X1),
-            self.focusStabilizerView.get_param_value(FocusStabilizerParams.Y1))
+            self.focusStabilizerView.get_param_value(FocusStabilizerParams.Y1),
+        )
         self.roi.setSize(
-                [0,
-                 self.focusStabilizerView.get_param_value(
-                     FocusStabilizerParams.LENGTH)])
+            [0, self.focusStabilizerView.get_param_value(FocusStabilizerParams.LENGTH)]
+        )
         self.roi.setAngle(
-            self.focusStabilizerView.get_param_value(
-                FocusStabilizerParams.ANGLE))
-        
+            self.focusStabilizerView.get_param_value(FocusStabilizerParams.ANGLE)
+        )
+
         x, y = self.getRoiCoords()
-        self.focusStabilizerView.set_param_value(
-            FocusStabilizerParams.X2, x[1])
-        self.focusStabilizerView.set_param_value(
-            FocusStabilizerParams.Y2, y[1])
+        self.focusStabilizerView.set_param_value(FocusStabilizerParams.X2, x[1])
+        self.focusStabilizerView.set_param_value(FocusStabilizerParams.Y2, y[1])
 
         self.roi.updateFlag = False

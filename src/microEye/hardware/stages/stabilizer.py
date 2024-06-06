@@ -6,18 +6,22 @@ from threading import Event
 from typing import Optional
 
 import numpy as np
-from PyQt5.QtCore import *
-from PyQt5.QtGui import *
-from PyQt5.QtSerialPort import *
-from PyQt5.QtWidgets import *
 from pyqtgraph.parametertree import Parameter
 from scipy.optimize import curve_fit
 from scipy.signal import find_peaks
 
-from ...analysis.tools.kymograms import get_kymogram_row
-from ...shared import Tree
-from ...shared.gui_helper import GaussianOffSet
-from ...shared.thread_worker import thread_worker
+from microEye.analysis.tools.kymograms import get_kymogram_row
+from microEye.qt import (
+    QApplication,
+    QDateTime,
+    QtCore,
+    QtWidgets,
+    Signal,
+    getSaveFileName,
+)
+from microEye.utils import Tree
+from microEye.utils.gui_helper import GaussianOffSet
+from microEye.utils.thread_worker import thread_worker
 
 
 class FocusStabilizerParams(Enum):
@@ -64,17 +68,17 @@ class FocusStabilizerParams(Enum):
         return self.value.split('.')
 
 
-class FocusStabilizer(QObject):
+class FocusStabilizer(QtCore.QObject):
     # Class attribute to hold the single instance
     _instance = None
 
     TIME_POINTS = 500
 
-    updateViewBox = pyqtSignal(object)
-    updatePlots = pyqtSignal(object)
-    moveStage = pyqtSignal(bool, int)
-    peakPositionChanged = pyqtSignal(float)
-    pixelCalChanged = pyqtSignal(float)
+    updateViewBox = Signal(object)
+    updatePlots = Signal(object)
+    moveStage = Signal(bool, int)
+    peakPositionChanged = Signal(float)
+    pixelCalChanged = Signal(float)
 
     def __new__(cls, *args, **kwargs):
         # If the single instance doesn't exist, create a new one
@@ -362,7 +366,7 @@ class FocusStabilizer(QObject):
             FocusStabilizer.instance().worker_function, progress=False, z_stage=False
         )
         # Execute
-        QThreadPool.globalInstance().start(self.worker)
+        QtCore.QThreadPool.globalInstance().start(self.worker)
 
     def worker_function(self):
         '''A worker function running in the threadpool.
@@ -372,7 +376,7 @@ class FocusStabilizer(QObject):
         counter = 0
         self._exec_time = 0
         now = QDateTime.currentDateTime()
-        QThread.msleep(100)
+        QtCore.QThread.msleep(100)
         while not self.exit_event.isSet():
             try:
                 # proceed only if the buffer is not empty
@@ -400,7 +404,7 @@ class FocusStabilizer(QObject):
                         self.num_frames_saved = 1 + self.num_frames_saved
                     counter = counter + 1
                     self.updatePlots.emit(line_roi.copy())
-                QThread.usleep(100)  # sleep for 100us
+                QtCore.QThread.usleep(100)  # sleep for 100us
             except Exception as e:
                 traceback.print_exc()
 
@@ -461,13 +465,13 @@ class FocusStabilizer(QObject):
 
 
 class FocusStabilizerView(Tree):
-    setRoiActivated = pyqtSignal()
-    saveActivated = pyqtSignal()
-    loadActivated = pyqtSignal()
+    setRoiActivated = Signal()
+    saveActivated = Signal()
+    loadActivated = Signal()
 
     def __init__(
         self,
-        parent: Optional['QWidget'] = None,
+        parent: Optional['QtWidgets.QWidget'] = None,
         focusStabilizer: FocusStabilizer = None,
     ):
         '''
@@ -636,9 +640,9 @@ class FocusStabilizerView(Tree):
             {'name': str(FocusStabilizerParams.PEAK_STOP), 'type': 'action'},
         ]
 
-        self.param_tree = Parameter.create(name='root', type='group', children=params)
+        self.param_tree = Parameter.create(name='', type='group', children=params)
         self.param_tree.sigTreeStateChanged.connect(self.change)
-        self.header().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        self.header().setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
 
         self.get_param(FocusStabilizerParams.SET_ROI).sigActivated.connect(
             self.setRoiActivated.emit
@@ -719,7 +723,7 @@ class FocusStabilizerView(Tree):
         if FocusStabilizer.instance().file is None:
             filename = None
             if filename is None:
-                filename, _ = QFileDialog.getSaveFileName(
+                filename, _ = getSaveFileName(
                     self, 'Save Focus Peak Data', filter='CSV Files (*.csv)'
                 )
 

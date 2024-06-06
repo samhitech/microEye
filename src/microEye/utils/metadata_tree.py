@@ -5,13 +5,11 @@ from typing import Any, Optional, Union
 import ome_types.model as om
 from ome_types.model import *
 from ome_types.model.simple_types import PixelType, UnitsLength, UnitsTime
-from PyQt5.QtCore import *
-from PyQt5.QtGui import *
-from PyQt5.QtWidgets import *
 from pyqtgraph.parametertree import Parameter, ParameterTree
 from pyqtgraph.parametertree.parameterTypes import ActionParameter, GroupParameter
 
-from .parameter_tree import Tree
+from microEye.qt import QtWidgets, getOpenFileName, getSaveFileName
+from microEye.utils.parameter_tree import Tree
 
 
 class MetaParams(Enum):
@@ -136,7 +134,7 @@ class MetadataEditorTree(Tree):
     Suggestions for excitation filters that can be used.
     '''
 
-    def __init__(self, parent: Optional['QWidget'] = None):
+    def __init__(self, parent: Optional['QtWidgets.QWidget'] = None):
         '''
         Initialize the MetadataEditorTree.
 
@@ -163,36 +161,36 @@ class MetadataEditorTree(Tree):
             ]},
             {'name': 'Image', 'type': 'group', 'children': [
                 {'name': str(MetaParams.PIXEL_TYPE), 'type': 'list',
-                 'values': PixelType._member_names_, 'value': PixelType.UINT16.name},
+                 'limits': PixelType._member_names_, 'value': PixelType.UINT16.name},
                 {'name': str(MetaParams.PX_SIZE), 'type': 'float',
                  'value': 117.5, 'limits': [0.0, 10000.0], 'decimals': 5},
                 {'name': str(MetaParams.PY_SIZE), 'type': 'float',
                  'value': 117.5, 'limits': [0.0, 10000.0], 'decimals': 5},
                 {'name': str(MetaParams.P_UNIT), 'type': 'list',
-                 'values': UnitsLength._member_names_,
+                 'limits': UnitsLength._member_names_,
                  'value': UnitsLength.NANOMETER.name},
                 {'name': str(MetaParams.CHANNEL_NAME), 'type': 'str', 'value': 'CAM_1'},
                 {'name': str(MetaParams.FLUOR_NAME), 'type': 'str', 'value': ''},
                 {'name': str(MetaParams.EXPOSURE), 'type': 'float',
                  'value': 100.0, 'limits': [0.0, 10000.0], 'decimals': 5},
                 {'name': str(MetaParams.EXPOSURE_UNIT), 'type': 'list',
-                 'values': UnitsTime._member_names_,
+                 'limits': UnitsTime._member_names_,
                  'value': UnitsTime.MILLISECOND.name},
                 {'name': str(MetaParams.ACQ_MODE), 'type': 'list',
-                 'values': Channel_AcquisitionMode._member_names_,
+                 'limits': Channel_AcquisitionMode._member_names_,
                  'value': Channel_AcquisitionMode.SINGLE_MOLECULE_IMAGING.name},
                 {'name': str(MetaParams.ILL_TYPE), 'type': 'list',
-                 'values': Channel_IlluminationType._member_names_,
+                 'limits': Channel_IlluminationType._member_names_,
                  'value': Channel_IlluminationType.OTHER.name},
                 {'name': str(MetaParams.CONTRAST), 'type': 'list',
-                 'values': Channel_ContrastMethod._member_names_,
+                 'limits': Channel_ContrastMethod._member_names_,
                  'value': Channel_ContrastMethod.FLUORESCENCE.name},
                 {'name': str(MetaParams.EXCITATION), 'type': 'float',
                  'value': 638, 'limits': [0.0, 10000.0], 'decimals': 5},
                 {'name': str(MetaParams.EMISSION), 'type': 'float',
                  'value': 670, 'limits': [0.0, 10000.0], 'decimals': 5},
                 {'name': str(MetaParams.WAVE_UNIT), 'type': 'list',
-                 'values': UnitsLength._member_names_,
+                 'limits': UnitsLength._member_names_,
                  'value': UnitsLength.NANOMETER.name},
             ]},
             {'name': 'Instruments', 'type': 'group', 'children': [
@@ -209,32 +207,32 @@ class MetadataEditorTree(Tree):
                 {'name': str(MetaParams.OBJ_NOM_MAG), 'type': 'float',
                  'value': 60.0, 'limits': [0.0, 1000.0], 'decimals': 5},
                 {'name': str(MetaParams.OBJ_IMMERSION), 'type': 'list',
-                 'values': Objective_Immersion._member_names_,
+                 'limits': Objective_Immersion._member_names_,
                  'value': Objective_Immersion.OIL.name},
                 {'name': str(MetaParams.OBJ_CORR), 'type': 'list',
-                 'values' : Objective_Correction._member_names_,
+                 'limits': Objective_Correction._member_names_,
                  'value': Objective_Correction.PLAN_APO.name},
                 {'name': str(MetaParams.DET_MANUFACTURER), 'type': 'str',
                  'value': 'Allied Vision'},
                 {'name': str(MetaParams.DET_MODEL), 'type': 'str', 'value': 'U-511m'},
                 {'name': str(MetaParams.DET_SERIAL), 'type': 'str', 'value': ''},
                 {'name': str(MetaParams.DET_TYPE), 'type': 'list',
-                 'values': Detector_Type._member_names_,
+                 'limits': Detector_Type._member_names_,
                  'value': Detector_Type.CMOS.name},
                 {'name': str(MetaParams.DICHROIC_MANUFACTURER),
                  'type': 'str', 'value': ''},
                 {'name': str(MetaParams.DICHROIC_MODEL), 'type': 'list', 'value': '',
-                 'values': self.DICHROIC_SUGGESTIONS},
+                 'limits': self.DICHROIC_SUGGESTIONS},
                 {'name': str(MetaParams.DICHROIC_MODEL_BTN), 'type': 'action'},
                 {'name': str(MetaParams.DICHROIC_MODEL_LIST), 'type': 'group',
                  'children': []},
                 {'name': str(MetaParams.EXFILTER_MODEL), 'type': 'list', 'value': '',
-                 'values': self.EXCITATION_FILTERS},
+                 'limits': self.EXCITATION_FILTERS},
                 {'name': str(MetaParams.EXFILTER_MODEL_BTN), 'type': 'action'},
                 {'name': str(MetaParams.EXFILTER_MODEL_LIST), 'type': 'group',
                  'children': []},
                 {'name': str(MetaParams.EMFILTER_MODEL), 'type': 'list', 'value': '',
-                 'values': self.EMISSION_FILTERS},
+                 'limits': self.EMISSION_FILTERS},
                 {'name': str(MetaParams.EMFILTER_MODEL_BTN), 'type': 'action'},
                 {'name': str(MetaParams.EMFILTER_MODEL_LIST), 'type': 'group',
                  'children': []},
@@ -247,10 +245,10 @@ class MetadataEditorTree(Tree):
             ]},
         ]
 
-        self.param_tree = Parameter.create(name='root', type='group', children=params)
+        self.param_tree = Parameter.create(name='', type='group', children=params)
         self.param_tree.sigTreeStateChanged.connect(self.change)
         self.header().setSectionResizeMode(
-            QHeaderView.ResizeMode.ResizeToContents)
+            QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
 
         self.get_param(
             MetaParams.DICHROIC_MODEL_BTN).sigActivated.connect(
@@ -326,7 +324,7 @@ class MetadataEditorTree(Tree):
         None
         '''
         try:
-            filename, _ = QFileDialog.getSaveFileName(
+            filename, _ = getSaveFileName(
                 self, 'Save metadata', filter='OME-XML Files (*.ome.xml);;')
             if filename:
                 ome_obj = self.gen_OME_XML(1, 512, 512)
@@ -344,7 +342,7 @@ class MetadataEditorTree(Tree):
         None
         '''
         try:
-            filename, _ = QFileDialog.getOpenFileName(
+            filename, _ = getOpenFileName(
                 self, 'Load metadata', filter='OME-XML Files (*.ome.xml);;')
             if filename:
                 xml = ''

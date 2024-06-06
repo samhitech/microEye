@@ -7,22 +7,11 @@ import matplotlib.pyplot as plt
 import numba as nb
 import numpy as np
 import tifffile as tf
-from PyQt5.QtCore import Qt, QThreadPool, pyqtSignal
-from PyQt5.QtWidgets import (
-    QComboBox,
-    QFileDialog,
-    QFormLayout,
-    QLabel,
-    QPushButton,
-    QTableWidget,
-    QVBoxLayout,
-    QWidget,
-)
-from pyqtgraph.functions import interpolateArray
 
-from ...shared.gui_helper import *
-from ...shared.thread_worker import thread_worker
-from ...shared.uImage import TiffSeqHandler, ZarrImageSequence, uImage
+from microEye.qt import Qt, QtCore, QtWidgets, Signal, getOpenFileName, getSaveFileName
+from microEye.utils.gui_helper import *
+from microEye.utils.thread_worker import thread_worker
+from microEye.utils.uImage import TiffSeqHandler, ZarrImageSequence, uImage
 
 
 class MultiLineROISelector:
@@ -40,9 +29,12 @@ class MultiLineROISelector:
         self.original = image_data.copy()
         self.resize_factor = resize_factor
         self.resized_empty: np.ndarray = cv2.resize(
-            self.original, (0, 0),
-            fx=self.resize_factor, fy=self.resize_factor,
-            interpolation=cv2.INTER_NEAREST)
+            self.original,
+            (0, 0),
+            fx=self.resize_factor,
+            fy=self.resize_factor,
+            interpolation=cv2.INTER_NEAREST,
+        )
         self.resized_image = self.resized_empty.copy()
 
         self.rois = []  # List store multiple ROIs, each represented as a list of points
@@ -87,9 +79,10 @@ class MultiLineROISelector:
             x1, y1 = self.rois[self.active_roi_idx][idx]
             x2, y2 = self.rois[self.active_roi_idx][idx + 1]
 
-            segment_length = np.sqrt((x1 - x2)**2 + (y1 - y2)**2)
-            sum_distance = np.sqrt((x1 - x)**2 + (y1 - y)**2) + \
-                np.sqrt((x2 - x)**2 + (y2 - y)**2)
+            segment_length = np.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
+            sum_distance = np.sqrt((x1 - x) ** 2 + (y1 - y) ** 2) + np.sqrt(
+                (x2 - x) ** 2 + (y2 - y) ** 2
+            )
 
             # Calculate the distance from the cursor to the line segment
             distance = sum_distance / segment_length
@@ -149,8 +142,12 @@ class MultiLineROISelector:
         if len(points) > 1:
             line_thickness = int(1 * self.resize_factor)
             cv2.polylines(
-                image, [(np.array(points) * self.resize_factor).astype(int)],
-                isClosed=False, color=color, thickness=line_thickness)
+                image,
+                [(np.array(points) * self.resize_factor).astype(int)],
+                isClosed=False,
+                color=color,
+                thickness=line_thickness,
+            )
 
     def redraw(self):
         '''
@@ -169,7 +166,10 @@ class MultiLineROISelector:
                 cv2.circle(
                     self.resized_image,
                     np.array(point * self.resize_factor).astype(int),
-                    circle_radius, color, -1)
+                    circle_radius,
+                    color,
+                    -1,
+                )
             self.update_polyline(self.resized_image, roi, color)
 
             # Add text annotation for ROI number/index
@@ -184,14 +184,15 @@ class MultiLineROISelector:
                     0.5,
                     color,
                     1,
-                    cv2.LINE_AA
+                    cv2.LINE_AA,
                 )
 
         cv2.imshow('Select Line ROIs', self.resized_image)
         cv2.setWindowTitle(
             'Select Line ROIs',
-            f'Select Line ROIs "Mode: {self.current_mode}"' + \
-                ' (Space: change mode | Q: quit)')
+            f'Select Line ROIs "Mode: {self.current_mode}"'
+            + ' (Space: change mode | Q: quit)',
+        )
 
     def mouse_callback(self, event, x, y, flags, param):
         '''
@@ -215,8 +216,9 @@ class MultiLineROISelector:
                 for roi_idx, roi in enumerate(self.rois):
                     for idx, point in enumerate(roi):
                         dist = np.linalg.norm(
-                            np.array(point) - [
-                                x / self.resize_factor, y / self.resize_factor])
+                            np.array(point)
+                            - [x / self.resize_factor, y / self.resize_factor]
+                        )
                         if dist < 10:
                             self.dragging = True
                             self.drag_idx = idx
@@ -227,17 +229,20 @@ class MultiLineROISelector:
                 self.rois.append([])
                 self.active_roi_idx = len(self.rois) - 1
                 self.rois[self.active_roi_idx].append(
-                    np.array((x / self.resize_factor, y / self.resize_factor)))
+                    np.array((x / self.resize_factor, y / self.resize_factor))
+                )
 
                 self.cycle_mode()
             elif self.current_mode == 'Append':
                 if self.active_roi_idx != -1:
                     self.rois[self.active_roi_idx].append(
-                        np.array((x / self.resize_factor, y / self.resize_factor)))
+                        np.array((x / self.resize_factor, y / self.resize_factor))
+                    )
             elif self.current_mode == 'Remove':
                 if self.active_roi_idx != -1:
                     remove_idx = self.remove_point(
-                        x / self.resize_factor, y / self.resize_factor)
+                        x / self.resize_factor, y / self.resize_factor
+                    )
                     if remove_idx != -1:
                         del self.rois[self.active_roi_idx][remove_idx]
 
@@ -253,19 +258,23 @@ class MultiLineROISelector:
             elif self.current_mode == 'Insert':
                 if self.active_roi_idx != -1:
                     res = self.insert_index(
-                        (x / self.resize_factor, y / self.resize_factor))
+                        (x / self.resize_factor, y / self.resize_factor)
+                    )
                     if res > 0:
                         self.rois[self.active_roi_idx].insert(
-                            res, np.array(
-                                (x / self.resize_factor, y / self.resize_factor)))
+                            res,
+                            np.array((x / self.resize_factor, y / self.resize_factor)),
+                        )
             self.redraw()
         elif event == cv2.EVENT_LBUTTONUP:
             self.dragging = False
         elif event == cv2.EVENT_MOUSEMOVE:
             if self.dragging and 0 <= self.drag_idx < len(
-                    self.rois[self.active_roi_idx]):
+                self.rois[self.active_roi_idx]
+            ):
                 self.rois[self.active_roi_idx][self.drag_idx] = np.array(
-                    (x / self.resize_factor, y / self.resize_factor))
+                    (x / self.resize_factor, y / self.resize_factor)
+                )
             self.redraw()
         elif event == cv2.EVENT_MOUSEWHEEL:
             if flags > 0:
@@ -273,16 +282,19 @@ class MultiLineROISelector:
             else:
                 self.resize_factor = max(0.1, self.resize_factor - 0.05)
             self.resized_empty = cv2.resize(
-                self.original, (0, 0),
-                fx=self.resize_factor, fy=self.resize_factor,
-                interpolation=cv2.INTER_NEAREST)
+                self.original,
+                (0, 0),
+                fx=self.resize_factor,
+                fy=self.resize_factor,
+                interpolation=cv2.INTER_NEAREST,
+            )
             self.redraw()
 
     def cycle_mode(self):
         self.modes.put(self.current_mode)
         self.current_mode = self.modes.get()
 
-    def select_line_rois(self, offset: tuple[int, int]=None):
+    def select_line_rois(self, offset: tuple[int, int] = None):
         '''
         Start the interactive process of selecting multiple polyline ROIs.
 
@@ -316,8 +328,10 @@ class MultiLineROISelector:
                     self.active_roi_idx = (self.active_roi_idx + 1) % len(self.rois)
                     self.redraw()
             elif key == 3014656:  # Delete
-                if self.active_roi_idx != -1 and len(
-                    self.rois[self.active_roi_idx]) > 0:
+                if (
+                    self.active_roi_idx != -1
+                    and len(self.rois[self.active_roi_idx]) > 0
+                ):
                     del self.rois[self.active_roi_idx][-1]
 
                     # Check if the ROI is empty after deletion
@@ -363,7 +377,8 @@ class MultiLineROISelector:
 
         if image.ndim != 2:
             raise ValueError(
-                f'Parameter image should be an array with ndim = 2, not {image.ndim}.')
+                f'Parameter image should be an array with ndim = 2, not {image.ndim}.'
+            )
 
         # Convert monochromatic image to RGB
         _image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
@@ -371,7 +386,8 @@ class MultiLineROISelector:
         # Select a multi-point line ROI with the specified resize factor
         return MultiLineROISelector(_image, resize_factor)
 
-@nb.njit
+
+@nb.njit(cache=True)
 def get_move_lines(linewidth: int):
     '''
     Generate an array representing movement lines for a given linewidth.
@@ -418,11 +434,12 @@ def get_move_lines(linewidth: int):
     else:
         return width_indices * 1.0  # Ensure it's a Numba-compatible float
 
-@nb.njit
+
+@nb.njit(cache=True)
 def get_kymogram_row(
-        Data: np.ndarray, X: np.ndarray, Y: np.ndarray,
-        linewidth=1, method='average'):
-    '''
+    Data: np.ndarray, X: np.ndarray, Y: np.ndarray, linewidth=1, method='average'
+):
+    """
     Generate a polyline ROI data to construct a kymogram from the given data
     along specified X and Y coordinates.
 
@@ -443,7 +460,7 @@ def get_kymogram_row(
     -------
     np.ndarray
         1D array representing a kymogram row.
-    '''
+    """
     diffX, diffY = np.diff(X), np.diff(Y)
     lengths = np.hypot(diffX, diffY)
 
@@ -467,25 +484,37 @@ def get_kymogram_row(
         for move_line in move_lines:
             x_idx = np.round(x + move_line * dx).astype(np.int64)
             y_idx = np.round(y + move_line * dy).astype(np.int64)
-            with nb.objmode():
-                np.clip(x_idx, 0, Data.shape[1]-1, x_idx)
-                np.clip(y_idx, 0, Data.shape[0]-1, y_idx)
+
+            # Manually implement np.clip for x_idx and y_idx
+            x_idx = np.minimum(np.maximum(x_idx, 0), Data.shape[1] - 1)
+            y_idx = np.minimum(np.maximum(y_idx, 0), Data.shape[0] - 1)
+
+            # Iterating to fill temp with appropriate values from Data
+            for i in range(len(x_idx)):
                 if method == 'maximum':
-                    temp[:] = np.maximum(temp, Data[y_idx, x_idx])
+                    temp[i] = max(temp[i], Data[y_idx[i], x_idx[i]])
                 else:
-                    temp[:] = temp + Data[y_idx, x_idx]
+                    temp[i] += Data[y_idx[i], x_idx[i]]
+
         if method == 'average' and linewidth > 1:
-            Roi[lut[idx]:lut[idx+1]] = temp / len(move_lines)
+            Roi[lut[idx] : lut[idx + 1]] = temp / len(move_lines)
         else:
-            Roi[lut[idx]:lut[idx+1]] = temp
+            Roi[lut[idx] : lut[idx + 1]] = temp
 
     return Roi
 
+
 class Kymogram:
     def __init__(
-            self, data: np.ndarray, rois: list[np.ndarray],
-            linewidth: int, method: str, window: int, at_index: int,
-            window_location: str) -> None:
+        self,
+        data: np.ndarray,
+        rois: list[np.ndarray],
+        linewidth: int,
+        method: str,
+        window: int,
+        at_index: int,
+        window_location: str,
+    ) -> None:
         '''
         Initialize a Kymogram object.
 
@@ -571,7 +600,7 @@ class Kymogram:
 
     @classmethod
     def from_json(cls, filename):
-        '''
+        """
         Create a Kymogram object from a JSON file.
 
         Parameters
@@ -584,7 +613,7 @@ class Kymogram:
         Kymogram or None
             A Kymogram object created from the metadata in the JSON file,
             or None if the 'Kymogram' key is not present.
-        '''
+        """
         with open(filename) as json_file:
             metadata = json.load(json_file)
 
@@ -597,18 +626,16 @@ class Kymogram:
         linewidth = kymogram_metadata.get('linewidth', 0)
         method = kymogram_metadata.get('method', 'N/A')
         window = kymogram_metadata.get('window', -1)
-        window_location = kymogram_metadata.get(
-            'window_location', 'From Current')
+        window_location = kymogram_metadata.get('window_location', 'From Current')
         at_index = kymogram_metadata.get('at_index', 0)
 
-        kymogram = cls(
-            None, rois, linewidth, method, window, at_index, window_location)
+        kymogram = cls(None, rois, linewidth, method, window, at_index, window_location)
 
         return kymogram
 
     @classmethod
     def from_tiff(cls, filename):
-        '''
+        """
         Create a Kymogram object from a TIFF file with metadata.
 
         Parameters
@@ -621,7 +648,7 @@ class Kymogram:
         Kymogram or None
             A Kymogram object created from the metadata in the TIFF file,
             or None if the 'Kymogram' key is not present.
-        '''
+        """
         try:
             # Read TIFF file and extract metadata
             with tf.TiffFile(filename) as tiff:
@@ -635,22 +662,22 @@ class Kymogram:
             kymogram_metadata = metadata_dict.get('Kymogram', None)
             if kymogram_metadata is None:
                 # 'Kymogram' key is not present
-                kymogram = cls(
-                    data, np.array([]), 1, 'N/A', data.shape[0], 0, 'N/A')
+                kymogram = cls(data, np.array([]), 1, 'N/A', data.shape[0], 0, 'N/A')
 
                 return kymogram
             else:
-                rois = [
-                    np.array(roi) for roi in kymogram_metadata.get('points', [])]
+                rois = [np.array(roi) for roi in kymogram_metadata.get('points', [])]
                 linewidth = kymogram_metadata.get('linewidth', 0)
                 method = kymogram_metadata.get('method', 'N/A')
                 window = kymogram_metadata.get('window', -1)
                 window_location = kymogram_metadata.get(
-                    'window_location', 'From Current')
+                    'window_location', 'From Current'
+                )
                 at_index = kymogram_metadata.get('at_index', 0)
 
                 kymogram = cls(
-                    data, rois, linewidth, method, window, at_index, window_location)
+                    data, rois, linewidth, method, window, at_index, window_location
+                )
 
                 return kymogram
 
@@ -658,9 +685,10 @@ class Kymogram:
             print(f'Error reading TIFF file: {e}')
             return None
 
-class KymogramWidget(QWidget):
-    extractClicked = pyqtSignal()
-    displayClicked = pyqtSignal(np.ndarray)
+
+class KymogramWidget(QtWidgets.QWidget):
+    extractClicked = Signal()
+    displayClicked = Signal(np.ndarray)
 
     controls_description = [
         '<b>Q:</b> Quit',
@@ -672,35 +700,43 @@ class KymogramWidget(QWidget):
         '<b>R:</b> Remove points',
         '<b>C:</b> Clear all ROIs',
         '<b>Delete:</b> Delete the last added point',
-        '<b>Up/Down Arrows:</b> Select active ROI.'
+        '<b>Up/Down Arrows:</b> Select active ROI.',
     ]
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, **kwargs):
         super().__init__(parent)
-        self._threadpool = QThreadPool.globalInstance()
+        self._threadpool = QtCore.QThreadPool.globalInstance()
 
-        self.kymogram_temporal_window = create_spin_box(0, 100, 1, 50)
-        self.kymogram_linewidth = create_spin_box(1, 100, 1, 1)
+        self.kymogram_temporal_window = create_spin_box(
+            0, kwargs.get('max_window', 1000), 1, 50
+        )
+        self.kymogram_linewidth = create_spin_box(1, 1000, 1, 1)
 
-        self.temporal_window_location = QComboBox()
+        self.temporal_window_location = QtWidgets.QComboBox()
         self.temporal_window_location.addItems(
-            ['From Current', 'Current Central', 'To Current'])
+            ['From Current', 'Current Central', 'To Current']
+        )
 
-        self.kymogram_roi_selector = QComboBox()
+        self.kymogram_roi_selector = QtWidgets.QComboBox()
         self.kymogram_roi_selector.addItems(
-            ['current', 'average', 'maximum', 'sum', 'std'])
+            ['current', 'average', 'maximum', 'sum', 'std']
+        )
 
-        self.kymogram_roi_method = QComboBox()
+        self.kymogram_roi_method = QtWidgets.QComboBox()
         self.kymogram_roi_method.addItems(['average', 'maximum', 'sum'])
 
-        self.kymogram_btn = QPushButton(
-            'Extract', clicked=self.kymogram_btn_clicked)
-        self.kymogram_display_btn = QPushButton(
-            'Display', clicked=self.kymogram_display_clicked)
-        self.kymogram_save_btn = QPushButton(
-            'Save', clicked=self.kymogram_save_clicked)
-        self.kymogram_load_btn = QPushButton(
-            'Load', clicked=self.kymogram_load_clicked)
+        self.kymogram_btn = QtWidgets.QPushButton(
+            'Extract', clicked=self.kymogram_btn_clicked
+        )
+        self.kymogram_display_btn = QtWidgets.QPushButton(
+            'Display', clicked=self.kymogram_display_clicked
+        )
+        self.kymogram_save_btn = QtWidgets.QPushButton(
+            'Save', clicked=self.kymogram_save_clicked
+        )
+        self.kymogram_load_btn = QtWidgets.QPushButton(
+            'Load', clicked=self.kymogram_load_clicked
+        )
 
         self.previous_selector = create_check_box('Use previous ROI selector?', True)
 
@@ -708,43 +744,46 @@ class KymogramWidget(QWidget):
             self.kymogram_btn,
             self.kymogram_display_btn,
             self.kymogram_save_btn,
-            self.kymogram_load_btn
+            self.kymogram_load_btn,
         )
 
-        kymo_layout = QFormLayout(self)
+        kymo_layout = QtWidgets.QFormLayout(self)
         kymo_layout.addRow(
-            QLabel('Temporal Window [frames]:'), self.kymogram_temporal_window)
+            QtWidgets.QLabel('Temporal Window [frames]:'), self.kymogram_temporal_window
+        )
         kymo_layout.addRow(
-            QLabel('Window Range:'), self.temporal_window_location)
+            QtWidgets.QLabel('Window Range:'), self.temporal_window_location
+        )
         kymo_layout.addRow(
-            QLabel('Selector Displays:'), self.kymogram_roi_selector)
+            QtWidgets.QLabel('Selector Displays:'), self.kymogram_roi_selector
+        )
         kymo_layout.addRow(
-            QLabel('ROI Linewidth [pixels]:'), self.kymogram_linewidth)
-        kymo_layout.addRow(
-            QLabel('ROI Extracts:'), self.kymogram_roi_method)
+            QtWidgets.QLabel('ROI Linewidth [pixels]:'), self.kymogram_linewidth
+        )
+        kymo_layout.addRow(QtWidgets.QLabel('ROI Extracts:'), self.kymogram_roi_method)
         kymo_layout.addWidget(self.previous_selector)
-        kymo_layout.addRow(
-            kymogram_btns)
+        kymo_layout.addRow(kymogram_btns)
 
-        description_html = '; '.join(
-            KymogramWidget.controls_description)
-        wrapped_label = QLabel(
-            '<b>ROI Selector Controls:</b><br>' + description_html)
-        wrapped_label.setAlignment(Qt.AlignTop)
+        description_html = '; '.join(KymogramWidget.controls_description)
+        wrapped_label = QtWidgets.QLabel(
+            '<b>ROI Selector Controls:</b><br>' + description_html
+        )
+        wrapped_label.setAlignment(Qt.AlignmentFlag.AlignTop)
         wrapped_label.setWordWrap(True)
         kymo_layout.addRow(wrapped_label)
 
         # Create a QTableWidget
-        self.tableWidget = QTableWidget()
+        self.tableWidget = QtWidgets.QTableWidget()
 
         # Set the column count
         self.tableWidget.setColumnCount(3)
 
         # Set the headers
         self.tableWidget.setHorizontalHeaderLabels(['ROI index', 'X', 'Y'])
-        self.tableWidget.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+        self.tableWidget.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOn
+        )
         kymo_layout.addRow(self.tableWidget)
-
 
         self._kymogram: Kymogram = None  # Assuming you have a Kymogram instance
 
@@ -752,10 +791,12 @@ class KymogramWidget(QWidget):
         self.kymogram_temporal_window.setMaximum(value)
 
     def extract_kymogram(
-            self,
-            tiffSeq_Handler: Union[ZarrImageSequence, TiffSeqHandler],
-            current_frame: int, max_frame: int,
-            roi_info: tuple[int, int]=None):
+        self,
+        tiffSeq_Handler: Union[ZarrImageSequence, TiffSeqHandler],
+        current_frame: int,
+        max_frame: int,
+        roi_info: tuple[int, int] = None,
+    ):
         if tiffSeq_Handler is None:
             return
 
@@ -774,23 +815,28 @@ class KymogramWidget(QWidget):
                 else:
                     origin = (0, 0)
                 old_rois = [
-                    [np.array(point) - origin for point in roi.tolist()
-                     ] for roi in self._kymogram.rois]
+                    [np.array(point) - origin for point in roi.tolist()]
+                    for roi in self._kymogram.rois
+                ]
             else:
                 old_rois = None
 
             def work_func():
                 try:
-                    image = uImage(self.get_selector_image(
-                        tiffSeq_Handler, current_frame, window_range))
+                    image = uImage(
+                        self.get_selector_image(
+                            tiffSeq_Handler, current_frame, window_range
+                        )
+                    )
 
                     image.equalizeLUT()
 
                     if roi_info is not None:
                         origin, dim = roi_info
                         view = image._view[
-                            int(origin[1]):int(origin[1] + dim[1]),
-                            int(origin[0]):int(origin[0] + dim[0])]
+                            int(origin[1]) : int(origin[1] + dim[1]),
+                            int(origin[0]) : int(origin[0] + dim[0]),
+                        ]
                     else:
                         origin = None
                         view = image._view
@@ -808,8 +854,7 @@ class KymogramWidget(QWidget):
                         zero = np.zeros(1)
                         t_points = window_range[1] - window_range[0] + 1
                         for frame_idx in range(window_range[0], window_range[1] + 1):
-                            data = tiffSeq_Handler.getSlice(
-                                frame_idx, 0, 0)
+                            data = tiffSeq_Handler.getSlice(frame_idx, 0, 0)
                             rois_row = None
                             for points in rois:
                                 if len(points) > 1:
@@ -818,19 +863,33 @@ class KymogramWidget(QWidget):
                                         points[:, 0].flatten(),  # X points
                                         points[:, 1].flatten(),  # Y points
                                         linewidth,
-                                        roi_extracts
+                                        roi_extracts,
                                     )
-                                    rois_row = row if rois_row is None else \
-                                        np.concatenate([rois_row, zero, row])
-                            res = rois_row if res is None else np.vstack(
-                                [res, rois_row])
+                                    rois_row = (
+                                        row
+                                        if rois_row is None
+                                        else np.concatenate([rois_row, zero, row])
+                                    )
+                            res = (
+                                rois_row if res is None else np.vstack([res, rois_row])
+                            )
                             print(
                                 'Generating Kymogram ... {:.2f}%'.format(
-                                    100 * (res.shape[0] if res.ndim ==2 else 1
-                                     )/t_points), end='\r')
+                                    100
+                                    * (res.shape[0] if res.ndim == 2 else 1)
+                                    / t_points
+                                ),
+                                end='\r',
+                            )
                         return Kymogram(
-                            res, rois, linewidth, roi_extracts,
-                            t_points, current_frame, window_location)
+                            res,
+                            rois,
+                            linewidth,
+                            roi_extracts,
+                            t_points,
+                            current_frame,
+                            window_location,
+                        )
                     else:
                         return None
                 except Exception:
@@ -843,9 +902,7 @@ class KymogramWidget(QWidget):
                     self._kymogram = results
                     self.displayClicked.emit(results.data)
 
-            self.worker = thread_worker(
-                work_func,
-                progress=False, z_stage=False)
+            self.worker = thread_worker(work_func, progress=False, z_stage=False)
             self.worker.signals.result.connect(done)
             # Execute
             self.kymogram_btn.setDisabled(True)
@@ -866,44 +923,38 @@ class KymogramWidget(QWidget):
         if self._kymogram is None:
             return
 
-        filename, _ = QFileDialog.getSaveFileName(
-            self, 'Export Kymogram',
-            filter='Tiff files (*.tif);;')
+        filename, _ = getSaveFileName(
+            self, 'Export Kymogram', filter='Tiff files (*.tif);;'
+        )
 
         if len(filename) > 0:
             self._kymogram.to_tiff(filename)
 
     def kymogram_load_clicked(self):
-        filename, _ = QFileDialog.getOpenFileName(
-            self, 'Load Kymogram',
-            filter='Tiff files (*.tif);;')
+        filename, _ = getOpenFileName(
+            self, 'Load Kymogram', filter='Tiff files (*.tif);;'
+        )
 
         if len(filename) > 0:
             kymogram = Kymogram.from_tiff(filename)
             if kymogram is not None:
                 self._kymogram = kymogram
-                self.kymogram_linewidth.setValue(
-                    kymogram.linewidth)
-                self.kymogram_temporal_window.setValue(
-                    kymogram.window)
+                self.kymogram_linewidth.setValue(kymogram.linewidth)
+                self.kymogram_temporal_window.setValue(kymogram.window)
 
-                index = self.kymogram_roi_method.findText(
-                    kymogram.method)
+                index = self.kymogram_roi_method.findText(kymogram.method)
 
                 if index != -1:
                     self.kymogram_roi_method.setCurrentIndex(index)
 
-                index = self.temporal_window_location.findText(
-                    kymogram.window_location)
+                index = self.temporal_window_location.findText(kymogram.window_location)
 
                 if index != -1:
                     self.temporal_window_location.setCurrentIndex(index)
 
                 self.displayClicked.emit(self._kymogram.data)
 
-
-    def get_kymogram_window(
-            self, current_frame: int, max_frame: int):
+    def get_kymogram_window(self, current_frame: int, max_frame: int):
         '''
         Get the temporal window for generating a kymogram based on the selected option.
 
@@ -944,10 +995,11 @@ class KymogramWidget(QWidget):
                 return start_frame, end_frame
 
     def get_selector_image(
-            self,
-            tiffSeq_Handler: Union[ZarrImageSequence, TiffSeqHandler],
-            current_frame: int,
-            window_range: tuple[int, int]):
+        self,
+        tiffSeq_Handler: Union[ZarrImageSequence, TiffSeqHandler],
+        current_frame: int,
+        window_range: tuple[int, int],
+    ):
         condition = self.kymogram_roi_selector.currentText()
 
         if condition == 'current':
@@ -955,33 +1007,34 @@ class KymogramWidget(QWidget):
         elif condition == 'average':
             return np.mean(
                 tiffSeq_Handler.getSlice(
-                    slice(window_range[0], window_range[1] + 1),
-                    0, 0),
-                axis=0
-                )
+                    slice(window_range[0], window_range[1] + 1), 0, 0
+                ),
+                axis=0,
+            )
         elif condition == 'maximum':
             return np.max(
                 tiffSeq_Handler.getSlice(
-                    slice(window_range[0], window_range[1] + 1),
-                    0, 0),
-                axis=0
-                )
+                    slice(window_range[0], window_range[1] + 1), 0, 0
+                ),
+                axis=0,
+            )
         elif condition == 'sum':
             return np.sum(
                 tiffSeq_Handler.getSlice(
-                    slice(window_range[0], window_range[1] + 1),
-                    0, 0),
-                axis=0
-                )
+                    slice(window_range[0], window_range[1] + 1), 0, 0
+                ),
+                axis=0,
+            )
         elif condition == 'std':
             return np.std(
                 tiffSeq_Handler.getSlice(
-                    slice(window_range[0], window_range[1] + 1),
-                    0, 0),
-                axis=0
-                )
+                    slice(window_range[0], window_range[1] + 1), 0, 0
+                ),
+                axis=0,
+            )
 
         return image
+
 
 if __name__ == '__main__':
     # Example usage
@@ -997,8 +1050,8 @@ if __name__ == '__main__':
     # Draw the selected line on the resized image
     if len(roi_points) > 1:
         for roi in roi_points:
-            if  len(roi) > 1:
-                #-- Plot...
+            if len(roi) > 1:
+                # -- Plot...
                 fig, axes = plt.subplots(nrows=2)
                 axes[0].imshow(image)
                 axes[0].plot(roi[:, 0], roi[:, 1], 'ro-')
@@ -1011,8 +1064,10 @@ if __name__ == '__main__':
                         image,
                         roi[:, 0].flatten(),  # X points
                         roi[:, 1].flatten(),  # Y points
-                        linewidth),
-                    label=f'linewidth={linewidth}')
+                        linewidth,
+                    ),
+                    label=f'linewidth={linewidth}',
+                )
                 plt.legend()
                 plt.show()
             else:
