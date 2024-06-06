@@ -2,9 +2,9 @@
 import numba as nb
 from numba import cuda
 
-from ..constants import *
-from .GPUfunctions import *
-from .GPUsplineLib import *
+from microEye.analysis.fitting.pyfit3Dcspline.constants import *
+from microEye.analysis.fitting.pyfit3Dcspline.GPU.GPUfunctions import *
+from microEye.analysis.fitting.pyfit3Dcspline.GPU.GPUsplineLib import *
 
 
 @cuda.jit

@@ -5,26 +5,25 @@ import typing
 import numpy as np
 import pandas as pd
 import pyqtgraph as pg
-from PyQt5.QtCore import *
-from PyQt5.QtWidgets import *
+
+from microEye.qt import QApplication, QtWidgets, Signal
 
 
-class resultsStatsWidget(QWidget):
-    dataFilterUpdated = pyqtSignal(pd.DataFrame)
+class resultsStatsWidget(QtWidgets.QWidget):
+    dataFilterUpdated = Signal(pd.DataFrame)
 
-    def __init__(self, parent: typing.Optional['QWidget'] = None):
+    def __init__(self, parent: typing.Optional['QtWidgets.QWidget'] = None):
         super().__init__(parent=parent)
 
         minHeight = 125
 
-        self._layout = QVBoxLayout()
+        self._layout = QtWidgets.QVBoxLayout()
         self.setLayout(self._layout)
 
         self.plot_widgets = []
         self.plot_lr = []
 
-    def setData(
-            self, df: pd.DataFrame):
+    def setData(self, df: pd.DataFrame):
         self.plot_widgets = []
         self.plot_lr: list[pg.LinearRegionItem] = []
         self.clearLayout()
@@ -41,9 +40,7 @@ class resultsStatsWidget(QWidget):
             pw.setLabel('bottom', column, units='')
 
             bounds = [df[column].min(), df[column].max()]
-            lr = pg.LinearRegionItem(
-                bounds,
-                bounds=bounds, movable=True)
+            lr = pg.LinearRegionItem(bounds, bounds=bounds, movable=True)
             pw.addItem(lr)
 
             self.plot_widgets.append(pw)
@@ -57,12 +54,9 @@ class resultsStatsWidget(QWidget):
                 data = data[data.nonzero()]
 
                 if len(data) > 0:
-                    uniq, counts = np.unique(
-                        data, return_counts=True)
+                    uniq, counts = np.unique(data, return_counts=True)
 
-                    bars = pg.BarGraphItem(
-                        x=uniq, height=counts,
-                        width=0.9, brush='b')
+                    bars = pg.BarGraphItem(x=uniq, height=counts, width=0.9, brush='b')
                     pw.addItem(bars)
 
                     # pw.plot(
@@ -71,8 +65,8 @@ class resultsStatsWidget(QWidget):
                     #     brush=(0, 0, 255, 150))
                 else:
                     pw.plot(
-                        [0], [1],
-                        fillLevel=0, fillOutline=True, brush=(0, 0, 255, 150))
+                        [0], [1], fillLevel=0, fillOutline=True, brush=(0, 0, 255, 150)
+                    )
             else:
                 try:
                     if column in ['frame', 'x', 'y', 'z', 'iteration']:
@@ -84,19 +78,28 @@ class resultsStatsWidget(QWidget):
                     else:
                         mean = np.nanmean(df[column].to_numpy())
                         std = np.nanstd(df[column].to_numpy())
-                        min_val = max(
-                            mean - 10 * std,
-                            0)
-                        max_val = min(mean + 10 * std, 1e4)
+                        min_val = max(mean - 10 * std, 0)
+                        max_val = (
+                            max(mean + 10 * std, 1e4)
+                            if 'CRLB' in column
+                            else mean + 10 * std
+                        )
                     counts = df[column].count()
                     hist, bins = np.histogram(
                         df[column].to_numpy(),
-                        bins=min(counts+1, 1024), range=(min_val, max_val))
+                        bins=min(counts + 1, 1024),
+                        range=(min_val, max_val),
+                    )
                     lr.setRegion((min_val, max_val))
 
                     pw.plot(
-                        bins, hist / np.max(hist), stepMode='center',
-                        fillLevel=0, fillOutline=True, brush=(0, 0, 255, 150))
+                        bins,
+                        hist / np.max(hist),
+                        stepMode='center',
+                        fillLevel=0,
+                        fillOutline=True,
+                        brush=(0, 0, 255, 150),
+                    )
                 except Exception:
                     traceback.print_exc()
                     print(column)
@@ -112,14 +115,16 @@ class resultsStatsWidget(QWidget):
             widgetToRemove.setParent(None)
 
     def update(self):
-        mask = np.ones(self.df.count()[0], dtype=bool)
+        mask = np.ones(self.df.count().min(), dtype=bool)
         for idx, column in enumerate(self.df.columns):
             Rmin, Rmax = self.plot_lr[idx].getRegion()
             mask = np.logical_and(
                 mask,
                 np.logical_and(
                     self.df[column].to_numpy() >= Rmin,
-                    self.df[column].to_numpy() <= Rmax))
+                    self.df[column].to_numpy() <= Rmax,
+                ),
+            )
 
         self.filtered = self.df[mask]
 
@@ -132,4 +137,4 @@ if __name__ == '__main__':
     win.show()
     win.setData(5)
 
-    app.exec_()
+    app.exec()

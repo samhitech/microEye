@@ -4,7 +4,7 @@ from typing import Optional
 import numpy as np
 from tabulate import tabulate
 
-from .micam import miCamera
+from microEye.hardware.cams.micam import miCamera
 
 try:
     import vimba as vb

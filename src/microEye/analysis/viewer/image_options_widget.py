@@ -1,18 +1,24 @@
 import json
 from enum import Enum
 
-from PyQt5.QtCore import pyqtSignal
-from PyQt5.QtWidgets import (
-    QApplication,
-    QFileDialog,
-    QHeaderView,
-)
 from pyqtgraph.parametertree import Parameter, ParameterTree
 from pyqtgraph.parametertree.parameterTypes import GroupParameter
 
-from ..filters import BANDPASS_TYPES, AbstractFilter, BandpassFilter, DoG_Filter
-from ..fitting.fit import AbstractDetector, CV_BlobDetector
-from ..fitting.results import FittingMethod
+from microEye.analysis.filters import (
+    BANDPASS_TYPES,
+    AbstractFilter,
+    BandpassFilter,
+    DoG_Filter,
+)
+from microEye.analysis.fitting.fit import AbstractDetector, CV_BlobDetector
+from microEye.analysis.fitting.results import FittingMethod
+from microEye.qt import (
+    QApplication,
+    QtWidgets,
+    Signal,
+    getOpenFileName,
+    getSaveFileName,
+)
 
 FITTING_METHODS = {
     '2D Phasor-Fit (CPU)': FittingMethod._2D_Phasor_CPU,
@@ -63,11 +69,11 @@ class Parameters(Enum):
     IMPORT_STATE = 'Settings.Import'
 
 class ImagePrefitWidget(ParameterTree):
-    saveCropped = pyqtSignal()
-    localizeData = pyqtSignal()
-    paramsChanged = pyqtSignal(GroupParameter, list)
-    roiEnabled = pyqtSignal()
-    roiChanged = pyqtSignal(tuple)
+    saveCropped = Signal()
+    localizeData = Signal()
+    paramsChanged = Signal(GroupParameter, list)
+    roiEnabled = Signal()
+    roiChanged = Signal(tuple)
 
     DETECTORS = list(DETECTORS.keys())
     FILTERS = list(FILTERS.keys())
@@ -109,7 +115,7 @@ class ImagePrefitWidget(ParameterTree):
                      'limits': [1, 2048], 'step': 1, 'suffix': 'frame'},
                     ]},
                 {'name': 'Filter', 'type': 'list',
-                 'values': self.FILTERS,
+                 'limits': self.FILTERS,
                  'value': self.FILTERS[0]},
                 {'name': self.FILTERS[0], 'type': 'group', 'children': [
                     {'name': 'Sigma', 'type': 'float', 'value': 1.0,
@@ -121,7 +127,7 @@ class ImagePrefitWidget(ParameterTree):
                     ]},
                 {'name': self.FILTERS[1], 'type': 'group', 'children': [
                     {'name': 'Type', 'type': 'list',
-                    'values': self.BANDPASS_TYPES,
+                    'limits': self.BANDPASS_TYPES,
                     'value': self.BANDPASS_TYPES[0]},
                     {'name': 'Center', 'type': 'float', 'value': 40.0,
                      'limits': [0.0, 2096.0], 'step': 0.5, 'decimals': 2,
@@ -134,7 +140,7 @@ class ImagePrefitWidget(ParameterTree):
             ]},
             {'name': 'Prefit', 'type': 'group', 'children': [
                 {'name': 'Prefit Detector', 'type': 'list',
-                 'values': self.DETECTORS,
+                 'limits': self.DETECTORS,
                  'value': self.DETECTORS[0]},
                 {'name': self.DETECTORS[0], 'type': 'group', 'children': [
                     {'name': 'Min Area', 'type': 'float', 'value': 1.5,
@@ -151,12 +157,12 @@ class ImagePrefitWidget(ParameterTree):
             ]},
             {'name': 'Localization', 'type': 'group', 'children': [
                 {'name': 'Fitting Method', 'type': 'list',
-                 'values': self.FITTING_METHODS,
+                 'limits': self.FITTING_METHODS,
                  'value': self.FITTING_METHODS[0]},
                 {'name': 'GPU', 'type': 'bool', 'value': True,
                  'tip': 'Try GPU-accelerated fitting if possible.'},
                 {'name': 'ROI Size', 'type': 'int', 'value': 13,
-                    'limits': [7, 99], 'step': 2, 'suffix': 'pixel'},
+                    'limits': [7, 201], 'step': 2, 'suffix': 'pixel'},
                 {'name': 'Pixel-size', 'type': 'float', 'value': 114.17,
                  'limits': [0.0, 20000], 'step': 1, 'decimals': 2,
                  'suffix': 'nm'},
@@ -168,20 +174,22 @@ class ImagePrefitWidget(ParameterTree):
             ]},
         ]
 
-        self.param_tree = Parameter.create(name='root', type='group', children=params)
+        self.param_tree = Parameter.create(name='', type='group', children=params)
         self.param_tree.sigTreeStateChanged.connect(self.change)
         self.setParameters(self.param_tree, showTop=False)
         self.header().setSectionResizeMode(
-            QHeaderView.ResizeMode.Stretch)
+            QtWidgets.QHeaderView.ResizeMode.Stretch)
 
         self.get_param(
-            Parameters.LOCALIZE.value).sigActivated.connect(self.localizeData.emit)
+            Parameters.LOCALIZE.value).sigActivated.connect(
+                lambda: self.localizeData.emit())
         self.get_param(
             Parameters.IMPORT_STATE.value).sigActivated.connect(self.load_json)
         self.get_param(
             Parameters.EXPORT_STATE.value).sigActivated.connect(self.export_json)
         self.get_param(
-            Parameters.SAVE_CROPPED_IMAGE.value).sigActivated.connect(self.saveCropped.emit)
+            Parameters.SAVE_CROPPED_IMAGE.value).sigActivated.connect(
+                lambda: self.saveCropped.emit())
 
     def get_param(self, param_name: str) -> Parameter:
         '''
@@ -217,13 +225,13 @@ class ImagePrefitWidget(ParameterTree):
         for param, change, data in changes:
             path = self.param_tree.childPath(param)
             if len(path) > 1:
-                print('  parameter: %s'% path[-1])
-                print('  parent: %s'% path[-2])
+                print(f'  parameter: {path[-1]}')
+                print(f'  parent: {path[-2]}')
             else:
                 childName = '.'.join(path) if path is not None else param.name()
-                print('  parameter: %s'% childName)
-            print('  change:    %s'% change)
-            print('  data:      %s'% str(data))
+                print(f'  parameter: {childName}')
+            print(f'  change:    {change}')
+            print(f'  data:      {str(data)}')
             print('  ----------')
 
     def set_roi(self, x: int, y: int, width: int, height: int):
@@ -234,7 +242,7 @@ class ImagePrefitWidget(ParameterTree):
 
     def get_image_filter(self) -> AbstractFilter:
         value = self.get_param(Parameters.FILTER.value).value()
-        filter_class = FILTERS.get(value, None)
+        filter_class = FILTERS.get(value)
         if filter_class is DoG_Filter:
             filter: DoG_Filter = self._filters.get(value, None)
             if filter is None:
@@ -270,7 +278,7 @@ class ImagePrefitWidget(ParameterTree):
 
     def get_detector(self) -> AbstractDetector:
         value = self.get_param(Parameters.PREFIT_DETECTOR.value).value()
-        detector_class = DETECTORS.get(value, None)
+        detector_class = DETECTORS.get(value)
         if detector_class is CV_BlobDetector:
             detector: CV_BlobDetector = self._detectors.get(value, None)
             if detector is None:
@@ -292,7 +300,7 @@ class ImagePrefitWidget(ParameterTree):
         return FITTING_METHODS[value]
 
     def export_json(self):
-        filename, _ = QFileDialog.getSaveFileName(
+        filename, _ = getSaveFileName(
             None,
             'Save Parameters', '', 'JSON Files (*.json);;All Files (*)')
         if not filename:
@@ -304,7 +312,7 @@ class ImagePrefitWidget(ParameterTree):
 
     # Load parameters from JSON
     def load_json(self):
-        filename, _ = QFileDialog.getOpenFileName(
+        filename, _ = getOpenFileName(
             None, 'Load Parameters',
             '', 'JSON Files (*.json);;All Files (*)')
         if not filename:
@@ -318,4 +326,4 @@ if __name__ == '__main__':
     app = QApplication([])
     my_app = ImagePrefitWidget()
     my_app.show()
-    app.exec_()
+    app.exec()

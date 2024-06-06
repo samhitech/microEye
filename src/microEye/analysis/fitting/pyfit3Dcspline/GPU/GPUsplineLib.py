@@ -4,8 +4,8 @@ import math
 import numba as nb
 from numba import cuda
 
-from ..constants import NV_PSP
-from .GPUfunctions import *
+from microEye.analysis.fitting.pyfit3Dcspline.constants import NV_PSP
+from microEye.analysis.fitting.pyfit3Dcspline.GPU.GPUfunctions import *
 
 
 @cuda.jit(device=True)

@@ -3,7 +3,7 @@ from ctypes import *
 
 import numpy as np
 
-from .micam import miCamera
+from microEye.hardware.cams.micam import miCamera
 
 try:
     from pyueye import ueye

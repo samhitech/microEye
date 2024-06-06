@@ -2,26 +2,22 @@ import re
 from enum import Enum
 from typing import Optional, Union, overload
 
-from PyQt5.QtCore import *
-from PyQt5.QtGui import *
-from PyQt5.QtSerialPort import *
-from PyQt5.QtWidgets import *
 from pyqtgraph.parametertree import Parameter
 
-from ...shared import Tree
-from ..port_config import port_config
-from .stabilizer import FocusStabilizer
+from microEye.hardware.port_config import port_config
+from microEye.hardware.stages.stabilizer import FocusStabilizer
+from microEye.qt import QtCore, QtSerialPort, QtWidgets, Signal
+from microEye.utils import Tree
 
 
 class stage:
-
     def __init__(self) -> None:
         '''
         Initialize the stage object.
 
         This method initializes the `stage` object with the starter values.
         '''
-        self._connect_btn = QPushButton()
+        self._connect_btn = QtWidgets.QPushButton()
         self.ZPosition = 50000
         self.LastCmd = ''
         self.Received = ''
@@ -37,10 +33,12 @@ class stage:
         '''
         return False
 
+
 class StageParams(Enum):
     '''
     Enum class defining Stage parameters.
     '''
+
     MODEL = 'Model'
 
     HOME = 'Home'
@@ -81,12 +79,13 @@ class StageParams(Enum):
         '''
         return self.value.split('.')
 
-class PzFocSignals(QObject):
-    positionChanged = pyqtSignal(float)
+
+class PzFocSignals(QtCore.QObject):
+    positionChanged = Signal(float)
+
 
 class PzFoc(stage):
-    '''PiezoConcept FOC 1-axis stage adapter.
-    '''
+    '''PiezoConcept FOC 1-axis stage adapter.'''
 
     def __init__(self):
         '''
@@ -98,10 +97,7 @@ class PzFoc(stage):
 
         self.max = 100 * 1000
 
-        self.serial = QSerialPort(
-            None,
-            readyRead=self.rx_piezo
-        )
+        self.serial = QtSerialPort.QSerialPort(None, readyRead=self.rx_piezo)
         self.serial.setBaudRate(115200)
         self.serial.setPortName('COM5')
 
@@ -112,7 +108,7 @@ class PzFoc(stage):
     def open(self):
         '''Opens the serial port.'''
         if not self.isOpen():
-            self.serial.open(QIODevice.OpenModeFlag.ReadWrite)
+            self.serial.open(QtCore.QIODevice.OpenModeFlag.ReadWrite)
 
     def close(self):
         '''Closes the supplied serial port.'''
@@ -152,16 +148,14 @@ class PzFoc(stage):
         return self.serial.write(value)
 
     def GETZ(self):
-        '''Gets the current stage position along the Z axis.
-        '''
-        if (self.isOpen()):
+        '''Gets the current stage position along the Z axis.'''
+        if self.isOpen():
             self.write(b'GET_Z\n')
             self.LastCmd = 'GETZ'
 
     def HOME(self):
-        '''Centers the stage position along the Z axis.
-        '''
-        if (self.isOpen()):
+        '''Centers the stage position along the Z axis.'''
+        if self.isOpen():
             self.ZPosition = self.max // 2
             self.write(b'MOVEZ 50u\n')
             self.LastCmd = 'MOVRZ'
@@ -170,8 +164,8 @@ class PzFoc(stage):
         '''Refresh the stage position
         to the set value in case of discrepancy.
         '''
-        if (self.isOpen()):
-            self.write(('MOVEZ '+str(self.ZPosition)+'n\n').encode('utf-8'))
+        if self.isOpen():
+            self.write(('MOVEZ ' + str(self.ZPosition) + 'n\n').encode('utf-8'))
             self.LastCmd = 'MOVEZ'
 
     def UP(self, step: int):
@@ -188,10 +182,9 @@ class PzFoc(stage):
         IOError
             If the serial port is not open or an error occurs while writing.
         '''
-        if (self.isOpen()):
+        if self.isOpen():
             self.ZPosition = min(max(self.ZPosition + step, 0), self.max)
-            self.write(
-                ('MOVEZ '+str(self.ZPosition)+'n\n').encode('utf-8'))
+            self.write(('MOVEZ ' + str(self.ZPosition) + 'n\n').encode('utf-8'))
             self.LastCmd = 'MOVEZ'
 
     def DOWN(self, step: int):
@@ -208,10 +201,9 @@ class PzFoc(stage):
         IOError
             If the serial port is not open or an error occurs while writing.
         '''
-        if (self.isOpen()):
+        if self.isOpen():
             self.ZPosition = min(max(self.ZPosition - step, 0), self.max)
-            self.write(
-                ('MOVEZ '+str(self.ZPosition)+'n\n').encode('utf-8'))
+            self.write(('MOVEZ ' + str(self.ZPosition) + 'n\n').encode('utf-8'))
             self.LastCmd = 'MOVEZ'
 
     def rx_piezo(self):
@@ -227,9 +219,7 @@ class PzFoc(stage):
         IOError
             If the serial port is not open, or an error occurs while reading.
         '''
-        self.Received = str(
-            self.serial.readAll(),
-            encoding='utf8')
+        self.Received = str(self.serial.readAll(), encoding='utf8')
         if self.LastCmd != 'GETZ':
             self.GETZ()
         else:
@@ -241,8 +231,11 @@ class PzFoc(stage):
         '''Generates a PzFocView with stage controls.'''
         return PzFocView(stage=self)
 
+
 class PzFocView(Tree):
-    def __init__(self, parent: Optional['QWidget'] = None, stage: PzFoc = None):
+    def __init__(
+        self, parent: Optional['QtWidgets.QWidget'] = None, stage: PzFoc = None
+    ):
         '''
         Initialize the PzFocView instance.
 
@@ -262,8 +255,8 @@ class PzFocView(Tree):
         super().__init__(parent=parent)
 
         self.stage.signals.positionChanged.connect(
-            lambda value: self.set_param_value(
-                StageParams.Z_POSITION, value))
+            lambda value: self.set_param_value(StageParams.Z_POSITION, value)
+        )
 
     def create_parameters(self):
         '''
@@ -273,59 +266,103 @@ class PzFocView(Tree):
         `PzFocView` class.
         '''
         params = [
-            {'name': str(StageParams.MODEL),
-                'type': 'str', 'value': 'PiezoConcept FOC 1-axis', 'readonly': True},
+            {
+                'name': str(StageParams.MODEL),
+                'type': 'str',
+                'value': 'PiezoConcept FOC 1-axis',
+                'readonly': True,
+            },
             {'name': str(StageParams.HOME), 'type': 'action'},
             {'name': str(StageParams.REFRESH), 'type': 'action'},
             {'name': str(StageParams.JUMP_P), 'type': 'action'},
             {'name': str(StageParams.STEP_P), 'type': 'action'},
             {'name': str(StageParams.STEP_N), 'type': 'action'},
             {'name': str(StageParams.JUMP_N), 'type': 'action'},
-            {'name': str(StageParams.SERIAL_PORT), 'type': 'group', 'children': [
-                {'name': str(StageParams.PORT), 'type': 'list',
-                 'values': [
-                     info.portName() for info in QSerialPortInfo.availablePorts()]},
-                {'name': str(StageParams.BAUDRATE), 'type': 'list', 'value': 115200,
-                 'values': [
-                     baudrate for baudrate in QSerialPortInfo.standardBaudRates()]},
-                {'name': str(StageParams.SET_PORT), 'type': 'action'},
-                {'name': str(StageParams.OPEN), 'type': 'action'},
-                {'name': str(StageParams.CLOSE), 'type': 'action'},
-                {'name': str(StageParams.PORT_STATE),
-                 'type': 'str', 'value': 'closed', 'readonly': True},
-            ]},
-            {'name': str(StageParams.READINGS), 'type': 'group', 'children': [
-                {'name': str(StageParams.Z_POSITION),
-                 'type': 'float', 'value': 0.0, 'readonly': True, 'decimals': 6},
-            ]},
-            {'name': str(StageParams.OPTIONS), 'type': 'group', 'children': [
-                {'name': str(StageParams.STEP),
-                'type': 'int', 'value': 100, 'limits': [1, 1000], 'step': 5},
-                {'name': str(StageParams.JUMP),
-                'type': 'int', 'value': 1, 'limits': [1, 100], 'step': 5},
-            ]},
+            {
+                'name': str(StageParams.SERIAL_PORT),
+                'type': 'group',
+                'children': [
+                    {
+                        'name': str(StageParams.PORT),
+                        'type': 'list',
+                        'limits': [
+                            info.portName()
+                            for info in QtSerialPort.QSerialPortInfo.availablePorts()
+                        ],
+                    },
+                    {
+                        'name': str(StageParams.BAUDRATE),
+                        'type': 'list',
+                        'value': 115200,
+                        'limits': [
+                            baudrate
+                            for baudrate in \
+                                QtSerialPort.QSerialPortInfo.standardBaudRates()
+                        ],
+                    },
+                    {'name': str(StageParams.SET_PORT), 'type': 'action'},
+                    {'name': str(StageParams.OPEN), 'type': 'action'},
+                    {'name': str(StageParams.CLOSE), 'type': 'action'},
+                    {
+                        'name': str(StageParams.PORT_STATE),
+                        'type': 'str',
+                        'value': 'closed',
+                        'readonly': True,
+                    },
+                ],
+            },
+            {
+                'name': str(StageParams.READINGS),
+                'type': 'group',
+                'children': [
+                    {
+                        'name': str(StageParams.Z_POSITION),
+                        'type': 'float',
+                        'value': 0.0,
+                        'readonly': True,
+                        'decimals': 6,
+                    },
+                ],
+            },
+            {
+                'name': str(StageParams.OPTIONS),
+                'type': 'group',
+                'children': [
+                    {
+                        'name': str(StageParams.STEP),
+                        'type': 'int',
+                        'value': 100,
+                        'limits': [1, 1000],
+                        'step': 5,
+                    },
+                    {
+                        'name': str(StageParams.JUMP),
+                        'type': 'int',
+                        'value': 1,
+                        'limits': [1, 100],
+                        'step': 5,
+                    },
+                ],
+            },
             {'name': str(StageParams.REMOVE), 'type': 'action'},
         ]
 
-        self.param_tree = Parameter.create(name='root', type='group', children=params)
+        self.param_tree = Parameter.create(name='', type='group', children=params)
         self.param_tree.sigTreeStateChanged.connect(self.change)
         self.header().setSectionResizeMode(
-            QHeaderView.ResizeMode.ResizeToContents)
+            QtWidgets.QHeaderView.ResizeMode.ResizeToContents
+        )
 
-        self.get_param(
-            StageParams.SET_PORT).sigActivated.connect(self.set_config)
-        self.get_param(
-            StageParams.OPEN).sigActivated.connect(lambda: self.stage.open())
-        self.get_param(
-            StageParams.CLOSE).sigActivated.connect(lambda: self.stage.close())
+        self.get_param(StageParams.SET_PORT).sigActivated.connect(self.set_config)
+        self.get_param(StageParams.OPEN).sigActivated.connect(lambda: self.stage.open())
+        self.get_param(StageParams.CLOSE).sigActivated.connect(
+            lambda: self.stage.close()
+        )
 
-        self.get_param(
-            StageParams.REMOVE).sigActivated.connect(self.remove_widget)
+        self.get_param(StageParams.REMOVE).sigActivated.connect(self.remove_widget)
 
-        self.get_param(
-            StageParams.HOME).sigActivated.connect(self.stage.HOME)
-        self.get_param(
-            StageParams.REFRESH).sigActivated.connect(self.stage.REFRESH)
+        self.get_param(StageParams.HOME).sigActivated.connect(self.stage.HOME)
+        self.get_param(StageParams.REFRESH).sigActivated.connect(self.stage.REFRESH)
 
     def set_config(self):
         '''Sets the serial port configuration.
@@ -334,10 +371,8 @@ class PzFocView(Tree):
         settings in the parameter tree.
         '''
         if not self.stage.isOpen():
-            self.stage.setPortName(
-                self.get_param_value(StageParams.PORT))
-            self.stage.setBaudRate(
-                self.get_param_value(StageParams.BAUDRATE))
+            self.stage.setPortName(self.get_param_value(StageParams.PORT))
+            self.stage.setBaudRate(self.get_param_value(StageParams.BAUDRATE))
 
     def remove_widget(self):
         '''
@@ -351,10 +386,9 @@ class PzFocView(Tree):
         else:
             print(f'Disconnect FOC stage before removing!')
 
+
 class PzFocController:
-    def  __init__(
-            self,
-            stage: PzFoc = None, view: PzFocView = None):
+    def __init__(self, stage: PzFoc = None, view: PzFocView = None):
         '''
         Initialize the PzFocController class.
 
@@ -373,22 +407,56 @@ class PzFocController:
         self.stage = stage if stage else PzFoc()
         self.view = view if view else PzFocView(stage=self.stage)
 
-        self.view.get_param(
-            StageParams.JUMP_P).sigActivated.connect(
-                lambda: self.moveStage(
-                    True, self.view.get_param_value(StageParams.JUMP) * 1000, True))
-        self.view.get_param(
-            StageParams.JUMP_N).sigActivated.connect(
-                lambda: self.moveStage(
-                    False, self.view.get_param_value(StageParams.JUMP) * 1000, True))
-        self.view.get_param(
-            StageParams.STEP_P).sigActivated.connect(
-                lambda: self.moveStage(
-                    True, self.view.get_param_value(StageParams.STEP), True))
-        self.view.get_param(
-            StageParams.STEP_N).sigActivated.connect(
-                lambda: self.moveStage(
-                    False, self.view.get_param_value(StageParams.STEP), True))
+        self.view.get_param(StageParams.JUMP_P).sigActivated.connect(
+            lambda: self.moveStage(
+                True, self.view.get_param_value(StageParams.JUMP) * 1000, True
+            )
+        )
+        self.view.get_param(StageParams.JUMP_N).sigActivated.connect(
+            lambda: self.moveStage(
+                False, self.view.get_param_value(StageParams.JUMP) * 1000, True
+            )
+        )
+        self.view.get_param(StageParams.STEP_P).sigActivated.connect(
+            lambda: self.moveStage(
+                True, self.view.get_param_value(StageParams.STEP), True
+            )
+        )
+        self.view.get_param(StageParams.STEP_N).sigActivated.connect(
+            lambda: self.moveStage(
+                False, self.view.get_param_value(StageParams.STEP), True
+            )
+        )
+
+    def setPortName(self, value: str):
+        '''
+        Set the name of the serial port.
+
+        Parameters
+        ----------
+        value : str
+            The name of the serial port.
+        '''
+        self.stage.serial.setPortName(value)
+        self.view.set_param_value(StageParams.PORT, value)
+
+    def setBaudRate(self, value: int):
+        '''
+        Set the baud rate of the serial port.
+
+        Parameters
+        ----------
+        value : int
+            The baud rate of the serial port.
+        '''
+        self.stage.serial.setBaudRate(value)
+        self.view.set_param_value(StageParams.BAUDRATE, value)
+
+    def connect(self):
+        '''
+        Opens the stage serial port.
+        '''
+        self.stage.open()
 
     def isOpen(self):
         '''
@@ -426,15 +494,11 @@ class PzFocController:
         '''
         if incerement:
             step = self.view.get_param_value(StageParams.STEP)
-            self.view.set_param_value(
-                StageParams.STEP,
-                step + value)
+            self.view.set_param_value(StageParams.STEP, step + value)
         else:
             self.view.set_param_value(StageParams.STEP, value)
 
-    def moveStage(
-            self, dir: bool,
-            step_arg: Union[int, bool], interface: bool = False):
+    def moveStage(self, dir: bool, step_arg: Union[int, bool], interface: bool = False):
         '''
         Move the stage in a specified direction by a specified
         number of steps in nanometers. Optional boolean argument
@@ -462,12 +526,16 @@ class PzFocController:
                 step_arg = self.view.get_param_value(StageParams.STEP)
 
         focusStabilizer = FocusStabilizer.instance()
-        if focusStabilizer is not None and focusStabilizer.isFocusStabilized() \
-                and focusStabilizer.useCal() and interface:
+        if (
+            focusStabilizer is not None
+            and focusStabilizer.isFocusStabilized()
+            and focusStabilizer.useCal()
+            and interface
+        ):
             sign = 1 if dir else -1
             focusStabilizer.setPeakPosition(
-                focusStabilizer.pixelCalCoeff() * step_arg * sign,
-                True)
+                focusStabilizer.pixelCalCoeff() * step_arg * sign, True
+            )
         else:
             self.stage.UP(step_arg) if dir else self.stage.DOWN(step_arg)
 
@@ -479,17 +547,21 @@ class PzFocController:
         to reflect the current state of the serial port.
         '''
         self.view.set_param_value(
-            StageParams.PORT_STATE,
-            'open' if self.isOpen() else 'closed')
+            StageParams.PORT_STATE, 'open' if self.isOpen() else 'closed'
+        )
 
     def refreshPorts(self):
-        '''
+        """
         Refreshes the available serial ports list in the GUI.
 
         This method updates the list of available serial ports in the GUI by fetching
         the current list of available ports and setting it as the options for the
         'QSerial Port' parameter in the parameter tree.
-        '''
+        """
         if not self.isOpen():
-            self.view.get_param(StageParams.PORT).setLimits([
-                info.portName() for info in QSerialPortInfo.availablePorts()])
+            self.view.get_param(StageParams.PORT).setLimits(
+                [
+                    info.portName()
+                    for info in QtSerialPort.QSerialPortInfo.availablePorts()
+                ]
+            )

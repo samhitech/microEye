@@ -1,31 +1,7 @@
 import sys
 from typing import Callable, Union
 
-from PyQt5.QtCore import QEvent, QPointF, QRectF, Qt
-from PyQt5.QtGui import (
-    QBrush,
-    QColor,
-    QFont,
-    QKeyEvent,
-    QLinearGradient,
-    QPainter,
-    QPen,
-)
-from PyQt5.QtWidgets import (
-    QApplication,
-    QGraphicsDropShadowEffect,
-    QGraphicsItem,
-    QGraphicsRectItem,
-    QGraphicsScene,
-    QGraphicsSceneMouseEvent,
-    QGraphicsSceneWheelEvent,
-    QGraphicsSimpleTextItem,
-    QGraphicsView,
-    QInputDialog,
-    QMainWindow,
-    QMenu,
-    QUndoStack,
-)
+from microEye.qt import QApplication, Qt, QtCore, QtGui, QtWidgets
 
 
 class BaseAction:
@@ -43,6 +19,7 @@ class BaseAction:
     name : str
         The name of the action instance.
     '''
+
     id_counter = 1  # Global counter for action IDs
     NAME = 'Base Action'
 
@@ -126,6 +103,7 @@ class ActionGroup(BaseAction):
     child_actions : list
         List of child actions.
     '''
+
     NAME = 'Action Group'
 
     def __init__(self):
@@ -157,6 +135,7 @@ class ForLoop(ActionGroup):
     repeat_count : int
         The number of times to repeat the child actions.
     '''
+
     NAME = 'For Loop'
 
     def __init__(self, repeat_count=3):
@@ -207,7 +186,7 @@ class ForLoop(ActionGroup):
         return f'{self.name}; {self.repeat_count} times'
 
 
-class BaseActionItem(QGraphicsRectItem):
+class BaseActionItem(QtWidgets.QGraphicsRectItem):
     '''
     Base class for graphical representation of action items in the scene.
 
@@ -226,6 +205,7 @@ class BaseActionItem(QGraphicsRectItem):
     MIN_HEIGHT : int
         Minimum height of the item.
     '''
+
     TOP_MARGIN = 30
     H_MARGIN = 10
     VSPACING = 5
@@ -233,9 +213,10 @@ class BaseActionItem(QGraphicsRectItem):
     MIN_HEIGHT = 50
 
     def __init__(
-            self,
-            action: Union[ActionGroup, ForLoop, SimpleAction, FunctionCall],
-            parent=None):
+        self,
+        action: Union[ActionGroup, ForLoop, SimpleAction, FunctionCall],
+        parent=None,
+    ):
         '''
         Initialize a new BaseActionItem instance.
 
@@ -247,15 +228,15 @@ class BaseActionItem(QGraphicsRectItem):
             The parent item, by default None.
         '''
         super().__init__(parent)
-        self.setFlag(QGraphicsItem.ItemIsMovable)
-        self.setFlag(QGraphicsItem.ItemIsSelectable)
+        self.setFlag(QtWidgets.QGraphicsItem.ItemIsMovable)
+        self.setFlag(QtWidgets.QGraphicsItem.ItemIsSelectable)
 
         self.action = action
-        self.text_item = QGraphicsSimpleTextItem(str(action), self)
+        self.text_item = QtWidgets.QGraphicsSimpleTextItem(str(action), self)
         self.text_item.setPos(5, 5)
         # Set font for the text item
-        font = QFont('Consolas', 10)
-        text_color = QColor('#FFFFFF')
+        font = QtGui.QFont('Consolas', 10)
+        text_color = QtGui.QColor('#FFFFFF')
         self.text_item.setFont(font)
         self.text_item.setBrush(text_color)
 
@@ -263,27 +244,24 @@ class BaseActionItem(QGraphicsRectItem):
             self.MIN_WIDTH, self.text_item.boundingRect().width() + self.H_MARGIN
         )
 
-        self.setRect(QRectF(
-            0, 0,
-            self.MIN_WIDTH,
-            self.MIN_HEIGHT))
+        self.setRect(QtCore.QRectF(0, 0, self.MIN_WIDTH, self.MIN_HEIGHT))
 
         # Set dark background color
-        background_color = QColor('#333333')  # Adjust the color as needed
+        background_color = QtGui.QColor('#333333')  # Adjust the color as needed
         self.setBrush(background_color)
 
         # Set white border
-        border_color = QColor('#AAAAAA')  # Set border color to white
-        self.setPen(QPen(border_color, 1))  # Adjust the pen width as needed
+        border_color = QtGui.QColor('#AAAAAA')  # Set border color to white
+        self.setPen(QtGui.QPen(border_color, 1))  # Adjust the pen width as needed
 
         # Add a subtle shadow effect
-        shadow = QGraphicsDropShadowEffect()
+        shadow = QtWidgets.QGraphicsDropShadowEffect()
         shadow.setBlurRadius(5)
-        shadow.setColor(QColor('#000000'))  # Adjust the shadow color as needed
+        shadow.setColor(QtGui.QColor('#000000'))  # Adjust the shadow color as needed
         shadow.setOffset(2, 2)
         self.setGraphicsEffect(shadow)
 
-    def mouseDoubleClickEvent(self, event: QGraphicsSceneMouseEvent):
+    def mouseDoubleClickEvent(self, event: QtWidgets.QGraphicsSceneMouseEvent):
         '''
         Handle mouse double-click events for editing properties.
 
@@ -295,21 +273,26 @@ class BaseActionItem(QGraphicsRectItem):
             The mouse event.
         '''
         if isinstance(self.action, ForLoop):
-            text, ok = QInputDialog.getInt(
-                None, 'Edit Repeat Count', 'Enter new repeat count:',
-                value=self.action.repeat_count)
+            text, ok = QtWidgets.QInputDialog.getInt(
+                None,
+                'Edit Repeat Count',
+                'Enter new repeat count:',
+                value=self.action.repeat_count,
+            )
             if ok:
                 self.action.setRepeatCount(text)
                 self.text_item.setText(str(self.action))
         else:
-            text, ok = QInputDialog.getText(None, 'Edit Properties', 'Enter new name:')
+            text, ok = QtWidgets.QInputDialog.getText(
+                None, 'Edit Properties', 'Enter new name:'
+            )
             if ok and text:
                 self.action.name = text
                 self.text_item.setText(str(self.action))
 
         self.update_layout()
 
-    def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent):
+    def mouseMoveEvent(self, event: QtWidgets.QGraphicsSceneMouseEvent):
         """
         Handle mouse move events for dragging.
 
@@ -329,10 +312,16 @@ class BaseActionItem(QGraphicsRectItem):
             parent_rect = parent.boundingRect()
             new_pos.setX(parent_rect.left() + self.H_MARGIN // 2)
             new_pos.setY(
-                max(parent_rect.top() + self.TOP_MARGIN, min(
-                    new_pos.y(),
-                    parent_rect.bottom() - self.boundingRect().height() - self.VSPACING)
-                ))
+                max(
+                    parent_rect.top() + self.TOP_MARGIN,
+                    min(
+                        new_pos.y(),
+                        parent_rect.bottom()
+                        - self.boundingRect().height()
+                        - self.VSPACING,
+                    ),
+                )
+            )
 
             self.setPos(new_pos)
             parent.update_layout_recursive()
@@ -342,8 +331,7 @@ class BaseActionItem(QGraphicsRectItem):
         Update the layout of the item.
         '''
         if isinstance(self, ActionGroupItem):
-            max_width = max(
-                [item.boundingRect().width() for item in self.child_items])
+            max_width = max([item.boundingRect().width() for item in self.child_items])
         else:
             # Update the minimum width based on the updated text content
             self.MIN_WIDTH = max(
@@ -352,12 +340,12 @@ class BaseActionItem(QGraphicsRectItem):
             max_width = self.MIN_WIDTH
 
         self.setRect(
-            0, 0,
-            max(self.MIN_WIDTH, max_width + self.H_MARGIN),
-            self.MIN_HEIGHT)
+            0, 0, max(self.MIN_WIDTH, max_width + self.H_MARGIN), self.MIN_HEIGHT
+        )
 
         if isinstance(self.parentItem(), ActionGroupItem):
             self.parentItem().update_layout_recursive()
+
 
 class ActionGroupItem(BaseActionItem):
     '''
@@ -430,8 +418,7 @@ class ActionGroupItem(BaseActionItem):
         '''
         total_height = self.TOP_MARGIN
         if self.child_items:
-            max_width = max(
-                [item.boundingRect().width() for item in self.child_items])
+            max_width = max([item.boundingRect().width() for item in self.child_items])
         else:
             max_width = self.MIN_WIDTH
 
@@ -441,9 +428,11 @@ class ActionGroupItem(BaseActionItem):
             total_height += height + self.VSPACING
 
         self.setRect(
-            0, 0,
+            0,
+            0,
             max(self.MIN_WIDTH, max_width + self.H_MARGIN),
-            max(self.MIN_HEIGHT, total_height))
+            max(self.MIN_HEIGHT, total_height),
+        )
 
     def add_child_item_by_type(self, action_type):
         '''
@@ -489,6 +478,7 @@ ACTION_TYPE_TO_ITEM = {
     ForLoop: ActionGroupItem,
 }
 
+
 def get_action_item(action: BaseAction):
     '''
     Get the appropriate action item based on the action type.
@@ -509,7 +499,8 @@ def get_action_item(action: BaseAction):
 
     return action_item_class(action)
 
-class ZoomableGraphicsView(QGraphicsView):
+
+class ZoomableGraphicsView(QtWidgets.QGraphicsView):
     '''
     Custom QGraphicsView with zooming and key event handling.
 
@@ -533,18 +524,18 @@ class ZoomableGraphicsView(QGraphicsView):
             The root item in the scene.
         '''
         super().__init__(scene)
-        self.setRenderHint(QPainter.Antialiasing, True)
-        self.setRenderHint(QPainter.TextAntialiasing, True)
-        self.setRenderHint(QPainter.SmoothPixmapTransform, True)
-        self.setRenderHint(QPainter.HighQualityAntialiasing, True)
+        self.setRenderHint(QtGui.QPainter.Antialiasing, True)
+        self.setRenderHint(QtGui.QPainter.TextAntialiasing, True)
+        self.setRenderHint(QtGui.QPainter.SmoothPixmapTransform, True)
+        self.setRenderHint(QtGui.QPainter.HighQualityAntialiasing, True)
 
         self.root = root
 
         # Set dark background color for the view
-        background_color = QColor('#1E1E1E')  # Adjust the color as needed
+        background_color = QtGui.QColor('#1E1E1E')  # Adjust the color as needed
         self.setBackgroundBrush(background_color)
 
-    def wheelEvent(self, event: QGraphicsSceneWheelEvent):
+    def wheelEvent(self, event: QtWidgets.QGraphicsSceneWheelEvent):
         '''
         Handle wheel events for zooming.
 
@@ -624,30 +615,56 @@ class ZoomableGraphicsView(QGraphicsView):
         event : QContextMenuEvent
             The context menu event.
         '''
-        context_menu = QMenu()
+        context_menu = QtWidgets.QMenu()
 
         # Add option to add different types
         add_menu = context_menu.addMenu('Add')
-        add_menu.addAction(
-            'Simple Action', lambda: self.add_child(SimpleAction))
-        add_menu.addAction(
-            'Function Call', lambda: self.add_child(FunctionCall))
-        add_menu.addAction(
-            'For Loop', lambda: self.add_child(ForLoop))
+        add_menu.addAction('Simple Action', lambda: self.add_child(SimpleAction))
+        add_menu.addAction('Function Call', lambda: self.add_child(FunctionCall))
+        add_menu.addAction('For Loop', lambda: self.add_child(ForLoop))
 
         # Add Move submenu
         move_submenu = context_menu.addMenu('Move')
-        move_submenu.addAction('Up', lambda: self.keyPressEvent(
-            QKeyEvent(
-                QEvent.Type.KeyPress, Qt.Key.Key_PageUp, Qt.NoModifier, 0, 0, 0)
-                ))
-        move_submenu.addAction('Down', lambda: self.keyPressEvent(
-            QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_PageDown, Qt.NoModifier, 0, 0, 0)
-                ))
+        move_submenu.addAction(
+            'Up',
+            lambda: self.keyPressEvent(
+                QtGui.QKeyEvent(
+                    QtCore.QEvent.Type.KeyPress,
+                    Qt.Key.Key_PageUp,
+                    Qt.NoModifier,
+                    0,
+                    0,
+                    0,
+                )
+            ),
+        )
+        move_submenu.addAction(
+            'Down',
+            lambda: self.keyPressEvent(
+                QtGui.QKeyEvent(
+                    QtCore.QEvent.Type.KeyPress,
+                    Qt.Key.Key_PageDown,
+                    Qt.NoModifier,
+                    0,
+                    0,
+                    0,
+                )
+            ),
+        )
 
-        context_menu.addAction('Delete', lambda: self.keyPressEvent(
-            QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Delete, Qt.NoModifier, 0, 0, 0)
-                ))
+        context_menu.addAction(
+            'Delete',
+            lambda: self.keyPressEvent(
+                QtGui.QKeyEvent(
+                    QtCore.QEvent.Type.KeyPress,
+                    Qt.Key.Key_Delete,
+                    Qt.NoModifier,
+                    0,
+                    0,
+                    0,
+                )
+            ),
+        )
 
         # Add Execute action
         context_menu.addAction('Execute', self.execute_item)
@@ -679,14 +696,14 @@ class ZoomableGraphicsView(QGraphicsView):
         print('Importing protocol')
 
 
-class ActionEditor(QMainWindow):
+class ActionEditor(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.undo_stack = QUndoStack(self)
+        self.undo_stack = QtWidgets.QUndoStack(self)
 
         self.root = ActionGroupItem(ActionGroup())
-        self.scene = QGraphicsScene(self)
+        self.scene = QtWidgets.QGraphicsScene(self)
         self.view = ZoomableGraphicsView(self.scene, self.root)
         self.setCentralWidget(self.view)
 
@@ -696,9 +713,8 @@ class ActionEditor(QMainWindow):
         self.add_action(FunctionCall(), self.root)
         self.add_action(ForLoop(), self.root)
 
-
         # Set dark background color for the scene
-        background_color = QColor('#1E1E1E')  # Adjust the color as needed
+        background_color = QtGui.QColor('#1E1E1E')  # Adjust the color as needed
         self.scene.setBackgroundBrush(background_color)
 
     def add_action(self, action, parent_item=None):
@@ -716,4 +732,4 @@ if __name__ == '__main__':
     app = QApplication(sys.argv)
     editor = ActionEditor()
     editor.show()
-    sys.exit(app.exec_())
+    sys.exit(app.exec())

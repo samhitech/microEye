@@ -1,38 +1,34 @@
-import json
 import os
+import sys
 from enum import Enum
-from typing import Any, Optional, Union
+from typing import Any, Optional
 
-import ome_types.model as om
-from ome_types.model import *
-from ome_types.model.simple_types import PixelType, UnitsLength, UnitsTime
-from PyQt5.QtCore import *
-from PyQt5.QtGui import *
-from PyQt5.QtWidgets import *
-from pyqtgraph.parametertree import Parameter, ParameterTree
-from pyqtgraph.parametertree.parameterTypes import ActionParameter, GroupParameter
+from pyqtgraph.parametertree import Parameter
+from pyqtgraph.parametertree.parameterTypes import GroupParameter
 
-from ...shared.parameter_tree import Tree
+from microEye.qt import QApplication, QtWidgets, Signal
+from microEye.utils.parameter_tree import Tree
 
 
 class CamParams(Enum):
     '''
     Enum class defining Camera parameters.
     '''
-    CAMERA_OPTIONS = 'Camera'
+    ACQUISITION = 'Acquisition'
+    EXPERIMENT_NAME = 'Acquisition.Experiment Name'
+    FRAMES = 'Acquisition.Number of Frames'
+    SAVE_DATA = 'Acquisition.Save Data'
+    ACQ_SETTINGS = 'Acquisition Settings'
     CAMERA_GPIO = 'GPIOs'
     CAMERA_TIMERS = 'Timers'
-    EXPOSURE = 'Camera.Exposure Time'
-    EXPERIMENT_NAME = 'Options.Experiment Name'
-    FRAMES = 'Options.Number of Frames'
-    SAVE_DIRECTORY = 'Options.Save Directory'
-    SAVE_DATA = 'Options.Save Data'
-    DARK_CALIBRATION = 'Options.Dark Calibration'
-    IMAGE_FORMAT = 'Options.Image Format'
-    TIFF_FORMAT = 'Options.Tiff Format'
-    ZARR_FORMAT = 'Options.Zarr Format'
-    BIGG_TIFF_FORMAT = 'Options.BiggTiff Format'
-    FULL_METADATA = 'Options.Full Metadata'
+    EXPOSURE = 'Acquisition Settings.Exposure Time'
+    SAVE_DIRECTORY = 'Exports.Save Directory'
+    DARK_CALIBRATION = 'Exports.Dark Calibration'
+    IMAGE_FORMAT = 'Exports.Image Format'
+    TIFF_FORMAT = 'Exports.Tiff Format'
+    ZARR_FORMAT = 'Exports.Zarr Format'
+    BIGG_TIFF_FORMAT = 'Exports.BiggTiff Format'
+    FULL_METADATA = 'Exports.Full Metadata'
     CAPTURE_STATS = 'Stats.Capture'
     DISPLAY_STATS = 'Stats.Display'
     SAVE_STATS = 'Stats.Save'
@@ -85,11 +81,11 @@ class CameraOptions(Tree):
 
     Attributes
     ----------
-    paramsChanged : pyqtSignal
+    paramsChanged : Signal
         Signal for parameter changed event.
     '''
 
-    paramsChanged = pyqtSignal(GroupParameter, list)
+    paramsChanged: Signal = Signal(GroupParameter, list)
     '''Signal emitted when parameters are changed.
 
     Parameters
@@ -99,15 +95,15 @@ class CameraOptions(Tree):
     list
         A list of changes made to the parameter.
     '''
-    setROI = pyqtSignal()
-    resetROI = pyqtSignal()
-    centerROI = pyqtSignal()
-    selectROI = pyqtSignal()
-    selectROIs = pyqtSignal()
-    directoryChanged = pyqtSignal(str)
-    viewOptionChanged = pyqtSignal()
+    setROI: Signal = Signal()
+    resetROI: Signal = Signal()
+    centerROI: Signal = Signal()
+    selectROI: Signal = Signal()
+    selectROIs: Signal = Signal()
+    directoryChanged: Signal = Signal(str)
+    viewOptionChanged: Signal = Signal()
 
-    def __init__(self, parent: Optional['QWidget'] = None):
+    def __init__(self, parent: Optional['QtWidgets.QWidget'] = None):
         '''
         Initialize the CameraOptions.
 
@@ -123,37 +119,41 @@ class CameraOptions(Tree):
         Create the parameter tree structure.
         '''
         params = [
-            {'name': str(CamParams.CAMERA_OPTIONS), 'type': 'group', 'children': [
+            {'name': str(CamParams.ACQUISITION), 'type': 'group',
+             'expanded': True, 'children': [
+                 {'name': str(CamParams.EXPERIMENT_NAME),
+                'type': 'str', 'value': 'Experiment_001'},
+                {'name': str(CamParams.FRAMES),
+                'type': 'int', 'value': 1e6, 'limits': [1, 1e9]},
+                {'name': str(CamParams.SAVE_DATA), 'type': 'bool', 'value': False},
+             ]},
+            {'name': str(CamParams.ACQ_SETTINGS), 'type': 'group',
+             'expanded': False, 'children': [
                 {'name': str(CamParams.EXPOSURE), 'type': 'float',
                  'value': 100.0, 'dec': False, 'decimals': 6,
                  'suffixes': [' ns', ' us', ' ms', ' s']},
             ]},
-            {'name': 'Options', 'type': 'group', 'children': [
-                {'name': str(CamParams.EXPERIMENT_NAME),
-                'type': 'str', 'value': 'Experiment_001'},
-                {'name': str(CamParams.FRAMES),
-                'type': 'int', 'value': 1e6, 'limits': [1, 1e9]},
+            {'name': 'Exports', 'type': 'group', 'children': [
                 {'name': str(CamParams.SAVE_DIRECTORY), 'type': 'file',
                  'directory': os.path.join(os.path.expanduser('~'), 'Desktop'),
                  'fileMode': 'DirectoryOnly'},
-                {'name': str(CamParams.SAVE_DATA), 'type': 'bool', 'value': False},
                 {'name': str(CamParams.DARK_CALIBRATION),
                  'type': 'bool', 'value': False},
-                {'name': str(CamParams.IMAGE_FORMAT), 'type': 'list', 'values': [
+                {'name': str(CamParams.IMAGE_FORMAT), 'type': 'list', 'limits': [
                     str(CamParams.BIGG_TIFF_FORMAT), str(CamParams.TIFF_FORMAT),
                     str(CamParams.ZARR_FORMAT)
                 ]},
                 {'name': str(CamParams.FULL_METADATA), 'type': 'bool', 'value': True},
                 ]},
-            {'name': 'Display', 'type': 'group', 'children': [
+            {'name': 'Display', 'type': 'group', 'expanded': False, 'children': [
                 {'name': str(CamParams.PREVIEW), 'type': 'bool', 'value': True},
                 {'name': str(CamParams.DISPLAY_STATS_OPTION),
                  'type': 'bool', 'value': False},
                 {'name': str(CamParams.AUTO_STRETCH), 'type': 'bool', 'value': True},
-                {'name': str(CamParams.LUT), 'type': 'list', 'values': [
+                {'name': str(CamParams.LUT), 'type': 'list', 'limits': [
                     str(CamParams.LUT_NUMPY), str(CamParams.LUT_OPENCV)
                 ]},
-                {'name': str(CamParams.VIEW_OPTIONS), 'type': 'list', 'values': [
+                {'name': str(CamParams.VIEW_OPTIONS), 'type': 'list', 'limits': [
                     str(CamParams.SINGLE_VIEW), str(CamParams.DUAL_SIDE),
                     str(CamParams.DUAL_OVERLAID), str(CamParams.ROIS_VIEW)]},
                 {'name': str(CamParams.LINE_PROFILER), 'type': 'bool', 'value': False},
@@ -161,7 +161,7 @@ class CameraOptions(Tree):
                 'type': 'float', 'value': 0.5, 'limits': [0.1, 4.0],
                 'step': 0.02, 'dec': False},
             ]},
-            {'name': 'Stats', 'type': 'group', 'children': [
+            {'name': 'Stats', 'type': 'group', 'expanded': False, 'children': [
                 {'name': str(CamParams.CAPTURE_STATS),
                 'type': 'str', 'value': '0 | 0.00 ms', 'readonly': True},
                 {'name': str(CamParams.DISPLAY_STATS),
@@ -171,7 +171,8 @@ class CameraOptions(Tree):
                 {'name': str(CamParams.TEMPERATURE),
                 'type': 'str', 'value': ' T -127.00 °C', 'readonly': True},
             ]},
-            {'name': 'Region of Interest (ROI)', 'type': 'group', 'children': [
+            {'name': 'Region of Interest (ROI)', 'type': 'group',
+             'expanded': False, 'children': [
                 {'name': str(CamParams.ROI_X), 'type': 'int', 'value': 0},
                 {'name': str(CamParams.ROI_Y), 'type': 'int', 'value': 0},
                 {'name': str(CamParams.ROI_WIDTH), 'type': 'int', 'value': 0},
@@ -192,18 +193,20 @@ class CameraOptions(Tree):
                      'tip': 'Flip n-th ROIs horizontally for n > 1.'},
                 ]},
             ]},
-            {'name': str(CamParams.CAMERA_GPIO), 'type': 'group', 'children': [
+            {'name': str(CamParams.CAMERA_GPIO), 'type': 'group', 'expanded': False,
+             'children': [
             ]},
-            {'name': str(CamParams.CAMERA_TIMERS), 'type': 'group', 'children': [
+            {'name': str(CamParams.CAMERA_TIMERS), 'type': 'group', 'expanded': False,
+             'children': [
             ]},
             {'name': str(CamParams.EXPORT_STATE), 'type': 'action'},
             {'name': str(CamParams.IMPORT_STATE), 'type': 'action'},
         ]
 
-        self.param_tree = Parameter.create(name='root', type='group', children=params)
+        self.param_tree = Parameter.create(name='', type='group', children=params)
         self.param_tree.sigTreeStateChanged.connect(self.change)
         self.header().setSectionResizeMode(
-            QHeaderView.ResizeMode.Stretch)
+            QtWidgets.QHeaderView.ResizeMode.Stretch)
 
         self.get_param(
             CamParams.SAVE_DIRECTORY).sigValueChanged.connect(
@@ -513,4 +516,4 @@ if __name__ == '__main__':
     app = QApplication(sys.argv)
     window = CameraOptions()
     window.show()
-    sys.exit(app.exec_())
+    sys.exit(app.exec())

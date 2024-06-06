@@ -4,11 +4,10 @@ from typing import Optional
 
 import hid
 import numpy as np
-from PyQt5.QtCore import *
-from PyQt5.QtWidgets import *
 from pyqtgraph.parametertree import Parameter
 
-from .parameter_tree import Tree
+from microEye.qt import QApplication, QtCore, QtWidgets, Signal
+from microEye.utils.parameter_tree import Tree
 
 
 class Buttons(Enum):
@@ -211,7 +210,7 @@ class hidDevice:
 class hidController(Tree):
     '''QWidget for handling HID controller input.'''
     # Define signals with docstrings
-    reportEvent = pyqtSignal(Buttons)
+    reportEvent = Signal(Buttons)
     '''Signal emitted when a controller button event occurs.
 
     Parameters
@@ -220,7 +219,7 @@ class hidController(Tree):
         The enum member representing the button.
     '''
 
-    reportLStickPosition = pyqtSignal(int, int)
+    reportLStickPosition = Signal(int, int)
     '''Signal emitted when the left stick position changes.
 
     Parameters
@@ -231,7 +230,7 @@ class hidController(Tree):
         Y-axis position of the left stick.
     '''
 
-    reportRStickPosition = pyqtSignal(int, int)
+    reportRStickPosition = Signal(int, int)
     '''Signal emitted when the right stick position changes.
 
     Parameters
@@ -242,7 +241,7 @@ class hidController(Tree):
         Y-axis position of the right stick.
     '''
 
-    def __init__(self, parent: Optional['QWidget'] = None):
+    def __init__(self, parent: Optional['QtWidgets.QWidget'] = None):
         '''Initialize the HID controller widget.'''
         super().__init__(parent=parent)
 
@@ -255,7 +254,7 @@ class hidController(Tree):
         self.left_analog = (128, 127)
         self.right_analog = (128, 127)
 
-        self.timer = QTimer()
+        self.timer = QtCore.QTimer()
         self.timer.setInterval(1)
         self.timer.timeout.connect(self.recurring_timer)
         self.timer.start()
@@ -268,16 +267,16 @@ class hidController(Tree):
             {'name': str(hidParams.TITLE), 'type': 'group',
                 'children': []},
             {'name': str(hidParams.DEVICE), 'type': 'list',
-                'values': []},
+                'limits': []},
             {'name': str(hidParams.REFRESH), 'type': 'action'},
             {'name': str(hidParams.OPEN), 'type': 'action'},
             {'name': str(hidParams.CLOSE), 'type': 'action'},
         ]
 
-        self.param_tree = Parameter.create(name='root', type='group', children=params)
+        self.param_tree = Parameter.create(name='', type='group', children=params)
         self.param_tree.sigTreeStateChanged.connect(self.change)
         self.header().setSectionResizeMode(
-            QHeaderView.ResizeMode.ResizeToContents)
+            QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
 
         self.get_param(
             hidParams.REFRESH).sigActivated.connect(self.refresh_list)
@@ -492,4 +491,4 @@ if __name__ == '__main__':
     win = hidController()
     win.show()
 
-    app.exec_()
+    app.exec()

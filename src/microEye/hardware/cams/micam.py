@@ -83,13 +83,20 @@ class miDummy(miCamera):
         self.sinusoidal_amplitude = kwargs.get('sinusoidal_amplitude', 0.1e5)
         self.sinusoidal_direction = kwargs.get('sinusoidal_direction', 'd')
 
+        self.sm_intensity = kwargs.get('sm_intensity', 5000)
+        self.sm_density = kwargs.get('sm_density', 0.5)
+        self.sm_pixel_size = kwargs.get('sm_pixel_size', 114.17)
+        self.sm_wavelength = kwargs.get('sm_wavelength', 650)
+        self.sm_na = kwargs.get('sm_na', 1.49)
+
         self.__roi = None
         self._meshes = None
 
         self.update_meshes()
 
     def __del__(self):
-        miDummy.instances.remove(self)
+        if self in miDummy.instances:
+            miDummy.instances.remove(self)
 
     @property
     def exposure(self):
@@ -316,6 +323,12 @@ class miDummy(miCamera):
 
         return pattern
 
+    def get_single_molecule_events(self):
+        flux = np.zeros((self.height, self.width))
+
+
+        pass
+
     def get_dummy_image_from_pattern(
             self, time):
         '''
@@ -340,6 +353,8 @@ class miDummy(miCamera):
                 self.sinusoidal_phase,
                 self.pattern_offset,
                 self.sinusoidal_direction)
+        elif self.pattern_type.lower() == 'single molecule sim':
+            flux = 0
         else:
             flux = self.flux
 

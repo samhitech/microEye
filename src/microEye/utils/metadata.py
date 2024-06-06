@@ -3,14 +3,12 @@ import typing
 import ome_types.model as om
 from ome_types.model import *
 from ome_types.model.simple_types import PixelType, UnitsLength, UnitsTime
-from PyQt5.QtCore import *
-from PyQt5.QtGui import *
-from PyQt5.QtWidgets import *
 
-from .gui_helper import *
+from microEye.qt import QApplication, QtWidgets, getOpenFileName, getSaveFileName
+from microEye.utils.gui_helper import *
 
 
-class MetadataEditor(QWidget):
+class MetadataEditor(QtWidgets.QWidget):
     '''
     A PyQt-based GUI for editing OME-XML metadata.
 
@@ -95,7 +93,7 @@ class MetadataEditor(QWidget):
     '''
 
 
-    def __init__(self, parent: typing.Optional['QWidget'] = None):
+    def __init__(self, parent: typing.Optional['QtWidgets.QWidget'] = None):
         '''
         Initializes the MetadataEditor widget.
 
@@ -112,8 +110,8 @@ class MetadataEditor(QWidget):
         '''
         Initializes the main layout of the widget.
         '''
-        self.main_layout = QVBoxLayout(self)
-        self.tab_view = QTabWidget()
+        self.main_layout = QtWidgets.QVBoxLayout(self)
+        self.tab_view = QtWidgets.QTabWidget()
         self.main_layout.addWidget(self.tab_view)
 
         self.create_tab('Experiment', self.exp_tab_setup)
@@ -121,9 +119,9 @@ class MetadataEditor(QWidget):
         self.create_tab('Instruments', self.instruments_tab_setup)
 
         self.main_layout.addWidget(
-            QPushButton('Save as', clicked=self.save))
+            QtWidgets.QPushButton('Save as', clicked=self.save))
         self.main_layout.addWidget(
-            QPushButton('Import', clicked=self.load_xml))
+            QtWidgets.QPushButton('Import', clicked=self.load_xml))
         self.setLayout(self.main_layout)
 
     def create_tab(self, title, setup_func):
@@ -137,8 +135,8 @@ class MetadataEditor(QWidget):
         setup_func : callable
             Function for setting up the tab layout.
         '''
-        tab = QWidget()
-        layout = QFormLayout()
+        tab = QtWidgets.QWidget()
+        layout = QtWidgets.QFormLayout()
         tab.setLayout(layout)
         self.tab_view.addTab(tab, title)
         setup_func(layout)
@@ -253,7 +251,7 @@ class MetadataEditor(QWidget):
         Saves metadata to an OME-XML file.
         '''
         try:
-            filename, _ = QFileDialog.getSaveFileName(
+            filename, _ = getSaveFileName(
                 self, 'Save metadata', filter='OME-XML Files (*.ome.xml);;')
             if filename:
                 ome_obj = self.gen_OME_XML(1, 512, 512)
@@ -267,7 +265,7 @@ class MetadataEditor(QWidget):
         Loads metadata from an OME-XML file.
         '''
         try:
-            filename, _ = QFileDialog.getOpenFileName(
+            filename, _ = getOpenFileName(
                 self, 'Load metadata', filter='OME-XML Files (*.ome.xml);;')
             if filename:
                 xml = ''
@@ -598,4 +596,4 @@ if __name__ == '__main__':
     app = QApplication(sys.argv)
     window = MetadataEditor()
     window.show()
-    sys.exit(app.exec_())
+    sys.exit(app.exec())

@@ -1,13 +1,13 @@
 import numba as nb
 import numpy as np
 import pyqtgraph as pg
-from PyQt5.QtCore import *
-from PyQt5.QtWidgets import *
 from scipy.optimize import minimize
 from scipy.stats import norm
 
+from microEye.qt import QDateTime, Qt, QtWidgets
 
-@nb.njit()
+
+@nb.njit(cache=True)
 def Rayleigh_dist(x: np.ndarray, x0: float, sig: float):
     '''Rayleigh distribution PDF
 
@@ -36,7 +36,7 @@ def Rayleigh_dist(x: np.ndarray, x0: float, sig: float):
     return 0.5 * X / sig * np.exp(-0.25 * X**2)
 
 
-@nb.njit()
+@nb.njit(cache=True)
 def Gaussian_dist(x: np.ndarray, mu: np.ndarray, sigma: np.ndarray):
     '''Gaussian distribution PDF
 
@@ -60,7 +60,7 @@ def Gaussian_dist(x: np.ndarray, mu: np.ndarray, sigma: np.ndarray):
         np.exp(-2 * (x - mu)**2 / sigma**2)
 
 
-@nb.njit()
+@nb.njit(cache=True)
 def NeNA_model(x: np.ndarray, params):
     '''The NeNA model
 
@@ -190,7 +190,7 @@ def NeNA_resolution_estimate(
     return res, (bin_edges, n, get_bincenters(bin_edges))
 
 
-class NeNA_Widget(QDialog):
+class NeNA_Widget(QtWidgets.QDialog):
 
     def __init__(
             self,
@@ -206,34 +206,34 @@ class NeNA_Widget(QDialog):
         self.maxDist = 200
         self.res = None
 
-        self.flayout = QHBoxLayout()
+        self.flayout = QtWidgets.QHBoxLayout()
         self.setLayout(self.flayout)
 
         self.histogram = pg.PlotWidget()
         self.flayout.addWidget(self.histogram)
 
-        self.fitgroup = QGroupBox('Fitting parameters')
+        self.fitgroup = QtWidgets.QGroupBox('Fitting parameters')
         self.flayout.addWidget(self.fitgroup)
 
-        self.fitlay = QFormLayout()
+        self.fitlay = QtWidgets.QFormLayout()
         self.fitgroup.setLayout(self.fitlay)
 
-        self.bins = QSpinBox()
+        self.bins = QtWidgets.QSpinBox()
         self.bins.setMinimum(5)
         self.bins.setMaximum(1e4)
         self.bins.setValue(200)
 
         self.fitlay.addRow(
-            QLabel('N of bins:'), self.bins)
+            QtWidgets.QLabel('N of bins:'), self.bins)
 
-        self.A0 = QDoubleSpinBox()
+        self.A0 = QtWidgets.QDoubleSpinBox()
         self.A0.setMinimum(0)
         self.A0.setMaximum(10)
         self.A0.setDecimals(4)
         self.A0.setSingleStep(0.01)
         self.A0.setValue(0.75)
 
-        self.sig0 = QDoubleSpinBox()
+        self.sig0 = QtWidgets.QDoubleSpinBox()
         self.sig0.setMinimum(0)
         self.sig0.setMaximum(self.maxDist)
         self.sig0.setDecimals(4)
@@ -243,21 +243,21 @@ class NeNA_Widget(QDialog):
                 np.sum(np.square(self.nDists)
                        ) / (2 * self.nDists.shape[0])))
 
-        self.A1 = QDoubleSpinBox()
+        self.A1 = QtWidgets.QDoubleSpinBox()
         self.A1.setMinimum(0)
         self.A1.setMaximum(10)
         self.A1.setDecimals(4)
         self.A1.setSingleStep(0.01)
         self.A1.setValue(0.25)
 
-        self.sig1 = QDoubleSpinBox()
+        self.sig1 = QtWidgets.QDoubleSpinBox()
         self.sig1.setMinimum(0)
         self.sig1.setMaximum(self.maxDist)
         self.sig1.setDecimals(4)
         self.sig1.setSingleStep(0.01)
         self.sig1.setValue(100)
 
-        self.loc1 = QDoubleSpinBox()
+        self.loc1 = QtWidgets.QDoubleSpinBox()
         self.loc1.setMinimum(0)
         self.loc1.setMaximum(self.maxDist)
         self.loc1.setDecimals(4)
@@ -267,14 +267,14 @@ class NeNA_Widget(QDialog):
                 np.sum(np.square(self.nDists)
                        ) / (2 * self.nDists.shape[0])))
 
-        self.A2 = QDoubleSpinBox()
+        self.A2 = QtWidgets.QDoubleSpinBox()
         self.A2.setMinimum(0)
         self.A2.setMaximum(10)
         self.A2.setDecimals(4)
         self.A2.setSingleStep(0.01)
         self.A2.setValue(1.0)
 
-        self.sd = QDoubleSpinBox()
+        self.sd = QtWidgets.QDoubleSpinBox()
         self.sd.setMinimum(0)
         self.sd.setMaximum(10)
         self.sd.setDecimals(6)
@@ -282,32 +282,32 @@ class NeNA_Widget(QDialog):
         self.sd.setValue(1e-4)
 
         self.fitlay.addRow(
-            QLabel('Rayleigh Coeff.:'), self.A0)
+            QtWidgets.QLabel('Rayleigh Coeff.:'), self.A0)
         self.fitlay.addRow(
-            QLabel('Rayleigh Sigma:'), self.sig0)
+            QtWidgets.QLabel('Rayleigh Sigma:'), self.sig0)
         self.fitlay.addRow(
-            QLabel('Rayleigh Loc:'), QLabel('0.00'))
+            QtWidgets.QLabel('Rayleigh Loc:'), QtWidgets.QLabel('0.00'))
         self.fitlay.addRow(
-            QLabel('Gaussian Coeff.:'), self.A1)
+            QtWidgets.QLabel('Gaussian Coeff.:'), self.A1)
         self.fitlay.addRow(
-            QLabel('Gaussian Sigma:'), self.sig1)
+            QtWidgets.QLabel('Gaussian Sigma:'), self.sig1)
         self.fitlay.addRow(
-            QLabel('Gaussian Loc:'), self.loc1)
+            QtWidgets.QLabel('Gaussian Loc:'), self.loc1)
         self.fitlay.addRow(
-            QLabel('Linear Coeff.:'), self.A2)
+            QtWidgets.QLabel('Linear Coeff.:'), self.A2)
         self.fitlay.addRow(
-            QLabel('MLE SD:'), self.sd)
+            QtWidgets.QLabel('MLE SD:'), self.sd)
 
-        self.res_guess = QCheckBox('Result as initial guess.')
+        self.res_guess = QtWidgets.QCheckBox('Result as initial guess.')
         self.fitlay.addWidget(self.res_guess)
 
-        self.fit_btn = QPushButton('Fit', clicked=self.fit_data)
+        self.fit_btn = QtWidgets.QPushButton('Fit', clicked=self.fit_data)
         self.fitlay.addWidget(self.fit_btn)
 
-        self.log = QPlainTextEdit()
+        self.log = QtWidgets.QPlainTextEdit()
         self.log.setReadOnly(True)
-        self.log.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
-        self.log.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.log.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        self.log.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.fitlay.addRow(self.log)
 
         greenP = pg.mkPen(color='g')

@@ -5,13 +5,17 @@ import numpy as np
 import pyqtgraph as pg
 import qdarkstyle
 import tifffile as tf
-from PyQt5.QtCore import *
-from PyQt5.QtGui import *
-from PyQt5.QtSerialPort import *
-from PyQt5.QtWidgets import *
 from pyqtgraph.parametertree import Parameter
 
-from ...shared import Tree, uImage
+from microEye.qt import (
+    QApplication,
+    Qt,
+    QtWidgets,
+    Signal,
+    getExistingDirectory,
+    getSaveFileName,
+)
+from microEye.utils import Tree, uImage
 
 
 class TileImage:
@@ -21,15 +25,15 @@ class TileImage:
         self.position = position
 
 
-class TiledImageSelector(QWidget):
-    positionSelected = pyqtSignal(float, float)
+class TiledImageSelector(QtWidgets.QWidget):
+    positionSelected = Signal(float, float)
 
     def __init__(self, images: list[TileImage]) -> None:
         super().__init__()
 
         self.images = images
 
-        central_layout = QHBoxLayout()
+        central_layout = QtWidgets.QHBoxLayout()
         self.setLayout(central_layout)
 
         imageWidget = pg.GraphicsLayoutWidget()
@@ -78,7 +82,7 @@ class TiledImageSelector(QWidget):
     def save_raw_data(self, img: TileImage):
         filename = None
         if filename is None:
-            filename, _ = QFileDialog.getSaveFileName(
+            filename, _ = getSaveFileName(
                 self, 'Save Raw Data', filter='Tiff Files (*.tif)')
 
         if len(filename) > 0:
@@ -91,7 +95,7 @@ class TiledImageSelector(QWidget):
         directory = None
         if directory is None:
             directory = str(
-                QFileDialog.getExistingDirectory(self, 'Select Directory'))
+                getExistingDirectory(self, 'Select Directory'))
 
         if len(directory) > 0:
             for idx, tImg in enumerate(self.images):
@@ -141,16 +145,16 @@ class ScanParams(Enum):
         return self.value.split('.')
 
 class ScanAcquisitionWidget(Tree):
-    startAcquisitionXY = pyqtSignal(tuple)
-    stopAcquisitionXY = pyqtSignal()
-    openLastTileXY = pyqtSignal()
-    startAcquisitionZ = pyqtSignal(tuple)
-    startCalibrationZ = pyqtSignal(tuple)
-    stopAcquisitionZ = pyqtSignal()
+    startAcquisitionXY = Signal(tuple)
+    stopAcquisitionXY = Signal()
+    openLastTileXY = Signal()
+    startAcquisitionZ = Signal(tuple)
+    startCalibrationZ = Signal(tuple)
+    stopAcquisitionZ = Signal()
 
-    moveZ = pyqtSignal(bool, int)
+    moveZ = Signal(bool, int)
 
-    directoryChanged = pyqtSignal(str)
+    directoryChanged = Signal(str)
 
     def __init__(self) -> None:
         super().__init__()
@@ -203,10 +207,10 @@ class ScanAcquisitionWidget(Tree):
             ]},
         ]
 
-        self.param_tree = Parameter.create(name='root', type='group', children=params)
+        self.param_tree = Parameter.create(name='', type='group', children=params)
         self.param_tree.sigTreeStateChanged.connect(self.change)
         self.header().setSectionResizeMode(
-            QHeaderView.ResizeMode.ResizeToContents)
+            QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
 
         self.get_param(
             ScanParams.XY_START).sigActivated.connect(
@@ -347,4 +351,4 @@ if __name__ == '__main__':
     win.positionSelected.connect(lambda x, y: print(x, y))
     win.show()
 
-    app.exec_()
+    app.exec()

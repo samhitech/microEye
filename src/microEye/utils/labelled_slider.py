@@ -1,15 +1,7 @@
-from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtWidgets import (
-    QHBoxLayout,
-    QLabel,
-    QSizePolicy,
-    QSlider,
-    QSpinBox,
-    QWidget,
-)
+from microEye.qt import Qt, QtWidgets, Signal
 
 
-class LabelledSlider(QWidget):
+class LabelledSlider(QtWidgets.QWidget):
     '''
     A custom widget representing a labeled slider with optional range labels.
 
@@ -17,12 +9,11 @@ class LabelledSlider(QWidget):
         finished (pyqtSignal): Signal emitted when editing is finished.
         valueChanged (pyqtSignal): Signal emitted when value is changed.
     '''
-    finished = pyqtSignal()
-    valueChanged = pyqtSignal(int)
 
-    def __init__(
-            self, parent=None,
-            show_range_labels=True, vrange=(0, 100), offset=1):
+    finished = Signal()
+    valueChanged = Signal(int)
+
+    def __init__(self, parent=None, show_range_labels=True, vrange=(0, 100), offset=1):
         '''
         Initialize the LabelledSlider widget.
 
@@ -42,28 +33,33 @@ class LabelledSlider(QWidget):
         '''
         Initialize the UI components of the widget.
         '''
-        self.slider = QSlider(tickPosition=QSlider.TicksLeft, orientation=Qt.Horizontal)
+        self.slider = QtWidgets.QSlider(
+            tickPosition=QtWidgets.QSlider.TickPosition.TicksLeft,
+            orientation=Qt.Orientation.Horizontal,
+        )
         self.slider.setMaximum(0)
 
-        self.label = QSpinBox()
-        self.label.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Expanding)
+        self.label = QtWidgets.QSpinBox()
+        self.label.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Minimum, QtWidgets.QSizePolicy.Policy.Expanding
+        )
 
         self.label.valueChanged.connect(self.changeValue)
         self.slider.valueChanged.connect(self.changeValue)
-        self.slider.sliderReleased.connect(
-            lambda: self.finished.emit())
-        self.label.editingFinished.connect(
-            lambda: self.finished.emit())
+        self.slider.sliderReleased.connect(lambda: self.finished.emit())
+        self.label.editingFinished.connect(lambda: self.finished.emit())
 
-        self.label_minimum = QLabel()
-        self.label_maximum = QLabel()
+        self.label_minimum = QtWidgets.QLabel()
+        self.label_maximum = QtWidgets.QLabel()
 
         self.slider.rangeChanged.connect(
-            lambda min, max: self.label_minimum.setNum(vrange[0]+self._offset))
+            lambda min, max: self.label_minimum.setNum(vrange[0] + self._offset)
+        )
         self.slider.rangeChanged.connect(
-            lambda min, max: self.label_maximum.setNum(vrange[1]+self._offset))
+            lambda min, max: self.label_maximum.setNum(vrange[1] + self._offset)
+        )
 
-        slider_hbox = QHBoxLayout(self)
+        slider_hbox = QtWidgets.QHBoxLayout(self)
         slider_hbox.setContentsMargins(0, 0, 0, 0)
         slider_hbox.setSpacing(0)
 

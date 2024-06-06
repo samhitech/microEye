@@ -1,22 +1,18 @@
-
 import os
 import typing
 
-from PyQt5.QtCore import *
-from PyQt5.QtGui import *
-from PyQt5.QtWidgets import *
-
-from .camera_panel import Camera_Panel
-from .dummy_panel import Dummy_Panel
-from .micam import miDummy
-from .thorlabs import CMD, thorlabs_camera
-from .thorlabs_panel import Thorlabs_Panel
+from microEye.hardware.cams.camera_panel import Camera_Panel
+from microEye.hardware.cams.dummy_panel import Dummy_Panel
+from microEye.hardware.cams.micam import miDummy
+from microEye.hardware.cams.thorlabs import CMD, thorlabs_camera
+from microEye.hardware.cams.thorlabs_panel import Thorlabs_Panel
+from microEye.qt import QtGui, QtWidgets, Signal
 
 try:
     from pyueye import ueye
 
-    from .ueye_camera import IDS_Camera
-    from .ueye_panel import IDS_Panel
+    from microEye.hardware.cams.ueye_camera import IDS_Camera
+    from microEye.hardware.cams.ueye_panel import IDS_Panel
 except Exception:
     ueye = None
     IDS_Camera = None
@@ -24,8 +20,8 @@ except Exception:
 try:
     import vimba as vb
 
-    from .vimba_cam import get_camera_list, vimba_cam
-    from .vimba_panel import Vimba_Panel
+    from microEye.hardware.cams.vimba_cam import get_camera_list, vimba_cam
+    from microEye.hardware.cams.vimba_panel import Vimba_Panel
 except Exception:
     vb = None
 
@@ -33,34 +29,29 @@ except Exception:
         return []
 
 
-class CameraList(QWidget):
+class CameraList(QtWidgets.QWidget):
     '''
     A widget for displaying and managing a list of cameras.
     '''
 
-    cameraAdded = pyqtSignal(Camera_Panel, bool)
-    cameraRemoved = pyqtSignal(dict, bool)
+    cameraAdded = Signal(Camera_Panel, bool)
+    cameraRemoved = Signal(dict, bool)
 
-    cameras = {
-        'uEye': [],
-        'Vimba': [],
-        'UC480': [],
-        'miDummy': []
-    }
+    cameras = {'uEye': [], 'Vimba': [], 'UC480': [], 'miDummy': []}
 
-    def __init__(self, parent: typing.Optional['QWidget'] = None):
+    def __init__(self, parent: typing.Optional['QtWidgets.QWidget'] = None):
         '''
         Initialize the camera list widget.
 
         Parameters
         ----------
-        parent : typing.Optional[QWidget], optional
+        parent : typing.Optional[QtWidgets.QWidget], optional
             The parent widget of this camera list widget.
         '''
         super().__init__(parent=parent)
 
         self.cam_list = None
-        self.item_model = QStandardItemModel()
+        self.item_model = QtGui.QStandardItemModel()
         self.cached_autofocusCam = None
 
         #  Layout
@@ -72,29 +63,35 @@ class CameraList(QWidget):
         '''
 
         # main layout
-        self.mainLayout = QVBoxLayout()
+        self.mainLayout = QtWidgets.QVBoxLayout()
 
-        self.cam_table = QTableView()
+        self.cam_table = QtWidgets.QTableView()
         self.cam_table.setModel(self.item_model)
         self.cam_table.clearSelection()
         self.cam_table.horizontalHeader().setStretchLastSection(True)
         self.cam_table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.ResizeToContents)
+            QtWidgets.QHeaderView.ResizeMode.ResizeToContents
+        )
         self.cam_table.setSelectionBehavior(
-            QAbstractItemView.SelectionBehavior.SelectRows)
+            QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows
+        )
         self.cam_table.setSelectionMode(
-            QAbstractItemView.SelectionMode.SingleSelection)
+            QtWidgets.QAbstractItemView.SelectionMode.SingleSelection
+        )
 
-        self.HL_buttons = QHBoxLayout()
+        self.HL_buttons = QtWidgets.QHBoxLayout()
 
-        self.add_cam = QPushButton(
-            'Add Camera', clicked=lambda: self.add_camera_clicked())
+        self.add_cam = QtWidgets.QPushButton(
+            'Add Camera', clicked=lambda: self.add_camera_clicked()
+        )
 
-        self.remove_cam = QPushButton(
-            'Remove Camera', clicked=lambda: self.remove_camera_clicked())
+        self.remove_cam = QtWidgets.QPushButton(
+            'Remove Camera', clicked=lambda: self.remove_camera_clicked()
+        )
 
-        self.refresh = QPushButton(
-            'Refresh List', clicked=lambda: self.refresh_list())
+        self.refresh = QtWidgets.QPushButton(
+            'Refresh List', clicked=lambda: self.refresh_list()
+        )
 
         self.HL_buttons.addWidget(self.add_cam)
         self.HL_buttons.addWidget(self.remove_cam)
@@ -119,8 +116,14 @@ class CameraList(QWidget):
         '''
         if self.cached_autofocusCam is None:
             self.cached_autofocusCam = next(
-                (cam['Panel'] for _, cam_list in CameraList.cameras.items()
-                 for cam in cam_list if cam['IR']), None)
+                (
+                    cam['Panel']
+                    for _, cam_list in CameraList.cameras.items()
+                    for cam in cam_list
+                    if cam['IR']
+                ),
+                None,
+            )
         return self.cached_autofocusCam
 
     def add_camera_clicked(self):
@@ -131,12 +134,12 @@ class CameraList(QWidget):
             cam = self.cam_list[self.cam_table.currentIndex().row()]
 
             # create a dialog with radio buttons
-            dialog, ok = QInputDialog.getItem(
+            dialog, ok = QtWidgets.QInputDialog.getItem(
                 self,
                 'Add Camera',
                 'Choose camera type:',
                 ('Acquisition', 'Autofocus IR'),
-                )
+            )
 
             if ok and dialog is not None:
                 if dialog == 'Acquisition':
@@ -150,7 +153,8 @@ class CameraList(QWidget):
                             self.cameraAdded.emit(panel, True)
                     else:
                         self._display_warning_message(
-                            'Autofocus IR camera has already been added!')
+                            'Autofocus IR camera has already been added!'
+                        )
 
             self.refresh_list()
         else:
@@ -183,8 +187,7 @@ class CameraList(QWidget):
             elif driver == 'miDummy':
                 return self._add_dummy_camera(cam, mini)
             else:
-                self._display_warning_message(
-                    f'Unsupported camera driver: {driver}')
+                self._display_warning_message(f'Unsupported camera driver: {driver}')
         else:
             self._display_warning_message('Device is in use or already added.')
 
@@ -209,8 +212,9 @@ class CameraList(QWidget):
         ids_cam = IDS_Camera(camera_id)
         ids_cam.initialize()
         ids_panel = IDS_Panel(ids_cam, mini, self.get_cam_title(cam))
-        CameraList.cameras['uEye'].append({
-            'Camera': ids_cam, 'Panel': ids_panel, 'IR': mini})
+        CameraList.cameras['uEye'].append(
+            {'Camera': ids_cam, 'Panel': ids_panel, 'IR': mini}
+        )
         return ids_panel
 
     def _add_thorlabs_camera(self, cam, camera_id, mini):
@@ -235,8 +239,9 @@ class CameraList(QWidget):
         n_ret = thor_cam.initialize()
         if n_ret == CMD.IS_SUCCESS:
             thor_panel = Thorlabs_Panel(thor_cam, mini, self.get_cam_title(cam))
-            CameraList.cameras['UC480'].append({
-                'Camera': thor_cam, 'Panel': thor_panel, 'IR': mini})
+            CameraList.cameras['UC480'].append(
+                {'Camera': thor_cam, 'Panel': thor_panel, 'IR': mini}
+            )
             return thor_panel
         else:
             self._display_warning_message('Thorlabs camera initialization failed.')
@@ -261,8 +266,9 @@ class CameraList(QWidget):
         '''
         v_cam = vimba_cam(camera_id)
         v_panel = Vimba_Panel(v_cam, mini, self.get_cam_title(cam))
-        CameraList.cameras['Vimba'].append({
-            'Camera': v_cam, 'Panel': v_panel, 'IR': mini})
+        CameraList.cameras['Vimba'].append(
+            {'Camera': v_cam, 'Panel': v_panel, 'IR': mini}
+        )
         return v_panel
 
     def _add_dummy_camera(self, cam, mini):
@@ -282,8 +288,9 @@ class CameraList(QWidget):
             The camera panel, or None if the camera could not be added.
         '''
         dummy_panel = Dummy_Panel(mini, self.get_cam_title(cam))
-        CameraList.cameras['miDummy'].append({
-            'Camera': dummy_panel.cam, 'Panel': dummy_panel, 'IR': mini})
+        CameraList.cameras['miDummy'].append(
+            {'Camera': dummy_panel.cam, 'Panel': dummy_panel, 'IR': mini}
+        )
         return dummy_panel
 
     def _display_warning_message(self, message):
@@ -295,11 +302,9 @@ class CameraList(QWidget):
         message : str
             The warning message to display.
         '''
-        QMessageBox.warning(
-            self,
-            'Warning',
-            message,
-            QMessageBox.StandardButton.Ok)
+        QtWidgets.QMessageBox.warning(
+            self, 'Warning', message, QtWidgets.QMessageBox.StandardButton.Ok
+        )
 
     def get_cam_title(self, cam: dict):
         '''
@@ -325,15 +330,16 @@ class CameraList(QWidget):
             cam = self.cam_list[self.cam_table.currentIndex().row()]
 
             # Display a confirmation dialog
-            confirm = QMessageBox.question(
+            confirm = QtWidgets.QMessageBox.question(
                 self,
                 'Confirmation',
                 f'Do you want to remove this camera {self.get_cam_title(cam)}?',
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No
+                QtWidgets.QMessageBox.StandardButton.Yes
+                | QtWidgets.QMessageBox.StandardButton.No,
+                QtWidgets.QMessageBox.StandardButton.No,
             )
 
-            if confirm == QMessageBox.Yes:
+            if confirm == QtWidgets.QMessageBox.StandardButton.Yes:
                 self.remove_camera(cam)
 
             self.refresh_list()
@@ -349,17 +355,19 @@ class CameraList(QWidget):
         cam : dict
             The camera information dictionary.
         '''
-        cams : list[dict] = CameraList.cameras.get(cam['Driver'], [])
+        cams: list[dict] = CameraList.cameras.get(cam['Driver'], [])
         if cams:
             for item in cams:
-                pan : Camera_Panel = item['Panel']
+                pan: Camera_Panel = item['Panel']
                 if pan.title() == self.get_cam_title(cam):
                     if pan.cam.acquisition:
                         self._display_warning_message(
-                            'Please stop acquisition before removing!')
+                            'Please stop acquisition before removing!'
+                        )
                     else:
                         if isinstance(pan.cam, IDS_Camera) or isinstance(  # noqa: SIM101
-                                pan.cam, thorlabs_camera):  # noqa: SIM101
+                            pan.cam, thorlabs_camera
+                        ):  # noqa: SIM101
                             pan.cam.free_memory()
                             pan.cam.dispose()
                         if isinstance(item['Camera'], miDummy):
@@ -402,37 +410,46 @@ class CameraList(QWidget):
             self.cam_list = []
             print('No cameras connected.')
 
-        self.item_model = QStandardItemModel(len(self.cam_list), 8)
+        self.item_model = QtGui.QStandardItemModel(len(self.cam_list), 8)
 
         self.item_model.setHorizontalHeaderLabels(
-            ['In Use', 'Camera ID', 'Device ID',
-             'Model', 'Serial', 'Status', 'Sensor ID', 'Driver'])
+            [
+                'In Use',
+                'Camera ID',
+                'Device ID',
+                'Model',
+                'Serial',
+                'Status',
+                'Sensor ID',
+                'Driver',
+            ]
+        )
 
         for i in range(len(self.cam_list)):
             self.item_model.setItem(
-                i, 0,
-                QStandardItem(str(self.cam_list[i]['InUse'])))
+                i, 0, QtGui.QStandardItem(str(self.cam_list[i]['InUse']))
+            )
             self.item_model.setItem(
-                i, 1,
-                QStandardItem(str(self.cam_list[i]['Camera ID'])))
+                i, 1, QtGui.QStandardItem(str(self.cam_list[i]['Camera ID']))
+            )
             self.item_model.setItem(
-                i, 2,
-                QStandardItem(str(self.cam_list[i]['Device ID'])))
+                i, 2, QtGui.QStandardItem(str(self.cam_list[i]['Device ID']))
+            )
             self.item_model.setItem(
-                i, 3,
-                QStandardItem(self.cam_list[i]['Model']))
+                i, 3, QtGui.QStandardItem(self.cam_list[i]['Model'])
+            )
             self.item_model.setItem(
-                i, 4,
-                QStandardItem(self.cam_list[i]['Serial']))
+                i, 4, QtGui.QStandardItem(self.cam_list[i]['Serial'])
+            )
             self.item_model.setItem(
-                i, 5,
-                QStandardItem(str(self.cam_list[i]['Status'])))
+                i, 5, QtGui.QStandardItem(str(self.cam_list[i]['Status']))
+            )
             self.item_model.setItem(
-                i, 6,
-                QStandardItem(str(self.cam_list[i]['Sensor ID'])))
+                i, 6, QtGui.QStandardItem(str(self.cam_list[i]['Sensor ID']))
+            )
             self.item_model.setItem(
-                i, 7,
-                QStandardItem(str(self.cam_list[i]['Driver'])))
+                i, 7, QtGui.QStandardItem(str(self.cam_list[i]['Driver']))
+            )
 
         self.cam_table.setModel(self.item_model)
 

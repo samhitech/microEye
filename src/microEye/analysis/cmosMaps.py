@@ -2,14 +2,12 @@ import typing
 
 import numpy as np
 import tifffile as tf
-from PyQt5.QtCore import *
-from PyQt5.QtGui import *
-from PyQt5.QtWidgets import *
+
+from microEye.qt import QtWidgets, getExistingDirectory, getOpenFileName
 
 
-class cmosMaps(QWidget):
-
-    def __init__(self, parent: typing.Optional['QWidget'] = None):
+class cmosMaps(QtWidgets.QWidget):
+    def __init__(self, parent: typing.Optional['QtWidgets.QWidget'] = None):
         super().__init__(parent=parent)
 
         self.invGain = None
@@ -25,16 +23,15 @@ class cmosMaps(QWidget):
         self.InitLayout()
 
     def InitLayout(self):
-
-        self.main_layout = QFormLayout(self)
+        self.main_layout = QtWidgets.QFormLayout(self)
 
         self.setLayout(self.main_layout)
 
-        self.invg_le = QLineEdit()
-        self.baseline_le = QLineEdit()
-        self.darkc_le = QLineEdit()
-        self.readnsq_le = QLineEdit()
-        self.thermnsq_le = QLineEdit()
+        self.invg_le = QtWidgets.QLineEdit()
+        self.baseline_le = QtWidgets.QLineEdit()
+        self.darkc_le = QtWidgets.QLineEdit()
+        self.readnsq_le = QtWidgets.QLineEdit()
+        self.thermnsq_le = QtWidgets.QLineEdit()
 
         self.invg_le.setReadOnly(True)
         self.baseline_le.setReadOnly(True)
@@ -42,77 +39,57 @@ class cmosMaps(QWidget):
         self.readnsq_le.setReadOnly(True)
         self.thermnsq_le.setReadOnly(True)
 
-        self.invg_btn = QPushButton(
-            'open',
-            clicked=lambda: self.browseImg(0)
+        self.invg_btn = QtWidgets.QPushButton('open', clicked=lambda: self.browseImg(0))
+        self.baseline_btn = QtWidgets.QPushButton(
+            'open', clicked=lambda: self.browseImg(1)
         )
-        self.baseline_btn = QPushButton(
-            'open',
-            clicked=lambda: self.browseImg(1)
+        self.darkc_btn = QtWidgets.QPushButton(
+            'open', clicked=lambda: self.browseImg(2)
         )
-        self.darkc_btn = QPushButton(
-            'open',
-            clicked=lambda: self.browseImg(2)
+        self.readnsq_btn = QtWidgets.QPushButton(
+            'open', clicked=lambda: self.browseImg(3)
         )
-        self.readnsq_btn = QPushButton(
-            'open',
-            clicked=lambda: self.browseImg(3)
-        )
-        self.thermnsq_btn = QPushButton(
-            'open',
-            clicked=lambda: self.browseImg(4)
+        self.thermnsq_btn = QtWidgets.QPushButton(
+            'open', clicked=lambda: self.browseImg(4)
         )
 
-        self.main_layout.addRow(
-            QLabel('inverse Gain map:'),
-            self.invg_le
-        )
+        self.main_layout.addRow(QtWidgets.QLabel('inverse Gain map:'), self.invg_le)
         self.main_layout.addWidget(self.invg_btn)
         self.main_layout.addRow(
-            QLabel('Baseline map [ADU]:'),
-            self.baseline_le
+            QtWidgets.QLabel('Baseline map [ADU]:'), self.baseline_le
         )
         self.main_layout.addWidget(self.baseline_btn)
         self.main_layout.addRow(
-            QLabel('Dark current map [ADU/s]:'),
-            self.darkc_le
+            QtWidgets.QLabel('Dark current map [ADU/s]:'), self.darkc_le
         )
         self.main_layout.addWidget(self.darkc_btn)
         self.main_layout.addRow(
-            QLabel('Read noise sq map [ADU^2]:'),
-            self.readnsq_le
+            QtWidgets.QLabel('Read noise sq map [ADU^2]:'), self.readnsq_le
         )
         self.main_layout.addWidget(self.readnsq_btn)
         self.main_layout.addRow(
-            QLabel('Thermal noise sq map [ADU^2/s]:'),
-            self.thermnsq_le
+            QtWidgets.QLabel('Thermal noise sq map [ADU^2/s]:'), self.thermnsq_le
         )
         self.main_layout.addWidget(self.thermnsq_btn)
 
-        self.exp_spin = QDoubleSpinBox()
+        self.exp_spin = QtWidgets.QDoubleSpinBox()
         self.exp_spin.setMinimum(0)
         self.exp_spin.setMaximum(1e4)
         self.exp_spin.setDecimals(5)
         self.exp_spin.setValue(self.expTime)
 
-        self.main_layout.addRow(
-            QLabel('Exposure [ms]:'),
-            self.exp_spin
+        self.main_layout.addRow(QtWidgets.QLabel('Exposure [ms]:'), self.exp_spin)
+
+        self.calc_btn = QtWidgets.QPushButton(
+            'gen. offset / var maps', clicked=lambda: self.calcMaps()
         )
 
-        self.calc_btn = QPushButton(
-            'gen. offset / var maps',
-            clicked=lambda: self.calcMaps()
-        )
+        self.main_layout.addWidget(self.calc_btn)
 
-        self.main_layout.addWidget(
-            self.calc_btn
-        )
-
-        self.X = QSpinBox()
-        self.Y = QSpinBox()
-        self.W = QSpinBox()
-        self.H = QSpinBox()
+        self.X = QtWidgets.QSpinBox()
+        self.Y = QtWidgets.QSpinBox()
+        self.W = QtWidgets.QSpinBox()
+        self.H = QtWidgets.QSpinBox()
         self.X.setMinimum(0)
         self.Y.setMinimum(0)
         self.W.setMinimum(0)
@@ -122,38 +99,23 @@ class cmosMaps(QWidget):
         self.W.setMaximum(1e4)
         self.H.setMaximum(1e4)
 
-        self.main_layout.addRow(
-            QLabel('ROI X:'),
-            self.X
-        )
-        self.main_layout.addRow(
-            QLabel('ROI Y:'),
-            self.Y
-        )
-        self.main_layout.addRow(
-            QLabel('ROI Width:'),
-            self.W
-        )
-        self.main_layout.addRow(
-            QLabel('ROI Height:'),
-            self.H
-        )
+        self.main_layout.addRow(QtWidgets.QLabel('ROI X:'), self.X)
+        self.main_layout.addRow(QtWidgets.QLabel('ROI Y:'), self.Y)
+        self.main_layout.addRow(QtWidgets.QLabel('ROI Width:'), self.W)
+        self.main_layout.addRow(QtWidgets.QLabel('ROI Height:'), self.H)
 
-        self.active = QCheckBox('Use Maps?')
+        self.active = QtWidgets.QCheckBox('Use Maps?')
         self.active.setChecked(False)
-        self.gain = QCheckBox('Use Gain?')
+        self.gain = QtWidgets.QCheckBox('Use Gain?')
         self.gain.setChecked(False)
 
-        self.main_layout.addWidget(
-            self.active
-        )
-        self.main_layout.addWidget(
-            self.gain
-        )
+        self.main_layout.addWidget(self.active)
+        self.main_layout.addWidget(self.gain)
 
     def browseImg(self, index):
-        filename, _ = QFileDialog.getOpenFileName(
-            self, 'Load Image', filter='Tiff Image Files (*.tif);')
+        filename, _ = getOpenFileName(
+            self, 'Load Image', filter='Tiff Image Files (*.tif);'
+        )
 
         if len(filename) > 0:
             img = tf.imread(filename)
@@ -209,8 +171,9 @@ class cmosMaps(QWidget):
         shapes.append(self.thermalNoiseSQ.shape)
         shapes = np.vstack(shapes)
 
-        if not np.all(shapes[:, 0] == shapes[0, 0]) or \
-                not np.all(shapes[:, 1] == shapes[0, 1]):
+        if not np.all(shapes[:, 0] == shapes[0, 0]) or not np.all(
+            shapes[:, 1] == shapes[0, 1]
+        ):
             print('Maps have unmatching dimensions!')
             return False
 
@@ -230,18 +193,19 @@ class cmosMaps(QWidget):
         if not export:
             return True
 
-        _directory = str(
-                QFileDialog.getExistingDirectory(self, 'Select Directory'))
+        _directory = str(getExistingDirectory(self, 'Select Directory'))
 
         if len(_directory) < 1:
             return
 
         tf.imwrite(
             _directory + f'/offset_{self.expTime:.5f}ms'.replace('.', '_') + '.tif',
-            self.offsetMap)
+            self.offsetMap,
+        )
         tf.imwrite(
             _directory + f'/var_{self.expTime:.5f}ms'.replace('.', '_') + '.tif',
-            self.varMap)
+            self.varMap,
+        )
 
         return True
 
@@ -252,11 +216,11 @@ class cmosMaps(QWidget):
             w = self.W.value()
             h = self.H.value()
 
-            offset = self.offsetMap[y:y+h, x:x+w]
-            var = self.varMap[y:y+h, x:x+w]
+            offset = self.offsetMap[y : y + h, x : x + w]
+            var = self.varMap[y : y + h, x : x + w]
 
             if self.gain.isChecked():
-                gain = self.invGain[y:y+h, x:x+w]
+                gain = self.invGain[y : y + h, x : x + w]
             else:
                 gain = np.ones_like(offset)
             return gain, offset, var

@@ -3,11 +3,10 @@ import json
 from enum import Enum
 from typing import Any, Optional, Union
 
-from PyQt5.QtCore import *
-from PyQt5.QtGui import *
-from PyQt5.QtWidgets import *
 from pyqtgraph.parametertree import Parameter, ParameterTree
 from pyqtgraph.parametertree.parameterTypes import ActionParameter, GroupParameter
+
+from microEye.qt import QtWidgets, Signal, getOpenFileName, getSaveFileName
 
 
 class Tree(ParameterTree):
@@ -20,7 +19,7 @@ class Tree(ParameterTree):
         Signal for parameter changed event.
     '''
 
-    paramsChanged = pyqtSignal(GroupParameter, list)
+    paramsChanged = Signal(GroupParameter, list)
     '''Signal emitted when parameters are changed.
 
     Parameters
@@ -31,7 +30,7 @@ class Tree(ParameterTree):
         A list of changes made to the parameter.
     '''
 
-    def __init__(self, parent: Optional['QWidget'] = None):
+    def __init__(self, parent: Optional['QtWidgets.QWidget'] = None):
         '''
         Initialize the Tree.
 
@@ -54,10 +53,10 @@ class Tree(ParameterTree):
         '''
         params = []
 
-        self.param_tree = Parameter.create(name='root', type='group', children=params)
+        self.param_tree = Parameter.create(name='', type='group', children=params)
         self.param_tree.sigTreeStateChanged.connect(self.change)
         self.header().setSectionResizeMode(
-            QHeaderView.ResizeMode.Stretch)
+            QtWidgets.QHeaderView.ResizeMode.Stretch)
 
     def get_param(
             self, param: Union[Enum, str]
@@ -211,7 +210,7 @@ class Tree(ParameterTree):
         -------
         None
         '''
-        filename, _ = QFileDialog.getSaveFileName(
+        filename, _ = getSaveFileName(
             None,
             'Save Parameters', '', 'JSON Files (*.json);;All Files (*)')
         if not filename:
@@ -241,7 +240,7 @@ class Tree(ParameterTree):
         -------
         None
         '''
-        filename, _ = QFileDialog.getOpenFileName(
+        filename, _ = getOpenFileName(
             None, 'Load Parameters',
             '', 'JSON Files (*.json);;All Files (*)')
         if not filename:

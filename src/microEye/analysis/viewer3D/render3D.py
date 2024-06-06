@@ -1,11 +1,11 @@
 import sys
 
 import numpy as np
-from PyQt5.QtWidgets import QApplication, QVBoxLayout, QWidget
+from microEye.qt import QApplication, QtWidgets
 from vispy import app, color, scene
 
 
-class VoxelViewer(QWidget):
+class VoxelViewer(QtWidgets.QWidget):
     def __init__(self):
         super().__init__()
 
@@ -32,7 +32,7 @@ class VoxelViewer(QWidget):
         axes = scene.visuals.XYZAxis(parent=self.view.scene)
 
         # Set up layout
-        layout = QVBoxLayout()
+        layout = QtWidgets.QVBoxLayout()
         layout.addWidget(self.canvas.native)
         self.setLayout(layout)
 
@@ -44,7 +44,7 @@ class VoxelViewer(QWidget):
 def main():
     appQt = QApplication(sys.argv)
     viewer = VoxelViewer()
-    sys.exit(appQt.exec_())
+    sys.exit(appQt.exec())
 
 if __name__ == '__main__':
     main()

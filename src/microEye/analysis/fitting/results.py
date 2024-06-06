@@ -6,8 +6,8 @@ import pandas as pd
 from numpy.core._exceptions import _ArrayMemoryError
 from scipy.interpolate import interp1d
 
-from ..rendering import gauss_hist_render, hist2D_render
-from .processing import *
+from microEye.analysis.fitting.processing import *
+from microEye.analysis.rendering import gauss_hist_render, hist2D_render
 
 UNIQUE_COLUMNS = [
             'frame', 'channel', 'x', 'y', 'z', 'background', 'intensity',

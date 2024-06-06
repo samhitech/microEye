@@ -1,28 +1,15 @@
 from typing import Union
 
 import numpy as np
-from PyQt5.QtWidgets import (
-    QApplication,
-    QCheckBox,
-    QComboBox,
-    QDoubleSpinBox,
-    QFormLayout,
-    QGroupBox,
-    QHBoxLayout,
-    QLabel,
-    QLayout,
-    QLineEdit,
-    QSpinBox,
-    QTextEdit,
-    QVBoxLayout,
-    QWidget,
-)
+
+from microEye.qt import QApplication, QtWidgets
 
 
 def create_line_edit(
-        label, default_text,
-        layout: Union[QVBoxLayout, QHBoxLayout, QFormLayout]
-        ) -> QLineEdit:
+    label,
+    default_text,
+    layout: Union[QtWidgets.QVBoxLayout, QtWidgets.QHBoxLayout, QtWidgets.QFormLayout],
+) -> QtWidgets.QLineEdit:
     '''
     Create a QLineEdit widget with label.
 
@@ -40,20 +27,22 @@ def create_line_edit(
     QLineEdit
         The created QLineEdit widget.
     '''
-    line_edit = QLineEdit(default_text)
+    line_edit = QtWidgets.QLineEdit(default_text)
 
-    if isinstance(layout, QFormLayout):
-        layout.addRow(QLabel(label), line_edit)
+    if isinstance(layout, QtWidgets.QFormLayout):
+        layout.addRow(QtWidgets.QLabel(label), line_edit)
     else:
-        layout.addWidget(QLabel(label))
+        layout.addWidget(QtWidgets.QLabel(label))
         layout.addWidget(line_edit)
 
     return line_edit
 
+
 def create_text_edit(
-        label, default_text,
-        layout: Union[QVBoxLayout, QHBoxLayout, QFormLayout]
-        ) -> QTextEdit:
+    label,
+    default_text,
+    layout: Union[QtWidgets.QVBoxLayout, QtWidgets.QHBoxLayout, QtWidgets.QFormLayout],
+) -> QtWidgets.QTextEdit:
     '''
     Create a QLineEdit widget with label.
 
@@ -71,19 +60,22 @@ def create_text_edit(
     QLineEdit
         The created QLineEdit widget.
     '''
-    text_edit = QTextEdit(default_text)
-    if isinstance(layout, QFormLayout):
-        layout.addRow(QLabel(label))
+    text_edit = QtWidgets.QTextEdit(default_text)
+    if isinstance(layout, QtWidgets.QFormLayout):
+        layout.addRow(QtWidgets.QLabel(label))
         layout.addRow(text_edit)
     else:
-        layout.addWidget(QLabel(label))
+        layout.addWidget(QtWidgets.QLabel(label))
         layout.addWidget(text_edit)
     return text_edit
 
+
 def create_combo_box(
-        label, items, default_item,
-        layout: Union[QVBoxLayout, QHBoxLayout, QFormLayout]
-        ) -> QComboBox:
+    label,
+    items,
+    default_item,
+    layout: Union[QtWidgets.QVBoxLayout, QtWidgets.QHBoxLayout, QtWidgets.QFormLayout],
+) -> QtWidgets.QComboBox:
     '''
     Create a QComboBox widget with label.
 
@@ -103,19 +95,20 @@ def create_combo_box(
     QComboBox
         The created QComboBox widget.
     '''
-    combo_box = QComboBox()
+    combo_box = QtWidgets.QComboBox()
     combo_box.addItems(items)
     combo_box.setCurrentText(default_item)
-    if isinstance(layout, QFormLayout):
-        layout.addRow(QLabel(label), combo_box)
+    if isinstance(layout, QtWidgets.QFormLayout):
+        layout.addRow(QtWidgets.QLabel(label), combo_box)
     else:
-        layout.addWidget(QLabel(label))
+        layout.addWidget(QtWidgets.QLabel(label))
         layout.addWidget(combo_box)
     return combo_box
 
+
 def create_double_spin_box(
-        min_value=0, max_value=1, single_step=0.01,
-        decimals=3, initial_value=0, slot=None):
+    min_value=0, max_value=1, single_step=0.01, decimals=3, initial_value=0, slot=None
+):
     '''
     Create a QDoubleSpinBox widget.
 
@@ -139,7 +132,7 @@ def create_double_spin_box(
     QDoubleSpinBox
         The created QDoubleSpinBox widget.
     '''
-    double_spin_box = QDoubleSpinBox()
+    double_spin_box = QtWidgets.QDoubleSpinBox()
     double_spin_box.setMinimum(min_value)
     double_spin_box.setMaximum(max_value)
     double_spin_box.setSingleStep(single_step)
@@ -149,10 +142,14 @@ def create_double_spin_box(
         double_spin_box.valueChanged.connect(slot)
     return double_spin_box
 
+
 def create_labelled_double_spin_box(
-        label, min_val, max_val, default_val,
-        layout: Union[QVBoxLayout, QHBoxLayout, QFormLayout]
-        ) -> QDoubleSpinBox:
+    label,
+    min_val,
+    max_val,
+    default_val,
+    layout: Union[QtWidgets.QVBoxLayout, QtWidgets.QHBoxLayout, QtWidgets.QFormLayout],
+) -> QtWidgets.QDoubleSpinBox:
     '''
     Create a QDoubleSpinBox widget with a label.
 
@@ -174,21 +171,22 @@ def create_labelled_double_spin_box(
     QDoubleSpinBox
         The created QDoubleSpinBox widget.
     '''
-    spin_box = QDoubleSpinBox()
+    spin_box = QtWidgets.QDoubleSpinBox()
     spin_box.setMinimum(min_val)
     spin_box.setMaximum(max_val)
     spin_box.setValue(default_val)
 
-    if isinstance(layout, QFormLayout):
-        layout.addRow(QLabel(label), spin_box)
+    if isinstance(layout, QtWidgets.QFormLayout):
+        layout.addRow(QtWidgets.QLabel(label), spin_box)
     else:
-        layout.addWidget(QLabel(label))
+        layout.addWidget(QtWidgets.QLabel(label))
         layout.addWidget(spin_box)
     return spin_box
 
+
 def create_spin_box(
-        min_value=0, max_value=100,
-        single_step=1, initial_value=0, slot=None):
+    min_value=0, max_value=100, single_step=1, initial_value=0, slot=None
+):
     '''
     Create a QSpinBox widget.
 
@@ -211,7 +209,7 @@ def create_spin_box(
         The created QSpinBox widget.
     '''
 
-    spin_box = QSpinBox()
+    spin_box = QtWidgets.QSpinBox()
     spin_box.setMinimum(min_value)
     spin_box.setMaximum(max_value)
     spin_box.setSingleStep(single_step)
@@ -219,6 +217,7 @@ def create_spin_box(
     if slot:
         spin_box.valueChanged.connect(slot)
     return spin_box
+
 
 def create_check_box(text, initial_state=False, state_changed_slot=None):
     '''
@@ -238,7 +237,7 @@ def create_check_box(text, initial_state=False, state_changed_slot=None):
     QCheckBox
         The created QCheckBox widget.
     '''
-    check_box = QCheckBox(text)
+    check_box = QtWidgets.QCheckBox(text)
     check_box.setChecked(initial_state)
 
     if state_changed_slot:
@@ -246,8 +245,13 @@ def create_check_box(text, initial_state=False, state_changed_slot=None):
 
     return check_box
 
+
 def create_group_box(
-        title, layout_type: Union[QVBoxLayout, QHBoxLayout, QFormLayout] = QVBoxLayout):
+    title,
+    layout_type: Union[
+        QtWidgets.QVBoxLayout, QtWidgets.QHBoxLayout, QtWidgets.QFormLayout
+    ] = QtWidgets.QVBoxLayout,
+):
     '''
     Create a QGroupBox with a specified layout type.
 
@@ -263,14 +267,20 @@ def create_group_box(
     QGroupBox, QLayout
         The created QGroupBox and its associated layout.
     '''
-    group_box = QGroupBox(title)
+    group_box = QtWidgets.QGroupBox(title)
     layout = layout_type()
     group_box.setLayout(layout)
     return group_box, layout
 
+
 def create_widget(
-        layout_type: Union[QVBoxLayout, QHBoxLayout, QFormLayout] = QVBoxLayout) -> \
-        tuple[QWidget, Union[QVBoxLayout, QHBoxLayout, QFormLayout]]:
+    layout_type: Union[
+        QtWidgets.QVBoxLayout, QtWidgets.QHBoxLayout, QtWidgets.QFormLayout
+    ] = QtWidgets.QVBoxLayout,
+) -> tuple[
+    QtWidgets.QWidget,
+    Union[QtWidgets.QVBoxLayout, QtWidgets.QHBoxLayout, QtWidgets.QFormLayout],
+]:
     '''
     Create a QWidget with a specified layout type.
 
@@ -284,10 +294,11 @@ def create_widget(
     QWidget, QLayout
         The created QWidget and its associated layout.
     '''
-    widget = QWidget()
+    widget = QtWidgets.QWidget()
     layout = layout_type()
     widget.setLayout(layout)
     return widget, layout
+
 
 def create_hbox_layout(*args):
     '''
@@ -303,12 +314,13 @@ def create_hbox_layout(*args):
     QHBoxLayout
         The created QHBoxLayout.
     '''
-    hbox_layout = QHBoxLayout()
+    hbox_layout = QtWidgets.QHBoxLayout()
 
     for widget in args:
         hbox_layout.addWidget(widget)
 
     return hbox_layout
+
 
 def create_vbox_layout(*args):
     '''
@@ -324,14 +336,17 @@ def create_vbox_layout(*args):
     QVBoxLayout
         The created QVBoxLayout.
     '''
-    vbox_layout = QVBoxLayout()
+    vbox_layout = QtWidgets.QVBoxLayout()
 
     for widget in args:
         vbox_layout.addWidget(widget)
 
     return vbox_layout
 
-def layout_add_elements(layout: Union[QVBoxLayout, QHBoxLayout], *args):
+
+def layout_add_elements(
+    layout: Union[QtWidgets.QVBoxLayout, QtWidgets.QHBoxLayout], *args
+):
     '''
     Add elements to a QVBoxLayout or QHBoxLayout.
 
@@ -343,10 +358,11 @@ def layout_add_elements(layout: Union[QVBoxLayout, QHBoxLayout], *args):
         Elements to add to the layout.
     '''
     for widget in args:
-        if isinstance(widget, QWidget):
+        if isinstance(widget, QtWidgets.QWidget):
             layout.addWidget(widget)
-        elif isinstance(widget, QLayout):
+        elif isinstance(widget, QtWidgets.QLayout):
             layout.addLayout(widget)
+
 
 def get_scaling_factor(height, width, target_percentage=0.8):
     '''
@@ -366,10 +382,7 @@ def get_scaling_factor(height, width, target_percentage=0.8):
     float
         The calculated scaling factor.
     '''
-    app: QApplication = QApplication.instance()
-    desktop = app.desktop()
-
-    main_screen = desktop.screenGeometry()
+    main_screen = QApplication.primaryScreen().availableGeometry()
     screen_info = (main_screen.width(), main_screen.height())
 
     # Calculate scaling factor to fill the specified percentage of the screen
@@ -380,6 +393,7 @@ def get_scaling_factor(height, width, target_percentage=0.8):
     scaling_factor_width = target_width / width
 
     return min(scaling_factor_height, scaling_factor_width)
+
 
 def time_string_ms(value: float):
     '''
@@ -398,6 +412,7 @@ def time_string_ms(value: float):
     seconds = value / 1000
     return f'{seconds // 60:.0f} min {seconds % 60} seconds'
 
+
 def time_string_s(value: float):
     '''
     Convert time in seconds to a formatted string.
@@ -413,6 +428,7 @@ def time_string_s(value: float):
         Formatted time string in minutes and seconds.
     '''
     return f'{value // 60:.0f} min {value % 60} seconds'
+
 
 def GaussianOffSet(x, a, x0, sigma, offset):
     '''
@@ -438,4 +454,4 @@ def GaussianOffSet(x, a, x0, sigma, offset):
     np.ndarray
         Gaussian function f(x).
     '''
-    return a*np.exp(-(x-x0)**2/(2*sigma**2)) + offset
+    return a * np.exp(-((x - x0) ** 2) / (2 * sigma**2)) + offset

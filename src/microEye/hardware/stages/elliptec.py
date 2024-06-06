@@ -1,23 +1,14 @@
-from PyQt5.QtCore import *
-from PyQt5.QtGui import *
-from PyQt5.QtSerialPort import *
-from PyQt5.QtWidgets import *
-
-from ..port_config import port_config
+from microEye.hardware.port_config import port_config
+from microEye.qt import QtCore, QtSerialPort, QtWidgets
 
 
 class elliptec_controller:
-    '''Thorlabs Elliptec stage controller
-    '''
+    '''Thorlabs Elliptec stage controller'''
 
     def __init__(self) -> None:
+        self._connect_btn = QtWidgets.QPushButton()
 
-        self._connect_btn = QPushButton()
-
-        self.serial = QSerialPort(
-            None,
-            readyRead=self.rx_piezo
-        )
+        self.serial = QtSerialPort.QSerialPort(None, readyRead=self.rx_piezo)
         self.serial.setBaudRate(9600)
         self.serial.setPortName('COM9')
 
@@ -27,7 +18,7 @@ class elliptec_controller:
 
     def open(self):
         '''Opens the serial port.'''
-        self.serial.open(QIODevice.ReadWrite)
+        self.serial.open(QtCore.QIODevice.OpenModeFlag.ReadWrite)
 
     def close(self):
         '''Closes the supplied serial port.'''
@@ -45,9 +36,11 @@ class elliptec_controller:
         '''Opens a port config dialog
         for the serial port.
         '''
-        dialog = port_config()
+        dialog = port_config(
+            baudrate=self.serial.baudRate(), portname=self.serial.portName()
+        )
         if not self.isOpen():
-            if dialog.exec_():
+            if dialog.exec():
                 portname, baudrate = dialog.get_results()
                 self.setPortName(portname)
                 self.setBaudRate(baudrate)
@@ -57,80 +50,71 @@ class elliptec_controller:
 
     def HOME(self, address):
         '''Homes the stage at a specific address'''
-        if (self.isOpen()):
+        if self.isOpen():
             self.LastCmd = f'{address}ho0'
             self.write(self.LastCmd.encode('utf-8'))
 
     def FORWARD(self, address):
         '''Moves the stage at a specific address one step FORWARD'''
-        if (self.isOpen()):
+        if self.isOpen():
             self.LastCmd = f'{address}fw'
             self.write(self.LastCmd.encode('utf-8'))
 
     def BACKWARD(self, address):
         '''Moves the stage at a specific address one step BACKWARD'''
-        if (self.isOpen()):
+        if self.isOpen():
             self.LastCmd = f'{address}bw'
             self.write(self.LastCmd.encode('utf-8'))
 
     def setSLOT(self, address, slot):
         '''Moves the stage at a specific address one step BACKWARD'''
-        if (self.isOpen()):
+        if self.isOpen():
             self.LastCmd = f'{address}ma000000{slot * 2}0'
             self.write(self.LastCmd.encode('utf-8'))
 
     def rx_piezo(self):
-        '''Controller dataReady signal.
-        '''
-        self.Received = str(
-            self.serial.readAll(),
-            encoding='utf8')
+        '''Controller dataReady signal.'''
+        self.Received = str(self.serial.readAll(), encoding='utf8')
 
     def getQWidget(self):
         '''Generates a QGroupBox with
         stage controls.'''
-        group = QGroupBox('Elliptec Controller')
-        layout = QFormLayout()
+        group = QtWidgets.QGroupBox('Elliptec Controller')
+        layout = QtWidgets.QFormLayout()
         group.setLayout(layout)
 
-        self._connect_btn = QPushButton(
-            'Connect',
-            clicked=lambda: self.open()
+        self._connect_btn = QtWidgets.QPushButton(
+            'Connect', clicked=lambda: self.open()
         )
-        self._disconnect_btn = QPushButton(
-            'Disconnect',
-            clicked=lambda: self.close()
+        self._disconnect_btn = QtWidgets.QPushButton(
+            'Disconnect', clicked=lambda: self.close()
         )
-        self._config_btn = QPushButton(
-            'Config.',
-            clicked=lambda: self.open_dialog()
+        self._config_btn = QtWidgets.QPushButton(
+            'Config.', clicked=lambda: self.open_dialog()
         )
 
-        btns = QHBoxLayout()
+        btns = QtWidgets.QHBoxLayout()
         btns.addWidget(self._connect_btn)
         btns.addWidget(self._disconnect_btn)
         btns.addWidget(self._config_btn)
         layout.addRow(btns)
 
-        self.address_bx = QSpinBox()
+        self.address_bx = QtWidgets.QSpinBox()
         self.address_bx.setMinimum(0)
         self.address_bx.setMaximum(9)
 
-        layout.addRow(
-            QLabel('Address:'),
-            self.address_bx)
+        layout.addRow(QtWidgets.QLabel('Address:'), self.address_bx)
 
-        self.stage_type = QComboBox()
+        self.stage_type = QtWidgets.QComboBox()
         self.stage_type.addItems(['ELL6', 'ELL9'])
 
-        layout.addRow(
-            QLabel('Stage Type:'),
-            self.stage_type)
+        layout.addRow(QtWidgets.QLabel('Stage Type:'), self.stage_type)
 
-        self._add_btn = QPushButton(
+        self._add_btn = QtWidgets.QPushButton(
             'Add stage',
             clicked=lambda: self.add_stage(
-                self.stage_type.currentText(), self.address_bx.value(), layout)
+                self.stage_type.currentText(), self.address_bx.value(), layout
+            ),
         )
 
         layout.addWidget(self._add_btn)
@@ -143,34 +127,22 @@ class elliptec_controller:
         elif 'ELL9' in stage_type:
             self.getELL9(address, layout)
 
-    def getELL6(self, address, layout: QFormLayout):
-        group = QGroupBox(f'Ell6 (2 SLOTS) Address {address}')
-        move_buttons = QHBoxLayout()
+    def getELL6(self, address, layout: QtWidgets.QFormLayout):
+        group = QtWidgets.QGroupBox(f'Ell6 (2 SLOTS) Address {address}')
+        move_buttons = QtWidgets.QHBoxLayout()
         group.setLayout(move_buttons)
         # controls
-        HOME_btn = QPushButton(
-            '⌂',
-            clicked=lambda: self.HOME(address)
-        )
-        BW_btn = QPushButton(
-            '<<',
-            clicked=lambda: self.BACKWARD(address)
-        )
-        FW_btn = QPushButton(
-            '>>',
-            clicked=lambda: self.FORWARD(address)
-        )
-        remove_btn = QPushButton(
-            'x',
-            clicked=lambda: layout.removeRow(group)
-        )
+        HOME_btn = QtWidgets.QPushButton('⌂', clicked=lambda: self.HOME(address))
+        BW_btn = QtWidgets.QPushButton('<<', clicked=lambda: self.BACKWARD(address))
+        FW_btn = QtWidgets.QPushButton('>>', clicked=lambda: self.FORWARD(address))
+        remove_btn = QtWidgets.QPushButton('x', clicked=lambda: layout.removeRow(group))
 
         move_buttons.addWidget(HOME_btn)
         move_buttons.addWidget(BW_btn)
         move_buttons.addWidget(FW_btn)
         move_buttons.addWidget(remove_btn)
 
-        group.button_group = QButtonGroup()
+        group.button_group = QtWidgets.QButtonGroup()
         group.button_group.setExclusive(True)
         group.button_group.addButton(BW_btn)
         group.button_group.addButton(FW_btn)
@@ -180,42 +152,26 @@ class elliptec_controller:
 
         layout.addRow(group)
 
-    def getELL9(self, address, layout: QFormLayout):
-        group = QGroupBox(f'Ell9 (4 SLOTS) Address {address}')
-        move_buttons = QHBoxLayout()
+    def getELL9(self, address, layout: QtWidgets.QFormLayout):
+        group = QtWidgets.QGroupBox(f'Ell9 (4 SLOTS) Address {address}')
+        move_buttons = QtWidgets.QHBoxLayout()
         group.setLayout(move_buttons)
         # controls
-        HOME_btn = QPushButton(
-            '⌂',
-            clicked=lambda: self.HOME(address)
+        HOME_btn = QtWidgets.QPushButton('⌂', clicked=lambda: self.HOME(address))
+        BW_btn = QtWidgets.QPushButton('<<', clicked=lambda: self.BACKWARD(address))
+        FW_btn = QtWidgets.QPushButton('>>', clicked=lambda: self.FORWARD(address))
+        remove_btn = QtWidgets.QPushButton('x', clicked=lambda: layout.removeRow(group))
+        first_btn = QtWidgets.QPushButton(
+            '1st', clicked=lambda: self.setSLOT(address, 0)
         )
-        BW_btn = QPushButton(
-            '<<',
-            clicked=lambda: self.BACKWARD(address)
+        second_btn = QtWidgets.QPushButton(
+            '2nd', clicked=lambda: self.setSLOT(address, 1)
         )
-        FW_btn = QPushButton(
-            '>>',
-            clicked=lambda: self.FORWARD(address)
+        third_btn = QtWidgets.QPushButton(
+            '3rd', clicked=lambda: self.setSLOT(address, 2)
         )
-        remove_btn = QPushButton(
-            'x',
-            clicked=lambda: layout.removeRow(group)
-        )
-        first_btn = QPushButton(
-            '1st',
-            clicked=lambda: self.setSLOT(address, 0)
-        )
-        second_btn = QPushButton(
-            '2nd',
-            clicked=lambda: self.setSLOT(address, 1)
-        )
-        third_btn = QPushButton(
-            '3rd',
-            clicked=lambda: self.setSLOT(address, 2)
-        )
-        fourth_btn = QPushButton(
-            '4th',
-            clicked=lambda: self.setSLOT(address, 3)
+        fourth_btn = QtWidgets.QPushButton(
+            '4th', clicked=lambda: self.setSLOT(address, 3)
         )
 
         move_buttons.addWidget(HOME_btn)
@@ -227,7 +183,7 @@ class elliptec_controller:
         move_buttons.addWidget(fourth_btn)
         move_buttons.addWidget(remove_btn)
 
-        group.button_group = QButtonGroup()
+        group.button_group = QtWidgets.QButtonGroup()
         group.button_group.setExclusive(True)
         group.button_group.addButton(first_btn)
         group.button_group.addButton(second_btn)

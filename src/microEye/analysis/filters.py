@@ -4,13 +4,11 @@ from enum import Enum
 import cv2
 import dask.array
 import numpy as np
-from PyQt5.QtCore import *
-from PyQt5.QtWidgets import *
-from PyQt5.QtWidgets import QWidget
 from scipy import signal
 from scipy.fftpack import fft2, fftshift, ifft2, ifftshift
 
-from ..shared.uImage import ZarrImageSequence
+from microEye.qt import Qt, QtWidgets, Signal
+from microEye.utils.uImage import ZarrImageSequence
 
 
 class AbstractFilter:
@@ -21,7 +19,7 @@ class AbstractFilter:
 
     def getWidget(self):
         '''Return the QWidget for configuring the filter.'''
-        return QWidget()
+        return QtWidgets.QWidget()
 
     def get_metadata(self) -> dict:
         '''Return metadata about the filter.'''
@@ -95,8 +93,8 @@ class DoG_Filter(AbstractFilter):
             'factor': self.factor
         }
 
-class DoG_FilterWidget(QGroupBox):
-    update = pyqtSignal()
+class DoG_FilterWidget(QtWidgets.QGroupBox):
+    update = Signal()
 
     def __init__(self) -> None:
         '''Widget for configuring the DoG filter.'''
@@ -106,25 +104,25 @@ class DoG_FilterWidget(QGroupBox):
 
         self.filter = DoG_Filter()
 
-        self._layout = QFormLayout()
+        self._layout = QtWidgets.QFormLayout()
         self._layout.setLabelAlignment(
             Qt.AlignmentFlag.AlignRight)
 
-        self.arg_1 = QDoubleSpinBox()
+        self.arg_1 = QtWidgets.QDoubleSpinBox()
         self.arg_1.setMinimum(0)
         self.arg_1.setMaximum(1000)
         self.arg_1.setSingleStep(0.1)
         self.arg_1.setValue(1.0)
         self.arg_1.valueChanged.connect(self.value_changed)
 
-        self.arg_2 = QDoubleSpinBox()
+        self.arg_2 = QtWidgets.QDoubleSpinBox()
         self.arg_2.setMinimum(1)
         self.arg_2.setMaximum(100)
         self.arg_2.setSingleStep(0.1)
         self.arg_2.setValue(2.5)
         self.arg_2.valueChanged.connect(self.value_changed)
 
-        self.arg_3 = QCheckBox('Show Filter')
+        self.arg_3 = QtWidgets.QCheckBox('Show Filter')
         self.arg_3.setChecked(True)
         self.arg_3.stateChanged.connect(self.value_changed)
 
@@ -132,10 +130,10 @@ class DoG_FilterWidget(QGroupBox):
         self.arg_2.valueChanged.emit(2.5)
 
         self._layout.addRow(
-            QLabel('\u03C3 min:'),
+            QtWidgets.QLabel('\u03C3 min:'),
             self.arg_1)
         self._layout.addRow(
-            QLabel('Factor (\u03C3 max/\u03C3 min):'),
+            QtWidgets.QLabel('Factor (\u03C3 max/\u03C3 min):'),
             self.arg_2)
         self._layout.addWidget(self.arg_3)
 
@@ -410,8 +408,8 @@ class BandpassFilter(AbstractFilter):
             'show filter': self._show_filter
         }
 
-class BandpassFilterWidget(QGroupBox):
-    update = pyqtSignal()
+class BandpassFilterWidget(QtWidgets.QGroupBox):
+    update = Signal()
 
     def __init__(self) -> None:
         '''Widget for configuring the Bandpass filter.'''
@@ -421,17 +419,17 @@ class BandpassFilterWidget(QGroupBox):
 
         self.filter = BandpassFilter()
 
-        self._layout = QFormLayout()
+        self._layout = QtWidgets.QFormLayout()
         self._layout.setLabelAlignment(
             Qt.AlignmentFlag.AlignRight)
 
-        self.arg_1 = QComboBox()
+        self.arg_1 = QtWidgets.QComboBox()
         self.arg_1.addItems(['Gaussian', 'Butterworth', 'Ideal'])
         self.arg_1.setCurrentText('Gaussian')
         self.arg_1.currentTextChanged.connect(self.value_changed)
         self.arg_1.currentTextChanged.emit('Gaussian')
 
-        self.arg_2 = QDoubleSpinBox()
+        self.arg_2 = QtWidgets.QDoubleSpinBox()
         self.arg_2.setMinimum(0)
         self.arg_2.setMaximum(2096)
         self.arg_2.setSingleStep(2)
@@ -439,7 +437,7 @@ class BandpassFilterWidget(QGroupBox):
         self.arg_2.valueChanged.connect(self.value_changed)
         self.arg_2.valueChanged.emit(40.0)
 
-        self.arg_3 = QDoubleSpinBox()
+        self.arg_3 = QtWidgets.QDoubleSpinBox()
         self.arg_3.setMinimum(0)
         self.arg_3.setMaximum(2096)
         self.arg_3.setSingleStep(2)
@@ -447,18 +445,18 @@ class BandpassFilterWidget(QGroupBox):
         self.arg_3.valueChanged.connect(self.value_changed)
         self.arg_3.valueChanged.emit(90.0)
 
-        self.arg_4 = QCheckBox('Show Filter')
+        self.arg_4 = QtWidgets.QCheckBox('Show Filter')
         self.arg_4.setChecked(True)
         self.arg_4.stateChanged.connect(self.value_changed)
 
         self._layout.addRow(
-            QLabel('Filter type:'),
+            QtWidgets.QLabel('Filter type:'),
             self.arg_1)
         self._layout.addRow(
-            QLabel('Center:'),
+            QtWidgets.QLabel('Center:'),
             self.arg_2)
         self._layout.addRow(
-            QLabel('Width:'),
+            QtWidgets.QLabel('Width:'),
             self.arg_3)
         self._layout.addWidget(self.arg_4)
 
@@ -549,8 +547,8 @@ class TemporalMedianFilter(AbstractFilter):
             return image
 
 
-class TemporalMedianFilterWidget(QGroupBox):
-    update = pyqtSignal()
+class TemporalMedianFilterWidget(QtWidgets.QGroupBox):
+    update = Signal()
 
     def __init__(self) -> None:
         super().__init__()
@@ -559,11 +557,11 @@ class TemporalMedianFilterWidget(QGroupBox):
 
         self.filter = TemporalMedianFilter()
 
-        self._layout = QFormLayout()
+        self._layout = QtWidgets.QFormLayout()
         self._layout.setLabelAlignment(
             Qt.AlignmentFlag.AlignRight)
 
-        self.window_size = QSpinBox()
+        self.window_size = QtWidgets.QSpinBox()
         self.window_size.setMinimum(1)
         self.window_size.setMaximum(2096)
         self.window_size.setSingleStep(1)
@@ -571,12 +569,12 @@ class TemporalMedianFilterWidget(QGroupBox):
         self.window_size.valueChanged.connect(self.value_changed)
         self.window_size.valueChanged.emit(3)
 
-        self.enabled = QCheckBox('Enable Filter')
+        self.enabled = QtWidgets.QCheckBox('Enable Filter')
         self.enabled.setChecked(False)
         self.enabled.stateChanged.connect(self.value_changed)
 
         self._layout.addRow(
-            QLabel('Window Size:'),
+            QtWidgets.QLabel('Window Size:'),
             self.window_size)
         self._layout.addWidget(self.enabled)
 

@@ -1,13 +1,10 @@
 from enum import Enum
 from typing import Optional
 
-from PyQt5.QtCore import *
-from PyQt5.QtGui import *
-from PyQt5.QtSerialPort import *
-from PyQt5.QtWidgets import *
 from pyqtgraph.parametertree import Parameter
 
-from ...shared import Tree
+from microEye.qt import QtWidgets, Signal
+from microEye.utils import Tree
 
 
 class devicesParams(Enum):
@@ -43,12 +40,12 @@ class devicesParams(Enum):
 class DevicesView(Tree):
     '''Devices View used in miEye module to add lasers, stages, and IR detector.
     '''
-    setDetectorActivated = pyqtSignal(str)
-    resetDetectorActivated = pyqtSignal()
-    addLaserActivated = pyqtSignal(str)
-    setStageActivated = pyqtSignal(str)
+    setDetectorActivated = Signal(str)
+    resetDetectorActivated = Signal()
+    addLaserActivated = Signal(str)
+    setStageActivated = Signal(str)
 
-    def __init__(self, parent: Optional['QWidget'] = None):
+    def __init__(self, parent: Optional['QtWidgets.QWidget'] = None):
         super().__init__(parent=parent)
 
     def getDetectors(self):
@@ -68,28 +65,28 @@ class DevicesView(Tree):
             {'name': str(devicesParams.IR_CAM), 'type': 'group',
                 'children': [
                     {'name': str(devicesParams.IR_DEVICE), 'title': '', 'type': 'list',
-                        'values': self.getDetectors()},
+                        'limits': self.getDetectors()},
                     {'name': str(devicesParams.IR_SET), 'type': 'action'},
                     {'name': str(devicesParams.IR_RESET), 'type': 'action'},
                 ]},
             {'name': str(devicesParams.LASERS), 'type': 'group',
                 'children': [
                     {'name': str(devicesParams.LASER), 'title': '', 'type': 'list',
-                        'values': self.getLasers()},
+                        'limits': self.getLasers()},
                     {'name': str(devicesParams.ADD_LASER), 'type': 'action'},
                 ]},
             {'name': str(devicesParams.STAGES), 'type': 'group',
                 'children': [
                     {'name': str(devicesParams.STAGE), 'title': '', 'type': 'list',
-                        'values': self.getStages()},
+                        'limits': self.getStages()},
                     {'name': str(devicesParams.SET_STAGE), 'type': 'action'},
                 ]},
         ]
 
-        self.param_tree = Parameter.create(name='root', type='group', children=params)
+        self.param_tree = Parameter.create(name='', type='group', children=params)
         self.param_tree.sigTreeStateChanged.connect(self.change)
         self.header().setSectionResizeMode(
-            QHeaderView.ResizeMode.ResizeToContents)
+            QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
 
         self.get_param(
             devicesParams.IR_SET).sigActivated.connect(

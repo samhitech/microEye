@@ -157,7 +157,7 @@ class MultiRectangularROISelector:
         cv2.imshow('Select Rectangular ROIs', self.resized_image)
         cv2.setWindowTitle(
             'Select Rectangular ROIs',
-            f'Select Rectangular ROIs \"Mode: {self.current_mode}\"',
+            f'Select Rectangular ROIs "Mode: {self.current_mode}"',
         )
 
     def mouse_callback(self, event, x, y, flags, param):

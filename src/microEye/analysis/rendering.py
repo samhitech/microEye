@@ -5,8 +5,9 @@ import cv2
 import numba
 import numpy as np
 import pyqtgraph as pg
-from PyQt5.QtCore import *
 from scipy.interpolate import BSpline, interp1d, splrep
+
+from microEye.qt import QDateTime
 
 
 def model(xc, yc, sigma_x, sigma_y, flux, offset, X, Y):
@@ -16,7 +17,7 @@ def model(xc, yc, sigma_x, sigma_y, flux, offset, X, Y):
     return flux * np.einsum('i,j->ij', y_gauss, x_gauss) + offset
 
 
-@numba.njit()
+@numba.njit(cache=True)
 def gauss_1d(x: np.ndarray, mu: np.ndarray, sigma: np.ndarray):
     return 1 / (np.sqrt(2 * np.pi) * sigma) * \
            np.exp(-0.5 * (x - mu)**2 / sigma**2)
@@ -391,134 +392,6 @@ def plotFRC(frequencies, FRC, smoothed, FRC_res):
         pen=pg.mkPen('b', width=2), symbol=None, symbolPen='b',
         symbolBrush=0, name='FRC smoothed')
     line2 = plt.plotItem.addLine(y=1/7, pen='y')
-
-
-def FRC_resolution_check_pattern(image, pixelSize=10):
-    '''Fourier Ring Correlation based on
-    https://doi.org/10.1038/s41467-019-11024-z
-
-
-    Parameters
-    ----------
-    image : np.ndarray
-        image to be resolution estimated
-    pixelSize : int, optional
-        super resolution image pixel size in nanometers, by default 10
-    '''
-    print(
-        'Initialization ...               ',
-        end='\r')
-    odd, even, oddeven, evenodd = checker_pairs(image)
-
-    window = hamming_2Dwindow(odd.shape[0])
-
-    odd *= window
-    even *= window
-    oddeven *= window
-    evenodd *= window
-
-    odd /= np.sum(odd)
-    even /= np.sum(even)
-    oddeven /= np.sum(oddeven)
-    evenodd /= np.sum(evenodd)
-
-    print(
-        'FFT ...               ',
-        end='\r')
-    odd_fft, even_fft, oddeven_fft, evenodd_fft = \
-        np.fft.fft2(odd), np.fft.fft2(even), \
-        np.fft.fft2(oddeven), np.fft.fft2(evenodd)
-
-    odd_even = np.fft.fftshift(
-        np.real(odd_fft * np.conj(even_fft)))
-    odd_even2_odd = np.fft.fftshift(
-        np.real(oddeven_fft * np.conj(evenodd_fft)))
-
-    odd_sq, even_sq, oddeven_sq, evenodd_sq = (
-        np.fft.fftshift(np.abs(odd_fft)**2),
-        np.fft.fftshift(np.abs(even_fft)**2),
-        np.fft.fftshift(np.abs(oddeven_fft)**2),
-        np.fft.fftshift(np.abs(evenodd_fft)**2))
-
-    R, _ = radial_cordinate(odd.shape)
-
-    R = np.round(R)
-
-    # Get the Nyquist frequency
-    # freq_nyq = int(np.floor(R.shape[0] / 2.0))
-    # R_max = int(np.max(R))
-
-    frequencies = np.fft.rfftfreq(R.shape[0], d=pixelSize)
-    freq_nyq = frequencies.max()
-    R_max = frequencies.shape[0]
-
-    FRC_res_1 = np.zeros((R_max, 4))
-    FRC_res_2 = np.zeros((R_max, 4))
-
-    print(
-        'FRC ...               ',
-        end='\r')
-    FRC_compute(
-        odd_even, odd_sq, even_sq, FRC_res_1, R, R_max)
-    FRC_compute(
-        odd_even2_odd, oddeven_sq, evenodd_sq, FRC_res_2, R, R_max)
-
-    FRC_avg = 0.5*(FRC_res_1[:, 3] + FRC_res_2[:, 3])
-
-    # for r in range(1, R_max + 1):
-    #     ring = (R == r)
-    #     FRC_res_1[r-1, 0] = np.sum(odd_even[ring])
-    #     FRC_res_1[r-1, 1] = np.sum(odd_sq[ring])
-    #     FRC_res_1[r-1, 2] = np.sum(even_sq[ring])
-    #     FRC_res_1[r-1, 3] = (FRC_res_1[r-1, 0] / np.sqrt(
-    #         FRC_res_1[r-1, 1]*FRC_res_1[r-1, 2]))
-
-    #     FRC_res_2[r-1, 0] = np.sum(odd_even2_odd[ring])
-    #     FRC_res_2[r-1, 1] = np.sum(oddeven_sq[ring])
-    #     FRC_res_2[r-1, 2] = np.sum(evenodd_sq[ring])
-    #     FRC_res_2[r-1, 3] = (FRC_res_2[r-1, 0] / np.sqrt(
-    #         FRC_res_2[r-1, 1]*FRC_res_2[r-1, 2]))
-
-    # frequencies = np.linspace(0, 1, freq_nyq) / (2 * pixelSize)
-
-    print(
-        'Interpolation ...               ',
-        end='\r')
-    interpy = interp1d(
-            frequencies, FRC_res_1[:, 3],
-            kind='quadratic', fill_value='extrapolate')
-    FRC_1 = interpy(frequencies)
-
-    interpy = interp1d(
-            frequencies, FRC_res_2[:, 3],
-            kind='quadratic', fill_value='extrapolate')
-    FRC_2 = interpy(frequencies)
-
-    interpy = interp1d(
-            frequencies, FRC_avg,
-            kind='quadratic', fill_value='extrapolate')
-    FRC_avg = interpy(frequencies)
-
-    idxmax_1 = np.where((1/7) >= FRC_1)[0].min()
-    idxmax_2 = np.where((1/7) >= FRC_2)[0].min()
-    idxmax_avg = np.where(FRC_avg <= (1/7))[0].min()
-    FRC_freq = np.array([
-        frequencies[idxmax_1],
-        frequencies[idxmax_2],
-        frequencies[idxmax_avg]])
-    FRC_res = 1 / FRC_freq
-
-    def func(x, a, b, c, d):
-        return a * np.exp(c * (x - b)) + d
-
-    params = [0.95988146, 0.97979108, 13.90441896, 0.55146136]
-
-    cut_off_corrections = func(FRC_freq, *params)
-
-    FRC_res /= cut_off_corrections
-
-    return frequencies, [FRC_1, FRC_2, FRC_avg], FRC_res, cut_off_corrections
-
 
 def plotFRC_(frequencies, FRC, FRC_res, cut_off_corrections):
     # plot results

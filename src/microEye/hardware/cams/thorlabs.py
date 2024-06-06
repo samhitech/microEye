@@ -4,7 +4,7 @@ from ctypes import *
 
 import numpy as np
 
-from .micam import miCamera
+from microEye.hardware.cams.micam import miCamera
 
 
 class IS_SIZE_2D(Structure):

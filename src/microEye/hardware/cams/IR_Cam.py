@@ -3,12 +3,9 @@ from os import name
 from queue import Queue
 
 import numpy as np
-from PyQt5.QtCore import *
-from PyQt5.QtGui import *
-from PyQt5.QtSerialPort import *
-from PyQt5.QtWidgets import *
 
-from ..port_config import *
+from microEye.hardware.port_config import *
+from microEye.qt import QtCore, QtSerialPort, QtWidgets
 
 
 class IR_Cam:
@@ -18,7 +15,7 @@ class IR_Cam:
         self.name = 'Dummy'
         self._buffer = Queue()
         self._buffer.put(np.array([0 for i in range(128)]))
-        self._connect_btn = QPushButton()
+        self._connect_btn = QtWidgets.QPushButton()
 
     def isDummy(self) -> bool:
         return True
@@ -48,10 +45,7 @@ class ParallaxLineScanner(IR_Cam):
 
         self.name = 'Parallax CCD Array (TSL1401) LineScanner'
         self._buffer.put(np.array([0 for i in range(128)]))
-        self.serial = QSerialPort(
-            None,
-            readyRead=self.receive
-        )
+        self.serial = QtSerialPort.QSerialPort(None, readyRead=self.receive)
         self.serial.setBaudRate(115200)
         self.serial.setPortName('COM4')
 
@@ -60,7 +54,7 @@ class ParallaxLineScanner(IR_Cam):
 
     def open(self):
         '''Opens the serial port.'''
-        self.serial.open(QIODevice.ReadWrite)
+        self.serial.open(QtCore.QIODevice.OpenModeFlag.ReadWrite)
 
     @property
     def isOpen(self) -> bool:
@@ -80,15 +74,14 @@ class ParallaxLineScanner(IR_Cam):
         self.serial.setBaudRate(baudRate)
 
     def receive(self):
-        '''IR CCD array serial port data ready signal
-        '''
+        '''IR CCD array serial port data ready signal'''
         if self.serial.bytesAvailable() >= 260:
             barray = self.serial.read(260)
-            temp = np.array(np.array(struct.unpack(
-                'h'*(len(barray)//2), barray)) * 5.0 / 1023.0)
+            temp = np.array(
+                np.array(struct.unpack('h' * (len(barray) // 2), barray)) * 5.0 / 1023.0
+            )
             # array realignment
-            if (temp[0] != 0 or temp[-1] != 0) and \
-               self.serial.bytesAvailable() >= 2:
+            if (temp[0] != 0 or temp[-1] != 0) and self.serial.bytesAvailable() >= 2:
                 self.serial.read(2)
             # byte-wise realignment
             if temp.max() > 5:
@@ -101,34 +94,30 @@ class ParallaxLineScanner(IR_Cam):
         '''
         dialog = port_config()
         if not self.isOpen:
-            if dialog.exec_():
+            if dialog.exec():
                 portname, baudrate = dialog.get_results()
                 self.setPortName(portname)
                 self.setBaudRate(baudrate)
 
-    def getQWidget(self, parent=None) -> QGroupBox:
+    def getQWidget(self, parent=None) -> QtWidgets.QGroupBox:
         '''Generates a QGroupBox with
         connect/disconnect/config buttons.'''
-        group = QGroupBox('Parallax CCD Array')
-        layout = QVBoxLayout()
+        group = QtWidgets.QGroupBox('Parallax CCD Array')
+        layout = QtWidgets.QVBoxLayout()
         group.setLayout(layout)
 
         # IR CCD array arduino buttons
-        self._connect_btn = QPushButton(
-            'Connect',
-            parent,
-            clicked=lambda: self.open()
+        self._connect_btn = QtWidgets.QPushButton(
+            'Connect', parent, clicked=lambda: self.open()
         )
-        disconnect_btn = QPushButton(
-            'Disconnect',
-            clicked=lambda: self.close()
+        disconnect_btn = QtWidgets.QPushButton(
+            'Disconnect', clicked=lambda: self.close()
         )
-        config_btn = QPushButton(
-            'Port Config.',
-            clicked=lambda: self.open_dialog()
+        config_btn = QtWidgets.QPushButton(
+            'Port Config.', clicked=lambda: self.open_dialog()
         )
 
-        btns = QHBoxLayout()
+        btns = QtWidgets.QHBoxLayout()
         btns.addWidget(self._connect_btn)
         btns.addWidget(disconnect_btn)
         btns.addWidget(config_btn)

@@ -1,14 +1,11 @@
 import numpy as np
 import pyqtgraph as pg
 import qdarkstyle
-from PyQt5.QtCore import *
-from PyQt5.QtGui import *
-from PyQt5.QtSerialPort import *
-from PyQt5.QtWidgets import *
+
+from microEye.qt import QApplication, QtWidgets
 
 
-class AcquisitionView(QWidget):
-
+class AcquisitionView(QtWidgets.QWidget):
     def __init__(self) -> None:
         super().__init__()
 
@@ -16,13 +13,13 @@ class AcquisitionView(QWidget):
 
         pg.setConfigOption('imageAxisOrder', 'row-major')
 
-        size = QDesktopWidget().availableGeometry(-1)
+        size = QApplication.primaryScreen().availableGeometry()
         minDim = int(min(size.width(), size.height()) * 0.9)
         self.setGeometry(
-            (size.width() - minDim) // 2,
-            (size.height() - minDim) // 2, minDim, minDim)
+            (size.width() - minDim) // 2, (size.height() - minDim) // 2, minDim, minDim
+        )
 
-        layout = QGridLayout()
+        layout = QtWidgets.QGridLayout()
         self.setLayout(layout)
 
         self.view = pg.GraphicsView()
@@ -32,12 +29,11 @@ class AcquisitionView(QWidget):
         layout.addWidget(self.view, 0, 0, 1, 3)
 
         self.hist = pg.HistogramLUTWidget(
-            gradientPosition='top',
-            orientation='horizontal')
+            gradientPosition='top', orientation='horizontal'
+        )
         layout.addWidget(self.hist, 1, 0)
 
-        self.imageItem = pg.ImageItem(
-            AcquisitionView.dummyData())
+        self.imageItem = pg.ImageItem(AcquisitionView.dummyData())
         self.vb.addItem(self.imageItem)
         self.vb.autoRange()
 
@@ -72,4 +68,4 @@ if __name__ == '__main__':
     win = AcquisitionView()
     win.show()
 
-    app.exec_()
+    app.exec()

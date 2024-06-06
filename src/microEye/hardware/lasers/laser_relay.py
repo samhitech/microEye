@@ -3,25 +3,22 @@ import sys
 from enum import Enum
 from typing import Optional
 
-from PyQt5.QtCore import *
-from PyQt5.QtGui import *
-from PyQt5.QtSerialPort import *
-from PyQt5.QtWidgets import *
 from pyqtgraph.parametertree import Parameter
 
-from ...shared import StartGUI, Tree
+from microEye.qt import QtCore, QtSerialPort, QtWidgets, Signal
+from microEye.utils import StartGUI, Tree
 
 
 class LaserRelay:
     def __init__(self) -> None:
-        '''
+        """
         Initialize a new LaserRelay instance.
 
         Sets up the serial port with a baud rate of 115200 and a port of 'COM6'.
         Also initializes the last sent configuration, the current laser relay state,
         and the ALEX flag.
-        '''
-        self.__port = QSerialPort()
+        """
+        self.__port = QtSerialPort.QSerialPort()
         self.__port.setBaudRate(115200)
         self.__port.setPortName('COM6')
 
@@ -82,7 +79,7 @@ class LaserRelay:
         this method will open it in read-write mode.
         '''
         if not self.isOpen():
-            self.__port.open(QIODevice.OpenModeFlag.ReadWrite)
+            self.__port.open(QtCore.QIODevice.OpenModeFlag.ReadWrite)
 
     def close(self):
         '''
@@ -176,14 +173,15 @@ class LaserRelay:
         except Exception as e:
             print('Failed Laser Relay Send Config: ' + str(e))
 
+
 class RelayParams(Enum):
     '''
     Enum class defining Laser Relay parameters.
     '''
+
     MODEL = 'Model'
     ALEX = 'ALEX'
     SEND_COMMAND = 'Send Command'
-
 
     SERIAL_PORT = 'Serial Port'
     PORT = 'Serial Port.Port'
@@ -207,12 +205,13 @@ class RelayParams(Enum):
         '''
         return self.value.split('.')
 
+
 class LaserRelayView(Tree):
-    sendCommandActivated = pyqtSignal()
+    sendCommandActivated = Signal()
 
     def __init__(
-            self,
-            parent: Optional['QWidget'] = None, relay: LaserRelay = None):
+        self, parent: Optional['QtWidgets.QWidget'] = None, relay: LaserRelay = None
+    ):
         self.__laserRelay = relay if relay else LaserRelay()
 
         super().__init__(parent=parent)
@@ -222,63 +221,59 @@ class LaserRelayView(Tree):
         Create the parameter tree structure.
         '''
         params = [
-            {'name': str(RelayParams.MODEL),
-                'type': 'str', 'value': 'Laser Relay Box', 'readonly': True},
-            {'name': str(RelayParams.ALEX),
-                'type': 'bool', 'value': False},
-                {'name': str(RelayParams.SEND_COMMAND), 'type': 'action'},
-            {'name': str(RelayParams.SERIAL_PORT), 'type': 'group', 'children': [
-                {'name': str(RelayParams.PORT), 'type': 'list',
-                 'values': [
-                     info.portName() for info in QSerialPortInfo.availablePorts()]},
-                {'name': str(RelayParams.BAUDRATE), 'type': 'list', 'value': 115200,
-                 'values': [
-                     baudrate for baudrate in QSerialPortInfo.standardBaudRates()]},
-                {'name': str(RelayParams.SET_PORT), 'type': 'action'},
-                {'name': str(RelayParams.OPEN), 'type': 'action'},
-                {'name': str(RelayParams.CLOSE), 'type': 'action'},
-                {'name': str(RelayParams.PORT_STATE),
-                 'type': 'str', 'value': 'closed', 'readonly': True},
-            ]},
+            {
+                'name': str(RelayParams.MODEL),
+                'type': 'str',
+                'value': 'Laser Relay Box',
+                'readonly': True,
+            },
+            {'name': str(RelayParams.ALEX), 'type': 'bool', 'value': False},
+            {'name': str(RelayParams.SEND_COMMAND), 'type': 'action'},
+            {
+                'name': str(RelayParams.SERIAL_PORT),
+                'type': 'group',
+                'children': [
+                    {
+                        'name': str(RelayParams.PORT),
+                        'type': 'list',
+                        'limits': [
+                            info.portName()
+                            for info in QtSerialPort.QSerialPortInfo.availablePorts()
+                        ],
+                    },
+                    {
+                        'name': str(RelayParams.BAUDRATE),
+                        'type': 'list',
+                        'value': 115200,
+                        'limits': [
+                            baudrate
+                            for baudrate in \
+                                QtSerialPort.QSerialPortInfo.standardBaudRates()
+                        ],
+                    },
+                    {'name': str(RelayParams.SET_PORT), 'type': 'action'},
+                    {'name': str(RelayParams.OPEN), 'type': 'action'},
+                    {'name': str(RelayParams.CLOSE), 'type': 'action'},
+                    {
+                        'name': str(RelayParams.PORT_STATE),
+                        'type': 'str',
+                        'value': 'closed',
+                        'readonly': True,
+                    },
+                ],
+            },
         ]
 
-        self.param_tree = Parameter.create(name='root', type='group', children=params)
+        self.param_tree = Parameter.create(name='', type='group', children=params)
         self.param_tree.sigTreeStateChanged.connect(self.change)
         self.header().setSectionResizeMode(
-            QHeaderView.ResizeMode.ResizeToContents)
+            QtWidgets.QHeaderView.ResizeMode.ResizeToContents
+        )
 
-        self.get_param(
-            RelayParams.SET_PORT).sigActivated.connect(self.set_config)
-        self.get_param(
-            RelayParams.OPEN).sigActivated.connect(self.connect)
-        self.get_param(
-            RelayParams.CLOSE).sigActivated.connect(self.__laserRelay.close)
-        self.get_param(
-            RelayParams.SEND_COMMAND).sigActivated.connect(
-                self.sendCommandActivated.emit)
-
-    def set_config(self):
-        '''Sets the serial port configuration.
-
-        This method sets the serial port configuration based on the current
-        settings in the parameter tree.
-        '''
-        if not self.__laserRelay.isOpen():
-            self.__laserRelay.setPortName(
-                self.get_param_value(RelayParams.PORT))
-            self.__laserRelay.setBaudRate(
-                self.get_param_value(RelayParams.BAUDRATE))
-
-    def connect(self):
-        '''
-        Connect to the laser relay.
-
-        This method opens the serial port and sets the port state to "open" in the
-        parameter tree.
-        '''
-        self.__laserRelay.open()
-
-        self.set_param_value(RelayParams.PORT_STATE, 'open')
+        self.get_param(RelayParams.CLOSE).sigActivated.connect(self.__laserRelay.close)
+        self.get_param(RelayParams.SEND_COMMAND).sigActivated.connect(
+            self.sendCommandActivated.emit
+        )
 
     def remove_widget(self):
         '''
@@ -300,7 +295,7 @@ class LaserRelayView(Tree):
         -------
         app, window = LaserRelay.StartGUI()
 
-        app.exec_()
+        app.exec()
 
         Returns
         -------
@@ -309,8 +304,9 @@ class LaserRelayView(Tree):
         '''
         return StartGUI(LaserRelay)
 
+
 class LaserRelayController:
-    def  __init__(self, relay: LaserRelay = None, view: LaserRelayView = None):
+    def __init__(self, relay: LaserRelay = None, view: LaserRelayView = None):
         '''
         Initialize the LaserRelayController class.
 
@@ -328,6 +324,11 @@ class LaserRelayController:
         '''
         self.__relay = relay if relay else LaserRelay()
         self.__view = view if view else LaserRelayView(relay=self.__relay)
+
+        self.__view.get_param(RelayParams.SET_PORT).sigActivated.connect(
+            self.set_config
+        )
+        self.__view.get_param(RelayParams.OPEN).sigActivated.connect(self.connect)
 
     @property
     def sendCommandActivated(self):
@@ -382,6 +383,7 @@ class LaserRelayController:
             The name of the serial port.
         '''
         self.__relay.setPortName(value)
+        self.__view.set_param_value(RelayParams.PORT, value)
 
     def baudRate(self):
         '''
@@ -404,6 +406,7 @@ class LaserRelayController:
             The baud rate of the serial port.
         '''
         self.__relay.setBaudRate(value)
+        self.__view.set_param_value(RelayParams.BAUDRATE, value)
 
     def isOpen(self):
         '''
@@ -415,6 +418,27 @@ class LaserRelayController:
             True if the laser relay is open, False otherwise.
         '''
         return self.__relay.isOpen()
+
+    def set_config(self):
+        '''Sets the serial port configuration.
+
+        This method sets the serial port configuration based on the current
+        settings in the parameter tree.
+        '''
+        if not self.__relay.isOpen():
+            self.__relay.setPortName(self.__view.get_param_value(RelayParams.PORT))
+            self.__relay.setBaudRate(self.__view.get_param_value(RelayParams.BAUDRATE))
+
+    def connect(self):
+        '''
+        Connect to the laser relay.
+
+        This method opens the serial port and sets the port state to "open" in the
+        parameter tree.
+        '''
+        self.__relay.open()
+
+        self.__view.set_param_value(RelayParams.PORT_STATE, 'open')
 
     def isALEX(self) -> bool:
         '''
@@ -448,13 +472,12 @@ class LaserRelayController:
         color = '#004CB6' if self.isOpen() else 'black'
 
         self.__view.set_param_value(
-            RelayParams.PORT_STATE,
-            'open' if self.isOpen() else 'closed')
+            RelayParams.PORT_STATE, 'open' if self.isOpen() else 'closed'
+        )
 
-        next(
-            self.__view.get_param(
-                RelayParams.OPEN).items.keys()
-                ).button.setStyleSheet(f'background-color: {color}')
+        next(self.__view.get_param(RelayParams.OPEN).items.keys()).button.setStyleSheet(
+            f'background-color: {color}'
+        )
 
     def updateHighlight(self, config: str):
         '''
@@ -477,20 +500,24 @@ class LaserRelayController:
                 style = 'background-color: black'
 
         next(
-            self.__view.get_param(
-                RelayParams.SEND_COMMAND).items.keys()).button.setStyleSheet(style)
+            self.__view.get_param(RelayParams.SEND_COMMAND).items.keys()
+        ).button.setStyleSheet(style)
 
     def refreshPorts(self):
-        '''
+        """
         Refreshes the available serial ports list in the GUI.
 
         This method updates the list of available serial ports in the GUI by fetching
         the current list of available ports and setting it as the options for the
         'Serial Port' parameter in the parameter tree.
-        '''
+        """
         if not self.isOpen():
-            self.__view.get_param(RelayParams.PORT).setLimits([
-                info.portName() for info in QSerialPortInfo.availablePorts()])
+            self.__view.get_param(RelayParams.PORT).setLimits(
+                [
+                    info.portName()
+                    for info in QtSerialPort.QSerialPortInfo.availablePorts()
+                ]
+            )
 
     def getCommand(self, config: str):
         '''
@@ -511,5 +538,4 @@ class LaserRelayController:
             The full configuration command to send to the laser relay,
             including the ALEXON/ALEXOFF command.
         '''
-        return config + (
-            'ALEXON' if self.isALEX() else 'ALEXOFF') + '\r'
+        return config + ('ALEXON' if self.isALEX() else 'ALEXOFF') + '\r'

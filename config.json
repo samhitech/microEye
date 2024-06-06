@@ -1,0 +1,123 @@
+{
+  "LaserRelay": [
+    "COM6",
+    115200
+  ],
+  "Elliptic": [
+    "COM9",
+    9600
+  ],
+  "PiezoStage": [
+    "COM5",
+    115200
+  ],
+  "KinesisX": [
+    "COM12",
+    115200
+  ],
+  "KinesisY": [
+    "COM11",
+    115200
+  ],
+  "FocusStabilizer": {
+    "ROI_x": 25.5,
+    "ROI_y": 25.5,
+    "ROI_length": 256.0,
+    "ROI_angle": 0,
+    "ROI_Width": 1,
+    "PID": [
+      6.45,
+      0.0,
+      0.0,
+      0.0,
+      0.001
+    ],
+    "PixelCalCoeff": 0.01,
+    "UseCal": false,
+    "Inverted": false
+  },
+  "miEye_module": [
+    [
+      680,
+      251
+    ],
+    [
+      1200,
+      920
+    ],
+    false
+  ],
+  "LaserPanels": [],
+  "LasersDock": [
+    false,
+    [
+      -110,
+      -699
+    ],
+    [
+      290,
+      450
+    ],
+    true
+  ],
+  "devicesDock": [
+    false,
+    [
+      56,
+      -377
+    ],
+    [
+      124,
+      128
+    ],
+    true
+  ],
+  "stagesDock": [
+    false,
+    [
+      680,
+      279
+    ],
+    [
+      1200,
+      400
+    ],
+    true
+  ],
+  "focus": [
+    false,
+    [
+      680,
+      731
+    ],
+    [
+      1200,
+      420
+    ],
+    true
+  ],
+  "camDock": [
+    false,
+    [
+      -110,
+      -699
+    ],
+    [
+      290,
+      450
+    ],
+    true
+  ],
+  "pyDock": [
+    false,
+    [
+      -39,
+      -408
+    ],
+    [
+      219,
+      159
+    ],
+    true
+  ]
+}

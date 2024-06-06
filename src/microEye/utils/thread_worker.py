@@ -2,12 +2,11 @@ import sys
 import traceback
 
 import numpy as np
-from PyQt5.QtCore import *
-from PyQt5.QtGui import *
-from PyQt5.QtWidgets import *
+
+from microEye.qt import QtCore, Signal, Slot
 
 
-class thread_worker(QRunnable):
+class thread_worker(QtCore.QRunnable):
     '''Thread worker
 
     Inherits from QRunnable to handler worker thread setup,
@@ -40,7 +39,7 @@ class thread_worker(QRunnable):
         if z_stage:
             self.kwargs['movez_callback'] = self.signals.move_stage_z
 
-    @pyqtSlot()
+    @Slot()
     def run(self):
         '''Initialise the runner function with passed args, kwargs.'''
         # Retrieve args/kwargs here; and fire processing using them
@@ -58,7 +57,7 @@ class thread_worker(QRunnable):
             self.signals.finished.emit()  # Done
 
 
-class WorkerSignals(QObject):
+class WorkerSignals(QtCore.QObject):
     '''
     Defines the signals available from a running worker thread.
 
@@ -77,8 +76,8 @@ class WorkerSignals(QObject):
         No data indicates progress
 
     '''
-    finished = pyqtSignal()
-    error = pyqtSignal(tuple)
-    result = pyqtSignal(object)
-    progress = pyqtSignal(object)
-    move_stage_z = pyqtSignal(bool, int)
+    finished = Signal()
+    error = Signal(tuple)
+    result = Signal(object)
+    progress = Signal(object)
+    move_stage_z = Signal(bool, int)
