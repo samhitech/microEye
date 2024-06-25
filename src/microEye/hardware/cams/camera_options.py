@@ -14,6 +14,7 @@ class CamParams(Enum):
     '''
     Enum class defining Camera parameters.
     '''
+
     ACQUISITION = 'Acquisition'
     EXPERIMENT_NAME = 'Acquisition.Experiment Name'
     FRAMES = 'Acquisition.Number of Frames'
@@ -75,6 +76,7 @@ class CamParams(Enum):
         '''
         return self.value.split('.')
 
+
 class CameraOptions(Tree):
     '''
     Tree widget for editing camera parameters.
@@ -84,6 +86,8 @@ class CameraOptions(Tree):
     paramsChanged : Signal
         Signal for parameter changed event.
     '''
+
+    PARAMS = CamParams
 
     paramsChanged: Signal = Signal(GroupParameter, list)
     '''Signal emitted when parameters are changed.
@@ -114,125 +118,255 @@ class CameraOptions(Tree):
         '''
         super().__init__(parent=parent)
 
+    @classmethod
+    def combine_params(name, extra_params: Enum):
+        combined_members = {}
+        enum_classes: list[Enum] = [CameraOptions.PARAMS, extra_params]
+        for enum_class in enum_classes:
+            for member in enum_class:
+                combined_members[member.name] = member.value
+
+        sorted_members = dict(
+            sorted(combined_members.items(), key=lambda item: item[1].split('.')[0])
+        )
+        CameraOptions.PARAMS = Enum('CamParams', sorted_members)
+
     def create_parameters(self):
         '''
         Create the parameter tree structure.
         '''
         params = [
-            {'name': str(CamParams.ACQUISITION), 'type': 'group',
-             'expanded': True, 'children': [
-                 {'name': str(CamParams.EXPERIMENT_NAME),
-                'type': 'str', 'value': 'Experiment_001'},
-                {'name': str(CamParams.FRAMES),
-                'type': 'int', 'value': 1e6, 'limits': [1, 1e9]},
-                {'name': str(CamParams.SAVE_DATA), 'type': 'bool', 'value': False},
-             ]},
-            {'name': str(CamParams.ACQ_SETTINGS), 'type': 'group',
-             'expanded': False, 'children': [
-                {'name': str(CamParams.EXPOSURE), 'type': 'float',
-                 'value': 100.0, 'dec': False, 'decimals': 6,
-                 'suffixes': [' ns', ' us', ' ms', ' s']},
-            ]},
-            {'name': 'Exports', 'type': 'group', 'children': [
-                {'name': str(CamParams.SAVE_DIRECTORY), 'type': 'file',
-                 'directory': os.path.join(os.path.expanduser('~'), 'Desktop'),
-                 'fileMode': 'DirectoryOnly'},
-                {'name': str(CamParams.DARK_CALIBRATION),
-                 'type': 'bool', 'value': False},
-                {'name': str(CamParams.IMAGE_FORMAT), 'type': 'list', 'limits': [
-                    str(CamParams.BIGG_TIFF_FORMAT), str(CamParams.TIFF_FORMAT),
-                    str(CamParams.ZARR_FORMAT)
-                ]},
-                {'name': str(CamParams.FULL_METADATA), 'type': 'bool', 'value': True},
-                ]},
-            {'name': 'Display', 'type': 'group', 'expanded': False, 'children': [
-                {'name': str(CamParams.PREVIEW), 'type': 'bool', 'value': True},
-                {'name': str(CamParams.DISPLAY_STATS_OPTION),
-                 'type': 'bool', 'value': False},
-                {'name': str(CamParams.AUTO_STRETCH), 'type': 'bool', 'value': True},
-                {'name': str(CamParams.LUT), 'type': 'list', 'limits': [
-                    str(CamParams.LUT_NUMPY), str(CamParams.LUT_OPENCV)
-                ]},
-                {'name': str(CamParams.VIEW_OPTIONS), 'type': 'list', 'limits': [
-                    str(CamParams.SINGLE_VIEW), str(CamParams.DUAL_SIDE),
-                    str(CamParams.DUAL_OVERLAID), str(CamParams.ROIS_VIEW)]},
-                {'name': str(CamParams.LINE_PROFILER), 'type': 'bool', 'value': False},
-                {'name': str(CamParams.RESIZE_DISPLAY),
-                'type': 'float', 'value': 0.5, 'limits': [0.1, 4.0],
-                'step': 0.02, 'dec': False},
-            ]},
-            {'name': 'Stats', 'type': 'group', 'expanded': False, 'children': [
-                {'name': str(CamParams.CAPTURE_STATS),
-                'type': 'str', 'value': '0 | 0.00 ms', 'readonly': True},
-                {'name': str(CamParams.DISPLAY_STATS),
-                'type': 'str', 'value': '0 | 0.00 ms', 'readonly': True},
-                {'name': str(CamParams.SAVE_STATS),
-                'type': 'str', 'value': '0 | 0.00 ms', 'readonly': True},
-                {'name': str(CamParams.TEMPERATURE),
-                'type': 'str', 'value': ' T -127.00 °C', 'readonly': True},
-            ]},
-            {'name': 'Region of Interest (ROI)', 'type': 'group',
-             'expanded': False, 'children': [
-                {'name': str(CamParams.ROI_X), 'type': 'int', 'value': 0},
-                {'name': str(CamParams.ROI_Y), 'type': 'int', 'value': 0},
-                {'name': str(CamParams.ROI_WIDTH), 'type': 'int', 'value': 0},
-                {'name': str(CamParams.ROI_HEIGHT), 'type': 'int', 'value': 0},
-                {'name': str(CamParams.SET_ROI), 'type': 'action'},
-                {'name': str(CamParams.RESET_ROI), 'type': 'action'},
-                {'name': str(CamParams.CENTER_ROI), 'type': 'action'},
-                {'name': str(CamParams.SELECT_ROI), 'type': 'action'},
-                {'name': str(CamParams.EXPORT_ROIS), 'type': 'group', 'children': [
-                    {'name': str(CamParams.SELECT_EXPORT_ROIS), 'type': 'action'},
-                    {'name': str(CamParams.EXPORTED_ROIS), 'type': 'group',
-                     'children': []},
-                    {'name': str(CamParams.EXPORT_ROIS_SEPERATE),
-                     'type': 'bool', 'value': False,
-                     'tip': 'Export each ROI as a seperate Tiff file. (Not for Zarr)'},
-                    {'name': str(CamParams.EXPORT_ROIS_FLIPPED),
-                     'type': 'bool', 'value': True,
-                     'tip': 'Flip n-th ROIs horizontally for n > 1.'},
-                ]},
-            ]},
-            {'name': str(CamParams.CAMERA_GPIO), 'type': 'group', 'expanded': False,
-             'children': [
-            ]},
-            {'name': str(CamParams.CAMERA_TIMERS), 'type': 'group', 'expanded': False,
-             'children': [
-            ]},
+            {
+                'name': str(CamParams.ACQUISITION),
+                'type': 'group',
+                'expanded': True,
+                'children': [
+                    {
+                        'name': str(CamParams.EXPERIMENT_NAME),
+                        'type': 'str',
+                        'value': 'Experiment_001',
+                    },
+                    {
+                        'name': str(CamParams.FRAMES),
+                        'type': 'int',
+                        'value': 1e6,
+                        'limits': [1, 1e9],
+                    },
+                    {'name': str(CamParams.SAVE_DATA), 'type': 'bool', 'value': False},
+                ],
+            },
+            {
+                'name': str(CamParams.ACQ_SETTINGS),
+                'type': 'group',
+                'expanded': False,
+                'children': [
+                    {
+                        'name': str(CamParams.EXPOSURE),
+                        'type': 'float',
+                        'value': 100.0,
+                        'dec': False,
+                        'decimals': 6,
+                        'suffixes': [' ns', ' us', ' ms', ' s'],
+                    },
+                ],
+            },
+            {
+                'name': 'Exports',
+                'type': 'group',
+                'children': [
+                    {
+                        'name': str(CamParams.SAVE_DIRECTORY),
+                        'type': 'file',
+                        'directory': os.path.join(os.path.expanduser('~'), 'Desktop'),
+                        'fileMode': 'Directory',
+                    },
+                    {
+                        'name': str(CamParams.DARK_CALIBRATION),
+                        'type': 'bool',
+                        'value': False,
+                    },
+                    {
+                        'name': str(CamParams.IMAGE_FORMAT),
+                        'type': 'list',
+                        'limits': [
+                            str(CamParams.BIGG_TIFF_FORMAT),
+                            str(CamParams.TIFF_FORMAT),
+                            str(CamParams.ZARR_FORMAT),
+                        ],
+                    },
+                    {
+                        'name': str(CamParams.FULL_METADATA),
+                        'type': 'bool',
+                        'value': True,
+                    },
+                ],
+            },
+            {
+                'name': 'Display',
+                'type': 'group',
+                'expanded': False,
+                'children': [
+                    {'name': str(CamParams.PREVIEW), 'type': 'bool', 'value': True},
+                    {
+                        'name': str(CamParams.DISPLAY_STATS_OPTION),
+                        'type': 'bool',
+                        'value': False,
+                    },
+                    {
+                        'name': str(CamParams.AUTO_STRETCH),
+                        'type': 'bool',
+                        'value': True,
+                    },
+                    {
+                        'name': str(CamParams.LUT),
+                        'type': 'list',
+                        'limits': [str(CamParams.LUT_NUMPY), str(CamParams.LUT_OPENCV)],
+                    },
+                    {
+                        'name': str(CamParams.VIEW_OPTIONS),
+                        'type': 'list',
+                        'limits': [
+                            str(CamParams.SINGLE_VIEW),
+                            str(CamParams.DUAL_SIDE),
+                            str(CamParams.DUAL_OVERLAID),
+                            str(CamParams.ROIS_VIEW),
+                        ],
+                    },
+                    {
+                        'name': str(CamParams.LINE_PROFILER),
+                        'type': 'bool',
+                        'value': False,
+                    },
+                    {
+                        'name': str(CamParams.RESIZE_DISPLAY),
+                        'type': 'float',
+                        'value': 0.5,
+                        'limits': [0.1, 4.0],
+                        'step': 0.02,
+                        'dec': False,
+                    },
+                ],
+            },
+            {
+                'name': 'Stats',
+                'type': 'group',
+                'expanded': False,
+                'children': [
+                    {
+                        'name': str(CamParams.CAPTURE_STATS),
+                        'type': 'str',
+                        'value': '0 | 0.00 ms',
+                        'readonly': True,
+                    },
+                    {
+                        'name': str(CamParams.DISPLAY_STATS),
+                        'type': 'str',
+                        'value': '0 | 0.00 ms',
+                        'readonly': True,
+                    },
+                    {
+                        'name': str(CamParams.SAVE_STATS),
+                        'type': 'str',
+                        'value': '0 | 0.00 ms',
+                        'readonly': True,
+                    },
+                    {
+                        'name': str(CamParams.TEMPERATURE),
+                        'type': 'str',
+                        'value': ' T -127.00 °C',
+                        'readonly': True,
+                    },
+                ],
+            },
+            {
+                'name': 'Region of Interest (ROI)',
+                'type': 'group',
+                'expanded': False,
+                'children': [
+                    {'name': str(CamParams.ROI_X), 'type': 'int', 'value': 0},
+                    {'name': str(CamParams.ROI_Y), 'type': 'int', 'value': 0},
+                    {'name': str(CamParams.ROI_WIDTH), 'type': 'int', 'value': 0},
+                    {'name': str(CamParams.ROI_HEIGHT), 'type': 'int', 'value': 0},
+                    {'name': str(CamParams.SET_ROI), 'type': 'action'},
+                    {'name': str(CamParams.RESET_ROI), 'type': 'action'},
+                    {'name': str(CamParams.CENTER_ROI), 'type': 'action'},
+                    {'name': str(CamParams.SELECT_ROI), 'type': 'action'},
+                    {
+                        'name': str(CamParams.EXPORT_ROIS),
+                        'type': 'group',
+                        'children': [
+                            {
+                                'name': str(CamParams.SELECT_EXPORT_ROIS),
+                                'type': 'action',
+                            },
+                            {
+                                'name': str(CamParams.EXPORTED_ROIS),
+                                'type': 'group',
+                                'children': [],
+                            },
+                            {
+                                'name': str(CamParams.EXPORT_ROIS_SEPERATE),
+                                'type': 'bool',
+                                'value': False,
+                                'tip': 'Export each ROI a Tiff file. (Not for Zarr)',
+                            },
+                            {
+                                'name': str(CamParams.EXPORT_ROIS_FLIPPED),
+                                'type': 'bool',
+                                'value': True,
+                                'tip': 'Flip n-th ROIs horizontally for n > 1.',
+                            },
+                        ],
+                    },
+                ],
+            },
+            {
+                'name': str(CamParams.CAMERA_GPIO),
+                'type': 'group',
+                'expanded': False,
+                'children': [],
+            },
+            {
+                'name': str(CamParams.CAMERA_TIMERS),
+                'type': 'group',
+                'expanded': False,
+                'children': [],
+            },
             {'name': str(CamParams.EXPORT_STATE), 'type': 'action'},
             {'name': str(CamParams.IMPORT_STATE), 'type': 'action'},
         ]
 
         self.param_tree = Parameter.create(name='', type='group', children=params)
         self.param_tree.sigTreeStateChanged.connect(self.change)
-        self.header().setSectionResizeMode(
-            QtWidgets.QHeaderView.ResizeMode.Stretch)
+        self.header().setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Stretch)
 
-        self.get_param(
-            CamParams.SAVE_DIRECTORY).sigValueChanged.connect(
-                lambda: self.directoryChanged.emit(
-                    self.get_param_value(CamParams.SAVE_DIRECTORY)
-                    ))
+        self.get_param(CamParams.SAVE_DIRECTORY).sigValueChanged.connect(
+            lambda: self.directoryChanged.emit(
+                self.get_param_value(CamParams.SAVE_DIRECTORY)
+            )
+        )
 
-        self.get_param(
-            CamParams.SET_ROI).sigActivated.connect(lambda: self.setROI.emit())
-        self.get_param(
-            CamParams.RESET_ROI).sigActivated.connect(lambda: self.resetROI.emit())
-        self.get_param(
-            CamParams.CENTER_ROI).sigActivated.connect(lambda: self.centerROI.emit())
-        self.get_param(
-            CamParams.SELECT_ROI).sigActivated.connect(lambda: self.selectROI.emit())
-        self.get_param(
-            CamParams.SELECT_EXPORT_ROIS).sigActivated.connect(
-                lambda: self.selectROIs.emit())
-        self.get_param(
-            CamParams.VIEW_OPTIONS).sigValueChanged.connect(
-                lambda: self.viewOptionChanged.emit())
+        self.get_param(CamParams.SET_ROI).sigActivated.connect(
+            lambda: self.setROI.emit()
+        )
+        self.get_param(CamParams.RESET_ROI).sigActivated.connect(
+            lambda: self.resetROI.emit()
+        )
+        self.get_param(CamParams.CENTER_ROI).sigActivated.connect(
+            lambda: self.centerROI.emit()
+        )
+        self.get_param(CamParams.SELECT_ROI).sigActivated.connect(
+            lambda: self.selectROI.emit()
+        )
+        self.get_param(CamParams.SELECT_EXPORT_ROIS).sigActivated.connect(
+            lambda: self.selectROIs.emit()
+        )
+        self.get_param(CamParams.VIEW_OPTIONS).sigValueChanged.connect(
+            lambda: self.viewOptionChanged.emit()
+        )
 
-        self.get_param(
-            CamParams.IMPORT_STATE).sigActivated.connect(self.load_json)
-        self.get_param(
-            CamParams.EXPORT_STATE).sigActivated.connect(self.export_json)
+        self.get_param(CamParams.IMPORT_STATE).sigActivated.connect(self.load_json)
+        self.get_param(CamParams.EXPORT_STATE).sigActivated.connect(self.export_json)
 
     def get_roi_info(self, vimba=False):
         '''
@@ -293,9 +427,12 @@ class CameraOptions(Tree):
         self.set_param_value(CamParams.ROI_HEIGHT, h)
 
     def set_roi_limits(
-            self,
-            x: tuple[int, int], y: tuple[int, int],
-            w: tuple[int, int], h: tuple[int, int]):
+        self,
+        x: tuple[int, int],
+        y: tuple[int, int],
+        w: tuple[int, int],
+        h: tuple[int, int],
+    ):
         '''
         Set limits for the Region of Interest (ROI) parameters.
 
@@ -335,18 +472,12 @@ class CameraOptions(Tree):
         list[list[int]]
             list or ROIs with each being a list[int] of [x, y, w, h].
         '''
-        rois_param = self.get_param(
-            CamParams.EXPORTED_ROIS)
+        rois_param = self.get_param(CamParams.EXPORTED_ROIS)
         rois = []
 
         if len(rois_param.children()) > 0:
             for child in rois_param.children():
-                rois.append(
-                    list(
-                        map(int,
-                            child.value().split(', '))
-                            )
-                    )
+                rois.append(list(map(int, child.value().split(', '))))
         return rois
 
     @property
@@ -360,7 +491,8 @@ class CameraOptions(Tree):
             True if the image format is TIFF, False otherwise.
         '''
         return self.get_param_value(CamParams.IMAGE_FORMAT) in [
-            str(CamParams.TIFF_FORMAT), str(CamParams.BIGG_TIFF_FORMAT)
+            str(CamParams.TIFF_FORMAT),
+            str(CamParams.BIGG_TIFF_FORMAT),
         ]
 
     @property
@@ -374,7 +506,8 @@ class CameraOptions(Tree):
             True if the image format is BigTIFF, False otherwise.
         '''
         return self.get_param_value(CamParams.IMAGE_FORMAT) in [
-            str(CamParams.BIGG_TIFF_FORMAT)]
+            str(CamParams.BIGG_TIFF_FORMAT)
+        ]
 
     @property
     def isSingleView(self):
@@ -387,7 +520,8 @@ class CameraOptions(Tree):
             True if the view option is set to single view, False otherwise.
         '''
         return self.get_param_value(CamParams.VIEW_OPTIONS) in [
-            str(CamParams.SINGLE_VIEW)]
+            str(CamParams.SINGLE_VIEW)
+        ]
 
     @property
     def isROIsView(self):
@@ -400,7 +534,8 @@ class CameraOptions(Tree):
             True if the view option is set to export ROIs view, False otherwise.
         '''
         return self.get_param_value(CamParams.VIEW_OPTIONS) in [
-            str(CamParams.ROIS_VIEW)]
+            str(CamParams.ROIS_VIEW)
+        ]
 
     @property
     def isOverlaidView(self):
@@ -413,7 +548,8 @@ class CameraOptions(Tree):
             True if the view option is set to overlaid view, False otherwise.
         '''
         return self.get_param_value(CamParams.VIEW_OPTIONS) in [
-            str(CamParams.DUAL_OVERLAID)]
+            str(CamParams.DUAL_OVERLAID)
+        ]
 
     @property
     def isFullMetadata(self):

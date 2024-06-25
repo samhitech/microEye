@@ -5,7 +5,7 @@ with open('README.md', encoding='utf-8') as fh:
 
 setuptools.setup(
     name='microEye',
-    version='2.1.0',
+    version='2.1.1',
     author='Mohammad Nour Alsamsam',
     author_email='nour.alsamsam@gmail.com',
     description='A python toolkit for fluorescence microscopy \
@@ -30,6 +30,7 @@ setuptools.setup(
         ],
     },
     package_dir={'': 'src'},
+    package_data={'': ['*.svg']},
     packages=setuptools.find_packages(where='src'),
     python_requires='>=3.9.4',
     include_package_data=True,

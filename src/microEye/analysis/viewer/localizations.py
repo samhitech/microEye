@@ -19,7 +19,7 @@ from microEye.analysis.tools.kymograms import KymogramWidget
 from microEye.analysis.viewer.layers_widget import ImageParamsWidget
 from microEye.qt import Qt, QtCore, QtGui, QtWidgets, getOpenFileName, getSaveFileName
 from microEye.utils.gui_helper import *
-from microEye.utils.thread_worker import thread_worker
+from microEye.utils.thread_worker import QThreadWorker
 
 
 class LocalizationsView(QtWidgets.QWidget):
@@ -429,7 +429,7 @@ class LocalizationsView(QtWidgets.QWidget):
         elif len(self.fittingResults) > 0:
             data = self.fittingResults.toRender()
 
-            def work_func():
+            def work_func(**kwargs):
                 try:
                     return FRC_resolution_binomial(
                         np.c_[data[0], data[1], data[2]],
@@ -447,7 +447,7 @@ class LocalizationsView(QtWidgets.QWidget):
         else:
             return
 
-        self.worker = thread_worker(work_func, progress=False, z_stage=False)
+        self.worker = QThreadWorker(work_func)
         self.worker.signals.result.connect(done)
         # Execute
         self.frc_res_btn.setDisabled(True)
@@ -459,7 +459,7 @@ class LocalizationsView(QtWidgets.QWidget):
             return
         elif len(self.fittingResults) > 0:
 
-            def work_func():
+            def work_func(**kwargs):
                 try:
                     return self.fittingResults.nn_trajectories(0, 200, 0, 1)
                 except Exception:
@@ -478,7 +478,7 @@ class LocalizationsView(QtWidgets.QWidget):
 
                     res = self.NeNA_widget.exec()
 
-            self.worker = thread_worker(work_func, progress=False, z_stage=False)
+            self.worker = QThreadWorker(work_func)
             self.worker.signals.result.connect(done)
             # Execute
             self.NeNA_btn.setDisabled(True)
@@ -506,7 +506,7 @@ class LocalizationsView(QtWidgets.QWidget):
             return
         elif len(self.fittingResults) > 0:
 
-            def work_func():
+            def work_func(**kwargs):
                 try:
                     return self.fittingResults.drift_cross_correlation(
                         self.drift_cross_bins.value(),
@@ -525,7 +525,7 @@ class LocalizationsView(QtWidgets.QWidget):
                     self.results_plot.setData(self.fittingResults.dataFrame())
                     plot_drift(*results[2])
 
-            self.worker = thread_worker(work_func, progress=False, z_stage=False)
+            self.worker = QThreadWorker(work_func)
             self.worker.signals.result.connect(done)
             # Execute
             self.drift_cross_btn.setDisabled(True)
@@ -539,7 +539,7 @@ class LocalizationsView(QtWidgets.QWidget):
             return
         elif len(self.fittingResults) > 0:
 
-            def work_func():
+            def work_func(**kwargs):
                 try:
                     return self.fittingResults.drift_fiducial_marker()
                 except Exception:
@@ -554,7 +554,7 @@ class LocalizationsView(QtWidgets.QWidget):
                     plot_drift(*results[1])
                     self.render_loc()
 
-            self.worker = thread_worker(work_func, progress=False, z_stage=False)
+            self.worker = QThreadWorker(work_func)
             self.worker.signals.result.connect(done)
             # Execute
             self.drift_fdm_btn.setDisabled(True)
@@ -568,7 +568,7 @@ class LocalizationsView(QtWidgets.QWidget):
             return
         elif len(self.fittingResults) > 0:
 
-            def work_func():
+            def work_func(**kwargs):
                 try:
                     return self.fittingResults.nearest_neighbour_merging(
                         self.nn_min_distance.value(),
@@ -587,7 +587,7 @@ class LocalizationsView(QtWidgets.QWidget):
                     self.fittingResults = results
                     self.results_plot.setData(self.fittingResults.dataFrame())
 
-            self.worker = thread_worker(work_func, progress=False, z_stage=False)
+            self.worker = QThreadWorker(work_func)
             self.worker.signals.result.connect(done)
             # Execute
             self.nneigh_merge_btn.setDisabled(True)
@@ -601,7 +601,7 @@ class LocalizationsView(QtWidgets.QWidget):
             return
         elif len(self.fittingResults) > 0:
 
-            def work_func():
+            def work_func(**kwargs):
                 try:
                     return self.fittingResults.nn_trajectories(
                         self.nn_min_distance.value(),
@@ -619,7 +619,7 @@ class LocalizationsView(QtWidgets.QWidget):
                     self.fittingResults = results
                     self.results_plot.setData(self.fittingResults.dataFrame())
 
-            self.worker = thread_worker(work_func, progress=False, z_stage=False)
+            self.worker = QThreadWorker(work_func)
             self.worker.signals.result.connect(done)
             # Execute
             self.nneigh_btn.setDisabled(True)
@@ -633,7 +633,7 @@ class LocalizationsView(QtWidgets.QWidget):
             return
         elif len(self.fittingResults) > 0:
 
-            def work_func():
+            def work_func(**kwargs):
                 try:
                     return self.fittingResults.merge_tracks(self.nn_max_length.value())
                 except Exception:
@@ -646,7 +646,7 @@ class LocalizationsView(QtWidgets.QWidget):
                     self.fittingResults = results
                     self.results_plot.setData(self.fittingResults.dataFrame())
 
-            self.worker = thread_worker(work_func, progress=False, z_stage=False)
+            self.worker = QThreadWorker(work_func)
             self.worker.signals.result.connect(done)
             # Execute
             self.merge_btn.setDisabled(True)

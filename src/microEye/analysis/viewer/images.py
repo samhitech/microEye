@@ -46,7 +46,7 @@ from microEye.qt import (
 from microEye.utils.gui_helper import *
 from microEye.utils.labelled_slider import LabelledSlider
 from microEye.utils.metadata_tree import MetadataEditorTree, MetaParams
-from microEye.utils.thread_worker import thread_worker
+from microEye.utils.thread_worker import QThreadWorker
 from microEye.utils.uImage import (
     WORD,
     TiffSeqHandler,
@@ -278,7 +278,7 @@ class StackView(QtWidgets.QWidget):
         if len(filename) > 0:
             roiInfo = self.get_roi_info()
 
-            def work_func():
+            def work_func(**kwargs):
                 try:
                     if roiInfo is not None:
                         origin, dim = roiInfo
@@ -299,7 +299,7 @@ class StackView(QtWidgets.QWidget):
             def done(results):
                 self.get_param(Parameters.SAVE_CROPPED_IMAGE).setOpts(enabled=True)
 
-            self.worker = thread_worker(work_func, progress=False, z_stage=False)
+            self.worker = QThreadWorker(work_func)
             self.worker.signals.result.connect(done)
             # Execute
             self.get_param(Parameters.SAVE_CROPPED_IMAGE).setOpts(enabled=False)
@@ -349,7 +349,8 @@ class StackView(QtWidgets.QWidget):
     def setupKymogramTab(self):
         # Creating the kymogram tab layout
         self.kymogram_widget = KymogramWidget(
-            max_window=self.stack_handler.shapeTCZYX()[0])
+            max_window=self.stack_handler.shapeTCZYX()[0]
+        )
 
         # self.kymogram_widget.setMaximum(self.stack_handler.shapeTCZYX()[0] - 1)
         self.kymogram_widget.displayClicked.connect(self.kymogram_display_clicked)
@@ -706,9 +707,7 @@ class StackView(QtWidgets.QWidget):
 
                 print('\nCPU Fit')
                 # Any other args, kwargs are passed to the run function
-                self.worker = thread_worker(
-                    self.localizeStackCPU, filename, progress=False, z_stage=False
-                )
+                self.worker = QThreadWorker(self.localizeStackCPU, filename)
                 self.worker.signals.result.connect(done)
                 # Execute
                 self.get_param(Parameters.LOCALIZE).setOpts(enabled=False)
@@ -724,9 +723,7 @@ class StackView(QtWidgets.QWidget):
 
                 print('\nGPU Fit')
                 # Any other args, kwargs are passed to the run function
-                self.worker = thread_worker(
-                    self.localizeStackGPU, filename, progress=False, z_stage=False
-                )
+                self.worker = QThreadWorker(self.localizeStackGPU)
                 self.worker.signals.result.connect(done)
                 # Execute
                 self.get_param(Parameters.LOCALIZE).setOpts(enabled=False)
@@ -799,7 +796,7 @@ class StackView(QtWidgets.QWidget):
             'PSFparam': PSFparam,
         }
 
-    def localizeStackCPU(self, filename: str):
+    def localizeStackCPU(self, filename: str, **kwargs):
         '''CPU Localization main thread worker function.
 
         Parameters
@@ -848,9 +845,7 @@ class StackView(QtWidgets.QWidget):
                         'method': options['method'],
                     }
 
-                    worker = thread_worker(
-                        pre_localize_frame, progress=False, z_stage=False, **kwargs
-                    )
+                    worker = QThreadWorker(pre_localize_frame, **kwargs)
                     worker.signals.result.connect(self.update_lists)
                     workers.append(worker)
                     QtCore.QThreadPool.globalInstance().start(worker)
@@ -873,14 +868,8 @@ class StackView(QtWidgets.QWidget):
 
         self.export_loc(filename)
 
-    def localizeStackGPU(self, filename: str):
-        '''CPU Localization main thread worker function.
-
-        Parameters
-        ----------
-        filename : str
-            filename where the fitting results would be saved.
-        '''
+    def localizeStackGPU(self, **kwargs):
+        '''GPU Localization main thread worker function.'''
         options = self._initialize_parameters()
 
         print('\nCollecting Prefit ROIs...')

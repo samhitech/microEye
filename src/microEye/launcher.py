@@ -9,7 +9,7 @@ def main():
     module_name = ARGS.module
 
     if module_name == 'mieye':
-        from microEye.hardware.miEye import miEye_module
+        from microEye.hardware import miEye_module
 
         try:
             import vimba as vb

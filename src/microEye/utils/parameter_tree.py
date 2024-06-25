@@ -1,4 +1,3 @@
-
 import json
 from enum import Enum
 from typing import Any, Optional, Union
@@ -18,6 +17,8 @@ class Tree(ParameterTree):
     paramsChanged : pyqtSignal
         Signal for parameter changed event.
     '''
+
+    PARAMS: type[Enum] = None
 
     paramsChanged = Signal(GroupParameter, list)
     '''Signal emitted when parameters are changed.
@@ -55,12 +56,9 @@ class Tree(ParameterTree):
 
         self.param_tree = Parameter.create(name='', type='group', children=params)
         self.param_tree.sigTreeStateChanged.connect(self.change)
-        self.header().setSectionResizeMode(
-            QtWidgets.QHeaderView.ResizeMode.Stretch)
+        self.header().setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Stretch)
 
-    def get_param(
-            self, param: Union[Enum, str]
-            ) -> Union[Parameter, ActionParameter]:
+    def get_param(self, param: Union[Enum, str]) -> Union[Parameter, ActionParameter]:
         '''Get a parameter by name.
 
         Parameters
@@ -73,13 +71,15 @@ class Tree(ParameterTree):
         Union[Parameter, ActionParameter]
             Retrieved parameter.
         '''
-        if isinstance(param, Enum):
-            return self.param_tree.param(*param.value.split('.'))
-        else:
-            return self.param_tree.param(*param.split('.'))
+        try:
+            if isinstance(param, Enum):
+                return self.param_tree.param(*param.value.split('.'))
+            else:
+                return self.param_tree.param(*param.split('.'))
+        except KeyError:
+            return None
 
-    def get_param_value(
-            self, param: Enum):
+    def get_param_value(self, param: Union[Enum, str]):
         '''Get a parameter value by name.
 
         Parameters
@@ -92,10 +92,17 @@ class Tree(ParameterTree):
         Any
             The value of the parameter.
         '''
-        return self.param_tree.param(*param.value.split('.')).value()
+        try:
+            if isinstance(param, Enum):
+                return self.param_tree.param(*param.value.split('.')).value()
+            else:
+                return self.param_tree.param(*param.split('.')).value()
+        except KeyError:
+            return None
 
     def set_param_value(
-            self, param: Enum, value, blockSignals: Union[Any, None]= None):
+        self, param: Enum, value, blockSignals: Union[Any, None] = None
+    ):
         '''
         Set a parameter value by name.
 
@@ -119,6 +126,7 @@ class Tree(ParameterTree):
             parameter.setValue(value, blockSignals)
         except Exception:
             import traceback
+
             traceback.print_exc()
             return False
         else:
@@ -141,7 +149,7 @@ class Tree(ParameterTree):
         return self.param_tree.childPath(param)
 
     def add_param_child(self, parent: Enum, value: dict):
-        '''
+        """
         Add a child parameter to the specified parent parameter.
 
         Parameters
@@ -159,12 +167,12 @@ class Tree(ParameterTree):
         Returns
         -------
         None
-        '''
+        """
         parent = self.get_param(parent)
         parent.addChild(value, autoIncrementName=True)
 
     def get_children(self, param: Enum):
-        '''
+        """
         Get the values of all children of a specified parameter.
 
         Parameters
@@ -176,7 +184,7 @@ class Tree(ParameterTree):
         -------
         list
             List of values of all children of the specified parameter.
-        '''
+        """
         res = []
         param = self.get_param(param)
         if isinstance(param, GroupParameter):
@@ -211,8 +219,8 @@ class Tree(ParameterTree):
         None
         '''
         filename, _ = getSaveFileName(
-            None,
-            'Save Parameters', '', 'JSON Files (*.json);;All Files (*)')
+            None, 'Save Parameters', '', 'JSON Files (*.json);;All Files (*)'
+        )
         if not filename:
             return  # User canceled the operation
 
@@ -241,11 +249,61 @@ class Tree(ParameterTree):
         None
         '''
         filename, _ = getOpenFileName(
-            None, 'Load Parameters',
-            '', 'JSON Files (*.json);;All Files (*)')
+            None, 'Load Parameters', '', 'JSON Files (*.json);;All Files (*)'
+        )
         if not filename:
             return  # User canceled the operation
 
         with open(filename, encoding='utf8') as file:
             state = json.load(file)
         self.param_tree.restoreState(state, blockSignals=False)
+
+    def get_param_paths(self) -> list[str]:
+        '''
+        Get a list of all parameter paths in the tree, excluding group parameters.
+
+        Returns
+        -------
+        list
+            A list of all parameter paths, excluding groups.
+        '''
+
+        def collect_paths(param, current_path=None):
+            paths = []
+            if current_path is None:
+                current_path = []
+            for child in param.children():
+                child_path = current_path + [child.name()]
+                if not child.hasChildren():  # This checks if parameter is not a group
+                    paths.append('.'.join(child_path))
+                else:
+                    paths.extend(collect_paths(child, child_path))
+            return paths
+
+        return collect_paths(self.param_tree)
+
+    def search_param(self, contains: str) -> Union[None, Parameter, ActionParameter]:
+        '''
+        Find parameter that contains the supplied string
+        in the tree and return it if found.
+
+        Parameters
+        ----------
+        contains : str
+            The string to search for in the parameter paths.
+
+        Returns
+        -------
+        object or None
+            The value of the first parameter that contains the supplied string,
+            or None if no match is found.
+        '''
+        path = [
+            path
+            for path in self.get_param_paths()
+            if contains.lower().strip() in path.lower().split('.')[-1]
+        ]
+        if path:
+            self.get_param(path[0])
+        else:
+            return None

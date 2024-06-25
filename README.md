@@ -8,7 +8,7 @@ This toolkit is compatible with the [hardware](#hardware) used in our microscope
 
 ![Package Health](https://snyk.io/advisor/python/microEye/badge.svg)
 ![Python Version](https://img.shields.io/badge/Python-version_>=3.9-blue)
-![Package Version](https://img.shields.io/badge/version-2.1.0-gold)
+![Package Version](https://img.shields.io/badge/version-2.1.1-gold)
 ![Package Version](https://img.shields.io/badge/GUI_Platform-PySide6|PyQt6|PyQt5-navy)
 [![DOI](https://img.shields.io/badge/HardwareX-10.1016/j.ohx.2022.e00368-orange)](https://doi.org/10.1016/j.ohx.2022.e00368)
 ![Package Version](https://img.shields.io/badge/Windows-Tested-cyan)

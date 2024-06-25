@@ -207,7 +207,9 @@ class RelayParams(Enum):
 
 
 class LaserRelayView(Tree):
+    PARAMS = RelayParams
     sendCommandActivated = Signal()
+    removed = Signal(object)
 
     def __init__(
         self, parent: Optional['QtWidgets.QWidget'] = None, relay: LaserRelay = None
@@ -272,7 +274,7 @@ class LaserRelayView(Tree):
 
         self.get_param(RelayParams.CLOSE).sigActivated.connect(self.__laserRelay.close)
         self.get_param(RelayParams.SEND_COMMAND).sigActivated.connect(
-            self.sendCommandActivated.emit
+            lambda: self.sendCommandActivated.emit()
         )
 
     def remove_widget(self):
@@ -284,6 +286,7 @@ class LaserRelayView(Tree):
         '''
         if self.parent() and not self.__laserRelay.isOpen():
             self.parent().layout().removeWidget(self)
+            self.removed.emit(self)
             self.deleteLater()
         else:
             print(f'Disconnect Laser Relay before removing!')

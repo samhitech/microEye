@@ -21,7 +21,7 @@ from microEye.qt import (
 )
 from microEye.utils import Tree
 from microEye.utils.gui_helper import GaussianOffSet
-from microEye.utils.thread_worker import thread_worker
+from microEye.utils.thread_worker import QThreadWorker
 
 
 class FocusStabilizerParams(Enum):
@@ -89,6 +89,9 @@ class FocusStabilizer(QtCore.QObject):
 
     @classmethod
     def instance(cls):
+        if cls._instance is None:
+            return FocusStabilizer()
+
         return cls._instance
 
     def __init__(self):
@@ -362,13 +365,13 @@ class FocusStabilizer(QtCore.QObject):
         return self.__stabilization
 
     def startWorker(self):
-        self.worker = thread_worker(
-            FocusStabilizer.instance().worker_function, progress=False, z_stage=False
+        self.worker = QThreadWorker(
+            FocusStabilizer.instance().worker_function
         )
         # Execute
         QtCore.QThreadPool.globalInstance().start(self.worker)
 
-    def worker_function(self):
+    def worker_function(self, **kwargs):
         '''A worker function running in the threadpool.
 
         Handles the IR peak fitting and piezo autofocus tracking.
@@ -465,6 +468,7 @@ class FocusStabilizer(QtCore.QObject):
 
 
 class FocusStabilizerView(Tree):
+    PARAMS = FocusStabilizerParams
     setRoiActivated = Signal()
     saveActivated = Signal()
     loadActivated = Signal()
@@ -488,8 +492,6 @@ class FocusStabilizerView(Tree):
             The Focus Stabilizer to be controlled by the GUI.
             If None, a new `FocusStabilizer` instance is created.
         '''
-        FocusStabilizer()
-
         super().__init__(parent=parent)
 
         FocusStabilizer.instance().peakPositionChanged.connect(
@@ -642,10 +644,12 @@ class FocusStabilizerView(Tree):
 
         self.param_tree = Parameter.create(name='', type='group', children=params)
         self.param_tree.sigTreeStateChanged.connect(self.change)
-        self.header().setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        self.header().setSectionResizeMode(
+            QtWidgets.QHeaderView.ResizeMode.ResizeToContents
+        )
 
         self.get_param(FocusStabilizerParams.SET_ROI).sigActivated.connect(
-            self.setRoiActivated.emit
+            lambda: self.setRoiActivated.emit()
         )
         self.get_param(FocusStabilizerParams.SAVE).sigActivated.connect(
             self.export_json
@@ -653,9 +657,11 @@ class FocusStabilizerView(Tree):
         self.get_param(FocusStabilizerParams.LOAD).sigActivated.connect(self.load_json)
 
         self.get_param(FocusStabilizerParams.PEAK_ACQUIRE).sigActivated.connect(
-            self.start_IR)
+            self.start_IR
+        )
         self.get_param(FocusStabilizerParams.PEAK_STOP).sigActivated.connect(
-            self.stop_IR)
+            self.stop_IR
+        )
 
     def change(self, param: Parameter, changes: list):
         '''

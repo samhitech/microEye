@@ -1,72 +1,61 @@
+import weakref
+from enum import Enum
+from typing import Optional
+
+from pyqtgraph.parametertree import Parameter
+
 from microEye.hardware.port_config import port_config
-from microEye.qt import QtCore, QtSerialPort, QtWidgets
+from microEye.hardware.stages.stage import stage
+from microEye.qt import QtCore, QtSerialPort, QtWidgets, Signal
+from microEye.utils import Tree
 
 
-class elliptec_controller:
-    '''Thorlabs Elliptec stage controller'''
+class ElliptecStage(stage):
+    def __init__(self):
+        super().__init__()
 
-    def __init__(self) -> None:
-        self._connect_btn = QtWidgets.QPushButton()
-
+        self.widget = None
         self.serial = QtSerialPort.QSerialPort(None, readyRead=self.rx_piezo)
         self.serial.setBaudRate(9600)
-        self.serial.setPortName('COM9')
+        self.serial.setPortName('COM9')  # Replace with the appropriate port name
 
     def isOpen(self):
-        '''Returns True if connected.'''
         return self.serial.isOpen()
 
     def open(self):
-        '''Opens the serial port.'''
         self.serial.open(QtCore.QIODevice.OpenModeFlag.ReadWrite)
 
     def close(self):
-        '''Closes the supplied serial port.'''
         self.serial.close()
 
     def setPortName(self, name: str):
-        '''Sets the serial port name.'''
         self.serial.setPortName(name)
 
     def setBaudRate(self, baudRate: int):
-        '''Sets the serial port baudrate.'''
         self.serial.setBaudRate(baudRate)
-
-    def open_dialog(self):
-        '''Opens a port config dialog
-        for the serial port.
-        '''
-        dialog = port_config(
-            baudrate=self.serial.baudRate(), portname=self.serial.portName()
-        )
-        if not self.isOpen():
-            if dialog.exec():
-                portname, baudrate = dialog.get_results()
-                self.setPortName(portname)
-                self.setBaudRate(baudrate)
 
     def write(self, value):
         self.serial.write(value)
 
-    def HOME(self, address):
+    def home(self, address):
         '''Homes the stage at a specific address'''
         if self.isOpen():
             self.LastCmd = f'{address}ho0'
             self.write(self.LastCmd.encode('utf-8'))
 
-    def FORWARD(self, address):
+    def forward(self, address):
         '''Moves the stage at a specific address one step FORWARD'''
         if self.isOpen():
             self.LastCmd = f'{address}fw'
             self.write(self.LastCmd.encode('utf-8'))
 
-    def BACKWARD(self, address):
+    def backward(self, address):
         '''Moves the stage at a specific address one step BACKWARD'''
         if self.isOpen():
             self.LastCmd = f'{address}bw'
             self.write(self.LastCmd.encode('utf-8'))
 
-    def setSLOT(self, address, slot):
+    def set_slot(self, address, slot):
         '''Moves the stage at a specific address one step BACKWARD'''
         if self.isOpen():
             self.LastCmd = f'{address}ma000000{slot * 2}0'
@@ -76,123 +65,265 @@ class elliptec_controller:
         '''Controller dataReady signal.'''
         self.Received = str(self.serial.readAll(), encoding='utf8')
 
-    def getQWidget(self):
-        '''Generates a QGroupBox with
-        stage controls.'''
-        group = QtWidgets.QGroupBox('Elliptec Controller')
-        layout = QtWidgets.QFormLayout()
-        group.setLayout(layout)
+    def getViewWidget(self):
+        view = ElliptecStageView(stage=self)
 
-        self._connect_btn = QtWidgets.QPushButton(
-            'Connect', clicked=lambda: self.open()
+        # Elliptec init config
+        view.set_param_value(ElliptecStageParams.STAGE_ADDRESS, 2)
+        view.set_param_value(ElliptecStageParams.STAGE_TYPE, 'ELL6')
+        view.get_param(ElliptecStageParams.ADD_STAGE).activate()
+        view.set_param_value(ElliptecStageParams.STAGE_ADDRESS, 0)
+        view.set_param_value(ElliptecStageParams.STAGE_TYPE, 'ELL6')
+        view.get_param(ElliptecStageParams.ADD_STAGE).activate()
+
+        return view
+
+
+class ElliptecStageParams(Enum):
+    MODEL = 'Model'
+    STAGE_TYPE = 'Stage Type'
+    STAGE_ADDRESS = 'Stage Address'
+    ADD_STAGE = 'Add Stage'
+    STAGES = 'Stages'
+    HOME = 'Home'
+    FORWARD = 'Forward'
+    BACKWARD = 'Backward'
+    SLOT = 'Slot'
+    SET_SLOT = 'Set Slot'
+    SERIAL_PORT = 'Serial Port'
+    PORT = 'Serial Port.Port'
+    BAUDRATE = 'Serial Port.Baudrate'
+    SET_PORT = 'Serial Port.Set Config'
+    OPEN = 'Serial Port.Connect'
+    CLOSE = 'Serial Port.Disconnect'
+    PORT_STATE = 'Serial Port.State'
+    REMOVE = 'Remove Device'
+
+    def __str__(self):
+        return self.value.split('.')[-1]
+
+    def get_path(self):
+        return self.value.split('.')
+
+
+class ElliptecStageView(Tree):
+    PARAMS = ElliptecStageParams
+    removed = Signal(object)
+
+    STAGE_TYPES = ['ELL6', 'ELL9']
+
+    def __init__(
+        self, parent: Optional['QtWidgets.QWidget'] = None, stage: ElliptecStage = None
+    ):
+        super().__init__(parent=parent)
+        self.stage = stage if stage else ElliptecStage()
+
+        self.stages = {}
+
+    def create_parameters(self):
+        params = [
+            {
+                'name': str(ElliptecStageParams.MODEL),
+                'type': 'str',
+                'value': 'Elliptec Stages Controller',
+                'readonly': True,
+            },
+            {
+                'name': str(ElliptecStageParams.STAGE_ADDRESS),
+                'type': 'int',
+                'default': 0,
+                'limits': [0, 9],
+            },
+            {
+                'name': str(ElliptecStageParams.STAGE_TYPE),
+                'type': 'list',
+                'limits': self.STAGE_TYPES,
+            },
+            {'name': str(ElliptecStageParams.ADD_STAGE), 'type': 'action'},
+            {'name': str(ElliptecStageParams.STAGES), 'type': 'group', 'children': []},
+            {
+                'name': str(ElliptecStageParams.SERIAL_PORT),
+                'type': 'group',
+                'children': [
+                    {
+                        'name': str(ElliptecStageParams.PORT),
+                        'type': 'list',
+                        'limits': [
+                            info.portName()
+                            for info in QtSerialPort.QSerialPortInfo.availablePorts()
+                        ],
+                    },
+                    {
+                        'name': str(ElliptecStageParams.BAUDRATE),
+                        'type': 'list',
+                        'default': 9600,
+                        'limits': [9600, 19200, 38400, 57600, 115200],
+                    },
+                    {'name': str(ElliptecStageParams.SET_PORT), 'type': 'action'},
+                    {'name': str(ElliptecStageParams.OPEN), 'type': 'action'},
+                    {'name': str(ElliptecStageParams.CLOSE), 'type': 'action'},
+                    {
+                        'name': str(ElliptecStageParams.PORT_STATE),
+                        'type': 'str',
+                        'value': 'closed',
+                        'readonly': True,
+                    },
+                ],
+            },
+            # {'name': str(ElliptecStageParams.REMOVE), 'type': 'action'},
+        ]
+
+        self.param_tree = Parameter.create(name='', type='group', children=params)
+        # self.param_tree.sigTreeStateChanged.connect(self.change)
+        self.header().setSectionResizeMode(
+            QtWidgets.QHeaderView.ResizeMode.ResizeToContents
         )
-        self._disconnect_btn = QtWidgets.QPushButton(
-            'Disconnect', clicked=lambda: self.close()
+
+        self.get_param(ElliptecStageParams.SET_PORT).sigActivated.connect(
+            self.set_config
         )
-        self._config_btn = QtWidgets.QPushButton(
-            'Config.', clicked=lambda: self.open_dialog()
+        self.get_param(ElliptecStageParams.OPEN).sigActivated.connect(
+            lambda: self.stage.open()
         )
-
-        btns = QtWidgets.QHBoxLayout()
-        btns.addWidget(self._connect_btn)
-        btns.addWidget(self._disconnect_btn)
-        btns.addWidget(self._config_btn)
-        layout.addRow(btns)
-
-        self.address_bx = QtWidgets.QSpinBox()
-        self.address_bx.setMinimum(0)
-        self.address_bx.setMaximum(9)
-
-        layout.addRow(QtWidgets.QLabel('Address:'), self.address_bx)
-
-        self.stage_type = QtWidgets.QComboBox()
-        self.stage_type.addItems(['ELL6', 'ELL9'])
-
-        layout.addRow(QtWidgets.QLabel('Stage Type:'), self.stage_type)
-
-        self._add_btn = QtWidgets.QPushButton(
-            'Add stage',
-            clicked=lambda: self.add_stage(
-                self.stage_type.currentText(), self.address_bx.value(), layout
-            ),
+        self.get_param(ElliptecStageParams.CLOSE).sigActivated.connect(
+            lambda: self.stage.close()
+        )
+        # self.get_param(ElliptecStageParams.REMOVE).sigActivated.connect(
+        #     self.remove_widget
+        # )
+        self.get_param(ElliptecStageParams.ADD_STAGE).sigActivated.connect(
+            self.add_stage
         )
 
-        layout.addWidget(self._add_btn)
+    def isOpen(self):
+        return self.stage.isOpen()
 
-        return group
+    def set_config(self):
+        if not self.stage.isOpen():
+            self.setPortName(self.get_param_value(ElliptecStageParams.PORT))
+            self.setBaudRate(self.get_param_value(ElliptecStageParams.BAUDRATE))
 
-    def add_stage(self, stage_type, address, layout):
-        if 'ELL6' in stage_type:
-            self.getELL6(address, layout)
-        elif 'ELL9' in stage_type:
-            self.getELL9(address, layout)
+    def setPortName(self, name: str):
+        self.stage.serial.setPortName(name)
 
-    def getELL6(self, address, layout: QtWidgets.QFormLayout):
-        group = QtWidgets.QGroupBox(f'Ell6 (2 SLOTS) Address {address}')
-        move_buttons = QtWidgets.QHBoxLayout()
-        group.setLayout(move_buttons)
-        # controls
-        HOME_btn = QtWidgets.QPushButton('⌂', clicked=lambda: self.HOME(address))
-        BW_btn = QtWidgets.QPushButton('<<', clicked=lambda: self.BACKWARD(address))
-        FW_btn = QtWidgets.QPushButton('>>', clicked=lambda: self.FORWARD(address))
-        remove_btn = QtWidgets.QPushButton('x', clicked=lambda: layout.removeRow(group))
+    def setBaudRate(self, baudRate: int):
+        self.stage.serial.setBaudRate(baudRate)
 
-        move_buttons.addWidget(HOME_btn)
-        move_buttons.addWidget(BW_btn)
-        move_buttons.addWidget(FW_btn)
-        move_buttons.addWidget(remove_btn)
+    def open(self):
+        self.stage.serial.open(QtCore.QIODevice.OpenModeFlag.ReadWrite)
 
-        group.button_group = QtWidgets.QButtonGroup()
-        group.button_group.setExclusive(True)
-        group.button_group.addButton(BW_btn)
-        group.button_group.addButton(FW_btn)
+    def add_stage(self):
+        stage_type = self.get_param_value(ElliptecStageParams.STAGE_TYPE)
+        stage_address = self.get_param_value(ElliptecStageParams.STAGE_ADDRESS)
+        if stage_address not in self.stages:
+            self.add_stage_params(stage_type, stage_address)
 
-        FW_btn.setCheckable(True)
-        BW_btn.setCheckable(True)
+    def add_stage_params(self, stage_type, address):
+        if stage_type == 'ELL6':
+            self.add_ell6_widget(address)
+        elif stage_type == 'ELL9':
+            self.add_ell9_widget(address)
 
-        layout.addRow(group)
+    def add_ell6_widget(self, address):
+        # Implement logic to add ELL6 stage widget
+        ell6 = {
+            'name': f'ELL6 - {address}',
+            'type': 'group',
+            'children': [
+                {'name': str(ElliptecStageParams.HOME), 'type': 'action'},
+                {'name': str(ElliptecStageParams.FORWARD), 'type': 'action'},
+                {'name': str(ElliptecStageParams.BACKWARD), 'type': 'action'},
+                {'name': str(ElliptecStageParams.REMOVE), 'type': 'action'},
+            ],
+        }
+        self.add_param_child(ElliptecStageParams.STAGES, ell6)
 
-    def getELL9(self, address, layout: QtWidgets.QFormLayout):
-        group = QtWidgets.QGroupBox(f'Ell9 (4 SLOTS) Address {address}')
-        move_buttons = QtWidgets.QHBoxLayout()
-        group.setLayout(move_buttons)
-        # controls
-        HOME_btn = QtWidgets.QPushButton('⌂', clicked=lambda: self.HOME(address))
-        BW_btn = QtWidgets.QPushButton('<<', clicked=lambda: self.BACKWARD(address))
-        FW_btn = QtWidgets.QPushButton('>>', clicked=lambda: self.FORWARD(address))
-        remove_btn = QtWidgets.QPushButton('x', clicked=lambda: layout.removeRow(group))
-        first_btn = QtWidgets.QPushButton(
-            '1st', clicked=lambda: self.setSLOT(address, 0)
+        def get_path(enum: ElliptecStageParams):
+            return '.'.join(
+                [str(ElliptecStageParams.STAGES), f'ELL6 - {address}', str(enum)]
+            )
+
+        self.get_param(get_path(ElliptecStageParams.HOME)).sigActivated.connect(
+            lambda: self.stage.home(address)
         )
-        second_btn = QtWidgets.QPushButton(
-            '2nd', clicked=lambda: self.setSLOT(address, 1)
+        self.get_param(get_path(ElliptecStageParams.FORWARD)).sigActivated.connect(
+            lambda: self.stage.forward(address)
         )
-        third_btn = QtWidgets.QPushButton(
-            '3rd', clicked=lambda: self.setSLOT(address, 2)
+        self.get_param(get_path(ElliptecStageParams.BACKWARD)).sigActivated.connect(
+            lambda: self.stage.backward(address)
         )
-        fourth_btn = QtWidgets.QPushButton(
-            '4th', clicked=lambda: self.setSLOT(address, 3)
+        self.get_param(get_path(ElliptecStageParams.REMOVE)).sigActivated.connect(
+            lambda: self.get_param(
+                f'{str(ElliptecStageParams.STAGES)}.ELL6 - {address}'
+            ).remove()
         )
 
-        move_buttons.addWidget(HOME_btn)
-        move_buttons.addWidget(BW_btn)
-        move_buttons.addWidget(FW_btn)
-        move_buttons.addWidget(first_btn)
-        move_buttons.addWidget(second_btn)
-        move_buttons.addWidget(third_btn)
-        move_buttons.addWidget(fourth_btn)
-        move_buttons.addWidget(remove_btn)
+    def add_ell9_widget(self, address):
+        # Implement logic to add ELL9 stage widget
+        name = f'ELL9 - {address}'
+        ell9 = {
+            'name': name,
+            'type': 'group',
+            'children': [
+                {'name': str(ElliptecStageParams.HOME), 'type': 'action'},
+                {'name': str(ElliptecStageParams.FORWARD), 'type': 'action'},
+                {'name': str(ElliptecStageParams.BACKWARD), 'type': 'action'},
+                {
+                    'name': str(ElliptecStageParams.SLOT),
+                    'type': 'int',
+                    'default': 0,
+                    'limits': [0, 3],
+                },
+                {'name': str(ElliptecStageParams.SET_SLOT), 'type': 'action'},
+                {'name': str(ElliptecStageParams.REMOVE), 'type': 'action'},
+            ],
+        }
+        self.add_param_child(ElliptecStageParams.STAGES, ell9)
 
-        group.button_group = QtWidgets.QButtonGroup()
-        group.button_group.setExclusive(True)
-        group.button_group.addButton(first_btn)
-        group.button_group.addButton(second_btn)
-        group.button_group.addButton(third_btn)
-        group.button_group.addButton(fourth_btn)
+        def get_path(enum: ElliptecStageParams):
+            return '.'.join([str(ElliptecStageParams.STAGES), name, str(enum)])
 
-        first_btn.setCheckable(True)
-        second_btn.setCheckable(True)
-        third_btn.setCheckable(True)
-        fourth_btn.setCheckable(True)
+        self.get_param(get_path(ElliptecStageParams.HOME)).sigActivated.connect(
+            lambda: self.stage.home(address)
+        )
+        self.get_param(get_path(ElliptecStageParams.FORWARD)).sigActivated.connect(
+            lambda: self.stage.forward(address)
+        )
+        self.get_param(get_path(ElliptecStageParams.BACKWARD)).sigActivated.connect(
+            lambda: self.stage.backward(address)
+        )
+        self.get_param(get_path(ElliptecStageParams.SET_SLOT)).sigActivated.connect(
+            lambda: self.stage.set_slot(
+                address, self.get_param_value(get_path(ElliptecStageParams.SLOT))
+            )
+        )
+        self.get_param(get_path(ElliptecStageParams.REMOVE)).sigActivated.connect(
+            lambda: self.get_param(
+                f'{str(ElliptecStageParams.STAGES)}.ELL9 - {address}'
+            ).remove()
+        )
 
-        layout.addRow(group)
+    def updateHighlight(self):
+        '''
+        Updates the highlight style of the "Connect" action.
+        '''
+        style = ''
+        if self.isOpen():
+            style = 'background-color: #004CB6'
+        else:
+            style = 'background-color: black'
+
+        next(
+            self.get_param(ElliptecStageParams.OPEN).items.keys()
+        ).button.setStyleSheet(style)
+
+    def remove_widget(self):
+        if self.parent() and not self.stage.isOpen():
+            self.parent().layout().removeWidget(self)
+            self.removed.emit(self)
+            self.deleteLater()
+        else:
+            print(f'Disconnect Elliptec stage before removing!')
+
+    def __str__(self):
+        return f'Elliptec Stage ({self.stage.serial.portName()})'

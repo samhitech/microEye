@@ -234,3 +234,6 @@ class focusWidget(QtWidgets.QDockWidget):
         self.focusStabilizerView.set_param_value(FocusStabilizerParams.Y2, y[1])
 
         self.roi.updateFlag = False
+
+    def __str__(self):
+        return 'Focus Stabilization Widget'

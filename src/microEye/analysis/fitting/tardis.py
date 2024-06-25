@@ -7,11 +7,11 @@ import pyqtgraph as pg
 
 from microEye.analysis.fitting.processing import tardis_data
 from microEye.qt import QDateTime, Qt, QtWidgets, Signal
-from microEye.utils.thread_worker import thread_worker
+from microEye.utils.thread_worker import QThreadWorker
 
 
 class TARDIS_Widget(QtWidgets.QWidget):
-    startWorker = Signal(thread_worker)
+    startWorker = Signal(QThreadWorker)
 
     def __init__(
             self,
@@ -130,7 +130,7 @@ class TARDIS_Widget(QtWidgets.QWidget):
 
         start = time.perf_counter_ns()
 
-        def work_func():
+        def work_func(**kwargs):
             try:
                 return tardis_data(
                         self.frames, self.locX, self.locY, self.locZ,
@@ -154,9 +154,8 @@ class TARDIS_Widget(QtWidgets.QWidget):
                 self.log.appendPlainText('    Something went wrong.')
 
 
-        worker = thread_worker(
-            work_func,
-            progress=False, z_stage=False)
+        worker = QThreadWorker(
+            work_func)
         worker.signals.result.connect(done)
         self.startWorker.emit(worker)
 
