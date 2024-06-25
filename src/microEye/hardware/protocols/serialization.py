@@ -45,6 +45,7 @@ def serialize_action(action: BaseAction) -> dict[str, Any]:
         action_data['parameter_name'] = action.parameter_name
         action_data['parameter_value'] = action.parameter_value
         action_data['delay'] = action.delay
+        action_data['is_expression'] = action.is_expression
 
     return action_data
 
@@ -80,17 +81,18 @@ def deserialize_action(action_data: dict[str, Any]) -> tuple[BaseAction, Any]:
             action_item.add_child_item(child_item)
     elif action_type == ParameterAdjustmentAction:
         action = ParameterAdjustmentAction(
-            target_object=action_data['target_object'],
-            parameter_name=action_data['parameter_name'],
-            parameter_value=action_data['parameter_value'],
-            delay=action_data['delay'],
+            target_object=action_data.get('target_object'),
+            parameter_name=action_data.get('parameter_name'),
+            parameter_value=action_data.get('parameter_value'),
+            delay=action_data.get('delay', 0.0),
+            is_expression=action_data.get('is_expression', False)
         )
         action_item = get_action_item(action)
     else:
         action = action_type()
         action_item = get_action_item(action)
 
-    action.id = action_data['id']
+    # action.id = action_data['id']
     action.name = action_data['name']
 
     return action, action_item

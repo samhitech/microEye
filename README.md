@@ -33,6 +33,7 @@ This toolkit is compatible with the [hardware](#hardware) used in our microscope
     - [Usage](#usage)
   - [Modules](#modules)
     - [The miEye Module](#the-mieye-module)
+      - [Experiment Designer (Beta)](#experiment-designer-beta)
     - [The Multi Viewer Module](#the-multi-viewer-module)
   - [Uses Packages](#uses-packages)
   - [Microscope Scheme](#microscope-scheme)
@@ -150,6 +151,32 @@ To launch the miEye module, run the following command:
 ```powershell
 microEye --module mieye
 ```
+
+#### Experiment Designer (Beta)
+
+![Experiment Designer (Beta)](https://github.com/samhitech/microEye/assets/89871015/0693a620-6aed-4bf4-a723-7b0c7b143d1f)
+
+The Experiment Designer is a new feature within the `miEye Module` that allows users to create and manage complex acquisition protocols through a graphical interface.
+
+Key features include:
+
+- GUI-based design of acquisition protocols;
+- Support for loops and device parameter adjustments/actions;
+- Export and import capabilities for protocols;
+- Threaded execution with pause functionality;
+- Configurable delays between protocol steps
+- Context menu for easy adjustments
+- Nested protocol structure
+- Acquisition action wait option
+- Cell reordering and deletion via keyboard shortcuts
+- Real-time execution progress view
+
+To access the Experiment Designer:
+
+1. Launch the `miEye module`.
+2. Look for the Experiment Designer (Protocols) view in the interface.
+
+Note: This feature is currently in beta. We value your feedback to enhance its functionality and improve the user experience.
 
 ### The Multi Viewer Module
 
