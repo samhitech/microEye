@@ -35,7 +35,7 @@ class CameraList(QtWidgets.QWidget):
     '''
 
     cameraAdded = Signal(Camera_Panel, bool)
-    cameraRemoved = Signal(dict, bool)
+    cameraRemoved = Signal(Camera_Panel, bool)
 
     cameras = {'uEye': [], 'Vimba': [], 'UC480': [], 'miDummy': []}
 
@@ -383,7 +383,7 @@ class CameraList(QtWidgets.QWidget):
                         else:
                             pan.close()
                             pan.setParent(None)
-                        self.cameraRemoved.emit(cam, item['IR'])
+                        self.cameraRemoved.emit(pan, item['IR'])
                     return
         else:
             self._display_warning_message('Device/Panel not found!')

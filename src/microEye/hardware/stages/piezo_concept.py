@@ -4,34 +4,10 @@ from typing import Optional, Union, overload
 
 from pyqtgraph.parametertree import Parameter
 
-from microEye.hardware.port_config import port_config
 from microEye.hardware.stages.stabilizer import FocusStabilizer
+from microEye.hardware.stages.stage import stage
 from microEye.qt import QtCore, QtSerialPort, QtWidgets, Signal
 from microEye.utils import Tree
-
-
-class stage:
-    def __init__(self) -> None:
-        '''
-        Initialize the stage object.
-
-        This method initializes the `stage` object with the starter values.
-        '''
-        self._connect_btn = QtWidgets.QPushButton()
-        self.ZPosition = 50000
-        self.LastCmd = ''
-        self.Received = ''
-
-    def isOpen(self):
-        '''
-        Check if the stage is open.
-
-        Returns
-        -------
-        is_open : bool
-            A boolean value indicating whether the stage is open.
-        '''
-        return False
 
 
 class StageParams(Enum):
@@ -233,6 +209,9 @@ class PzFoc(stage):
 
 
 class PzFocView(Tree):
+    PARAMS = StageParams
+    removed = Signal(object)
+
     def __init__(
         self, parent: Optional['QtWidgets.QWidget'] = None, stage: PzFoc = None
     ):
@@ -382,10 +361,13 @@ class PzFocView(Tree):
         '''
         if self.parent() and not self.stage.isOpen():
             self.parent().layout().removeWidget(self)
+            self.removed.emit(self)
             self.deleteLater()
         else:
             print(f'Disconnect FOC stage before removing!')
 
+    def __str__(self):
+        return f'Piezo Concept FOC Stage ({self.stage.serial.portName()})'
 
 class PzFocController:
     def __init__(self, stage: PzFoc = None, view: PzFocView = None):
@@ -565,3 +547,6 @@ class PzFocController:
                     for info in QtSerialPort.QSerialPortInfo.availablePorts()
                 ]
             )
+
+    def __str__(self):
+        return 'Piezo Concept FOC Stage Controller'

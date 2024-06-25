@@ -91,6 +91,7 @@ class MetadataEditorTree(Tree):
     EXCITATION_FILTERS : list
         List of excitation filter suggestions, adjust to fit your setup.
     '''
+    PARAMS = MetaParams
 
     DICHROIC_SUGGESTIONS = [
         'EM 550 Longpass',

@@ -11,6 +11,7 @@ class devicesParams(Enum):
     '''
     Enum class defining Devices parameters.
     '''
+
     IR_CAM = 'IR Detector'
     IR_DEVICE = 'IR Detector.Device'
     IR_SET = 'IR Detector.Set'
@@ -38,8 +39,9 @@ class devicesParams(Enum):
 
 
 class DevicesView(Tree):
-    '''Devices View used in miEye module to add lasers, stages, and IR detector.
-    '''
+    '''Devices View used in miEye module to add lasers, stages, and IR detector.'''
+
+    PARAMS = devicesParams
     setDetectorActivated = Signal(str)
     resetDetectorActivated = Signal()
     addLaserActivated = Signal(str)
@@ -62,45 +64,70 @@ class DevicesView(Tree):
         Create the parameter tree structure.
         '''
         params = [
-            {'name': str(devicesParams.IR_CAM), 'type': 'group',
+            {
+                'name': str(devicesParams.IR_CAM),
+                'type': 'group',
                 'children': [
-                    {'name': str(devicesParams.IR_DEVICE), 'title': '', 'type': 'list',
-                        'limits': self.getDetectors()},
+                    {
+                        'name': str(devicesParams.IR_DEVICE),
+                        'title': '',
+                        'type': 'list',
+                        'limits': self.getDetectors(),
+                    },
                     {'name': str(devicesParams.IR_SET), 'type': 'action'},
                     {'name': str(devicesParams.IR_RESET), 'type': 'action'},
-                ]},
-            {'name': str(devicesParams.LASERS), 'type': 'group',
+                ],
+            },
+            {
+                'name': str(devicesParams.LASERS),
+                'type': 'group',
                 'children': [
-                    {'name': str(devicesParams.LASER), 'title': '', 'type': 'list',
-                        'limits': self.getLasers()},
+                    {
+                        'name': str(devicesParams.LASER),
+                        'title': '',
+                        'type': 'list',
+                        'limits': self.getLasers(),
+                    },
                     {'name': str(devicesParams.ADD_LASER), 'type': 'action'},
-                ]},
-            {'name': str(devicesParams.STAGES), 'type': 'group',
+                ],
+            },
+            {
+                'name': str(devicesParams.STAGES),
+                'type': 'group',
                 'children': [
-                    {'name': str(devicesParams.STAGE), 'title': '', 'type': 'list',
-                        'limits': self.getStages()},
+                    {
+                        'name': str(devicesParams.STAGE),
+                        'title': '',
+                        'type': 'list',
+                        'limits': self.getStages(),
+                    },
                     {'name': str(devicesParams.SET_STAGE), 'type': 'action'},
-                ]},
+                ],
+            },
         ]
 
         self.param_tree = Parameter.create(name='', type='group', children=params)
         self.param_tree.sigTreeStateChanged.connect(self.change)
         self.header().setSectionResizeMode(
-            QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+            QtWidgets.QHeaderView.ResizeMode.ResizeToContents
+        )
 
-        self.get_param(
-            devicesParams.IR_SET).sigActivated.connect(
-                lambda: self.setDetectorActivated.emit(
-                    self.get_param_value(devicesParams.IR_DEVICE)))
-        self.get_param(
-            devicesParams.IR_RESET).sigActivated.connect(
-                self.resetDetectorActivated.emit)
+        self.get_param(devicesParams.IR_SET).sigActivated.connect(
+            lambda: self.setDetectorActivated.emit(
+                self.get_param_value(devicesParams.IR_DEVICE)
+            )
+        )
+        self.get_param(devicesParams.IR_RESET).sigActivated.connect(
+            lambda: self.resetDetectorActivated.emit()
+        )
 
-        self.get_param(
-            devicesParams.ADD_LASER).sigActivated.connect(
-                lambda: self.addLaserActivated.emit(
-                    self.get_param_value(devicesParams.LASER)))
-        self.get_param(
-            devicesParams.SET_STAGE).sigActivated.connect(
-                lambda: self.setStageActivated.emit(
-                    self.get_param_value(devicesParams.STAGE)))
+        self.get_param(devicesParams.ADD_LASER).sigActivated.connect(
+            lambda: self.addLaserActivated.emit(
+                self.get_param_value(devicesParams.LASER)
+            )
+        )
+        self.get_param(devicesParams.SET_STAGE).sigActivated.connect(
+            lambda: self.setStageActivated.emit(
+                self.get_param_value(devicesParams.STAGE)
+            )
+        )

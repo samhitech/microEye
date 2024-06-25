@@ -16,7 +16,7 @@ from microEye.hardware.cams.micam import miCamera
 from microEye.qt import QDateTime, Qt, QtCore, QtWidgets, Signal, Slot
 from microEye.utils.expandable_groupbox import ExpandableGroupBox
 from microEye.utils.metadata_tree import MetadataEditorTree, MetaParams
-from microEye.utils.thread_worker import thread_worker
+from microEye.utils.thread_worker import QThreadWorker
 from microEye.utils.uImage import uImage
 
 EXPOSURE_SHORTCUTS = [1, 5, 10, 20, 30, 50, 100, 150, 200, 300, 500, 1000]
@@ -245,6 +245,8 @@ class Camera_Panel(QtWidgets.QGroupBox):
         self.histogram_group.layout().addWidget(self.histogram)
         self.histogram_group.layout().addWidget(self.hist_cdf)
 
+        CameraOptions.combine_params(self.PARAMS)
+
     @property
     def cam(self):
         '''The Camera property.
@@ -305,6 +307,28 @@ class Camera_Panel(QtWidgets.QGroupBox):
             True if frames Queue is empty, otherwise False.
         '''
         return self._frames.empty()
+
+    @property
+    def Event(self):
+        '''The acquisition job threading Event.'''
+        if hasattr(self, '_acqEvent'):
+            return self._acqEvent
+        else:
+            return None
+
+    @Event.setter
+    def Event(self, value: threading.Event):
+        '''The acquisition job threading Event.'''
+        if value is None:
+            self._acqEvent = threading.Event()
+        else:
+            self._acqEvent = value
+
+    def get_event_action(self, param: str):
+        return {'name': str(param), 'type': 'action', 'event': 'Event'}
+
+    def __str__(self):
+        return f'{self.cam.name}'
 
     def get(self, last=False) -> np.ndarray:
         '''Gets image from frames Queue in FIFO or LIFO manner.
@@ -379,6 +403,7 @@ class Camera_Panel(QtWidgets.QGroupBox):
             self._directory,
             self.camera_options.get_param_value(CamParams.EXPERIMENT_NAME) + '\\',
         )
+        self.Event = event
         return AcquisitionJob(
             self._temps,
             self._buffer,
@@ -407,7 +432,7 @@ class Camera_Panel(QtWidgets.QGroupBox):
             flip_rois=self.camera_options.get_param_value(
                 CamParams.EXPORT_ROIS_FLIPPED
             ),
-            s_event=event if event else threading.Event(),
+            s_event=self.Event,
         )
 
     def view_toggled(self):
@@ -468,8 +493,8 @@ class Camera_Panel(QtWidgets.QGroupBox):
 
         # Pass the display function to be executed
         if self.d_worker is None or self.d_worker.done:
-            self.d_worker = thread_worker(
-                cam_display, self.acq_job, self, progress=False, z_stage=False
+            self.d_worker = QThreadWorker(
+                cam_display, self.acq_job, self
             )
 
             self.d_worker.signals.finished.connect(
@@ -482,8 +507,8 @@ class Camera_Panel(QtWidgets.QGroupBox):
         # Pass the save function to be executed
         if not self.mini:
             if self.s_worker is None or self.s_worker.done:
-                self.s_worker = thread_worker(
-                    cam_save, self.acq_job, progress=False, z_stage=False
+                self.s_worker = QThreadWorker(
+                    cam_save, self.acq_job
                 )
                 self.s_worker.setAutoDelete(True)
                 # Execute
@@ -492,8 +517,8 @@ class Camera_Panel(QtWidgets.QGroupBox):
         #  Pass the capture function to be executed
         if self.c_worker is None or self.c_worker.done:
             # Any other args, kwargs are passed to the run function
-            self.c_worker = thread_worker(
-                self.cam_capture, *self.getCaptureArgs(), progress=False, z_stage=False
+            self.c_worker = QThreadWorker(
+                self.cam_capture, *self.getCaptureArgs()
             )
             self.c_worker.signals.finished.connect(
                 lambda: self.acq_job.setDone(0, True)
@@ -546,7 +571,7 @@ class Camera_Panel(QtWidgets.QGroupBox):
         args = []
         raise NotImplementedError('The getCaptureArgs function is not implemented yet.')
 
-    def cam_capture(self, *args):
+    def cam_capture(self, *args, **kwargs):
         '''User specific implemented logic for frame capture
         from a miCamera adapter.
 
@@ -594,7 +619,7 @@ class Camera_Panel(QtWidgets.QGroupBox):
             self.hist_cdf.setXRange(rmin, rmax)
 
 
-def cam_save(params: AcquisitionJob):
+def cam_save(params: AcquisitionJob, **kwargs):
     '''Save function executed by the save worker thread.
 
     Saves the acquired frames using the config in AcquisitionJob
@@ -792,7 +817,7 @@ def update_histogram_and_display(params: AcquisitionJob, camp: Camera_Panel):
             cv2.imshow(params.name, _img)
 
 
-def cam_display(params: AcquisitionJob, camp: Camera_Panel):
+def cam_display(params: AcquisitionJob, camp: Camera_Panel, **kwargs):
     '''Display function executed by the display worker.
 
     Processes the acquired frame, displays it, and sends it to the save

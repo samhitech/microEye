@@ -375,6 +375,9 @@ class LaserSwitches:
 
 
 class CombinerLaserWidget(Tree):
+    PARAMS = MB_Params
+    removed = Signal(object)
+
     def __init__(self, parent: Optional['QtWidgets.QWidget'] = None):
         '''Initializes a new CombinerLaserWidget instance.
 
@@ -733,9 +736,13 @@ class CombinerLaserWidget(Tree):
     def remove_widget(self):
         if self.parent() and not self.Laser.isOpen():
             self.parent().layout().removeWidget(self)
+            self.removed.emit(self)
             self.deleteLater()
         else:
             print(f'Disconnect device {self.Laser.Model} before removing!')
+
+    def __str__(self):
+        return self.Laser.Model.strip() or self.__class__.__name__
 
     def StartGUI():
         '''Initializes a new QApplication and CombinerLaserWidget.

@@ -14,7 +14,7 @@ from microEye.hardware.cams.ueye_camera import IDS_Camera
 from microEye.qt import QDateTime, QtCore, QtWidgets, getOpenFileName, getSaveFileName
 from microEye.utils.gui_helper import get_scaling_factor
 from microEye.utils.metadata_tree import MetaParams
-from microEye.utils.thread_worker import thread_worker
+from microEye.utils.thread_worker import QThreadWorker
 from microEye.utils.uImage import uImage
 
 try:
@@ -54,6 +54,7 @@ class IDS_Panel(Camera_Panel):
     '''
     A Qt Widget for controlling an IDS Camera | Inherits Camera_Panel
     '''
+    PARAMS = uEyeParams
 
     def __init__(self, cam: IDS_Camera, mini=False, *args, **kwargs):
         '''
@@ -203,14 +204,14 @@ class IDS_Panel(Camera_Panel):
         )
 
         # start freerun mode
-        freerun = {'name': str(uEyeParams.FREERUN), 'type': 'action'}
+        freerun = self.get_event_action(uEyeParams.FREERUN)
         self.camera_options.add_param_child(CamParams.ACQUISITION, freerun)
         self.camera_options.get_param(uEyeParams.FREERUN).sigActivated.connect(
             self.start_free_run
         )
 
         # start trigger mode button
-        triggered = {'name': str(uEyeParams.TRIGGERED), 'type': 'action'}
+        triggered = self.get_event_action(uEyeParams.TRIGGERED)
         self.camera_options.add_param_child(CamParams.ACQUISITION, triggered)
         self.camera_options.get_param(uEyeParams.TRIGGERED).sigActivated.connect(
             self.start_software_triggered
@@ -326,7 +327,7 @@ class IDS_Panel(Camera_Panel):
         if self.acq_job.frame is not None:
             try:
 
-                def work_func():
+                def work_func(**kwargs):
                     try:
                         image = uImage(self.acq_job.frame.image)
 
@@ -357,7 +358,7 @@ class IDS_Panel(Camera_Panel):
                         # x, y, w, h = result
                         self.camera_options.set_roi_info(*result)
 
-                self.worker = thread_worker(work_func, progress=False, z_stage=False)
+                self.worker = QThreadWorker(work_func)
                 self.worker.signals.result.connect(done)
                 # Execute
                 self._threadpool.start(self.worker)
@@ -368,7 +369,7 @@ class IDS_Panel(Camera_Panel):
         if self.acq_job is not None:
             try:
 
-                def work_func():
+                def work_func(**kwargs):
                     try:
                         image = uImage(self.acq_job.frame.image)
 
@@ -416,7 +417,7 @@ class IDS_Panel(Camera_Panel):
                                 },
                             )
 
-                self.worker = thread_worker(work_func, progress=False, z_stage=False)
+                self.worker = QThreadWorker(work_func)
                 self.worker.signals.result.connect(done)
                 # Execute
                 self._threadpool.start(self.worker)
@@ -647,7 +648,7 @@ class IDS_Panel(Camera_Panel):
         # start both capture and display workers
         self.start_all_workers()
 
-    def cam_capture(self, *args):
+    def cam_capture(self, *args, **kwargs):
         '''Capture function executed by the capture worker.
 
         Sends software trigger signals and transfers the

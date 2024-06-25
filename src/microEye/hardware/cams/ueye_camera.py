@@ -902,7 +902,7 @@ class IDS_Camera(miCamera):
         for x in range(buffers):
             self.MemInfo.append([ueye.c_mem_p(), ueye.c_int(0)])
             ret = ueye.is_AllocImageMem(
-                self.hCam, c_int(self.width), c_int(self.height),
+                self.hCam, self.width, self.height,
                 self.bit_depth,
                 self.MemInfo[x][0], self.MemInfo[x][1])
             ret = ueye.is_AddToSequence(

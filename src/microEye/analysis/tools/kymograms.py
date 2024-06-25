@@ -10,7 +10,7 @@ import tifffile as tf
 
 from microEye.qt import Qt, QtCore, QtWidgets, Signal, getOpenFileName, getSaveFileName
 from microEye.utils.gui_helper import *
-from microEye.utils.thread_worker import thread_worker
+from microEye.utils.thread_worker import QThreadWorker
 from microEye.utils.uImage import TiffSeqHandler, ZarrImageSequence, uImage
 
 
@@ -821,7 +821,7 @@ class KymogramWidget(QtWidgets.QWidget):
             else:
                 old_rois = None
 
-            def work_func():
+            def work_func(**kwargs):
                 try:
                     image = uImage(
                         self.get_selector_image(
@@ -902,7 +902,7 @@ class KymogramWidget(QtWidgets.QWidget):
                     self._kymogram = results
                     self.displayClicked.emit(results.data)
 
-            self.worker = thread_worker(work_func, progress=False, z_stage=False)
+            self.worker = QThreadWorker(work_func)
             self.worker.signals.result.connect(done)
             # Execute
             self.kymogram_btn.setDisabled(True)

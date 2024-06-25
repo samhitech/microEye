@@ -14,7 +14,7 @@ def getArgs():
         '--QT_API',
         help='Select QT API [PySide6|PyQT6|PyQt5], '
         + 'If not specified, the environment variable QT_API is used.',
-        choices=['PySide6', 'PyQT6', 'PyQt5']
+        choices=['PySide6', 'PyQt6', 'PyQt5']
     )
     parser.add_argument(
         '--theme',
@@ -41,4 +41,4 @@ ARGS = getArgs()
 from microEye.qt import *  # noqa: I001, E402
 import microEye.analysis.fitting.pyfit3Dcspline as pyfit3Dcspline  # noqa: E402
 from microEye.analysis import multi_viewer  # noqa: E402
-from microEye.hardware import miEye  # noqa: E402
+from microEye.hardware import miEye_module  # noqa: E402

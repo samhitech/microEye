@@ -24,7 +24,7 @@ def splash(module):
     ]
     print(
         pyfiglet.Figlet(font=random.choice(fonts), width=250).renderText(
-            f'MicroEye v2.1.0\n{module}'
+            f'MicroEye v2.1.1\n{module}'
         )
     )
 

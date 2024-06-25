@@ -315,6 +315,8 @@ class SingleMatchBox(Tree):
     get_relay_state()
         Gets the state of the relay.
     '''
+    PARAMS = MB_Params
+    removed = Signal(object)
 
     def __init__(self, parent: Optional['QtWidgets.QWidget'] = None):
         '''Initializes a new SingleMatchBox instance.
@@ -683,9 +685,13 @@ class SingleMatchBox(Tree):
     def remove_widget(self):
         if self.parent() and not self.Laser.isOpen():
             self.parent().layout().removeWidget(self)
+            self.removed.emit(self)
             self.deleteLater()
         else:
             print(f'Disconnect device {self.Laser.Model} before removing!')
+
+    def __str__(self):
+        return self.Laser.Model.strip() or self.__class__.__name__
 
     def StartGUI():
         '''Initializes a new QApplication and SingleMatchBox.

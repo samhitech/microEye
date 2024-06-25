@@ -15,7 +15,8 @@ from microEye.qt import (
     getExistingDirectory,
     getSaveFileName,
 )
-from microEye.utils import Tree, uImage
+from microEye.utils import Tree
+from microEye.utils.uImage import uImage
 
 
 class TileImage:
@@ -63,11 +64,11 @@ class TiledImageSelector(QtWidgets.QWidget):
         central_layout.addWidget(self.imgView, 4)
 
     def clicked(self, event):
-        if event.modifiers() == Qt.ShiftModifier and \
-                event.button() == Qt.LeftButton:
+        if event.modifiers() == Qt.ShiftModifier and event.button() == Qt.LeftButton:
             self.save_raw_data(event.currentItem.item)
-        elif event.modifiers() == Qt.ControlModifier and \
-                event.button() == Qt.LeftButton:
+        elif (
+            event.modifiers() == Qt.ControlModifier and event.button() == Qt.LeftButton
+        ):
             self.save_raw_data_all()
         else:
             if event.double():
@@ -75,41 +76,41 @@ class TiledImageSelector(QtWidgets.QWidget):
             else:
                 self.setWindowTitle(
                     'Tiled Image Selector ({}, {}) ({}, {})'.format(
-                        *event.currentItem.item.index,
-                        *event.currentItem.item.position))
+                        *event.currentItem.item.index, *event.currentItem.item.position
+                    )
+                )
                 self.imgView.setImage(event.currentItem.addedItems[0].image)
 
     def save_raw_data(self, img: TileImage):
         filename = None
         if filename is None:
             filename, _ = getSaveFileName(
-                self, 'Save Raw Data', filter='Tiff Files (*.tif)')
+                self, 'Save Raw Data', filter='Tiff Files (*.tif)'
+            )
 
         if len(filename) > 0:
-            tf.imwrite(
-                filename,
-                img.uImage.image,
-                photometric='minisblack')
+            tf.imwrite(filename, img.uImage.image, photometric='minisblack')
 
     def save_raw_data_all(self):
         directory = None
         if directory is None:
-            directory = str(
-                getExistingDirectory(self, 'Select Directory'))
+            directory = str(getExistingDirectory(self, 'Select Directory'))
 
         if len(directory) > 0:
             for idx, tImg in enumerate(self.images):
                 tf.imwrite(
-                    directory + \
-                    f'/{idx:03d}_image_y{tImg.index[0]:02d}_x{tImg.index[1]:02d}.tif',
+                    directory
+                    + f'/{idx:03d}_image_y{tImg.index[0]:02d}_x{tImg.index[1]:02d}.tif',
                     tImg.uImage.image,
-                    photometric='minisblack')
+                    photometric='minisblack',
+                )
 
 
 class ScanParams(Enum):
     '''
     Enum class defining Scanning Acquisition parameters.
     '''
+
     DELAY = 'Delay [ms]'
     XY_SCAN = 'XY SCAN'
     Z_SCAN = 'Z SCAN'
@@ -121,16 +122,16 @@ class ScanParams(Enum):
     Z_STEP_SIZE = 'Z SCAN.Z Step Size [nm]'
     AVG_FRAMES = 'XY SCAN.Average [Frames]'
 
-    XY_START = 'XY SCAN.START SCAN'
-    XY_LAST = 'XY SCAN.LAST SCAN'
-    XY_STOP = 'XY SCAN.STOP SCAN'
+    XY_START = 'XY SCAN.Start XY-Scan'
+    XY_LAST = 'XY SCAN.Last XY-Scan'
+    XY_STOP = 'XY SCAN.Stop XY-Scan'
 
     N_FRAMES = 'Z SCAN.Frames per Z-Slice'
     Z_REVERSED = 'Z SCAN.Reversed'
     Z_DIRECTORY = 'Z SCAN.Save Directory'
-    Z_START = 'Z SCAN.START SCAN'
-    Z_STOP = 'Z SCAN.STOP SCAN'
-    Z_CAL = 'Z SCAN.START CALIBRATION'
+    Z_START = 'Z SCAN.Start Z-Scan'
+    Z_STOP = 'Z SCAN.Stop Z-Scan'
+    Z_CAL = 'Z SCAN.Start Z-Calibration'
 
     def __str__(self):
         '''
@@ -144,7 +145,9 @@ class ScanParams(Enum):
         '''
         return self.value.split('.')
 
+
 class ScanAcquisitionWidget(Tree):
+    PARAMS = ScanParams
     startAcquisitionXY = Signal(tuple)
     stopAcquisitionXY = Signal()
     openLastTileXY = Signal()
@@ -169,71 +172,134 @@ class ScanAcquisitionWidget(Tree):
         `PzFocView` class.
         '''
         params = [
-            {'name': str(ScanParams.DELAY),
-                'type': 'int', 'value': 200, 'limits': [1, 1e4], 'step': 50},
-            {'name': str(ScanParams.XY_SCAN), 'type': 'group', 'children': [
-                {'name': str(ScanParams.X_STEP),
-                    'type': 'int', 'value': 4, 'limits': [1, 100], 'step': 1},
-                {'name': str(ScanParams.Y_STEP),
-                    'type': 'int', 'value': 4, 'limits': [1, 100], 'step': 1},
-                {'name': str(ScanParams.X_STEP_SIZE),
-                'type': 'float', 'value': 50.0, 'limits': [0.1, 500],
-                'step': 1, 'dec': False, 'decimals': 3},
-                {'name': str(ScanParams.Y_STEP_SIZE),
-                'type': 'float', 'value': 50.0, 'limits': [0.1, 500],
-                'step': 1, 'dec': False, 'decimals': 3},
-                {'name': str(ScanParams.AVG_FRAMES),
-                    'type': 'int', 'value': 1, 'limits': [1, 128], 'step': 1},
-                {'name': str(ScanParams.XY_START), 'type': 'action'},
-                {'name': str(ScanParams.XY_STOP), 'type': 'action'},
-                {'name': str(ScanParams.XY_LAST), 'type': 'action'},
-            ]},
-            {'name': str(ScanParams.Z_SCAN), 'type': 'group', 'children': [
-                {'name': str(ScanParams.Z_STEP),
-                    'type': 'int', 'value': 5, 'limits': [2, 1e4], 'step': 1},
-                {'name': str(ScanParams.Z_STEP_SIZE),
-                    'type': 'int', 'value': 25, 'limits': [1, 2e4], 'step': 1},
-                {'name': str(ScanParams.N_FRAMES),
-                    'type': 'int', 'value': 10, 'limits': [1, 1e9], 'step': 1},
-                {'name': str(ScanParams.Z_REVERSED),
-                    'type': 'bool', 'value': False},
-                {'name': str(ScanParams.Z_DIRECTORY), 'type': 'file',
-                 'directory': os.path.join(os.path.expanduser('~'), 'Desktop'),
-                 'value': os.path.join(os.path.expanduser('~'), 'Desktop'),
-                 'fileMode': 'DirectoryOnly'},
-                {'name': str(ScanParams.Z_START), 'type': 'action'},
-                {'name': str(ScanParams.Z_STOP), 'type': 'action'},
-                {'name': str(ScanParams.Z_CAL), 'type': 'action'},
-            ]},
+            {
+                'name': str(ScanParams.DELAY),
+                'type': 'int',
+                'value': 200,
+                'limits': [1, 1e4],
+                'step': 50,
+            },
+            {
+                'name': str(ScanParams.XY_SCAN),
+                'type': 'group',
+                'children': [
+                    {
+                        'name': str(ScanParams.X_STEP),
+                        'type': 'int',
+                        'value': 4,
+                        'limits': [1, 100],
+                        'step': 1,
+                    },
+                    {
+                        'name': str(ScanParams.Y_STEP),
+                        'type': 'int',
+                        'value': 4,
+                        'limits': [1, 100],
+                        'step': 1,
+                    },
+                    {
+                        'name': str(ScanParams.X_STEP_SIZE),
+                        'type': 'float',
+                        'value': 50.0,
+                        'limits': [0.1, 500],
+                        'step': 1,
+                        'dec': False,
+                        'decimals': 3,
+                    },
+                    {
+                        'name': str(ScanParams.Y_STEP_SIZE),
+                        'type': 'float',
+                        'value': 50.0,
+                        'limits': [0.1, 500],
+                        'step': 1,
+                        'dec': False,
+                        'decimals': 3,
+                    },
+                    {
+                        'name': str(ScanParams.AVG_FRAMES),
+                        'type': 'int',
+                        'value': 1,
+                        'limits': [1, 128],
+                        'step': 1,
+                    },
+                    {'name': str(ScanParams.XY_START), 'type': 'action'},
+                    {'name': str(ScanParams.XY_STOP), 'type': 'action'},
+                    {'name': str(ScanParams.XY_LAST), 'type': 'action'},
+                ],
+            },
+            {
+                'name': str(ScanParams.Z_SCAN),
+                'type': 'group',
+                'children': [
+                    {
+                        'name': str(ScanParams.Z_STEP),
+                        'type': 'int',
+                        'value': 5,
+                        'limits': [2, 1e4],
+                        'step': 1,
+                    },
+                    {
+                        'name': str(ScanParams.Z_STEP_SIZE),
+                        'type': 'int',
+                        'value': 25,
+                        'limits': [1, 2e4],
+                        'step': 1,
+                    },
+                    {
+                        'name': str(ScanParams.N_FRAMES),
+                        'type': 'int',
+                        'value': 10,
+                        'limits': [1, 1e9],
+                        'step': 1,
+                    },
+                    {
+                        'name': str(ScanParams.Z_REVERSED),
+                        'type': 'bool',
+                        'value': False,
+                    },
+                    {
+                        'name': str(ScanParams.Z_DIRECTORY),
+                        'type': 'file',
+                        'directory': os.path.join(os.path.expanduser('~'), 'Desktop'),
+                        'value': os.path.join(os.path.expanduser('~'), 'Desktop'),
+                        'fileMode': 'Directory',
+                    },
+                    {'name': str(ScanParams.Z_START), 'type': 'action'},
+                    {'name': str(ScanParams.Z_STOP), 'type': 'action'},
+                    {'name': str(ScanParams.Z_CAL), 'type': 'action'},
+                ],
+            },
         ]
 
         self.param_tree = Parameter.create(name='', type='group', children=params)
         self.param_tree.sigTreeStateChanged.connect(self.change)
         self.header().setSectionResizeMode(
-            QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+            QtWidgets.QHeaderView.ResizeMode.ResizeToContents
+        )
 
-        self.get_param(
-            ScanParams.XY_START).sigActivated.connect(
-                lambda: self.startScanning(True))
-        self.get_param(
-            ScanParams.XY_STOP).sigActivated.connect(
-                self.stopAcquisitionXY.emit)
-        self.get_param(
-            ScanParams.XY_LAST).sigActivated.connect(
-                self.openLastTileXY.emit)
+        self.get_param(ScanParams.XY_START).sigActivated.connect(
+            lambda: self.startScanning(True)
+        )
+        self.get_param(ScanParams.XY_STOP).sigActivated.connect(
+            lambda: self.stopAcquisitionXY.emit()
+        )
+        self.get_param(ScanParams.XY_LAST).sigActivated.connect(
+            lambda: self.openLastTileXY.emit()
+        )
 
-        self.get_param(
-            ScanParams.Z_START).sigActivated.connect(
-                lambda: self.startScanning(False))
-        self.get_param(
-            ScanParams.Z_STOP).sigActivated.connect(
-                self.stopAcquisitionZ.emit)
-        self.get_param(
-            ScanParams.Z_CAL).sigActivated.connect(
-                lambda: self.startScanning(None))
+        self.get_param(ScanParams.Z_START).sigActivated.connect(
+            lambda: self.startScanning(False)
+        )
+        self.get_param(ScanParams.Z_STOP).sigActivated.connect(
+            lambda: self.stopAcquisitionZ.emit()
+        )
+        self.get_param(ScanParams.Z_CAL).sigActivated.connect(
+            lambda: self.startScanning(None)
+        )
 
-        self.get_param(
-            ScanParams.Z_DIRECTORY).sigValueChanged.connect(self.directory_changed)
+        self.get_param(ScanParams.Z_DIRECTORY).sigValueChanged.connect(
+            self.directory_changed
+        )
 
     def startScanning(self, XY: bool):
         '''
@@ -299,14 +365,16 @@ class ScanAcquisitionWidget(Tree):
                 self.get_param_value(ScanParams.X_STEP_SIZE),
                 self.get_param_value(ScanParams.Y_STEP_SIZE),
                 self.get_param_value(ScanParams.DELAY),
-                self.get_param_value(ScanParams.AVG_FRAMES))
+                self.get_param_value(ScanParams.AVG_FRAMES),
+            )
         else:
             return (
                 self.get_param_value(ScanParams.Z_STEP),
                 self.get_param_value(ScanParams.Z_STEP_SIZE),
                 self.get_param_value(ScanParams.DELAY),
                 self.get_param_value(ScanParams.N_FRAMES),
-                self.get_param_value(ScanParams.Z_REVERSED))
+                self.get_param_value(ScanParams.Z_REVERSED),
+            )
 
     def setActionsStatus(self, status: bool):
         '''
@@ -321,13 +389,15 @@ class ScanAcquisitionWidget(Tree):
 
         '''
         self.get_param(ScanParams.XY_START).setOpts(enabled=status)
-        self.get_param(ScanParams.XY_STOP).setOpts(enabled=status)
+        # self.get_param(ScanParams.XY_STOP).setOpts(enabled=status)
         self.get_param(ScanParams.XY_LAST).setOpts(enabled=status)
         self.get_param(ScanParams.Z_START).setOpts(enabled=status)
-        self.get_param(ScanParams.Z_STOP).setOpts(enabled=status)
+        # self.get_param(ScanParams.Z_STOP).setOpts(enabled=status)
         self.get_param(ScanParams.Z_CAL).setOpts(enabled=status)
         self.get_param(ScanParams.Z_DIRECTORY).setOpts(enabled=status)
 
+    def __str__(self):
+        return 'Scan Acquistion'
 
 if __name__ == '__main__':
     x = np.linspace(255, 0, 256)
