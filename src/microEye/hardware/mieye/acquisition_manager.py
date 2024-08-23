@@ -65,7 +65,7 @@ class AcquisitionManager(QtCore.QObject):
     def _connect_tile_position_signal(self, tile: TiledImageSelector):
         kinesisView: KinesisView = DeviceManager.WIDGETS[DeviceManager.DEVICES.XY_STAGE]
         tile.positionSelected.connect(
-            lambda x, y: kinesisView.doAsync(
+            lambda x, y: kinesisView.runAsync(
                 self.device_manager.kinesisXY.move_absolute, x, y
             )
         )
@@ -347,11 +347,11 @@ def z_stack_acquisition(
                 frame = None
                 prefix = f'Z_{x:04d}_'
 
-                event = threading.Event()
+                cam_event = threading.Event()
 
-                cam_pan.asyncFreerun.emit(prefix, event)
+                cam_pan.asyncFreerun.emit(prefix, cam_event)
 
-                event.wait()
+                cam_event.wait()
                 QtCore.QThread.msleep(100)
         else:
             print('Z-scan failed!')

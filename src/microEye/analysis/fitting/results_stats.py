@@ -72,18 +72,16 @@ class resultsStatsWidget(QtWidgets.QWidget):
                     if column in ['frame', 'x', 'y', 'z', 'iteration']:
                         min_val = df[column].min()
                         max_val = df[column].max()
-                    elif column == 'loglike':
-                        min_val = np.nanmin(df[column].to_numpy())
-                        max_val = 0
                     else:
-                        mean = np.nanmean(df[column].to_numpy())
-                        std = np.nanstd(df[column].to_numpy())
-                        min_val = max(mean - 10 * std, 0)
-                        max_val = (
-                            max(mean + 10 * std, 1e4)
-                            if 'CRLB' in column
-                            else mean + 10 * std
-                        )
+                        q1, q3 = np.nanpercentile(df[column].to_numpy(), [25, 75])
+                        iqr = q3 - q1
+                        min_val = (
+                            q1 - 1.5 * iqr
+                            if column == 'loglike'
+                            else max(q1 - 1.6 * iqr, 0)
+                        )  # Ensure non-negative
+                        max_val = q3 + 1.6 * iqr
+
                     counts = df[column].count()
                     hist, bins = np.histogram(
                         df[column].to_numpy(),
@@ -115,7 +113,7 @@ class resultsStatsWidget(QtWidgets.QWidget):
             widgetToRemove.setParent(None)
 
     def update(self):
-        mask = np.ones(self.df.count().min(), dtype=bool)
+        mask = np.ones(self.df.count().max(), dtype=bool)
         for idx, column in enumerate(self.df.columns):
             Rmin, Rmax = self.plot_lr[idx].getRegion()
             mask = np.logical_and(

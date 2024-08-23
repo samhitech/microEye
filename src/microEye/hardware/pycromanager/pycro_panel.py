@@ -23,7 +23,7 @@ except Exception:
     vb = None
 
 
-class DummyParams(Enum):
+class PycroParams(Enum):
     FREERUN = 'Acquisition.Freerun'
     STOP = 'Acquisition.Stop'
     LOAD = 'Acquisition Settings.Load Config'
@@ -69,12 +69,12 @@ class DummyParams(Enum):
         return self.value.split('.')
 
 
-class Dummy_Panel(Camera_Panel):
+class PycroPanel(Camera_Panel):
     '''
-    A Qt Widget for a dummy camera
+    A Qt Widget for a pycro-manager camera
      | Inherits Camera_Panel
     '''
-    PARAMS = DummyParams
+    PARAMS = PycroParams
 
     def __init__(self, mini=False, *args, **kwargs):
         '''
@@ -113,110 +113,110 @@ class Dummy_Panel(Camera_Panel):
         exposure.sigValueChanged.connect(self.exposure_spin_changed)
 
         HEIGHT = {
-            'name': str(DummyParams.HEIGHT),
+            'name': str(PycroParams.HEIGHT),
             'type': 'int',
             'value': 512,
             'limits': [0, 4096],
         }
         WIDTH = {
-            'name': str(DummyParams.WIDTH),
+            'name': str(PycroParams.WIDTH),
             'type': 'int',
             'value': 512,
             'limits': [0, 4096],
         }
         BINNING_HORIZONTAL = {
-            'name': str(DummyParams.BINNING_HORIZONTAL),
+            'name': str(PycroParams.BINNING_HORIZONTAL),
             'type': 'int',
             'value': 1,
             'limits': [0, 10],
         }
         BINNING_VERTICAL = {
-            'name': str(DummyParams.BINNING_VERTICAL),
+            'name': str(PycroParams.BINNING_VERTICAL),
             'type': 'int',
             'value': 1,
             'limits': [0, 10],
         }
         BIT_DEPTH = {
-            'name': str(DummyParams.BIT_DEPTH),
+            'name': str(PycroParams.BIT_DEPTH),
             'type': 'list',
             'limits': [8, 10, 12, 16],
             'value': 12,
         }
-        GAIN = {'name': str(DummyParams.GAIN), 'type': 'float', 'value': 2.23}
+        GAIN = {'name': str(PycroParams.GAIN), 'type': 'float', 'value': 2.23}
         FULL_WELL_CAPACITY = {
-            'name': str(DummyParams.FULL_WELL_CAPACITY),
+            'name': str(PycroParams.FULL_WELL_CAPACITY),
             'type': 'int',
             'value': 9200,
             'suffix': 'e-',
         }
         QUANTUM_EFFICIENCY = {
-            'name': str(DummyParams.QUANTUM_EFFICIENCY),
+            'name': str(PycroParams.QUANTUM_EFFICIENCY),
             'type': 'float',
             'value': 0.8,
             'limits': [0, 1],
         }
         DARK_CURRENT = {
-            'name': str(DummyParams.DARK_CURRENT),
+            'name': str(PycroParams.DARK_CURRENT),
             'type': 'float',
             'value': 0.0001,
             'suffix': ' e-/s',
         }
         READOUT_NOISE = {
-            'name': str(DummyParams.READOUT_NOISE),
+            'name': str(PycroParams.READOUT_NOISE),
             'type': 'float',
             'value': 2.1,
             'suffix': ' e-',
         }
         NOISE_BASELINE = {
-            'name': str(DummyParams.NOISE_BASELINE),
+            'name': str(PycroParams.NOISE_BASELINE),
             'type': 'float',
             'value': 5.0,
             'limits': [0, 2**16],
             'suffix': ' ADU',
         }
         FLUX = {
-            'name': str(DummyParams.FLUX),
+            'name': str(PycroParams.FLUX),
             'type': 'float',
             'value': 0,
             'suffix': ' e-/p/s',
         }
         PATTERN_TYPE = {
-            'name': str(DummyParams.PATTERN_TYPE),
+            'name': str(PycroParams.PATTERN_TYPE),
             'type': 'list',
             'limits': ['Constant Flux', 'Sinusoidal', 'Single Molecule Sim'],
             'value': 'Sinusoidal',
         }
         PATTERN_OFFSET = {
-            'name': str(DummyParams.PATTERN_OFFSET),
+            'name': str(PycroParams.PATTERN_OFFSET),
             'type': 'float',
             'value': 0.0,
             'suffix': ' e-',
         }
         PATTERN_SINUSOIDAL = {
-            'name': str(DummyParams.PATTERN_SINUSOIDAL),
+            'name': str(PycroParams.PATTERN_SINUSOIDAL),
             'type': 'group',
             'expanded': False,
             'children': [
                 {
-                    'name': str(DummyParams.SINUSOIDAL_FREQUENCY),
+                    'name': str(PycroParams.SINUSOIDAL_FREQUENCY),
                     'type': 'float',
                     'value': 0.01,
                     'suffix': ' Hz',
                 },
                 {
-                    'name': str(DummyParams.SINUSOIDAL_PHASE),
+                    'name': str(PycroParams.SINUSOIDAL_PHASE),
                     'type': 'float',
                     'value': 0.0,
                     'suffix': ' deg',
                 },
                 {
-                    'name': str(DummyParams.SINUSOIDAL_AMPLITUDE),
+                    'name': str(PycroParams.SINUSOIDAL_AMPLITUDE),
                     'type': 'float',
                     'value': 0.1e5,
                     'suffix': ' e-/p/s',
                 },
                 {
-                    'name': str(DummyParams.SINUSOIDAL_DIRECTION),
+                    'name': str(PycroParams.SINUSOIDAL_DIRECTION),
                     'type': 'list',
                     'limits': ['d', 'h', 'v', 'r'],
                     'value': 'd',
@@ -224,36 +224,36 @@ class Dummy_Panel(Camera_Panel):
             ],
         }
         SM_SIM = {
-            'name': str(DummyParams.SM),
+            'name': str(PycroParams.SM),
             'type': 'group',
             'expanded': False,
             'children': [
                 {
-                    'name': str(DummyParams.SM_INTENSITY),
+                    'name': str(PycroParams.SM_INTENSITY),
                     'type': 'float',
                     'value': 5000,
                     'decimals': 6,
                 },
                 {
-                    'name': str(DummyParams.SM_DENSITY),
+                    'name': str(PycroParams.SM_DENSITY),
                     'type': 'float',
                     'value': 0.5,
                     'decimals': 6,
                 },
                 {
-                    'name': str(DummyParams.SM_PIXEL_SIZE),
+                    'name': str(PycroParams.SM_PIXEL_SIZE),
                     'type': 'float',
                     'value': 114.17,
                     'decimals': 6,
                 },
                 {
-                    'name': str(DummyParams.SM_WAVELENGTH),
+                    'name': str(PycroParams.SM_WAVELENGTH),
                     'type': 'float',
                     'value': 650,
                     'decimals': 6,
                 },
                 {
-                    'name': str(DummyParams.SM_NA),
+                    'name': str(PycroParams.SM_NA),
                     'type': 'float',
                     'value': 1.49,
                     'decimals': 6,
@@ -280,141 +280,141 @@ class Dummy_Panel(Camera_Panel):
         self.camera_options.add_param_child(CamParams.ACQ_SETTINGS, SM_SIM)
 
         # update params
-        self.camera_options.get_param(DummyParams.HEIGHT).sigValueChanged.connect(
-            lambda _, new_value: self.update_cam(DummyParams.HEIGHT, new_value)
+        self.camera_options.get_param(PycroParams.HEIGHT).sigValueChanged.connect(
+            lambda _, new_value: self.update_cam(PycroParams.HEIGHT, new_value)
         )
-        self.camera_options.get_param(DummyParams.WIDTH).sigValueChanged.connect(
-            lambda _, new_value: self.update_cam(DummyParams.WIDTH, new_value)
+        self.camera_options.get_param(PycroParams.WIDTH).sigValueChanged.connect(
+            lambda _, new_value: self.update_cam(PycroParams.WIDTH, new_value)
         )
         self.camera_options.get_param(
-            DummyParams.BINNING_HORIZONTAL
+            PycroParams.BINNING_HORIZONTAL
         ).sigValueChanged.connect(
             lambda _, new_value: self.update_cam(
-                DummyParams.BINNING_HORIZONTAL, new_value
+                PycroParams.BINNING_HORIZONTAL, new_value
             )
         )
         self.camera_options.get_param(
-            DummyParams.BINNING_VERTICAL
+            PycroParams.BINNING_VERTICAL
         ).sigValueChanged.connect(
             lambda _, new_value: self.update_cam(
-                DummyParams.BINNING_VERTICAL, new_value
+                PycroParams.BINNING_VERTICAL, new_value
             )
         )
-        self.camera_options.get_param(DummyParams.BIT_DEPTH).sigValueChanged.connect(
-            lambda _, new_value: self.update_cam(DummyParams.BIT_DEPTH, new_value)
+        self.camera_options.get_param(PycroParams.BIT_DEPTH).sigValueChanged.connect(
+            lambda _, new_value: self.update_cam(PycroParams.BIT_DEPTH, new_value)
         )
-        self.camera_options.get_param(DummyParams.GAIN).sigValueChanged.connect(
-            lambda _, new_value: self.update_cam(DummyParams.GAIN, new_value)
+        self.camera_options.get_param(PycroParams.GAIN).sigValueChanged.connect(
+            lambda _, new_value: self.update_cam(PycroParams.GAIN, new_value)
         )
         self.camera_options.get_param(
-            DummyParams.FULL_WELL_CAPACITY
+            PycroParams.FULL_WELL_CAPACITY
         ).sigValueChanged.connect(
             lambda _, new_value: self.update_cam(
-                DummyParams.FULL_WELL_CAPACITY, new_value
-            )
-        )
-        self.camera_options.get_param(
-            DummyParams.QUANTUM_EFFICIENCY
-        ).sigValueChanged.connect(
-            lambda _, new_value: self.update_cam(
-                DummyParams.QUANTUM_EFFICIENCY, new_value
-            )
-        )
-        self.camera_options.get_param(DummyParams.DARK_CURRENT).sigValueChanged.connect(
-            lambda _, new_value: self.update_cam(DummyParams.DARK_CURRENT, new_value)
-        )
-        self.camera_options.get_param(
-            DummyParams.READOUT_NOISE
-        ).sigValueChanged.connect(
-            lambda _, new_value: self.update_cam(DummyParams.READOUT_NOISE, new_value)
-        )
-        self.camera_options.get_param(
-            DummyParams.NOISE_BASELINE
-        ).sigValueChanged.connect(
-            lambda _, new_value: self.update_cam(DummyParams.NOISE_BASELINE, new_value)
-        )
-        self.camera_options.get_param(DummyParams.FLUX).sigValueChanged.connect(
-            lambda _, new_value: self.update_cam(DummyParams.FLUX, new_value)
-        )
-        self.camera_options.get_param(DummyParams.PATTERN_TYPE).sigValueChanged.connect(
-            lambda _, new_value: self.update_cam(DummyParams.PATTERN_TYPE, new_value)
-        )
-        self.camera_options.get_param(
-            DummyParams.PATTERN_OFFSET
-        ).sigValueChanged.connect(
-            lambda _, new_value: self.update_cam(DummyParams.PATTERN_OFFSET, new_value)
-        )
-        self.camera_options.get_param(
-            DummyParams.SINUSOIDAL_AMPLITUDE
-        ).sigValueChanged.connect(
-            lambda _, new_value: self.update_cam(
-                DummyParams.SINUSOIDAL_AMPLITUDE, new_value
+                PycroParams.FULL_WELL_CAPACITY, new_value
             )
         )
         self.camera_options.get_param(
-            DummyParams.SINUSOIDAL_FREQUENCY
+            PycroParams.QUANTUM_EFFICIENCY
         ).sigValueChanged.connect(
             lambda _, new_value: self.update_cam(
-                DummyParams.SINUSOIDAL_FREQUENCY, new_value
+                PycroParams.QUANTUM_EFFICIENCY, new_value
+            )
+        )
+        self.camera_options.get_param(PycroParams.DARK_CURRENT).sigValueChanged.connect(
+            lambda _, new_value: self.update_cam(PycroParams.DARK_CURRENT, new_value)
+        )
+        self.camera_options.get_param(
+            PycroParams.READOUT_NOISE
+        ).sigValueChanged.connect(
+            lambda _, new_value: self.update_cam(PycroParams.READOUT_NOISE, new_value)
+        )
+        self.camera_options.get_param(
+            PycroParams.NOISE_BASELINE
+        ).sigValueChanged.connect(
+            lambda _, new_value: self.update_cam(PycroParams.NOISE_BASELINE, new_value)
+        )
+        self.camera_options.get_param(PycroParams.FLUX).sigValueChanged.connect(
+            lambda _, new_value: self.update_cam(PycroParams.FLUX, new_value)
+        )
+        self.camera_options.get_param(PycroParams.PATTERN_TYPE).sigValueChanged.connect(
+            lambda _, new_value: self.update_cam(PycroParams.PATTERN_TYPE, new_value)
+        )
+        self.camera_options.get_param(
+            PycroParams.PATTERN_OFFSET
+        ).sigValueChanged.connect(
+            lambda _, new_value: self.update_cam(PycroParams.PATTERN_OFFSET, new_value)
+        )
+        self.camera_options.get_param(
+            PycroParams.SINUSOIDAL_AMPLITUDE
+        ).sigValueChanged.connect(
+            lambda _, new_value: self.update_cam(
+                PycroParams.SINUSOIDAL_AMPLITUDE, new_value
             )
         )
         self.camera_options.get_param(
-            DummyParams.SINUSOIDAL_PHASE
+            PycroParams.SINUSOIDAL_FREQUENCY
         ).sigValueChanged.connect(
             lambda _, new_value: self.update_cam(
-                DummyParams.SINUSOIDAL_PHASE, new_value
+                PycroParams.SINUSOIDAL_FREQUENCY, new_value
             )
         )
         self.camera_options.get_param(
-            DummyParams.SINUSOIDAL_DIRECTION
+            PycroParams.SINUSOIDAL_PHASE
         ).sigValueChanged.connect(
             lambda _, new_value: self.update_cam(
-                DummyParams.SINUSOIDAL_DIRECTION, new_value
+                PycroParams.SINUSOIDAL_PHASE, new_value
+            )
+        )
+        self.camera_options.get_param(
+            PycroParams.SINUSOIDAL_DIRECTION
+        ).sigValueChanged.connect(
+            lambda _, new_value: self.update_cam(
+                PycroParams.SINUSOIDAL_DIRECTION, new_value
             )
         )
 
-        self.camera_options.get_param(DummyParams.SM_INTENSITY).sigValueChanged.connect(
-            lambda _, new_value: self.update_cam(DummyParams.SM_INTENSITY, new_value)
+        self.camera_options.get_param(PycroParams.SM_INTENSITY).sigValueChanged.connect(
+            lambda _, new_value: self.update_cam(PycroParams.SM_INTENSITY, new_value)
         )
-        self.camera_options.get_param(DummyParams.SM_DENSITY).sigValueChanged.connect(
-            lambda _, new_value: self.update_cam(DummyParams.SM_DENSITY, new_value)
-        )
-        self.camera_options.get_param(
-            DummyParams.SM_PIXEL_SIZE
-        ).sigValueChanged.connect(
-            lambda _, new_value: self.update_cam(DummyParams.SM_PIXEL_SIZE, new_value)
+        self.camera_options.get_param(PycroParams.SM_DENSITY).sigValueChanged.connect(
+            lambda _, new_value: self.update_cam(PycroParams.SM_DENSITY, new_value)
         )
         self.camera_options.get_param(
-            DummyParams.SM_WAVELENGTH
+            PycroParams.SM_PIXEL_SIZE
         ).sigValueChanged.connect(
-            lambda _, new_value: self.update_cam(DummyParams.SM_WAVELENGTH, new_value)
+            lambda _, new_value: self.update_cam(PycroParams.SM_PIXEL_SIZE, new_value)
         )
-        self.camera_options.get_param(DummyParams.SM_NA).sigValueChanged.connect(
-            lambda _, new_value: self.update_cam(DummyParams.SM_NA, new_value)
+        self.camera_options.get_param(
+            PycroParams.SM_WAVELENGTH
+        ).sigValueChanged.connect(
+            lambda _, new_value: self.update_cam(PycroParams.SM_WAVELENGTH, new_value)
+        )
+        self.camera_options.get_param(PycroParams.SM_NA).sigValueChanged.connect(
+            lambda _, new_value: self.update_cam(PycroParams.SM_NA, new_value)
         )
 
         # start freerun mode button
-        freerun = self.get_event_action(DummyParams.FREERUN)
+        freerun = self.get_event_action(PycroParams.FREERUN)
         self.camera_options.add_param_child(CamParams.ACQUISITION, freerun)
-        self.camera_options.get_param(DummyParams.FREERUN).sigActivated.connect(
+        self.camera_options.get_param(PycroParams.FREERUN).sigActivated.connect(
             self.start_free_run
         )
 
         # stop acquisition button
-        stop = {'name': str(DummyParams.STOP), 'type': 'action'}
+        stop = {'name': str(PycroParams.STOP), 'type': 'action'}
         self.camera_options.add_param_child(CamParams.ACQUISITION, stop)
-        self.camera_options.get_param(DummyParams.STOP).sigActivated.connect(self.stop)
+        self.camera_options.get_param(PycroParams.STOP).sigActivated.connect(self.stop)
 
         # config buttons
-        load = {'name': str(DummyParams.LOAD), 'type': 'action'}
+        load = {'name': str(PycroParams.LOAD), 'type': 'action'}
         self.camera_options.add_param_child(CamParams.ACQ_SETTINGS, load)
-        self.camera_options.get_param(DummyParams.LOAD).sigActivated.connect(
+        self.camera_options.get_param(PycroParams.LOAD).sigActivated.connect(
             self.load_config
         )
 
-        save = {'name': str(DummyParams.SAVE), 'type': 'action'}
+        save = {'name': str(PycroParams.SAVE), 'type': 'action'}
         self.camera_options.add_param_child(CamParams.ACQ_SETTINGS, save)
-        self.camera_options.get_param(DummyParams.SAVE).sigActivated.connect(
+        self.camera_options.get_param(PycroParams.SAVE).sigActivated.connect(
             self.save_config
         )
 
@@ -449,51 +449,51 @@ class Dummy_Panel(Camera_Panel):
         self._cam = cam
 
     def update_cam(self, param_name, param_value):
-        if param_name == DummyParams.HEIGHT:
+        if param_name == PycroParams.HEIGHT:
             self._cam.height = param_value
-        elif param_name == DummyParams.WIDTH:
+        elif param_name == PycroParams.WIDTH:
             self._cam.width = param_value
-        elif param_name == DummyParams.BINNING_HORIZONTAL:
+        elif param_name == PycroParams.BINNING_HORIZONTAL:
             self._cam.binning_horizontal = param_value
-        elif param_name == DummyParams.BINNING_VERTICAL:
+        elif param_name == PycroParams.BINNING_VERTICAL:
             self._cam.binning_vertical = param_value
-        elif param_name == DummyParams.BIT_DEPTH:
+        elif param_name == PycroParams.BIT_DEPTH:
             self._cam.bit_depth = param_value
-        elif param_name == DummyParams.GAIN:
+        elif param_name == PycroParams.GAIN:
             self._cam.gain = param_value
-        elif param_name == DummyParams.FULL_WELL_CAPACITY:
+        elif param_name == PycroParams.FULL_WELL_CAPACITY:
             self._cam.full_well_capacity = param_value
-        elif param_name == DummyParams.QUANTUM_EFFICIENCY:
+        elif param_name == PycroParams.QUANTUM_EFFICIENCY:
             self._cam.quantum_efficiency = param_value
-        elif param_name == DummyParams.DARK_CURRENT:
+        elif param_name == PycroParams.DARK_CURRENT:
             self._cam.dark_current = param_value
-        elif param_name == DummyParams.READOUT_NOISE:
+        elif param_name == PycroParams.READOUT_NOISE:
             self._cam.readout_noise = param_value
-        elif param_name == DummyParams.NOISE_BASELINE:
+        elif param_name == PycroParams.NOISE_BASELINE:
             self._cam.noise_baseline = param_value
-        elif param_name == DummyParams.FLUX:
+        elif param_name == PycroParams.FLUX:
             self._cam.flux = param_value
-        elif param_name == DummyParams.PATTERN_TYPE:
+        elif param_name == PycroParams.PATTERN_TYPE:
             self._cam.pattern_type = param_value
-        elif param_name == DummyParams.PATTERN_OFFSET:
+        elif param_name == PycroParams.PATTERN_OFFSET:
             self._cam.pattern_offset = param_value
-        elif param_name == DummyParams.SINUSOIDAL_AMPLITUDE:
+        elif param_name == PycroParams.SINUSOIDAL_AMPLITUDE:
             self._cam.sinusoidal_amplitude = param_value
-        elif param_name == DummyParams.SINUSOIDAL_FREQUENCY:
+        elif param_name == PycroParams.SINUSOIDAL_FREQUENCY:
             self._cam.sinusoidal_frequency = param_value
-        elif param_name == DummyParams.SINUSOIDAL_PHASE:
+        elif param_name == PycroParams.SINUSOIDAL_PHASE:
             self._cam.sinusoidal_phase = param_value
-        elif param_name == DummyParams.SINUSOIDAL_DIRECTION:
+        elif param_name == PycroParams.SINUSOIDAL_DIRECTION:
             self._cam.sinusoidal_direction = param_value
-        elif param_name == DummyParams.SM_INTENSITY:
+        elif param_name == PycroParams.SM_INTENSITY:
             self._cam.sm_intensity = param_value
-        elif param_name == DummyParams.SM_DENSITY:
+        elif param_name == PycroParams.SM_DENSITY:
             self._cam.sm_density = param_value
-        elif param_name == DummyParams.SM_PIXEL_SIZE:
+        elif param_name == PycroParams.SM_PIXEL_SIZE:
             self._cam.sm_pixel_size = param_value
-        elif param_name == DummyParams.SM_WAVELENGTH:
+        elif param_name == PycroParams.SM_WAVELENGTH:
             self._cam.sm_wavelength = param_value
-        elif param_name == DummyParams.SM_NA:
+        elif param_name == PycroParams.SM_NA:
             self._cam.sm_na = param_value
 
     def set_ROI(self):
@@ -537,6 +537,15 @@ class Dummy_Panel(Camera_Panel):
         self.camera_options.set_roi_info(x, y, width, height)
 
     def select_ROI(self):
+        '''
+        Opens a dialog to select a ROI from the last image.
+        '''
+        if self.cam.acquisition:
+            QtWidgets.QMessageBox.warning(
+                self, 'Warning', 'Cannot set ROI while acquiring images!'
+            )
+            return  # if acquisition is already going on
+
         if self.acq_job is not None:
             try:
 
@@ -579,6 +588,15 @@ class Dummy_Panel(Camera_Panel):
                 traceback.print_exc()
 
     def select_ROIs(self):
+        '''
+        Opens a dialog to select multiple ROIs from the last image.
+        '''
+        if self.cam.acquisition:
+            QtWidgets.QMessageBox.warning(
+                self, 'Warning', 'Cannot set ROI while acquiring images!'
+            )
+            return  # if acquisition is already going on
+
         if self.acq_job is not None:
             try:
 

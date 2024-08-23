@@ -638,8 +638,212 @@ def generate_lut_multi_channel_kernel(image, lut, min_value, bin_width, num_bins
                 bin_index = num_bins - 1
             cuda.atomic.add(lut, (bin_index, channel), 1)
 
+class ImageSequenceBase:
+    '''
+    A base class for handling image sequences.
 
-class TiffSeqHandler:
+    Attributes
+    ----------
+    shape : tuple or None
+        Shape of the image sequence.
+    dtype : np.dtype or None
+        Data type of the image sequence.
+    '''
+
+    def __init__(self):
+        '''
+        Initializes the ImageSequenceBase object.
+        '''
+        self._shape = None
+        self._dtype = None
+
+    def __getitem__(self, i):
+        '''
+        Retrieves a specific item or slice from the image sequence.
+
+        Parameters
+        ----------
+        i : Index or slice
+
+        Returns
+        -------
+        np.ndarray or None
+            Retrieved data.
+        '''
+        if isinstance(i, int):
+            return self.getSlice(slice(i, i + 1))
+        elif isinstance(i, slice):
+            return self.getSlice(i)
+        else:
+            raise IndexError('Index must be an integer or a slice')
+
+    def getSlice(
+            self, timeSlice=None, channelSlice=None,
+            zSlice=None, ySlice=None, xSlice=None, squeezed=True,
+            four='TCYX', three='TYX'):
+        '''
+        Retrieves a slice from the image sequence based on specified indices.
+
+        Parameters
+        ----------
+        timeSlice : slice or None
+            Slice for the time dimension.
+        channelSlice : slice or None
+            Slice for the channel dimension.
+        zSlice : slice or None
+            Slice for the z dimension.
+        ySlice : slice or None
+            Slice for the y dimension.
+        xSlice : slice or None
+            Slice for the x dimension.
+        squeezed : bool (optional)
+            Squeeze returned slice, default is True.
+        four : str
+            String representing the axis configuration for four dimensions.
+        three : str
+            String representing the axis configuration for three dimensions.
+
+        Returns
+        -------
+        np.ndarray
+            Retrieved slice.
+        '''
+        raise NotImplementedError('This method should be implemented by subclasses.')
+
+    def open(self):
+        '''
+        Opens the image sequence and initializes the data structure.
+
+        Raises
+        ------
+        NotImplementedError
+            This method should be implemented by subclasses.
+        '''
+        raise NotImplementedError('This method should be implemented by subclasses.')
+
+    def close(self):
+        '''
+        Closes the image sequence and releases any resources.
+
+        Raises
+        ------
+        NotImplementedError
+            This method should be implemented by subclasses.
+        '''
+        raise NotImplementedError('This method should be implemented by subclasses.')
+
+    def __len__(self):
+        '''
+        Returns the length of the image sequence.
+
+        Returns
+        -------
+        int
+            Length of the image sequence.
+        '''
+        if self._shape is None:
+            return 0
+        return self._shape[0]
+
+    @property
+    def shape(self):
+        '''
+        Returns the shape of the image sequence.
+
+        Returns
+        -------
+        tuple or None
+            Shape of the image sequence.
+        '''
+        if self._shape is None:
+            return None
+        return self._shape
+
+    def shapeTCZYX(self, four='TCYX', three='TYX'):
+        '''
+        Returns the shape of the image sequence in a specific format.
+
+        Returns
+        -------
+        tuple or None
+            Shape of the image sequence.
+        '''
+        if self._shape:
+            if len(self._shape) == 5:
+                return self._shape
+            elif len(self._shape) == 4:
+                if four == 'TCYX':
+                    return (
+                        self._shape[0], self._shape[1],
+                        1,
+                        self._shape[2], self._shape[3])
+                elif four == 'CZYX':
+                    return (
+                        1,
+                        self._shape[0], self._shape[1],
+                        self._shape[2], self._shape[3])
+                elif four == 'TZYX':
+                    return (
+                        self._shape[0],
+                        1, self._shape[1],
+                        self._shape[2], self._shape[3])
+                else:
+                    raise ValueError(
+                        f'Unsupported dimensions format: {four}')
+            elif len(self._shape) == 3:
+                if three == 'TYX':
+                    return (
+                        self._shape[0], 1, 1,
+                        self._shape[1], self._shape[2])
+                elif three == 'CYX':
+                    return (
+                        1, self._shape[0], 1,
+                        self._shape[1], self._shape[2])
+                elif three == 'ZYX':
+                    return (
+                        1, 1, self._shape[0],
+                        self._shape[1], self._shape[2])
+                else:
+                    raise ValueError(
+                        f'Unsupported dimensions format: {three}')
+            elif len(self._shape) == 2:
+                return (
+                    1, 1, 1,
+                    self._shape[0], self._shape[1])
+            else:
+                raise ValueError(
+                    f'Unsupported number of dimensions: {len(self._shape)}')
+        else:
+            return None
+
+
+    def __enter__(self):
+        '''
+        Enters the context manager.
+
+        Returns
+        -------
+        ImageSequenceBase
+            ImageSequenceBase object.
+        '''
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        '''
+        Exits the context manager.
+
+        Parameters
+        ----------
+        exc_type : type
+            Exception type.
+        exc_value : Exception
+            Exception instance.
+        traceback : Traceback
+            Traceback object.
+        '''
+        self.close()
+
+class TiffSeqHandler(ImageSequenceBase):
     '''
     Class for handling TIFF sequences using tifffile and zarr libraries.
 
@@ -685,6 +889,8 @@ class TiffSeqHandler:
         tiff_seq : tf.TiffSequence
             The TIFF sequence to be handled.
         '''
+        super().__init__()
+
         self._tiff_seq = tiff_seq
         self._initialize_arrays()
 
@@ -962,91 +1168,8 @@ class TiffSeqHandler:
         '''
         return self._shape if self._zarr is not None else None
 
-    def shapeTCZYX(self, four='TCYX', three='TYX'):
-        '''
-        Returns the shape of the Zarr array.
 
-        Returns
-        -------
-        tuple or None
-            Shape of the Zarr array.
-        '''
-        if self._shape:
-            if len(self._shape) == 5:
-                return self._shape
-            elif len(self._shape) == 4:
-                if four == 'TCYX':
-                    return (
-                        self._shape[0], self._shape[1],
-                        1,
-                        self._shape[2], self._shape[3])
-                elif four == 'CZYX':
-                    return (
-                        1,
-                        self._shape[0], self._shape[1],
-                        self._shape[2], self._shape[3])
-                elif four == 'TZYX':
-                    return (
-                        self._shape[0],
-                        1, self._shape[1],
-                        self._shape[2], self._shape[3])
-                else:
-                    raise ValueError(
-                        f'Unsupported dimensions format: {four}')
-            elif len(self._shape) == 3:
-                if three == 'TYX':
-                    return (
-                        self._shape[0], 1, 1,
-                        self._shape[1], self._shape[2])
-                elif three == 'CYX':
-                    return (
-                        1, self._shape[0], 1,
-                        self._shape[1], self._shape[2])
-                elif three == 'ZYX':
-                    return (
-                        1, 1, self._shape[0],
-                        self._shape[1], self._shape[2])
-                else:
-                    raise ValueError(
-                        f'Unsupported dimensions format: {three}')
-            elif len(self._shape) == 2:
-                return (
-                    1, 1, 1,
-                    self._shape[0], self._shape[1])
-            else:
-                raise ValueError(
-                    f'Unsupported number of dimensions: {len(self._shape)}')
-        else:
-            raise ValueError(f'The handler was not initializd correctly.')
-
-
-    def __enter__(self):
-        '''
-        Enters the context manager.
-
-        Returns
-        -------
-        TiffSeqHandler
-            The TiffSeqHandler object.
-        '''
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        '''
-        Exits the context manager.
-
-        Parameters
-        ----------
-        exc_type : type
-            Exception type.
-        exc_value : Exception
-            Exception instance.
-        traceback : Traceback
-            Traceback object.
-        '''
-        self.close()
-
-class ZarrImageSequence:
+class ZarrImageSequence(ImageSequenceBase):
     '''
     A class for handling image sequences stored in Zarr format.
 
@@ -1072,25 +1195,9 @@ class ZarrImageSequence:
         path : str
             The path to the Zarr store.
         '''
+        super().__init__()
         self.path = path
         self.data = None
-
-    def __getitem__(self, i):
-        '''
-        Retrieves a specific item or slice from the Zarr array.
-
-        Parameters
-        ----------
-        i : Index or slice
-
-        Returns
-        -------
-        np.ndarray or None
-            Retrieved data.
-        '''
-        if self.data is None:
-            return None
-        return zarr.open(self.path, 'r').__getitem__(i)
 
     def getSlice(
             self, timeSlice=None, channelSlice=None,
@@ -1157,102 +1264,25 @@ class ZarrImageSequence:
         else:
             raise ValueError(f'Unsupported number of dimensions: {len(za.shape)}')
 
+        del za
         if squeezed:
             return data.squeeze()
         else:
             return data
 
     def open(self):
-        """
-        Opens the Zarr array and assigns it to the 'data' attribute.
-        """
-        self.data = zarr.open(self.path, 'r')
+        '''
+        Opens the zarr file.
+        '''
+        data = zarr.open(self.path, 'r')
+        self._shape = data.shape
+        self._dtype = data.dtype
 
     def close(self):
-        """
-        Closes the Zarr array by deleting the 'data' attribute.
-        """
-        del self.data
-
-    def __len__(self):
         '''
-        Returns the length of the Zarr array.
-
-        Returns
-        -------
-        int
-            Length of the Zarr array.
+        Closes the zarr file.
         '''
-        return 0 if self.data is None else self.data.shape[0]
-
-    @property
-    def shape(self):
-        '''
-        Returns the shape of the Zarr array.
-
-        Returns
-        -------
-        tuple or None
-            Shape of the Zarr array.
-        '''
-        return None if self.data is None else self.data.shape
-
-    def shapeTCZYX(self, four='TCYX', three='TYX'):
-        '''
-        Returns the shape of the Zarr array.
-
-        Returns
-        -------
-        tuple or None
-            Shape of the Zarr array.
-        '''
-        if self.data:
-            if len(self.data.shape) == 5:
-                return self.data.shape
-            elif len(self.data.shape) == 4:
-                if four == 'TCYX':
-                    return (
-                        self.data.shape[0], self.data.shape[1],
-                        1,
-                        self.data.shape[2], self.data.shape[3])
-                elif four == 'CZYX':
-                    return (
-                        1,
-                        self.data.shape[0], self.data.shape[1],
-                        self.data.shape[2], self.data.shape[3])
-                elif four == 'TZYX':
-                    return (
-                        self.data.shape[0],
-                        1, self.data.shape[1],
-                        self.data.shape[2], self.data.shape[3])
-                else:
-                    raise ValueError(
-                        f'Unsupported dimensions format: {four}')
-            elif len(self.data.shape) == 3:
-                if three == 'TYX':
-                    return (
-                        self.data.shape[0], 1, 1,
-                        self.data.shape[1], self.data.shape[2])
-                elif three == 'CYX':
-                    return (
-                        1, self.data.shape[0], 1,
-                        self.data.shape[1], self.data.shape[2])
-                elif three == 'ZYX':
-                    return (
-                        1, 1, self.data.shape[0],
-                        self.data.shape[1], self.data.shape[2])
-                else:
-                    raise ValueError(
-                        f'Unsupported dimensions format: {three}')
-            elif len(self.data.shape) == 2:
-                return (
-                    1, 1, 1,
-                    self.data.shape[0], self.data.shape[1])
-            else:
-                raise ValueError(
-                    f'Unsupported number of dimensions: {len(self.data.shape)}')
-        else:
-            raise ValueError(f'The zarr array was closed.')
+        pass
 
 def ifnone(a, b):
     return b if a is None else a
@@ -1418,7 +1448,7 @@ def saveZarrImage(
         zarrImg = zarr.open(
             path, mode='w-',
             shape=shape, chunks=chunks,
-            compressor=None, dtype=imgSeq.data.dtype)
+            compressor=None, dtype=imgSeq._dtype)
         zarrImg[:] = imgSeq.getSlice(
             timeSlice, channelSlice, zSlice, ySlice, xSlice)
 

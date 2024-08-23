@@ -2,7 +2,7 @@ import json
 
 import numpy as np
 import pyqtgraph as pg
-from pyqtgraph.widgets.PlotWidget import PlotWidget
+from pyqtgraph.widgets.PlotWidget import PlotItem, PlotWidget
 from pyqtgraph.widgets.RemoteGraphicsView import RemoteGraphicsView
 
 from microEye.hardware.stages.stabilizer import *
@@ -44,20 +44,14 @@ class focusWidget(QtWidgets.QDockWidget):
         self.labelStyle = {'color': '#FFF', 'font-size': '10pt'}
         graphs_layout = QtWidgets.QGridLayout()
 
-        # IR LineROI Graph
-        self.graph_IR = PlotWidget()
-        self.graph_IR.setLabel('bottom', 'Pixel', **self.labelStyle)
-        self.graph_IR.setLabel('left', 'Signal', 'V', **self.labelStyle)
-        # IR Peak Position Graph
-        self.graph_Peak = PlotWidget()
-        self.graph_Peak.setLabel('bottom', 'Frame', **self.labelStyle)
-        self.graph_Peak.setLabel('left', 'Center Pixel Error', **self.labelStyle)
-        # IR Camera GraphView
-        self.remote_view = pg.GraphicsView()
+        # Graphics Layout
+        self.graphicsLayoutWidget = pg.GraphicsLayoutWidget()
+        graphicsLayout = self.graphicsLayoutWidget.ci
         pg.setConfigOptions(antialias=True, imageAxisOrder='row-major')
         pg.setConfigOption('imageAxisOrder', 'row-major')
-        self.remote_plt = pg.ViewBox(invertY=True)
-        self.remote_view.setCentralItem(self.remote_plt)
+
+        # IR Camera GraphView
+        self.remote_plt = graphicsLayout.addViewBox(0, 0, invertY=True)
         self.remote_plt.setAspectLocked()
         self.remote_img = pg.ImageItem(axisOrder='row-major')
         self.remote_img.setImage(np.random.normal(size=(512, 512)))
@@ -66,6 +60,15 @@ class focusWidget(QtWidgets.QDockWidget):
         self.roi.addTranslateHandle([0, 0], [0, 1])
         self.roi.addScaleRotateHandle([0, 1], [0, 0])
         self.roi.updateFlag = False
+
+        # IR LineROI Graph
+        self.graph_IR = graphicsLayout.addPlot(1, 0)
+        self.graph_IR.setLabel('bottom', 'Pixel', **self.labelStyle)
+        self.graph_IR.setLabel('left', 'Signal', 'V', **self.labelStyle)
+        # IR Peak Position Graph
+        self.graph_Peak = graphicsLayout.addPlot(2, 0)
+        self.graph_Peak.setLabel('bottom', 'Frame', **self.labelStyle)
+        self.graph_Peak.setLabel('left', 'Center Pixel Error', **self.labelStyle)
 
         # self.roi.maxBounds = QRectF(0, 0, 513, 513)
         def roiChanged(cls):
@@ -95,10 +98,8 @@ class focusWidget(QtWidgets.QDockWidget):
         self.remote_plt.addItem(self.remote_img)
         self.remote_plt.addItem(self.roi)
 
-        graphs_layout.addWidget(self.focusStabilizerView, 0, 0, 2, 1)
-        graphs_layout.addWidget(self.remote_view, 0, 1, 2, 1)
-        graphs_layout.addWidget(self.graph_IR, 0, 2)
-        graphs_layout.addWidget(self.graph_Peak, 1, 2)
+        graphs_layout.addWidget(self.graphicsLayoutWidget, 0, 1, 3, 1)
+        graphs_layout.addWidget(self.focusStabilizerView, 0, 3)
 
         container = QtWidgets.QWidget(self)
         container.setLayout(graphs_layout)

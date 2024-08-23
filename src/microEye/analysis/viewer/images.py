@@ -1,6 +1,7 @@
 import json
 import math
 import os
+import threading
 import traceback
 from typing import Union
 
@@ -40,6 +41,7 @@ from microEye.qt import (
     QtGui,
     QtWidgets,
     Signal,
+    Slot,
     getOpenFileName,
     getSaveFileName,
 )
@@ -63,9 +65,7 @@ class StackView(QtWidgets.QWidget):
 
     localizedData = Signal(str)
 
-    def __init__(
-        self, path: str, stack_handler: Union[ZarrImageSequence, TiffSeqHandler]
-    ):
+    def __init__(self, path: str, mask_pattern: str = None):
         '''
         Initialize the StackView.
 
@@ -73,16 +73,18 @@ class StackView(QtWidgets.QWidget):
         ----------
         path : str
             The path to the image stack.
-        stack_handler : Union[ZarrImageSequence, TiffSeqHandler]
-            An image stack handler.
+        mask_pattern : str, optional
+            A pattern to the mask file, by default None.
         '''
         super().__init__()
 
         self.setWindowTitle(path.split('/')[-1])
 
         self.path = path
-        self.stack_handler = stack_handler
+        self.stack_handler = self.getStackHandler(path, mask_pattern)
+        self.stack_handler.open()
         self._threadpool = QtCore.QThreadPool.globalInstance()
+        self._lock = threading.Lock()
 
         self.main_layout = QtWidgets.QHBoxLayout()
         self.setLayout(self.main_layout)
@@ -107,6 +109,9 @@ class StackView(QtWidgets.QWidget):
         # CMOS maps tab
         self.setupCMOSMapsTab()
 
+        # Load Metadata
+        self.load_ome_metadata()
+
         nTime = self.stack_handler.shapeTCZYX()[1]
         for idx in range(nTime + 1):
             image_item = self.addImageItem(
@@ -127,16 +132,36 @@ class StackView(QtWidgets.QWidget):
             self.image_widget.addItem(histogram_item, row=1 + idx, col=0)
             self.histogram_items.append(histogram_item)
 
+        self.connnectSignals()
+        self.centerROI()
+
+    def connnectSignals(self):
+        self.roi.sigRegionChanged.connect(self.region_changed)
+        self.roi.sigRegionChangeFinished.connect(self.slider_changed)
+
+        self.image_prefit_widget.localizeData.connect(self.localize)
+        self.image_prefit_widget.saveCropped.connect(self.save_cropped_img)
+        self.image_prefit_widget.roiEnabled.connect(self.change_roi_visibility)
+        self.image_prefit_widget.roiChanged.connect(self.roi_changed)
+        self.image_prefit_widget.paramsChanged.connect(self.slider_changed)
+
+        self.frames_slider.valueChanged.connect(self.slider_changed)
+        self.z_slider.valueChanged.connect(self.slider_changed)
+        self.lr_0.sigRegionChangeFinished.connect(self.slider_changed)
+
     def initGraphics(self):
         # A plot area (ViewBox + axes) for displaying the image
         self.uImage = None
         self.image_widget = pg.GraphicsLayoutWidget()
+        graphicsLayout = self.image_widget.ci
         self.image_widget.setMinimumWidth(300)
 
         # Create the ViewBox
-        self.view_box: pg.ViewBox = self.image_widget.addViewBox(row=0, col=0)
+        self.view_box: pg.ViewBox = graphicsLayout.addViewBox(
+            row=0, col=0, invertY=True
+        )
 
-        self.view_box.setAspectLocked(True)
+        self.view_box.setAspectLocked()
         self.view_box.invertY(True)
 
         self.empty_image = np.zeros(self.stack_handler.shape[-2:], dtype=np.uint8)
@@ -151,11 +176,9 @@ class StackView(QtWidgets.QWidget):
             [-8, 14], [6, 5], scaleSnap=True, translateSnap=True, movable=False
         )
         self.roi.addTranslateHandle([0, 0], [0.5, 0.5])
-        self.view_box.addItem(self.roi)
         self.roi.setZValue(1000)
-        self.roi.sigRegionChanged.connect(self.region_changed)
-        self.roi.sigRegionChangeFinished.connect(self.slider_changed)
         self.roi.setVisible(False)
+        self.view_box.addItem(self.roi)
 
         # Add the two sub-main layouts
         self.main_layout.addWidget(self.image_widget, 3)
@@ -223,17 +246,6 @@ class StackView(QtWidgets.QWidget):
         self.image_prefit_widget = ImagePrefitWidget(
             shape=self.stack_handler.shapeTCZYX()[-2:]
         )
-        self.image_prefit_widget.localizeData.connect(self.localize)
-        self.image_prefit_widget.saveCropped.connect(self.save_cropped_img)
-        self.image_prefit_widget.roiEnabled.connect(self.change_roi_visibility)
-        self.image_prefit_widget.roiChanged.connect(self.roi_changed)
-        self.image_prefit_widget.paramsChanged.connect(
-            lambda: self.slider_changed(None)
-        )
-
-        self.frames_slider.valueChanged.connect(self.slider_changed)
-        self.z_slider.valueChanged.connect(self.slider_changed)
-        self.lr_0.sigRegionChangeFinished.connect(self.slider_changed)
 
         # Localization GroupBox
         self.export_options = ChecklistDialog(
@@ -262,8 +274,9 @@ class StackView(QtWidgets.QWidget):
         '''
         Get a parameter by name from the cache of image_prefit_widget.
         '''
-        return self.image_prefit_widget.get_param(param_name.value)
+        return self.image_prefit_widget.get_param(param_name)
 
+    @Slot()
     def save_cropped_img(self):
         if self.stack_handler is None:
             return
@@ -388,11 +401,12 @@ class StackView(QtWidgets.QWidget):
         '''
         Centers the region of interest (ROI) and fits it to the image.
         '''
-        image = self.stack_handler.getSlice(0, 0, 0)
+        x = self.stack_handler.shape[-1]
+        y = self.stack_handler.shape[-2]
 
-        self.roi.setSize([image.shape[1], image.shape[0]])
+        self.roi.setSize([x, y])
         self.roi.setPos([0, 0])
-        self.roi.maxBounds = QtCore.QRectF(0, 0, image.shape[1], image.shape[0])
+        self.roi.maxBounds = QtCore.QRectF(0, 0, x, y)
 
     def get_roi_info(self):
         if self.get_param(Parameters.ENABLE_ROI).value():
@@ -426,35 +440,39 @@ class StackView(QtWidgets.QWidget):
 
         return ''
 
+    @Slot(tuple)
     def roi_changed(self, value: tuple[int, int, int, int]):
         self.set_roi_info(*value)
 
+    @Slot()
     def region_changed(self):
         x, y = self.roi.pos()
         w, h = self.roi.size()
-        self.image_prefit_widget.blockSignals(True)
-        self.get_param(Parameters.ROI_X).setValue(x)
-        self.get_param(Parameters.ROI_Y).setValue(y)
-        self.get_param(Parameters.ROI_WIDTH).setValue(w)
-        self.get_param(Parameters.ROI_HEIGHT).setValue(h)
-        self.image_prefit_widget.blockSignals(False)
+        self.image_prefit_widget.set_roi(x, y, w, h)
 
+    @Slot()
     def change_roi_visibility(self):
         if self.get_param(Parameters.ENABLE_ROI).value():
             self.roi.setVisible(True)
         else:
             self.roi.setVisible(False)
 
-    def load_ome_metadata(self, ome_metadata: str):
-        self.metadata_editor = MetadataEditorTree()
-        self.metadata_editor.pop_OME_XML(ome_metadata)
+    def load_ome_metadata(self):
+        if isinstance(self.stack_handler, TiffSeqHandler):
+            with tf.TiffFile(self.stack_handler._tiff_seq.files[0]) as fl:
+                if fl.is_ome:
+                    ome_metadata = OME.from_xml(fl.ome_metadata)
 
-        self.tab_widget.addTab(self.metadata_editor, 'OME Metadata')
-        self.get_param(Parameters.PIXEL_SIZE).setValue(
-            self.metadata_editor.get_param_value(MetaParams.PX_SIZE)
-        )
+                    self.metadata_editor = MetadataEditorTree()
+                    self.metadata_editor.pop_OME_XML(ome_metadata)
 
-    def slider_changed(self, value):
+                    self.tab_widget.addTab(self.metadata_editor, 'OME Metadata')
+                    self.get_param(Parameters.PIXEL_SIZE).setValue(
+                        self.metadata_editor.get_param_value(MetaParams.PX_SIZE)
+                    )
+
+    @Slot()
+    def slider_changed(self):
         if self.stack_handler is not None:
             self.update_display()
 
@@ -668,7 +686,9 @@ class StackView(QtWidgets.QWidget):
         # Detect blobs.
         points = self.detect_and_display_keypoints(th_img, img, origin)
 
-        im_with_keypoints = self.fit_keypoints(image, varim, points)
+        im_with_keypoints = (
+            self.fit_keypoints(image, varim, points) if len(points) > 0 else None
+        )
 
         if im_with_keypoints is not None:
             alpha = self.empty_alpha.copy()
@@ -676,6 +696,7 @@ class StackView(QtWidgets.QWidget):
             alpha[..., 3] = im_with_keypoints[..., 2]
             self.image_items[-1][0].setImage(alpha, autoLevels=False)
 
+    @Slot()
     def localize(self):
         '''Initiates the localization main thread worker.'''
         if self.stack_handler is None:
@@ -694,17 +715,19 @@ class StackView(QtWidgets.QWidget):
         if len(filename) > 0:
             self.export_metadata_to_file(filename)
             method = self.image_prefit_widget.get_fitting_method()
+
+            def done(res):
+                self.get_param(Parameters.LOCALIZE).setOpts(enabled=True)
+                if res is not None:
+                    self.fittingResults.extend(res)
+                    self.export_loc(filename)
+                    self.localizedData.emit(filename)
+
             if (
                 method == FittingMethod._2D_Phasor_CPU
                 or not cuda.is_available()
                 or not self.get_param(Parameters.LOCALIZE_GPU).value()
             ):
-
-                def done(res):
-                    self.get_param(Parameters.LOCALIZE).setOpts(enabled=True)
-                    if os.path.exists(filename):
-                        self.localizedData.emit(filename)
-
                 print('\nCPU Fit')
                 # Any other args, kwargs are passed to the run function
                 self.worker = QThreadWorker(self.localizeStackCPU, filename)
@@ -713,14 +736,6 @@ class StackView(QtWidgets.QWidget):
                 self.get_param(Parameters.LOCALIZE).setOpts(enabled=False)
                 self._threadpool.start(self.worker)
             else:
-
-                def done(res):
-                    self.get_param(Parameters.LOCALIZE).setOpts(enabled=True)
-                    if res is not None:
-                        self.fittingResults.extend(res)
-                        self.export_loc(filename)
-                        self.localizedData.emit(filename)
-
                 print('\nGPU Fit')
                 # Any other args, kwargs are passed to the run function
                 self.worker = QThreadWorker(self.localizeStackGPU)
@@ -744,7 +759,7 @@ class StackView(QtWidgets.QWidget):
         )
 
         # Filters + Blob detector params
-        filter = self.image_prefit_widget.get_image_filter()
+        filter_obj = self.image_prefit_widget.get_image_filter()
 
         tm_enabled = self.get_param(Parameters.TM_FILTER_ENABLED).value()
 
@@ -782,11 +797,9 @@ class StackView(QtWidgets.QWidget):
 
         return {
             'method': method,
-            'varim': varim,
-            'offset': offset,
             'gain': gain,
-            'filter': filter,
-            'detector': detector,
+            'offset': offset,
+            'varim': varim,
             'roi_info': roi_info,
             'irange': min_max,
             'rel_threshold': rel_threshold,
@@ -794,6 +807,8 @@ class StackView(QtWidgets.QWidget):
             'tm_window': tm_window,
             'roi_size': roi_size,
             'PSFparam': PSFparam,
+            'filter': filter_obj,
+            'detector': detector,
         }
 
     def localizeStackCPU(self, filename: str, **kwargs):
@@ -806,67 +821,11 @@ class StackView(QtWidgets.QWidget):
         '''
         options = self._initialize_parameters()
 
-        self.thread_done = 0  # number of threads done
-        start = QDateTime.currentDateTime()  # timer
-        time = start
+        frames_list, params, crlbs, loglike = localizeStackCPU(
+            self.stack_handler, options['filter'], options['detector'], options
+        )
 
-        # uses only n_threads - 2
-        threads = self._threadpool.maxThreadCount() - 2
-        print('Threads', threads)
-        for i in range(
-            0, int(np.ceil(self.stack_handler.shape[0] / threads) * threads), threads
-        ):
-            time = QDateTime.currentDateTime()
-            workers = []
-            self.thread_done = 0
-            for k in range(threads):
-                if i + k < len(self.stack_handler):
-                    img = self.stack_handler.getSlice(i + k, 0, 0)
-                    img = img * options['gain']
-                    img = img - options['offset']
-
-                    temp = None
-                    if options['tm_window'] > 1:
-                        temp = TemporalMedianFilter(options['tm_window'])
-
-                    kwargs = {
-                        'index': i + k,
-                        'stack_handler': self.stack_handler,
-                        'image': img,
-                        'varim': options['varim'],
-                        'temp': temp,
-                        'filter': options['filter'],
-                        'detector': options['detector'],
-                        'roi_info': options['roi_info'],
-                        'irange': options['irange'],
-                        'rel_threshold': options['rel_threshold'],
-                        'max_threshold': options['max_threshold'],
-                        'roi_size': options['roi_size'],
-                        'method': options['method'],
-                    }
-
-                    worker = QThreadWorker(pre_localize_frame, **kwargs)
-                    worker.signals.result.connect(self.update_lists)
-                    workers.append(worker)
-                    QtCore.QThreadPool.globalInstance().start(worker)
-
-            while self.thread_done < len(workers):
-                QtCore.QThread.msleep(10)
-
-            exec = time.msecsTo(QDateTime.currentDateTime()) / 1000
-            duration = time_string_ms(start.msecsTo(QDateTime.currentDateTime()))
-
-            print(
-                f'index: {i + len(workers):d}/{self.stack_handler.shape[0]:d}, ',
-                f'Duration: {duration}, ',
-                f'Time: {exec:.3f} s',
-                end='\r',
-            )
-
-        print('\nDone... ', time_string_ms(start.msecsTo(QDateTime.currentDateTime())))
-        QtCore.QThread.msleep(5000)
-
-        self.export_loc(filename)
+        return frames_list, params, crlbs, loglike
 
     def localizeStackGPU(self, **kwargs):
         '''GPU Localization main thread worker function.'''
@@ -997,7 +956,8 @@ class StackView(QtWidgets.QWidget):
             [description]
         '''
         if result is not None:
-            self.fittingResults.extend(result)
+            with self._lock:
+                self.fittingResults.extend(result)
         self.thread_done += 1
 
     def get_protocol_metadata(self, path):
@@ -1096,38 +1056,10 @@ class StackView(QtWidgets.QWidget):
                 self, 'Warning', 'Cannot close while workers are active!'
             )
 
-    @staticmethod
-    def FromZarr(path: str):
+    def getStackHandler(self, path: str, mask_pattern: str = None):
         '''
-        Create a StackView instance from a Zarr image sequence.
-
-        Parameters
-        ----------
-        path : str
-            The path to the Zarr image sequence.
-
-        Returns
-        -------
-        StackView
-            A StackView instance.
-        '''
-        if not os.path.isdir(path):
-            raise ValueError(
-                "The supplied path should refer to a directory that includes '.zarr'"
-            )
-
-        zarr_handler = ZarrImageSequence(path)
-        zarr_handler.open()
-
-        stack_view = StackView(path, zarr_handler)
-        stack_view.centerROI()
-
-        return stack_view
-
-    @staticmethod
-    def FromImageSequence(path: str, mask_pattern: str = None):
-        '''
-        Create a StackView instance from an image sequence.
+        Get the image sequence handler based on the provided
+        path and mask pattern.
 
         Parameters
         ----------
@@ -1139,29 +1071,16 @@ class StackView(QtWidgets.QWidget):
 
         Returns
         -------
-        StackView
-            A StackView instance or None if an error occurs.
+        Union[ZarrImageSequence, TiffSeqHandler]
+            An instance of the image sequence handler.
         '''
-        if not os.path.exists(path):
-            raise ValueError('The supplied path does not exist.')
-
-        try:
-            if mask_pattern is not None:
-                image_sequence = tf.TiffSequence(f'{path}/{mask_pattern}')
-            else:
-                image_sequence = tf.TiffSequence([path])
-        except ValueError:
-            return None
-
-        image_seq_handler = TiffSeqHandler(image_sequence)
-        image_seq_handler.open()
-
-        stack_view = StackView(path, image_seq_handler)
-        stack_view.centerROI()
-
-        with tf.TiffFile(image_sequence.files[0]) as fl:
-            if fl.is_ome:
-                ome = OME.from_xml(fl.ome_metadata)
-                stack_view.load_ome_metadata(ome)
-
-        return stack_view
+        if os.path.isdir(path) and not path.endswith('.zarr'):
+            if not mask_pattern:
+                raise ValueError('No mask pattern provided for a directory path')
+            return TiffSeqHandler(tf.TiffSequence(f'{path}/{mask_pattern}'))
+        elif os.path.isdir(path) and path.endswith('.zarr'):
+            return ZarrImageSequence(path)
+        elif os.path.isfile(path) and (path.endswith('.tif') or path.endswith('.tiff')):
+            return TiffSeqHandler(tf.TiffSequence([path]))
+        else:
+            raise ValueError('Unsupported file format')

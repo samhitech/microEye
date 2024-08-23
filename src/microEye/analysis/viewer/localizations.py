@@ -656,13 +656,18 @@ class LocalizationsView(QtWidgets.QWidget):
 
     def apply_filters(self):
         '''Apply data filters to the fitting results.'''
-        if self.results_plot.filtered is not None:
-            self.fittingResults = FittingResults.fromDataFrame(
-                self.results_plot.filtered, 1
-            )
-            self.results_plot.setData(self.fittingResults.dataFrame())
-            self.render_loc()
-            print('Filters applied.')
+        if (
+            not hasattr(self.results_plot, 'filtered')
+            or self.results_plot.filtered is None
+        ):
+            self.results_plot.update()
+
+        self.fittingResults = FittingResults.fromDataFrame(
+            self.results_plot.filtered, 1
+        )
+        self.results_plot.setData(self.fittingResults.dataFrame())
+        self.render_loc()
+        print('Filters applied.')
 
     def zero_coordinates(self):
         '''Zero the fitting results coordinates.'''

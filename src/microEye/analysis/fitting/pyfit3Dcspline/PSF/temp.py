@@ -34,7 +34,8 @@ def robust_mean(data: np.ndarray, dim: int=None, k: float=3, fit: bool=False):
     Warning
     -------
     NaN or Inf will be counted as neither in- nor outlier.
-    The code is based on (linear) Least Median Squares and can be changed to include weights.
+    The code is based on (linear) Least Median Squares and
+    can be changed to include weights.
 
     References
     ----------

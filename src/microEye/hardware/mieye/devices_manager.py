@@ -1,4 +1,3 @@
-
 import weakref
 from enum import Enum
 
@@ -32,7 +31,7 @@ class DeviceManager(QtCore.QObject):
     def init_devices(self):
         self._init_ir_cam()
         self._init_laser_relay()
-        self._init_elliptec_controller()
+        self._init_elliptec_devices()
         self._init_z_stage()
         self._init_xy_stage()
         self._init_hid_controller()
@@ -46,27 +45,32 @@ class DeviceManager(QtCore.QObject):
         self.laserRelayCtrllr.sendCommandActivated.connect(
             lambda: self.laserRelayCtrllr.sendCommand(self.mieye.getRelaySettings())
         )
+        DeviceManager.WIDGETS[DeviceManager.DEVICES.LASER_RELAY] = (
+            self.laserRelayCtrllr.view
+        )
+        WeakObjects.addObject(self.laserRelayCtrllr)
 
-    def _init_elliptec_controller(self):
-        self.elliptec_controller = ElliptecStage()
-        view = self.elliptec_controller.getViewWidget()
-        DeviceManager.WIDGETS[DeviceManager.DEVICES.ELLIPTEC] = view
-        WeakObjects.addObject(view)
+    def _init_elliptec_devices(self):
+        self.elliptecView = ElliptecView()
+        DeviceManager.WIDGETS[DeviceManager.DEVICES.ELLIPTEC] = self.elliptecView
+        WeakObjects.addObject(self.elliptecView)
 
     def _init_z_stage(self):
         self.stage: PzFocController = None
 
     def _init_xy_stage(self):
         self.kinesisXY = KinesisXY()
+        self.kinesisXY_view = self.kinesisXY.getViewWidget()
         DeviceManager.WIDGETS[DeviceManager.DEVICES.XY_STAGE] = (
-            self.kinesisXY.getViewWidget()
+            self.kinesisXY_view
         )
+        WeakObjects.addObject(self.kinesisXY_view)
 
     def _init_hid_controller(self):
         self.hid_controller = hidController()
         self.hid_controller.reportEvent.connect(self.hid_report)
-        self.hid_controller.reportRStickPosition.connect(self.hid_RStick_report)
-        self.hid_controller.reportLStickPosition.connect(self.hid_LStick_report)
+        # self.hid_controller.reportRStickPosition.connect(self.hid_RStick_report)
+        # self.hid_controller.reportLStickPosition.connect(self.hid_LStick_report)
         self.hid_controller_toggle = False
 
     def _init_focus_stabilizer(self):
@@ -100,48 +104,24 @@ class DeviceManager(QtCore.QObject):
         kinesisView: KinesisView = DeviceManager.WIDGETS[DeviceManager.DEVICES.XY_STAGE]
 
         if reportedEvent == Buttons.LEFT:
-            self._handle_xy_step_or_jump(kinesisView, 'n_x')
+            kinesisView.move(True, self.hid_controller_toggle, False)
         elif reportedEvent == Buttons.RIGHT:
-            self._handle_xy_step_or_jump(kinesisView, 'p_x')
+            kinesisView.move(True, self.hid_controller_toggle, True)
         elif reportedEvent == Buttons.UP:
-            self._handle_xy_step_or_jump(kinesisView, 'p_y')
+            kinesisView.move(False, self.hid_controller_toggle, True)
         elif reportedEvent == Buttons.DOWN:
-            self._handle_xy_step_or_jump(kinesisView, 'n_y')
+            kinesisView.move(False, self.hid_controller_toggle, False)
         elif reportedEvent == Buttons.R1:
-            kinesisView._center_btn.click()
+            pass
+            # kinesisView.center()
         elif reportedEvent == Buttons.L1:
-            kinesisView._stop_btn.click()
+            kinesisView.stop()
         elif reportedEvent == Buttons.L3:
             self._toggle_xy_step_or_jump(kinesisView)
 
-    def _handle_xy_step_or_jump(self, kinesisView: KinesisView, direction):
-        step_btn = getattr(kinesisView, f'{direction}_step_btn')
-        jump_btn = getattr(kinesisView, f'{direction}_jump_btn')
-
-        if not self.hid_controller_toggle:
-            step_btn.click()
-        else:
-            jump_btn.click()
-
     def _toggle_xy_step_or_jump(self, kinesisView: KinesisView):
         self.hid_controller_toggle = not self.hid_controller_toggle
-        self._update_xy_step_jump_styles(kinesisView)
-
-    def _update_xy_step_jump_styles(self, kinesisView: KinesisView):
-        step_style = (
-            'background-color: #004CB6' if not self.hid_controller_toggle else ''
-        )
-        jump_style = 'background-color: #004CB6' if self.hid_controller_toggle else ''
-
-        kinesisView.n_x_step_btn.setStyleSheet(step_style)
-        kinesisView.n_y_step_btn.setStyleSheet(step_style)
-        kinesisView.p_x_step_btn.setStyleSheet(step_style)
-        kinesisView.p_y_step_btn.setStyleSheet(step_style)
-
-        kinesisView.n_x_jump_btn.setStyleSheet(jump_style)
-        kinesisView.n_y_jump_btn.setStyleSheet(jump_style)
-        kinesisView.p_x_jump_btn.setStyleSheet(jump_style)
-        kinesisView.p_y_jump_btn.setStyleSheet(jump_style)
+        kinesisView.updateControls(self.hid_controller_toggle)
 
     def hid_LStick_report(self, x, y):
         diff_x = x - 128
@@ -157,34 +137,36 @@ class DeviceManager(QtCore.QObject):
         if abs(diff) > 0:
             if self.hid_controller_toggle:
                 val = 0.0001 * diff
-                val += kinesisView.jump_spin.value()
-                kinesisView.jump_spin.setValue(val)
+                val += kinesisView.getJump()
+                kinesisView.setJump(val)
             else:
                 val = 0.0001 * diff
-                val += kinesisView.step_spin.value()
-                kinesisView.step_spin.setValue(val)
+                val += kinesisView.getStep()
+                kinesisView.setStep(val)
         else:
             if self.hid_controller_toggle:
-                val = kinesisView.jump_spin.value()
+                val = kinesisView.getJump()
                 val -= val % 0.0005
-                kinesisView.jump_spin.setValue(val)
+                kinesisView.setJump(val)
             else:
-                val = kinesisView.step_spin.value()
+                val = kinesisView.getJump()
                 val -= val % 0.0005
-                kinesisView.step_spin.setValue(val)
+                kinesisView.setJump(val)
 
     def _update_step_or_jump_spin(self, kinesisView: KinesisView, diff):
-        spin_box = (
-            kinesisView.jump_spin
+        current_value = (
+            kinesisView.getJump()
             if self.hid_controller_toggle
-            else kinesisView.step_spin
+            else kinesisView.getStep()
         )
-        current_value = spin_box.value()
         if abs(diff) > 0:
             new_value = current_value + 0.0001 * diff
         else:
             new_value = current_value - (current_value % 0.0005)
-        spin_box.setValue(new_value)
+        if self.hid_controller_toggle:
+            kinesisView.setJump(new_value)
+        else:
+            kinesisView.setStep(new_value)
 
     def hid_RStick_report(self, x, y):
         diff_x = x - 128

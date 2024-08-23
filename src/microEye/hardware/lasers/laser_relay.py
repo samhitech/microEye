@@ -234,6 +234,7 @@ class LaserRelayView(Tree):
             {
                 'name': str(RelayParams.SERIAL_PORT),
                 'type': 'group',
+                'expanded': False,
                 'children': [
                     {
                         'name': str(RelayParams.PORT),
@@ -542,3 +543,6 @@ class LaserRelayController:
             including the ALEXON/ALEXOFF command.
         '''
         return config + ('ALEXON' if self.isALEX() else 'ALEXOFF') + '\r'
+
+    def __str__(self):
+        return 'Laser Relay Controller'

@@ -364,6 +364,7 @@ class SingleMatchBox(Tree):
             {
                 'name': str(MB_Params.SERIAL_PORT),
                 'type': 'group',
+                'expanded' : False,
                 'children': [
                     {
                         'name': str(MB_Params.PORT),
@@ -684,7 +685,7 @@ class SingleMatchBox(Tree):
 
     def remove_widget(self):
         if self.parent() and not self.Laser.isOpen():
-            self.parent().layout().removeWidget(self)
+            # self.parent().layout().removeWidget(self)
             self.removed.emit(self)
             self.deleteLater()
         else:

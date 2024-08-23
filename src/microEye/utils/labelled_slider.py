@@ -34,14 +34,15 @@ class LabelledSlider(QtWidgets.QWidget):
         Initialize the UI components of the widget.
         '''
         self.slider = QtWidgets.QSlider(
-            tickPosition=QtWidgets.QSlider.TickPosition.TicksLeft,
+            tickPosition=QtWidgets.QSlider.TickPosition.NoTicks,
             orientation=Qt.Orientation.Horizontal,
         )
         self.slider.setMaximum(0)
 
         self.label = QtWidgets.QSpinBox()
         self.label.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Minimum, QtWidgets.QSizePolicy.Policy.Expanding
+            QtWidgets.QSizePolicy.Policy.MinimumExpanding,
+            QtWidgets.QSizePolicy.Policy.Expanding,
         )
 
         self.label.valueChanged.connect(self.changeValue)

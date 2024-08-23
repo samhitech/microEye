@@ -8,19 +8,32 @@ This toolkit is compatible with the [hardware](#hardware) used in our microscope
 
 ![Package Health](https://snyk.io/advisor/python/microEye/badge.svg)
 ![Python Version](https://img.shields.io/badge/Python-version_>=3.9-blue)
-![Package Version](https://img.shields.io/badge/version-2.1.1-gold)
+![Package Version](https://img.shields.io/pypi/v/microEye.svg)
 ![Package Version](https://img.shields.io/badge/GUI_Platform-PySide6|PyQt6|PyQt5-navy)
 [![DOI](https://img.shields.io/badge/HardwareX-10.1016/j.ohx.2022.e00368-orange)](https://doi.org/10.1016/j.ohx.2022.e00368)
 ![Package Version](https://img.shields.io/badge/Windows-Tested-cyan)
 ![Package Version](https://img.shields.io/badge/MacOS-Errors-red)
 ![Package Version](https://img.shields.io/badge/Linux-NotTested-lightgray)
+![Downloads](https://img.shields.io/pypi/dm/microEye.svg)
+![Dependencies](https://img.shields.io/librariesio/release/pypi/microEye)
+![Contributors](https://img.shields.io/github/contributors/samhitech/microEye.svg)
+![GitHub Last Commit](https://img.shields.io/github/last-commit/samhitech/microEye.svg)
+![Maintenance](https://img.shields.io/maintenance/yes/2024.svg)
+
+![GitHub Issues](https://img.shields.io/github/issues/samhitech/microEye.svg)
+![GitHub Bugs](https://img.shields.io/github/issues/samhitech/microEye/bug.svg)
+![GitHub Feature Requests](https://img.shields.io/github/issues/samhitech/microEye/feature%20request.svg)
+![GitHub Pull Requests](https://img.shields.io/github/issues-pr/samhitech/microEye.svg)
+
+![GitHub Forks](https://img.shields.io/github/forks/samhitech/microEye.svg)
+![GitHub Stars](https://img.shields.io/github/stars/samhitech/microEye.svg)
 
 ```bash
-   __  ____              ____                ___   ___ ___
-  /  |/  (_)__________  / __/_ _____   _  __|_  | <  // _ \
- / /|_/ / / __/ __/ _ \/ _// // / -_) | |/ / __/_ / // // /
-/_/  /_/_/\__/_/  \___/___/\_, /\__/  |___/____(_)_(_)___/
-                          /___/
+ __  __ _            ___               ___   ___   __
+|  \/  (_)__ _ _ ___| __|  _ ___  __ _|_  ) |_  ) /  \
+| |\/| | / _| '_/ _ \ _| || / -_) \ V // / _ / / | () |
+|_|  |_|_\__|_| \___/___\_, \___|  \_//___(_)___(_)__/
+                        |__/
 ```
 
 ## Table of Contents
@@ -40,6 +53,7 @@ This toolkit is compatible with the [hardware](#hardware) used in our microscope
   - [Hardware](#hardware)
     - [Supported Cameras](#supported-cameras)
     - [Additional Hardware](#additional-hardware)
+    - [Pycro-Manager Hardware](#pycro-manager-hardware)
   - [Authors](#authors)
   - [People Involved](#people-involved)
   - [Acknowledgement](#acknowledgement)
@@ -140,7 +154,7 @@ Sounds good, here's the updated section with the simplified commands:
 
 The `miEye_module` provides the primary graphical user interface (GUI) for microscope control and data acquisition, combining the functionalities of the deprecated *Acquisition* and *Control* modules.
 
-| miEye module                                                                                         | Acquisition Camera                                                                                      |
+| miEye module (NOT UP TO DATE)                                                                                         | Acquisition Camera                                                                                      |
 | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | ![miEye](https://github.com/samhitech/microEye/assets/89871015/20c5573a-e489-478e-adfc-29410bc6d4c2) | ![CamStack](https://github.com/samhitech/microEye/assets/89871015/ead95989-54ce-4643-b5a3-4461c36f6b14) |
 
@@ -244,11 +258,19 @@ Schematic overview of the miEye instrument:
 | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | Integrated Optics MatchBox   | Multi-wavelength Laser Combiner, Single Laser MatchBox                                                                                                                | [Link](https://integratedoptics.com/products/wavelength-combiners)                                                                 |
 | Piezo Concept FOC            | Nanopositioner for microscope objectives                                                                                                                              | [Link](https://piezoconcept-store.squarespace.com/1-axis/p/foc)                                                                    |
-| Thorlabs Elliptec ELL6/ELL9  | Dual/Four-Position Support                                                                                                                                            | [ELL6](https://www.thorlabs.com/thorproduct.cfm?partnumber=ELL6), [ELL9](https://www.thorlabs.com/thorproduct.cfm?partnumber=ELL9) |
+| Thorlabs Elliptec ELL6/ELL9/ELL12  | Dual/Four/Six-Position Slider | [ELL6](https://www.thorlabs.com/thorproduct.cfm?partnumber=ELL6), [ELL9](https://www.thorlabs.com/thorproduct.cfm?partnumber=ELL9), [ELL12](https://www.thorlabs.com/thorproduct.cfm?partnumber=ELL12) |
+| Thorlabs Elliptec ELL14  | Rotation Mount: SM1 Threaded | [ELL14](https://www.thorlabs.com/thorproduct.cfm?partnumber=ELL14) |
+| Thorlabs Elliptec ELL20  | Linear Stage: 60 mm Travel    | [ELL20](https://www.thorlabs.com/thorproduct.cfm?partnumber=ELL20) |
 | Thorlabs KDC101              | Kinesis Controller for Z825B/[Z925B](https://www.thorlabs.com/thorproduct.cfm?partnumber=Z925B) actuators (Activate USB VCP to access the COM port in device manager) | [Link](https://www.thorlabs.com/thorproduct.cfm?partnumber=KDC101)                                                                 |
 | Parallax TSL1401-DB (#28317) | Linescan Camera Module                                                                                                                                                | [Link](https://eu.mouser.com/ProductDetail/Parallax/28317?qs=%2Fha2pyFaduiCRhuOAXMuCmQIeG1Q3R01m6Y1EH%252BmN80%3D)                 |
 | RelayBox Arduino             | For laser control using camera GPIO signals                                                                                                                           | [RelayBox](https://github.com/samhitech/RelayBox)                                                                                  |
 | miEye OSF Project Parts List | Parts list of miEye OSF Project                                                                                                                                       | [Link](https://osf.io/j2fqy/)                                                                                                      |
+
+### Pycro-Manager Hardware
+
+Integration under development. **[To Be Added]**
+
+![pycromanager integration](https://github.com/user-attachments/assets/73893f9f-c1ef-438f-a884-ec3f60f00118)
 
 ## Authors
 

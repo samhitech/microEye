@@ -128,8 +128,10 @@ class SceneManager(QtCore.QObject):
 
             def actions(root: ActionGroupItem, updateTerminal, **kwargs):
                 try:
+                    time = QtCore.QDateTime.currentDateTime().date()
                     root.action.execute(
-                        output=updateTerminal, level=0, event=kwargs.get('event')
+                        output=updateTerminal, level=0, event=kwargs.get('event'),
+                        year=time.year(), month=time.month(), day=time.day()
                     )
                 except Exception:
                     updateTerminal.emit(traceback.format_exc(), 0)
@@ -160,11 +162,7 @@ class SceneManager(QtCore.QObject):
         self.clear_scene()
         for action_data in actions:
             action, action_item = deserialize_action(action_data)
-            if isinstance(action_item, ActionGroupItem):
-                self.root.add_child_item(action_item)
-            else:
-                root_child_item = get_action_item(action)
-                self.root.add_child_item(root_child_item)
+            self.root.add_child_item(action_item)
 
     def clear_scene(self):
         '''

@@ -10,14 +10,17 @@ from microEye.analysis.fitting.results import FittingResults
 from microEye.analysis.viewer.images import StackView
 from microEye.analysis.viewer.localizations import LocalizationsView
 from microEye.qt import (
+    QT_API,
     QAction,
     QApplication,
     QDateTime,
     QFileSystemModel,
+    QIcon,
     QMainWindow,
     Qt,
     QtCore,
     QtWidgets,
+    Slot,
 )
 from microEye.utils import StartGUI
 
@@ -26,6 +29,63 @@ class DockKeys(Enum):
     FILE_SYSTEM = 'File System'
     SMLM_ANALYSIS = 'SMLM Analysis'
     DATA_FILTERS = 'Data Filters'
+
+
+class CustomFileSystemModel(QFileSystemModel):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+    def filterAcceptsRow(self, source_row, source_parent):
+        index = self.index(source_row, 0, source_parent)
+        if not index.isValid():
+            return False
+
+        # Get the file/folder name and path
+        file_info = self.fileInfo(index)
+        file_name = file_info.fileName()
+        parent_path = file_info.absolutePath()
+
+        # Check if the parent directory is a .zarr folder
+        if parent_path.endswith('.zarr'):
+            return False  # Do not show any files within a .zarr folder
+
+        # Check if the current directory is a .zarr folder
+        if file_info.isDir() and file_name.endswith('.zarr'):
+            return True  # Always accept .zarr folders themselves
+
+        # Use the default filtering behavior for other files/folders
+        return super().filterAcceptsRow(source_row, source_parent)
+
+    def isDir(self, index):
+        # Override the isDir method to treat .zarr folders as files
+        file_info = self.fileInfo(index)
+        if file_info.isDir() and file_info.fileName().endswith('.zarr'):
+            return False  # Treat .zarr folders as files
+        return super().isDir(index)
+
+    def data(self, index, role):
+        # Optionally, customize the display role to show the .zarr folders as files
+        file_info = self.fileInfo(index)
+        if (
+            role == QFileSystemModel.Roles.FileIconRole
+            and file_info.fileName().endswith('.zarr')
+        ):
+            # Get the icon for a ZIP file (or any compressed file)
+            zip_icon = QIcon.fromTheme('application-zip')  # On Linux
+            if zip_icon.isNull():
+                zip_icon = self.iconProvider().icon(
+                    QtCore.QFileInfo('dummy.zip')
+                )  # Fallback for Windows/Mac
+            return zip_icon  # Return ZIP icon for .zarr folders
+
+        return super().data(index, role)
+
+    def hasChildren(self, index):
+        # Ensure that .zarr folders don't expand by showing no children
+        file_info = self.fileInfo(index)
+        if file_info.isDir() and file_info.fileName().endswith('.zarr'):
+            return False  # Treat .zarr folders as files with no children
+        return super().hasChildren(index)
 
 
 class multi_viewer(QMainWindow):
@@ -60,7 +120,7 @@ class multi_viewer(QMainWindow):
         # Status Bar Timer
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self.status)
-        self.timer.start(10)
+        self.timer.start(200)
 
         # Set main window properties
         self.setStatusBar(self.statusBar())
@@ -92,13 +152,8 @@ class multi_viewer(QMainWindow):
         self.center()
 
     def setupMainWindowLayout(self):
-        self.main_widget = QtWidgets.QWidget()
-        self.main_layout = QtWidgets.QHBoxLayout()
-        self.main_widget.setLayout(self.main_layout)
-        self.setCentralWidget(self.main_widget)
-
         # # Create the MDI area
-        self.mdi_area = QtWidgets.QMdiArea(self.main_widget)
+        self.mdi_area = QtWidgets.QMdiArea()
         self.mdi_area.setViewMode(QtWidgets.QMdiArea.ViewMode.TabbedView)
         self.mdi_area.setTabsClosable(True)
         self.mdi_area.setTabsMovable(True)
@@ -106,8 +161,7 @@ class multi_viewer(QMainWindow):
         tabs = self.mdi_area.findChild(QtWidgets.QTabBar)
         tabs.setExpanding(False)
 
-        # # Add the two sub-main layouts
-        self.main_layout.addWidget(self.mdi_area, 1)
+        self.setCentralWidget(self.mdi_area)
 
         self.docks: dict[
             str, QtWidgets.QDockWidget
@@ -124,8 +178,10 @@ class multi_viewer(QMainWindow):
         )
 
         self.path = path
-        self.model = QFileSystemModel()
-        self.model.setRootPath(self.path)
+
+        # Create QFileSystemModel
+        self.model = CustomFileSystemModel()
+        self.model.setRootPath(path)
         self.model.setFilter(
             QtCore.QDir.Filter.AllDirs
             | QtCore.QDir.Filter.Files
@@ -133,23 +189,23 @@ class multi_viewer(QMainWindow):
         )
         self.model.setNameFilters(['*.tif', '*.tiff', '*.tsv', '*.h5'])
         self.model.setNameFilterDisables(False)
+
+        # Create QTreeView
         self.tree = QtWidgets.QTreeView()
         self.tree.setModel(self.model)
-        self.tree.setRootIndex(self.model.index(self.path))
-
+        self.tree.setRootIndex(self.model.index(path))
         self.tree.setAnimated(False)
         self.tree.setIndentation(20)
-        self.tree.setSortingEnabled(True)
-
-        self.tree.doubleClicked.connect(self._open_file)
-
+        self.tree.setSortingEnabled(False)
         self.tree.hideColumn(1)
         self.tree.hideColumn(2)
         self.tree.hideColumn(3)
-
         self.tree.setWindowTitle('Dir View')
         self.tree.setMinimumWidth(400)
         self.tree.resize(512, 256)
+
+        # Connect double-click signal to a method that uses QTimer
+        self.tree.doubleClicked.connect(self._open_file)
 
         # Add the File system tab contents
         self.imsq_pattern = QtWidgets.QLineEdit('/image_0*.ome.tif')
@@ -201,6 +257,9 @@ class multi_viewer(QMainWindow):
         file_menu.addAction(save_config)
         file_menu.addAction(load_config)
 
+        def connect(action: QAction, dock: QtWidgets.QDockWidget):
+            action.triggered.connect(lambda: dock.setVisible(action.isChecked()))
+
         # Create toggle view actions for each dock
         dock_toggle_actions = {}
         for key, dock in self.docks.items():
@@ -208,6 +267,8 @@ class multi_viewer(QMainWindow):
             toggle_action.setEnabled(True)
             dock_toggle_actions[key] = toggle_action
             view_menu.addAction(toggle_action)
+            if '6' in QT_API:
+                connect(toggle_action, dock)
 
         help_menu.addAction(github)
         help_menu.addAction(pypi)
@@ -278,8 +339,8 @@ class multi_viewer(QMainWindow):
 
         # Set the window geometry
         self.setGeometry(
-            center_point.x() - self.width() / 2,
-            center_point.y() - self.height() / 2,
+            center_point.x() - self.width() // 2,
+            center_point.y() - self.height() // 2,
             self.width(),
             self.height(),
         )
@@ -287,20 +348,21 @@ class multi_viewer(QMainWindow):
     def status(self):
         # Statusbar time
         self.statusBar().showMessage(
-            'Time: ' + QDateTime.currentDateTime().toString('hh:mm:ss,zzz')
+            f'{QT_API} | '
+            + 'Time: '
+            + QDateTime.currentDateTime().toString('hh:mm:ss,zzz')
         )
 
-    def _open_file(self, i):
+    @Slot(QtCore.QModelIndex)
+    def _open_file(self, index: QtCore.QModelIndex):
         # Set the Qt.WindowFlags for making the subwindow resizable
         view = None
 
-        if not self.model.isDir(i):
-            cv2.destroyAllWindows()
-            index = self.model.index(i.row(), 0, i.parent())
-            path = self.model.filePath(index)
+        path = self.model.filePath(index)
 
+        if not os.path.isdir(path):
             if path.endswith('.tif') or path.endswith('.tiff'):
-                view = StackView.FromImageSequence(path, None)
+                view = StackView(path, None)
                 view.localizedData.connect(self.localizedData)
             elif path.endswith('.h5') or path.endswith('.tsv'):
                 results = FittingResults.fromFile(path, 1)
@@ -310,18 +372,19 @@ class multi_viewer(QMainWindow):
                 else:
                     print('Error importing results.')
         else:
-            index = self.model.index(i.row(), 0, i.parent())
-            path = self.model.filePath(index)
-
             if path.endswith('.zarr'):
-                view = StackView.FromZarr(path)
+                view = StackView(path)
             else:
-                view = StackView.FromImageSequence(path, self.imsq_pattern.text())
+                try:
+                    view = StackView(path, self.imsq_pattern.text())
+                except Exception as e:
+                    print(f'Error opening image sequence: {e}')
+                    return
 
             view.localizedData.connect(self.localizedData)
 
         if view:
-            window = self.mdi_area.addSubWindow(view, Qt.WindowType.SubWindow)
+            window = self.mdi_area.addSubWindow(view)
             window.show()
 
     def localizedData(self, path):
@@ -501,5 +564,5 @@ def loadConfig(window: multi_viewer, filename: str = 'config_tiff.json'):
 
 
 if __name__ == '__main__':
-    app, window = multi_viewer.StartGUI()
+    app, window = multi_viewer.StartGUI('')
     app.exec()

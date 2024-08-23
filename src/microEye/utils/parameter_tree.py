@@ -5,7 +5,7 @@ from typing import Any, Optional, Union
 from pyqtgraph.parametertree import Parameter, ParameterTree
 from pyqtgraph.parametertree.parameterTypes import ActionParameter, GroupParameter
 
-from microEye.qt import QtWidgets, Signal, getOpenFileName, getSaveFileName
+from microEye.qt import QtWidgets, Signal, Slot, getOpenFileName, getSaveFileName
 
 
 class Tree(ParameterTree):
@@ -210,7 +210,9 @@ class Tree(ParameterTree):
         # Handle parameter changes as needed
         pass
 
-    def export_json(self):
+
+    @Slot(object)
+    def export_json(self, action = None):
         '''
         Export parameters to a JSON file.
 
@@ -240,7 +242,8 @@ class Tree(ParameterTree):
         return self.param_tree.saveState()
 
     # Load parameters from JSON
-    def load_json(self):
+    @Slot(object)
+    def load_json(self, action = None):
         '''
         Load parameters from a JSON file.
 
@@ -307,3 +310,16 @@ class Tree(ParameterTree):
             self.get_param(path[0])
         else:
             return None
+
+    def set_expanded(self, param: Union[Parameter, Enum, str], value: bool = False):
+        if isinstance(param, (Enum, str)):
+            param = self.get_param(param)
+
+        if not isinstance(param, Parameter):
+            return
+
+        if param:
+            for item in self.listAllItems():
+                if item.param == param:
+                    item.setExpanded(value)
+                    break

@@ -7,6 +7,7 @@ import pyjokes
 import qdarkstyle
 import qdarktheme
 
+from microEye import VERSION
 from microEye.qt import QT_API, QApplication, QtCore, QtGui, QtWidgets
 
 
@@ -24,7 +25,7 @@ def splash(module):
     ]
     print(
         pyfiglet.Figlet(font=random.choice(fonts), width=250).renderText(
-            f'MicroEye v2.1.1\n{module}'
+            f'MicroEye v{VERSION}\n{module}'
         )
     )
 

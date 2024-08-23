@@ -146,11 +146,11 @@ if cuda.is_available():
         assert requiredMemory < 0.9 * availableMemory, (
             f'Trying to allocation {requiredMemory / (1024 * 1024):.3f}MB.',
             f'GPU only has {availableMemory / (1024 * 1024):.0f}MB.\n'
-            + 'Please break your fitting into multiple smaller runs.\n'
+            + 'Please break your fitting into multiple smaller runs.\n',
         )
         print(
             f'Allocating {100 * requiredMemory / availableMemory:.3e}% out of',
-            f'available GPU memory {availableMemory / (1024 * 1024):.0f}MB.'
+            f'available GPU memory {availableMemory / (1024 * 1024):.0f}MB.',
         )
 
         # copy data to device
@@ -604,6 +604,39 @@ def init_numba_CPU():
     )
 
 
+@nb.njit
+def fit_single_iteration(data, PSFSigma, sz, iterations, varim, fittype):
+    ll = np.float64(np.nan)
+
+    try:
+        if fittype == 1:
+            result, crb, ll = CPU.kernel_MLEFit_LM(
+                data, PSFSigma, int(sz), iterations, varim
+            )
+        elif fittype == 2:
+            result, crb, ll = CPU.kernel_MLEFit_LM_Sigma(
+                data, PSFSigma, int(sz), iterations, varim
+            )
+        elif fittype == 4:
+            result, crb, ll = CPU.kernel_MLEFit_LM_sigmaxy(
+                data, PSFSigma, int(sz), iterations, varim
+            )
+
+        return result, crb, ll
+    except Exception:
+        if fittype == 1:
+            result = np.zeros(NV_P + 1, dtype=np.float32)
+            crb = np.zeros(NV_P, dtype=np.float32)
+        elif fittype == 2:
+            result = np.zeros(NV_PS + 1, dtype=np.float32)
+            crb = np.zeros(NV_PS, dtype=np.float32)
+        elif fittype == 4:
+            result = np.zeros(NV_PS2 + 1, dtype=np.float32)
+            crb = np.zeros(NV_PS2, dtype=np.float32)
+
+        return result, crb, ll
+
+
 @nb.njit(parallel=True, cache=True)
 def CPU_parallel_fit_2D(
     data,
@@ -618,54 +651,77 @@ def CPU_parallel_fit_2D(
     CRLBs,
     LogLikelihood,
 ):
-    if fittype == 1:  # fit x,y,bg,I
-        for ii in nb.prange(Nfitraw):
-            try:
-                Parameters[ii, :], CRLBs[ii, :], LogLikelihood[ii] = (
-                    CPU.kernel_MLEFit_LM(
-                        data[ii, :],
-                        PSFSigma,
-                        int(sz),
-                        iterations,
-                        None if varim is None else varim[ii, :],
-                    )
-                )
-            except Exception:
-                Parameters[ii, :] = -1
-                CRLBs[ii, :] = -1
-                LogLikelihood[ii] = -1
-    elif fittype == 2:  # fit x,y,bg,I,sigma
-        for ii in nb.prange(Nfitraw):
-            try:
-                Parameters[ii, :], CRLBs[ii, :], LogLikelihood[ii] = (
-                    CPU.kernel_MLEFit_LM_Sigma(
-                        data[ii, :],
-                        PSFSigma,
-                        int(sz),
-                        iterations,
-                        None if varim is None else varim[ii, :],
-                    )
-                )
-            except Exception:
-                Parameters[ii, :] = -1
-                CRLBs[ii, :] = -1
-                LogLikelihood[ii] = -1
-    elif fittype == 4:  # fit x,y,bg,I,sigmax,sigmay
-        for ii in nb.prange(Nfitraw):
-            try:
-                Parameters[ii, :], CRLBs[ii, :], LogLikelihood[ii] = (
-                    CPU.kernel_MLEFit_LM_sigmaxy(
-                        data[ii, :],
-                        PSFSigma,
-                        int(sz),
-                        iterations,
-                        None if varim is None else varim[ii, :],
-                    )
-                )
-            except Exception:
-                Parameters[ii, :] = -1
-                CRLBs[ii, :] = -1
-                LogLikelihood[ii] = -1
+    for ii in nb.prange(Nfitraw):
+        varim_ii = None if varim is None else varim[ii, :]
+        Parameters[ii, :], CRLBs[ii, :], LogLikelihood[ii] = fit_single_iteration(
+            data[ii, :], PSFSigma, sz, iterations, varim_ii, fittype
+        )
+
+    return Parameters, CRLBs, LogLikelihood
+
+
+# @nb.njit(parallel=True, cache=True)
+# def CPU_parallel_fit_2D(
+#     data,
+#     fittype,
+#     PSFSigma,
+#     varim,
+#     sz,
+#     Nfitraw,
+#     initZ,
+#     iterations,
+#     Parameters,
+#     CRLBs,
+#     LogLikelihood,
+# ):
+#     if fittype == 1:  # fit x,y,bg,I
+#         for ii in nb.prange(Nfitraw):
+#             try:
+#                 Parameters[ii, :], CRLBs[ii, :], LogLikelihood[ii] = (
+#                     CPU.kernel_MLEFit_LM(
+#                         data[ii, :],
+#                         PSFSigma,
+#                         int(sz),
+#                         iterations,
+#                         None if varim is None else varim[ii, :],
+#                     )
+#                 )
+#             except Exception:
+#                 Parameters[ii, :] = -1
+#                 CRLBs[ii, :] = -1
+#                 LogLikelihood[ii] = -1
+#     elif fittype == 2:  # fit x,y,bg,I,sigma
+#         for ii in nb.prange(Nfitraw):
+#             try:
+#                 Parameters[ii, :], CRLBs[ii, :], LogLikelihood[ii] = (
+#                     CPU.kernel_MLEFit_LM_Sigma(
+#                         data[ii, :],
+#                         PSFSigma,
+#                         int(sz),
+#                         iterations,
+#                         None if varim is None else varim[ii, :],
+#                     )
+#                 )
+#             except Exception:
+#                 Parameters[ii, :] = -1
+#                 CRLBs[ii, :] = -1
+#                 LogLikelihood[ii] = -1
+#     elif fittype == 4:  # fit x,y,bg,I,sigmax,sigmay
+#         for ii in nb.prange(Nfitraw):
+#             try:
+#                 Parameters[ii, :], CRLBs[ii, :], LogLikelihood[ii] = (
+#                     CPU.kernel_MLEFit_LM_sigmaxy(
+#                         data[ii, :],
+#                         PSFSigma,
+#                         int(sz),
+#                         iterations,
+#                         None if varim is None else varim[ii, :],
+#                     )
+#                 )
+#             except Exception:
+#                 Parameters[ii, :] = -1
+#                 CRLBs[ii, :] = -1
+#                 LogLikelihood[ii] = -1
 
 
 @nb.njit(parallel=True, cache=True)

@@ -1,5 +1,5 @@
 import ctypes
-from typing import Union
+from typing import Optional, Union
 
 import numpy as np
 from tabulate import tabulate
@@ -146,11 +146,10 @@ class miDummy(miCamera):
         X, Y = np.meshgrid(x, y)
 
         self._meshes = {
-            'd' : (X + Y),
-            'h' : X,
-            'v' : Y,
-            'r' : np.sqrt(
-                (X - self.width/2)**2 + (Y - self.height/2)**2)
+            'd': (X + Y),
+            'h': X,
+            'v': Y,
+            'r': np.sqrt((X - self.width / 2) ** 2 + (Y - self.height / 2) ** 2),
         }
 
     def set_roi(self, x: int, y: int, width: int, height: int):
@@ -248,7 +247,8 @@ class miDummy(miCamera):
         if isinstance(flux, np.ndarray):
             if flux.shape != (self.height, self.width):
                 raise ValueError(
-                    f'Flux array must have shape ({self.height}, {self.width})!')
+                    f'Flux array must have shape ({self.height}, {self.width})!'
+                )
         elif not isinstance(flux, float) and not isinstance(flux, int):
             raise TypeError('Flux must be a float, int or ndarray!')
 
@@ -263,11 +263,10 @@ class miDummy(miCamera):
         # The noise parameter now affects the scale, instead of the loc
         image = np.random.poisson(
             lam=baseline + signal,  # mean
-            size=(self.height, self.width)
-            ) + np.random.normal(
-            loc=0,
-            scale=self.readout_noise,
-            size=(self.height, self.width))
+            size=(self.height, self.width),
+        ) + np.random.normal(
+            loc=0, scale=self.readout_noise, size=(self.height, self.width)
+        )
 
         # Scale the image using quantum efficiency, full well capacity, and gain
         image = np.clip(image, 0, self.full_well_capacity) / self.gain
@@ -280,12 +279,13 @@ class miDummy(miCamera):
 
         if self.__roi:
             x, y, width, height = self.__roi
-            return image[y:y+height, x:x+width]
+            return image[y : y + height, x : x + width]
         else:
             return image
 
     def get_sinus_diagonal_pattern(
-            self, time, amplitude=2000, frequency=0.001, phase=0, offset=0, type='d'):
+        self, time, amplitude=2000, frequency=0.001, phase=0, offset=0, type='d'
+    ):
         '''
         Generate a sinusoidal diagonal pattern for the flux array.
 
@@ -314,9 +314,70 @@ class miDummy(miCamera):
         if type not in ['d', 'h', 'v', 'r']:
             type = 'd'
 
-        pattern = amplitude * np.sin(
-            2 * np.pi * frequency * self._meshes[type] + phase + 2 * np.pi * time
-            ) + offset
+        pattern = (
+            amplitude
+            * np.sin(
+                2 * np.pi * frequency * self._meshes[type] + phase + 2 * np.pi * time
+            )
+            + offset
+        )
+
+        if pattern.min() < 0:
+            pattern += abs(pattern.min())
+
+        return pattern
+
+    def get_gaussian_beam_pattern(
+        self,
+        time: float,
+        amplitude: float = 5000,
+        sigma: float = 20,
+        center_x: Optional[float] = None,
+        center_y: Optional[float] = None,
+        drift_speed: float = 10,
+    ):
+        '''
+        Generate a Gaussian beam pattern for the flux array.
+        The pattern is a 2D Gaussian distribution with a specified center and
+        standard deviation.
+        The pattern is also shifted in the x and y directions according to the
+        drift speed.
+        The pattern is also scaled by the amplitude.
+        The pattern is also shifted in time according to the drift speed.
+
+        Parameters
+        ----------
+        time : float
+            The current time.
+        amplitude : float, optional
+            The amplitude of the Gaussian pattern (default is 5000).
+        sigma : float, optional
+            The standard deviation of the Gaussian pattern (default is 20).
+        center_x : float, optional
+            The x-coordinate of the center of the Gaussian pattern (default is None).
+        center_y : float, optional
+            The y-coordinate of the center of the Gaussian pattern (default is None).
+        drift_speed : float, optional
+            The speed at which the Gaussian beam center drifts over the x-axis
+            (default is 10).
+
+        Returns
+        -------
+        ndarray
+            A 2D numpy array representing the Gaussian beam pattern.
+        '''
+        if center_x is None:
+            center_x = self.width // 2 + drift_speed * np.cos(2 * np.pi * time / 10)
+        if center_y is None:
+            center_y = self.height // 2
+
+        x = np.arange(self.width)
+        y = np.arange(self.height)
+        X, Y = np.meshgrid(x, y)
+
+        pattern = amplitude * np.exp(
+            -((X - center_x) ** 2 + (Y - center_y) ** 2) / (2 * sigma**2)
+        )
 
         if pattern.min() < 0:
             pattern += abs(pattern.min())
@@ -326,11 +387,9 @@ class miDummy(miCamera):
     def get_single_molecule_events(self):
         flux = np.zeros((self.height, self.width))
 
-
         pass
 
-    def get_dummy_image_from_pattern(
-            self, time):
+    def get_dummy_image_from_pattern(self, time):
         '''
         Generate a dummy image with noise and CMOS conversion based on
         the camera properties.
@@ -348,13 +407,20 @@ class miDummy(miCamera):
         '''
         if self.pattern_type.lower() == 'sinusoidal':
             flux = self.get_sinus_diagonal_pattern(
-                time, self.sinusoidal_amplitude,
+                time,
+                self.sinusoidal_amplitude,
                 self.sinusoidal_frequency,
                 self.sinusoidal_phase,
                 self.pattern_offset,
-                self.sinusoidal_direction)
+                self.sinusoidal_direction,
+            )
         elif self.pattern_type.lower() == 'single molecule sim':
             flux = 0
+        elif self.pattern_type.lower() == 'gaussian':
+            flux = self.get_gaussian_beam_pattern(
+                time,
+                center_x=None, center_y=None,
+                drift_speed=10)
         else:
             flux = self.flux
 
@@ -365,10 +431,16 @@ class miDummy(miCamera):
         return [
             {
                 'Camera ID': 'Cam 0',
-                'Device ID': 0, 'Model': 'Dummy',
-                'Serial': '42023060', 'InUse': bool(miDummy.instances),
+                'Device ID': 0,
+                'Model': 'Dummy',
+                'Serial': '42023060',
+                'InUse': bool(miDummy.instances),
                 'Status': 'Ready',
-                'Sensor ID': '06032024', 'Driver': 'miDummy'}]
+                'Sensor ID': '06032024',
+                'Driver': 'miDummy',
+            }
+        ]
+
 
 if __name__ == '__main__':
     import timeit
@@ -376,21 +448,21 @@ if __name__ == '__main__':
     import matplotlib.animation as animation
     import matplotlib.pyplot as plt
 
-#     setup = '''
-# import numpy as np
-# from micam import miCamera, miDummy
+    #     setup = '''
+    # import numpy as np
+    # from micam import miCamera, miDummy
 
-# cam = miDummy()
-# type = 'r'
-#     '''
+    # cam = miDummy()
+    # type = 'r'
+    #     '''
 
-#     stmt = '''
-# cam.get_dummy_image_from_pattern(0, offset=1000, type=type)
-#     '''
+    #     stmt = '''
+    # cam.get_dummy_image_from_pattern(0, offset=1000, type=type)
+    #     '''
 
-#     total_time = timeit.timeit(stmt=stmt, setup=setup, number=100)
-#     avg_time = total_time / 100
-#     print(f'Average time per call: {avg_time:.6f} seconds')
+    #     total_time = timeit.timeit(stmt=stmt, setup=setup, number=100)
+    #     avg_time = total_time / 100
+    #     print(f'Average time per call: {avg_time:.6f} seconds')
 
     # create a dummy camera object
     cam = miDummy()
@@ -399,18 +471,18 @@ if __name__ == '__main__':
     # set up animation
     fig, ax = plt.subplots()
     im = ax.imshow(
-        cam.get_dummy_image_from_pattern(
-            0, offset=1000, type=type), cmap='gray', vmin=0)
+        cam.get_dummy_image_from_pattern(0, offset=1000, type=type), cmap='gray', vmin=0
+    )
 
     plt.colorbar(im)
 
     def update(frame):
         img = cam.get_dummy_image_from_pattern(frame, offset=1000, type=type)
         im.set_data(img)
-        return im,
+        return (im,)
 
     ani = animation.FuncAnimation(
-        fig, update, frames=np.arange(0, 5, 0.05), interval=1, blit=True)
+        fig, update, frames=np.arange(0, 5, 0.05), interval=1, blit=True
+    )
     # ani.save('animation_1.gif', writer='pillow', fps=30)
     plt.show()
-

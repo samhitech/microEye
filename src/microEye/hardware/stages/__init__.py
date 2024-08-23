@@ -1,7 +1,7 @@
 from microEye.hardware.stages.elliptec import (
-    ElliptecStage,
+    ELLDevices,
     ElliptecStageParams,
-    ElliptecStageView,
+    ElliptecView,
 )
 from microEye.hardware.stages.kinesis import KinesisView, KinesisXY
 from microEye.hardware.stages.piezo_concept import (

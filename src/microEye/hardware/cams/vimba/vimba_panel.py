@@ -9,7 +9,7 @@ from microEye.analysis.tools.roi_selectors import (
 )
 from microEye.hardware.cams.camera_options import CamParams
 from microEye.hardware.cams.camera_panel import Camera_Panel
-from microEye.hardware.cams.vimba_cam import vimba_cam
+from microEye.hardware.cams.vimba.vimba_cam import vimba_cam
 from microEye.qt import QDateTime, QtCore, QtWidgets, getOpenFileName, getSaveFileName
 from microEye.utils.gui_helper import get_scaling_factor
 from microEye.utils.metadata_tree import MetaParams
@@ -482,6 +482,15 @@ class Vimba_Panel(Camera_Panel):
         self.refresh_framerate()
 
     def select_ROI(self):
+        '''
+        Opens a dialog to select a ROI from the last image.
+        '''
+        if self.cam.acquisition:
+            QtWidgets.QMessageBox.warning(
+                self, 'Warning', 'Cannot set ROI while acquiring images!'
+            )
+            return  # if acquisition is already going on
+
         if self.acq_job is not None:
             try:
 
@@ -524,6 +533,15 @@ class Vimba_Panel(Camera_Panel):
                 traceback.print_exc()
 
     def select_ROIs(self):
+        '''
+        Opens a dialog to select multiple ROIs from the last image.
+        '''
+        if self.cam.acquisition:
+            QtWidgets.QMessageBox.warning(
+                self, 'Warning', 'Cannot set ROI while acquiring images!'
+            )
+            return  # if acquisition is already going on
+
         if self.acq_job is not None:
             try:
 

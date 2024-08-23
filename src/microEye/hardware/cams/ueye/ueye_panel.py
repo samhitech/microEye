@@ -10,7 +10,7 @@ from microEye.analysis.tools.roi_selectors import (
 )
 from microEye.hardware.cams.camera_options import CamParams
 from microEye.hardware.cams.camera_panel import Camera_Panel
-from microEye.hardware.cams.ueye_camera import IDS_Camera
+from microEye.hardware.cams.ueye.ueye_camera import IDS_Camera
 from microEye.qt import QDateTime, QtCore, QtWidgets, getOpenFileName, getSaveFileName
 from microEye.utils.gui_helper import get_scaling_factor
 from microEye.utils.metadata_tree import MetaParams
@@ -315,6 +315,12 @@ class IDS_Panel(Camera_Panel):
 
     def center_ROI(self):
         '''Calculates the x, y values for a centered ROI'''
+        if self.cam.acquisition:
+            QtWidgets.QMessageBox.warning(
+                self, 'Warning', 'Cannot center ROI while acquiring images!'
+            )
+            return  # if acquisition is already going on
+
         _, _, w, h = self.camera_options.get_roi_info()
         x = (self.cam.rectROI.s32Width.value - w) // 2
         y = (self.cam.rectROI.s32Height.value - h) // 2
@@ -324,6 +330,15 @@ class IDS_Panel(Camera_Panel):
         self.set_ROI()
 
     def select_ROI(self):
+        '''
+        Opens a dialog to select a ROI from the last image.
+        '''
+        if self.cam.acquisition:
+            QtWidgets.QMessageBox.warning(
+                self, 'Warning', 'Cannot set ROI while acquiring images!'
+            )
+            return  # if acquisition is already going on
+
         if self.acq_job.frame is not None:
             try:
 
@@ -366,6 +381,15 @@ class IDS_Panel(Camera_Panel):
                 traceback.print_exc()
 
     def select_ROIs(self):
+        '''
+        Opens a dialog to select multiple ROIs from the last image.
+        '''
+        if self.cam.acquisition:
+            QtWidgets.QMessageBox.warning(
+                self, 'Warning', 'Cannot set ROI while acquiring images!'
+            )
+            return  # if acquisition is already going on
+
         if self.acq_job is not None:
             try:
 

@@ -6,6 +6,7 @@ import numba
 import numpy as np
 import pyqtgraph as pg
 from scipy.interpolate import BSpline, interp1d, splrep
+from scipy.signal import savgol_filter
 
 from microEye.qt import QDateTime
 
@@ -309,17 +310,19 @@ def FRC_resolution_binomial(data: np.ndarray, pixelSize=10, method='Binomial'):
 
     print(f'{start.msecsTo(QDateTime.currentDateTime()) * 1e-3:.3f} s')
 
-    print('Interpolation ... ')
+    print('Interpolation and Smoothing ... ')
     interpy = interp1d(
             frequencies, FRC_res,
             kind='cubic', fill_value='extrapolate')
     FRC = interpy(frequencies)
-    tck = splrep(frequencies, FRC_res, s=1/pixelSize)
-    bspline = BSpline(*tck)
-    smoothed = bspline(frequencies)
+
+    # Savitzky-Golay filter
+    window_length = min(len(FRC_res) // 20, 101)  # Ensure odd and not too large
+    window_length = window_length if window_length % 2 == 1 else window_length + 1
+    smoothed = savgol_filter(FRC_res, window_length, 3)
 
     idx = np.where(smoothed <= (1/7))[0]
-    if idx is not None:
+    if idx is not None and len(idx) > 0:
         idx = idx.min()
         FRC_res = 1 / frequencies[idx]
     else:
@@ -328,7 +331,6 @@ def FRC_resolution_binomial(data: np.ndarray, pixelSize=10, method='Binomial'):
     print(
         f'Done ... {all.msecsTo(QDateTime.currentDateTime()) * 1e-3:.3f} s')
     return frequencies, FRC, smoothed, FRC_res
-
 
 def FRC_compute(
         fft_12: np.ndarray, fft_11: np.ndarray, fft_22: np.ndarray,

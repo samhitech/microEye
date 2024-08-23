@@ -60,7 +60,7 @@ class PzFocSignals(QtCore.QObject):
     positionChanged = Signal(float)
 
 
-class PzFoc(stage):
+class PzFoc:
     '''PiezoConcept FOC 1-axis stage adapter.'''
 
     def __init__(self):
@@ -69,7 +69,9 @@ class PzFoc(stage):
         '''
         self.signals = PzFocSignals()
 
-        super().__init__()
+        self.ZPosition = 50000
+        self.LastCmd = ''
+        self.Received = ''
 
         self.max = 100 * 1000
 
@@ -260,6 +262,7 @@ class PzFocView(Tree):
             {
                 'name': str(StageParams.SERIAL_PORT),
                 'type': 'group',
+                'expanded' : False,
                 'children': [
                     {
                         'name': str(StageParams.PORT),

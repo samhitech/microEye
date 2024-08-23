@@ -1,7 +1,11 @@
-from typing import Union
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
+from typing import Any, Optional, Union
 
 import cv2
 import numpy as np
+from tqdm import tqdm
 
 from microEye.analysis.filters import *
 from microEye.analysis.fitting.phasor_fit import *
@@ -16,8 +20,8 @@ from microEye.utils.uImage import TiffSeqHandler, ZarrImageSequence, uImage
 
 
 def get_blob_detector(
-        params: cv2.SimpleBlobDetector_Params = None) \
-        -> cv2.SimpleBlobDetector:
+    params: cv2.SimpleBlobDetector_Params = None,
+) -> cv2.SimpleBlobDetector:
     if params is None:
         # Setup SimpleBlobDetector parameters.
         params = cv2.SimpleBlobDetector_Params()
@@ -81,11 +85,17 @@ class CV_BlobDetector(AbstractDetector):
         self.set_blob_detector_params(**kwargs)
 
     def set_blob_detector_params(
-            self, min_threshold=0, max_threshold=255,
-            minArea=1.5, maxArea=80,
-            minCircularity=None, minConvexity=None,
-            minInertiaRatio=None, blobColor=255,
-            minDistBetweenBlobs=1) -> cv2.SimpleBlobDetector_Params:
+        self,
+        min_threshold=0,
+        max_threshold=255,
+        minArea=1.5,
+        maxArea=80,
+        minCircularity=None,
+        minConvexity=None,
+        minInertiaRatio=None,
+        blobColor=255,
+        minDistBetweenBlobs=1,
+    ) -> cv2.SimpleBlobDetector_Params:
         '''
         Set parameters for the blob detector.
 
@@ -195,8 +205,12 @@ class CV_BlobDetector(AbstractDetector):
         keypoints = self.detector.detect(th_img)
 
         im_with_keypoints = cv2.drawKeypoints(
-            img, keypoints, np.array([]),
-            (0, 0, 255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+            img,
+            keypoints,
+            np.array([]),
+            (0, 0, 255),
+            cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS,
+        )
 
         return cv2.KeyPoint_convert(keypoints), im_with_keypoints
 
@@ -263,8 +277,7 @@ class BlobDetectionWidget(QtWidgets.QGroupBox):
 
     def value_changed(self, value):
         self.detector.set_blob_detector_params(
-            minArea=self.minArea.value(),
-            maxArea=self.maxArea.value()
+            minArea=self.minArea.value(), maxArea=self.maxArea.value()
         )
         self.update.emit()
 
@@ -274,139 +287,200 @@ class BlobDetectionWidget(QtWidgets.QGroupBox):
             'min area': self.minArea.value(),
             'max area': self.maxArea.value(),
             'filter by area': True,
-            'other': 'Check default parameters in CV_BlobDetector'
+            'other': 'Check default parameters in CV_BlobDetector',
         }
 
 
-def pre_localize_frame(**kwargs):
+def pre_process_frame(
+    index: int,
+    stack_handler: Union['TiffSeqHandler', 'ZarrImageSequence'],
+    options: dict[str, Any],
+) -> tuple[np.ndarray, np.ndarray, Optional[tuple[tuple[int, int], tuple[int, int]]]]:
     '''
-    Perform pre-localization processing on a frame.
+    Preprocess a frame before localization.
 
     Parameters
     ----------
     index : int
         Index of the frame.
-    image : np.ndarray
-        Input frame image.
-    varim : np.ndarray
-        Variance image.
-    filter : AbstractFilter
-        Image filter.
-    detector : AbstractDetector
-        Detection algorithm.
-    roi_info : tuple, optional
-        Region of interest information ((x,y), (w,h)) and (default is None).
-    temp : TemporalMedianFilter, optional
-        Temporal median filter (default is None).
-    stack_handler : Union[TiffSeqHandler, ZarrImageSequence], optional
-        Handler for the image stack needed in case of using TemporalMedianFilter
-        (default is None).
-    irange : tuple[int, int], optional
-        Intensity range (default is None for autoscaling).
-    rel_threshold : float, optional
-        Relative intensity threshold (default is 0.4).
-    max_threshold : float, optional
-        Maximum intensity threshold (default is 1.0).
-    roi_size : int, optional
-        Size of the region of interest (default is 13).
-    method : FittingMethod, optional
-        Fitting method (default is FittingMethod._2D_Phasor_CPU).
+    stack_handler : Union[TiffSeqHandler, ZarrImageSequence]
+        Image stack handler.
+    options : Dict[str, Any]
+        Dictionary of preprocessing options.
 
     Returns
     -------
-    frames : np.ndarray
-        Localized frames.
-    params : np.ndarray
-        Localization parameters.
-    crlbs : np.ndarray
-        Cramer-Rao lower bounds.
-    loglike : np.ndarray
-        Log-likelihood values.
+    tuple[np.ndarray, np.ndarray, Optional[tuple[tuple[int, int], tuple[int, int]]]]
+        Preprocessed image, filtered image, and ROI information (if applicable).
     '''
-    index: int = kwargs['index']
-    image: np.ndarray = kwargs['image']
-    varim: np.ndarray = kwargs['varim']
-    filter: AbstractFilter = kwargs['filter']
-    detector: AbstractDetector = kwargs['detector']
-    roi_info = kwargs.get('roi_info', None)
-    temp: TemporalMedianFilter = kwargs.get('temp', None)
-    stack_handler: Union[
-        TiffSeqHandler, ZarrImageSequence] = kwargs.get('stack_handler', None)
-    irange = kwargs.get('irange', None)
-    rel_threshold: float = kwargs.get('rel_threshold', 0.4)
-    max_threshold: float = kwargs.get('max_threshold', 1.0)
-    roi_size: int = kwargs.get('roi_size', 13)
-    method: FittingMethod = kwargs.get('method', FittingMethod._2D_Phasor_CPU)
+    gain = options.get('gain', 1)
+    offset = options.get('offset', 0)
+    tm_window = options.get('tm_window', 0)
+    roi_info = options.get('roi_info')
 
-    # apply the temporal median filter
-    if temp is not None and stack_handler is not None:
+    image = stack_handler.getSlice(index, 0, 0)
+    image = image * gain - offset
+
+    if tm_window > 1:
+        temp = TemporalMedianFilter(tm_window)
         frames = temp.getFrames(index, stack_handler)
         filtered = temp.run(image, frames, roi_info)
     else:
         filtered = image.copy()
 
-
-    # crop image to ROI
     if roi_info is not None:
-        origin = roi_info[0]  # ROI (x,y)
-        dim = roi_info[1]  # ROI (w,h)
-        image = image[
-            int(origin[1]):int(origin[1] + dim[1]),
-            int(origin[0]):int(origin[0] + dim[0])]
-        filtered = filtered[
-            int(origin[1]):int(origin[1] + dim[1]),
-            int(origin[0]):int(origin[0] + dim[0])]
+        origin, dim = roi_info
+        slice_y = slice(int(origin[1]), int(origin[1] + dim[1]))
+        slice_x = slice(int(origin[0]), int(origin[0] + dim[0]))
+        image = image[slice_y, slice_x]
+        filtered = filtered[slice_y, slice_x]
 
-    frames, params, crlbs, loglike = localize_frame(
-        index,
-        image,
-        filtered,
-        varim,
-        filter,
-        detector,
-        irange=irange,
-        rel_threshold=rel_threshold,
-        max_threshold=max_threshold,
-        method=method,
-        roi_size=roi_size
+    return image, filtered, roi_info
+
+
+def detect_points(
+    filtered_image: np.ndarray,
+    filter_obj: 'AbstractFilter',
+    detector: 'AbstractDetector',
+    options: dict[str, Any],
+) -> np.ndarray:
+    '''
+    Detect points in the filtered image.
+
+    Parameters
+    ----------
+    filtered_image : np.ndarray
+        Filtered image.
+    filter_obj : AbstractFilter
+        Image filter object.
+    detector : AbstractDetector
+        Point detection algorithm.
+    options : Dict[str, Any]
+        Detection options.
+
+    Returns
+    -------
+    np.ndarray
+        Detected points.
+    '''
+    irange = options.get('irange')
+    rel_threshold = options.get('rel_threshold', 0.4)
+    max_threshold = options.get('max_threshold', 1.0)
+
+    uImg = uImage(filtered_image)
+    uImg.equalizeLUT(irange, True)
+
+    if isinstance(filter_obj, BandpassFilter):
+        filter_obj._show_filter = False
+        filter_obj._refresh = False
+
+    img = filter_obj.run(uImg._view)
+
+    _, th_img = cv2.threshold(
+        img, np.quantile(img, 1 - 1e-4) * rel_threshold, 255, cv2.THRESH_BINARY
     )
+    if max_threshold < 1.0:
+        _, th2 = cv2.threshold(
+            img, np.max(img) * max_threshold, 1, cv2.THRESH_BINARY_INV
+        )
+        th_img *= th2
 
-    if params is not None:
-        if len(params) > 0 and roi_info is not None:
-            params[:, 0] += origin[0]
-            params[:, 1] += origin[1]
+    return detector.find_peaks(th_img)
 
-    return frames, params, crlbs, loglike
+
+def fit_points(
+    image: np.ndarray,
+    points: np.ndarray,
+    varim: Optional[np.ndarray],
+    options: dict[str, Any],
+) -> tuple[np.ndarray, Optional[np.ndarray], Optional[np.ndarray]]:
+    '''
+    Fit detected points using specified method.
+
+    Parameters
+    ----------
+    image : np.ndarray
+        Original image.
+    points : np.ndarray
+        Detected points.
+    varim : Optional[np.ndarray]
+        Variance image (if applicable).
+    options : Dict[str, Any]
+        Fitting options.
+
+    Returns
+    -------
+    tuple[np.ndarray, Optional[np.ndarray], Optional[np.ndarray]]
+        Fitted parameters, CRLBs, and log-likelihood values.
+    '''
+    method = options.get('method', FittingMethod._2D_Phasor_CPU)
+    roi_size = options.get('roi_size', 13)
+    PSFparam = options.get('PSFparam', np.array([1.5]))
+
+    if method == FittingMethod._2D_Phasor_CPU:
+        params = phasor_fit(image, points, roi_size=roi_size)
+        return params, None, None
+
+    if varim is None:
+        rois, coords = get_roi_list(image, points, roi_size)
+        varims = None
+    else:
+        rois, varims, coords = get_roi_list_CMOS(image, varim, points, roi_size)
+
+    fit_type = {
+        FittingMethod._2D_Gauss_MLE_fixed_sigma: 1,
+        FittingMethod._2D_Gauss_MLE_free_sigma: 2,
+        FittingMethod._2D_Gauss_MLE_elliptical_sigma: 4,
+        FittingMethod._3D_Gauss_MLE_cspline_sigma: 5,
+    }.get(method, 1)
+
+    params, crlbs, loglike = CPUmleFit_LM(rois, fit_type, PSFparam, varims, 0)
+    params[:, :2] += coords
+
+    return params, crlbs, loglike
+
 
 def localize_frame(
-        index: int, image: np.ndarray, filtered: np.ndarray,
-        varim: np.ndarray, filter: AbstractFilter,
-        detector: AbstractDetector, **kwargs):
+    index: int,
+    stack_handler: Union['TiffSeqHandler', 'ZarrImageSequence'],
+    filter_obj: 'AbstractFilter',
+    detector: 'AbstractDetector',
+    options: dict[str, Any],
+) -> tuple[list[int], np.ndarray, Optional[np.ndarray], Optional[np.ndarray]]:
     '''
-    Localize features in a frame using various fitting methods.
+    Localize features in a frame.
 
     Parameters
     ----------
     index : int
-        Index of the frame.
-    image : np.ndarray
-        Original frame image.
-    filtered : np.ndarray
-        Filtered frame image.
+        Frame index.
+    stack_handler : Union[TiffSeqHandler, ZarrImageSequence]
+        Image stack handler.
+    filter_obj : AbstractFilter
+        Image filter object.
+    detector : AbstractDetector
+        Point detection algorithm.
+    options : Dict[str, Any]
+        Localization options.
+
+    Options
+    -------
+    gain : Union[float, np.ndarray]
+        Gain value.
+    offset : Union[float, np.ndarray]
+        Offset value.
     varim : np.ndarray
         Variance image.
-    filter : AbstractFilter
-        Image filter.
-    detector : AbstractDetector
-        Detection algorithm.
+    roi_info : tuple, optional
+        Region of interest information ((x,y), (w,h)) and (default is None).
+    tm_window : int, optional
+        Temporal median filter window size (default is 0).
     irange : tuple[int, int], optional
         Intensity range (default is None for autoscaling).
     rel_threshold : float, optional
         Relative intensity threshold (default is 0.4).
     max_threshold : float, optional
         Maximum intensity threshold (default is 1.0).
-    PSFparam : Optional
-        Parameters for the point spread function.
     roi_size : int, optional
         Size of the region of interest (default is 13).
     method : FittingMethod, optional
@@ -423,73 +497,114 @@ def localize_frame(
     loglike : np.ndarray
         Log-likelihood values.
     '''
-    PSFparam = kwargs.get('PSFparam', np.array([1.5]))
-    irange: tuple[int, int] = kwargs.get('irange', None)
-    rel_threshold: float = kwargs.get('rel_threshold', 0.4)
-    max_threshold: float = kwargs.get('max_threshold', 1.0)
-    roi_size: int = kwargs.get('roi_size', 13)
-    method: int = kwargs.get('method', FittingMethod._2D_Phasor_CPU)
+    image, filtered, roi_info = pre_process_frame(index, stack_handler, options)
+    points = detect_points(filtered, filter_obj, detector, options)
 
-    uImg = uImage(filtered)
+    if len(points) == 0:
+        return None, None, None, None
 
-    uImg.equalizeLUT(irange, True)
+    params, crlbs, loglike = fit_points(image, points, options.get('varim'), options)
 
-    if filter is BandpassFilter:
-        filter._show_filter = False
-        filter._refresh = False
-
-    img = filter.run(uImg._view)
-
-    # Detect blobs.
-    _, th_img = cv2.threshold(
-            img,
-            np.quantile(img, 1-1e-4) * rel_threshold,
-            255,
-            cv2.THRESH_BINARY)
-    if max_threshold < 1.0:
-        _, th2 = cv2.threshold(
-            img,
-            np.max(img) * max_threshold,
-            1,
-            cv2.THRESH_BINARY_INV)
-        th_img = th_img * th2
-
-    points: np.ndarray = detector.find_peaks(th_img)
-
-    if method == FittingMethod._2D_Phasor_CPU:
-        params = phasor_fit(image, points, roi_size=roi_size)
-        crlbs, loglike = None, None
-    else:
-        if varim is None:
-            rois, coords = get_roi_list(image, points, roi_size)
-            varims = None
-        else:
-            rois, varims, coords = get_roi_list_CMOS(
-                image, varim, points, roi_size)
-
-        if method == FittingMethod._2D_Gauss_MLE_fixed_sigma:
-            params, crlbs, loglike = CPUmleFit_LM(
-                rois, 1, PSFparam, varims, 0)
-        elif method == FittingMethod._2D_Gauss_MLE_free_sigma:
-            params, crlbs, loglike = CPUmleFit_LM(
-                rois, 2, PSFparam, varims, 0)
-        elif method == FittingMethod._2D_Gauss_MLE_elliptical_sigma:
-            params, crlbs, loglike = CPUmleFit_LM(
-                rois, 4, PSFparam, varims, 0)
-        elif method == FittingMethod._3D_Gauss_MLE_cspline_sigma:
-            params, crlbs, loglike = CPUmleFit_LM(
-                rois, 5, PSFparam, varims, 0)
-
-        params[:, :2] += coords
+    if params is not None and len(params) > 0 and roi_info is not None:
+        origin = roi_info[0]
+        params[:, 0] += origin[0]
+        params[:, 1] += origin[1]
 
     frames = [index + 1] * params.shape[0] if params is not None else None
 
     return frames, params, crlbs, loglike
 
+
+def time_string_ms(ms):
+    s = int(ms // 1000)
+    ms = int(ms % 1000)
+    m = int(s // 60)
+    s = int(s % 60)
+    h = int(m // 60)
+    m = int(m % 60)
+    return f'{h:02d}:{m:02d}:{s:02d}.{ms:03d}'
+
+
+def localizeStackCPU(
+    stack_handler: Union[TiffSeqHandler, ZarrImageSequence],
+    filter_obj: AbstractFilter,
+    detector: AbstractDetector,
+    options: dict[str, Any],
+) -> tuple[list, list, list, list]:
+    '''
+    Localize features in an image stack using CPU parallelization.
+
+    Parameters
+    ----------
+    stack_handler : Union[TiffSeqHandler, ZarrImageSequence]
+        Handler for the image stack.
+    filter_obj : AbstractFilter
+        Image filter object.
+    detector : AbstractDetector
+        Point detection algorithm.
+    options : Dict[str, Any]
+        Dictionary of localization options.
+    n_threads : int, optional
+        Number of threads to use for parallel processing.
+        If None, uses all available threads minus 2.
+
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
+        lists of frame indices, localization parameters,
+        CRLBs, and log-likelihood values.
+    '''
+    if options.get('n_threads') is None:
+        n_threads = max(1, ThreadPoolExecutor()._max_workers - 2)
+
+    start = datetime.now()
+
+    all_frames, all_params, all_crlbs, all_loglike = [], [], [], []
+
+    def process_frame(
+        frame_index: int,
+    ) -> tuple[
+        Optional[np.ndarray],
+        Optional[np.ndarray],
+        Optional[np.ndarray],
+        Optional[np.ndarray],
+    ]:
+        return localize_frame(frame_index, stack_handler, filter_obj, detector, options)
+
+    with ThreadPoolExecutor(max_workers=n_threads) as executor:
+        futures = [
+            executor.submit(process_frame, i) for i in range(stack_handler.shape[0])
+        ]
+
+        for future in tqdm(
+            as_completed(futures), total=len(futures), desc='Processing frames'
+        ):
+            frames, params, crlbs, loglike = future.result()
+            if frames is not None:
+                all_frames.extend(frames)
+                all_params.extend(params)
+                if crlbs is not None:
+                    all_crlbs.extend(crlbs)
+                if loglike is not None:
+                    all_loglike.extend(loglike)
+
+    duration = (datetime.now() - start).total_seconds() * 1000
+    print(f'\nDone... {time_string_ms(duration)}')
+
+    return (
+        np.array(all_frames, dtype=np.int64),
+        np.array(all_params, np.float64),
+        np.array(all_crlbs, np.float64) if all_crlbs else None,
+        np.array(all_loglike, np.float64) if all_loglike else None,
+    )
+
+
 def get_rois_lists_GPU(
-        stack_handler: Union[TiffSeqHandler, ZarrImageSequence],
-        filter: AbstractFilter,
-        detector: AbstractDetector, **kwargs):
+    stack_handler: Union[TiffSeqHandler, ZarrImageSequence],
+    filter: AbstractFilter,
+    detector: AbstractDetector,
+    **kwargs,
+):
     gain: Union[float, np.ndarray] = kwargs.get('gain', 1)
     offset: Union[float, np.ndarray] = kwargs.get('offset', 0)
     varim: np.ndarray = kwargs.get('varim', None)
@@ -500,20 +615,10 @@ def get_rois_lists_GPU(
     tm_window: int = kwargs.get('tm_window', 0)
     roi_size: int = kwargs.get('roi_size', 13)
 
-    roi_list = []
-    varim_list = []
-    coord_list = []
-    frames_list = []
-    counter = np.zeros(1)
-
-    for k in range(len(stack_handler)):
-        cycle = time.time_ns()
+    def process_image(k: int) -> tuple[list, list, list, list]:
         image = stack_handler.getSlice(k, 0, 0)
+        image = (image * gain) - offset
 
-        image = image * gain
-        image = image - offset
-
-        # apply the median filter
         if tm_window > 1:
             temp = TemporalMedianFilter()
             temp._temporal_window = tm_window
@@ -522,60 +627,54 @@ def get_rois_lists_GPU(
         else:
             filtered = image.copy()
 
-        # crop image to ROI
         if roi_info is not None:
-            origin = roi_info[0]  # ROI (x,y)
-            dim = roi_info[1]  # ROI (w,h)
-            image = image[
-                int(origin[1]):int(origin[1] + dim[1]),
-                int(origin[0]):int(origin[0] + dim[0])]
-            filtered = filtered[
-                int(origin[1]):int(origin[1] + dim[1]),
-                int(origin[0]):int(origin[0] + dim[0])]
+            origin, dim = roi_info
+            slice_y = slice(int(origin[1]), int(origin[1] + dim[1]))
+            slice_x = slice(int(origin[0]), int(origin[0] + dim[0]))
+            image = image[slice_y, slice_x]
+            filtered = filtered[slice_y, slice_x]
 
         uImg = uImage(filtered)
-
         uImg.equalizeLUT(irange, True)
 
-        if filter is BandpassFilter:
+        if isinstance(filter, BandpassFilter):
             filter._show_filter = False
             filter._refresh = False
 
         img = filter.run(uImg._view)
 
-        # Detect blobs.
         _, th_img = cv2.threshold(
-                img,
-                np.quantile(img, 1-1e-4) * rel_threshold,
-                255,
-                cv2.THRESH_BINARY)
+            img, np.quantile(img, 1 - 1e-4) * rel_threshold, 255, cv2.THRESH_BINARY
+        )
         if max_threshold < 1.0:
             _, th2 = cv2.threshold(
-                img,
-                np.max(img) * max_threshold,
-                1,
-                cv2.THRESH_BINARY_INV)
-            th_img = th_img * th2
+                img, np.max(img) * max_threshold, 1, cv2.THRESH_BINARY_INV
+            )
+            th_img *= th2
 
         points: np.ndarray = detector.find_peaks(th_img)
 
         if len(points) > 0:
             if varim is None:
                 rois, coords = get_roi_list(image, points, roi_size)
+                return rois, [], coords, [k + 1] * rois.shape[0]
             else:
-                rois, varims, coords = get_roi_list_CMOS(
-                    image, varim, points, roi_size)
-                varim_list += [varims]
+                rois, varims, coords = get_roi_list_CMOS(image, varim, points, roi_size)
+                return rois, varims, coords, [k + 1] * rois.shape[0]
+        return [], [], [], []
 
-            roi_list += [rois]
-            coord_list += [coords]
-            frames_list += [k + 1] * rois.shape[0]
+    with ThreadPoolExecutor() as executor:
+        futures = [executor.submit(process_image, k) for k in range(len(stack_handler))]
+        results = []
+        for future in tqdm(
+            as_completed(futures), total=len(stack_handler), desc='Processing images'
+        ):
+            results.append(future.result())
 
-        counter[0] = counter[0] + 1
-
-        cycle = time.time_ns() - cycle
-        print(
-            f'index: {100*counter[0]/len(stack_handler):.2f}% {cycle/1e9:.6f} s    ',
-            end='\r')
-
-    return roi_list, varim_list, coord_list, frames_list
+    roi_list, varim_list, coord_list, frames_list = zip(*results)
+    return (
+        [item for sublist in roi_list for item in sublist],
+        [item for sublist in varim_list for item in sublist],
+        [item for sublist in coord_list for item in sublist],
+        [item for sublist in frames_list for item in sublist],
+    )

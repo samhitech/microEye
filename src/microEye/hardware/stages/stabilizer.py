@@ -55,6 +55,8 @@ class FocusStabilizerParams(Enum):
     PEAK_ACQUIRE = 'Start Peak Acquisition'
     PEAK_STOP = 'Stop Peak Acquisition'
 
+    PREVIEW_IMAGE = 'Preview Image'
+
     def __str__(self):
         '''
         Return the last part of the enum value (Param name).
@@ -119,6 +121,8 @@ class FocusStabilizer(QtCore.QObject):
         self.__tau = 0.0
         self.__err_th = 0.001
 
+        self.__preview = True
+
         self._exec_time = 0
 
         self.file = None
@@ -156,6 +160,28 @@ class FocusStabilizer(QtCore.QObject):
         '''
         self.__pixel_cal_coeff = value
         self.pixelCalChanged.emit(value)
+
+    def preview(self):
+        '''
+        Check if preview image is enabled.
+
+        Returns
+        -------
+        bool
+            True if preview image is enabled, False otherwise.
+        '''
+        return self.__preview
+
+    def setPreview(self, value: bool):
+        '''
+        Set the flag indicating whether to preview image.
+
+        Parameters
+        ----------
+        value : bool
+            The flag value.
+        '''
+        self.__preview = value
 
     def useCal(self):
         '''
@@ -365,9 +391,7 @@ class FocusStabilizer(QtCore.QObject):
         return self.__stabilization
 
     def startWorker(self):
-        self.worker = QThreadWorker(
-            FocusStabilizer.instance().worker_function
-        )
+        self.worker = QThreadWorker(FocusStabilizer.instance().worker_function)
         # Execute
         QtCore.QThreadPool.globalInstance().start(self.worker)
 
@@ -390,7 +414,8 @@ class FocusStabilizer(QtCore.QObject):
                     image = self.getImage()
 
                     if self.isImage(image):
-                        self.updateViewBox.emit(image.copy())
+                        if self.preview():
+                            self.updateViewBox.emit(image.copy())
                         line_roi = get_kymogram_row(
                             image, self.X, self.Y, self.line_width
                         )
@@ -511,6 +536,11 @@ class FocusStabilizerView(Tree):
         `PzFocView` class.
         '''
         params = [
+            {
+                'name': str(FocusStabilizerParams.PREVIEW_IMAGE),
+                'type': 'bool',
+                'value': True,
+            },
             {'name': str(FocusStabilizerParams.ROI), 'type': 'group', 'children': []},
             {
                 'name': str(FocusStabilizerParams.X1),
@@ -721,6 +751,10 @@ class FocusStabilizerView(Tree):
                 FocusStabilizer.instance().setPeakPosition(data)
             if path == FocusStabilizerParams.get_path(FocusStabilizerParams.PIXEL_CAL):
                 FocusStabilizer.instance().setPixelCalCoeff(data)
+            if path == FocusStabilizerParams.get_path(
+                FocusStabilizerParams.PREVIEW_IMAGE
+            ):
+                FocusStabilizer.instance().setPreview(data)
 
     def start_IR(self):
         '''Starts the IR peak position acquisition and

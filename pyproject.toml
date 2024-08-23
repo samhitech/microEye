@@ -20,6 +20,8 @@ select = [
     "I",
     # flake8-quotes
     "Q",
+    # Numpy 2.0.1
+    # "NPY201",
 ]
 ignore=["SIM102", "SIM114"]
 

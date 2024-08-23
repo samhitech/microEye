@@ -2,17 +2,17 @@ import os
 import typing
 
 from microEye.hardware.cams.camera_panel import Camera_Panel
-from microEye.hardware.cams.dummy_panel import Dummy_Panel
+from microEye.hardware.cams.dummy.dummy_panel import Dummy_Panel
 from microEye.hardware.cams.micam import miDummy
-from microEye.hardware.cams.thorlabs import CMD, thorlabs_camera
-from microEye.hardware.cams.thorlabs_panel import Thorlabs_Panel
+from microEye.hardware.cams.thorlabs.thorlabs import CMD, thorlabs_camera
+from microEye.hardware.cams.thorlabs.thorlabs_panel import Thorlabs_Panel
 from microEye.qt import QtGui, QtWidgets, Signal
 
 try:
     from pyueye import ueye
 
-    from microEye.hardware.cams.ueye_camera import IDS_Camera
-    from microEye.hardware.cams.ueye_panel import IDS_Panel
+    from microEye.hardware.cams.ueye.ueye_camera import IDS_Camera
+    from microEye.hardware.cams.ueye.ueye_panel import IDS_Panel
 except Exception:
     ueye = None
     IDS_Camera = None
@@ -20,8 +20,8 @@ except Exception:
 try:
     import vimba as vb
 
-    from microEye.hardware.cams.vimba_cam import get_camera_list, vimba_cam
-    from microEye.hardware.cams.vimba_panel import Vimba_Panel
+    from microEye.hardware.cams.vimba.vimba_cam import get_camera_list, vimba_cam
+    from microEye.hardware.cams.vimba.vimba_panel import Vimba_Panel
 except Exception:
     vb = None
 

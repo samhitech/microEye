@@ -1,6 +1,7 @@
 import json
 import sys
 
+from microEye import VERSION
 from microEye.hardware.protocols.actions import (
     ForLoop,
     FunctionCall,
@@ -177,7 +178,7 @@ class ExperimentDesignerView(QtWidgets.QGraphicsView):
 
 class ExperimentDesigner(QtWidgets.QWidget):
     HEADER = '> <span style="color:#0f0;">Experiment Designer ('
-    HEADER += '<span style="color:#aaf;">microEye v2.1.1</span>)</span>'
+    HEADER += f'<span style="color:#aaf;">microEye v{VERSION}</span>)</span>'
 
     def __init__(self):
         super().__init__()

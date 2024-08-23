@@ -221,15 +221,21 @@ def merge_localizations(data: np.ndarray, columns: np.ndarray, maxLength):
     return np.append(mergedData, leftData, axis=0)
 
 
+@nb.njit
+def _process_single_image(image, reference, pixelSize, upsampling):
+    with nb.objmode(shift='float64[:]'):
+        shift = phase_cross_correlation(image, reference, upsample_factor=upsampling)[0]
+    return shift * pixelSize
+
+
 @nb.njit(parallel=True, cache=True)
 def shift_estimation(sub_images, pixelSize, upsampling):
     shifts = np.zeros((len(sub_images), 2))
+    reference = sub_images[0]
     for idx in nb.prange(0, len(sub_images)):
-        with nb.objmode(shift='float64[:]'):
-            shift = phase_cross_correlation(
-                sub_images[idx], sub_images[0], upsample_factor=upsampling
-            )[0]
-        shifts[idx, :] = shift * pixelSize
+        shifts[idx] = _process_single_image(
+            sub_images[idx], reference, pixelSize, upsampling
+        )
     return shifts
 
 

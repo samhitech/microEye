@@ -38,6 +38,8 @@ def getArgs():
 
 ARGS = getArgs()
 
+VERSION = '2.2.0'
+
 from microEye.qt import *  # noqa: I001, E402
 import microEye.analysis.fitting.pyfit3Dcspline as pyfit3Dcspline  # noqa: E402
 from microEye.analysis import multi_viewer  # noqa: E402

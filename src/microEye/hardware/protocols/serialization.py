@@ -77,7 +77,6 @@ def deserialize_action(action_data: dict[str, Any]) -> tuple[BaseAction, Any]:
         action_item = ActionGroupItem(action)
         for child_data in action_data['child_actions']:
             child_action, child_item = deserialize_action(child_data)
-            action.child_actions.append(child_action)
             action_item.add_child_item(child_item)
     elif action_type == ParameterAdjustmentAction:
         action = ParameterAdjustmentAction(
