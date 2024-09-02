@@ -262,11 +262,22 @@ else:
         def highlightBlock(self, text):
             for pattern, format in self.highlightingRules:
                 expression = QtCore.QRegularExpression(pattern)
-                index = expression.indexIn(text)
-                while index >= 0:
-                    length = expression.matchedLength()
+
+                # Start at the beginning of the text
+                cursor = 0
+
+                while cursor < len(text):
+                    match = expression.match(text, cursor)
+
+                    if not match.hasMatch():
+                        break
+
+                    index = match.capturedStart()
+                    length = match.capturedLength()
                     self.setFormat(index, length, format)
-                    index = expression.indexIn(text, index + length)
+
+                    # Move cursor to the end of the current match
+                    cursor = index + length
 
             self.setCurrentBlockState(0)
 
@@ -287,8 +298,8 @@ else:
             self.timer.setSingleShot(True)
             self.timer.setInterval(100)
 
-        def text(self, value):
-            self.toPlainText(value)
+        def text(self):
+            return self.toPlainText()
 
         def setText(self, value):
             self.setPlainText(value)
