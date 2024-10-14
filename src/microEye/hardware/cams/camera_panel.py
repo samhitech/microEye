@@ -3,6 +3,7 @@ import os
 import threading
 import time
 import traceback
+from functools import lru_cache
 from queue import Queue
 
 import cv2
@@ -492,10 +493,8 @@ class Camera_Panel(QtWidgets.QGroupBox):
         self.time = QDateTime.currentDateTime()
 
         # Pass the display function to be executed
-        if self.d_worker is None or self.d_worker.done:
-            self.d_worker = QThreadWorker(
-                cam_display, self.acq_job, self
-            )
+        if self.d_worker is None or self.d_worker.is_set():
+            self.d_worker = QThreadWorker(cam_display, self.acq_job, self)
 
             self.d_worker.signals.finished.connect(
                 lambda: self.acq_job.setDone(1, True)
@@ -506,20 +505,16 @@ class Camera_Panel(QtWidgets.QGroupBox):
 
         # Pass the save function to be executed
         if not self.mini:
-            if self.s_worker is None or self.s_worker.done:
-                self.s_worker = QThreadWorker(
-                    cam_save, self.acq_job
-                )
+            if self.s_worker is None or self.s_worker.is_set():
+                self.s_worker = QThreadWorker(cam_save, self.acq_job)
                 self.s_worker.setAutoDelete(True)
                 # Execute
                 self._threadpool.start(self.s_worker)
 
         #  Pass the capture function to be executed
-        if self.c_worker is None or self.c_worker.done:
+        if self.c_worker is None or self.c_worker.is_set():
             # Any other args, kwargs are passed to the run function
-            self.c_worker = QThreadWorker(
-                self.cam_capture, *self.getCaptureArgs()
-            )
+            self.c_worker = QThreadWorker(self.cam_capture, *self.getCaptureArgs())
             self.c_worker.signals.finished.connect(
                 lambda: self.acq_job.setDone(0, True)
             )
@@ -671,20 +666,21 @@ def cam_save(params: AcquisitionJob, **kwargs):
         print('Save thread finally finished.')
 
 
+@lru_cache(maxsize=128)
+def get_font_settings():
+    return cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2, 255
+
+
 def drawStats(frame: uImage):
-    stats = f'min/max: {np.min(frame.image)}/{np.max(frame.image)}\n'
-    stats += f'mean: {np.mean(frame.image):.3f}\n'
-    stats += f'median: {np.median(frame.image):.3f}\n'
-    stats += f'std: {np.std(frame.image):.4f}'
+    lines = [
+        f'min/max: {np.min(frame.image)}/{np.max(frame.image)}',
+        f'mean: {np.mean(frame.image):.3f}',
+        f'median: {np.median(frame.image):.3f}',
+        f'std: {np.std(frame.image):.4f}',
+    ]
 
     # Font settings
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    font_scale = 0.8
-    font_thickness = 2
-    font_color = 255  # White color for monochrome image
-
-    # Split the text into lines
-    lines = stats.split('\n')
+    font, font_scale, font_thickness, font_color = get_font_settings()
 
     # Position to start adding text
     x, y = 50, 50
@@ -712,11 +708,11 @@ def update_histogram_and_display(params: AcquisitionJob, camp: Camera_Panel):
     if camp.camera_options.isSingleView or (
         camp.camera_options.isROIsView and len(params.rois) == 0
     ):
-        _range = None
-
-        # image stretching
-        if not camp.camera_options.isAutostretch:
-            _range = tuple(map(math.ceil, camp.lr_0.getRegion()))
+        _range = (
+            None
+            if camp.camera_options.isAutostretch
+            else tuple(map(math.ceil, camp.lr_0.getRegion()))
+        )
 
         params.frame.equalizeLUT(_range, camp.camera_options.isNumpyLUT)
 

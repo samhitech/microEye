@@ -7,8 +7,7 @@ from typing import Optional, Union
 import cv2
 
 from microEye.analysis.fitting.results import FittingResults
-from microEye.analysis.viewer.images import StackView
-from microEye.analysis.viewer.localizations import LocalizationsView
+from microEye.analysis.viewer import LocalizationsView, PSFView, StackView
 from microEye.qt import (
     QT_API,
     QAction,
@@ -364,13 +363,17 @@ class multi_viewer(QMainWindow):
             if path.endswith('.tif') or path.endswith('.tiff'):
                 view = StackView(path, None)
                 view.localizedData.connect(self.localizedData)
-            elif path.endswith('.h5') or path.endswith('.tsv'):
+            elif (
+                path.endswith('.h5') and not path.endswith('.psf.h5')
+            ) or path.endswith('.tsv'):
                 results = FittingResults.fromFile(path, 1)
                 if results is not None:
                     view = LocalizationsView(path, results)
                     print('Done importing results.')
                 else:
                     print('Error importing results.')
+            elif path.endswith('.psf.h5'):
+                view = PSFView(path)
         else:
             if path.endswith('.zarr'):
                 view = StackView(path)

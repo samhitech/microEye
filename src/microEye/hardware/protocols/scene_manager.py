@@ -122,7 +122,7 @@ class SceneManager(QtCore.QObject):
         Execute the actions in the scene.
         '''
         if isinstance(self.root, ActionGroupItem) and (
-            self.worker is None or self.worker.done
+            self.worker is None or self.worker.is_set()
         ):
             self.clearTerminal.emit()
 

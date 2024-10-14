@@ -8,16 +8,19 @@ from microEye.analysis.fitting.pyfit3Dcspline.constants import *
 
 @nb.njit(nb.float32(nb.int32, nb.float32, nb.float32), cache=True)
 def kernel_IntGauss1D(ii, x, sigma):
-    '''_summary_
+    '''
+    `kernel_IntGauss1D` computes the cumulative probability of a Gaussian distribution
+    between two points determined by `ii` and `x`, adjusted for the width of the
+    distribution specified by `sigma`.
 
     Parameters
     ----------
     ii : int
-        ???
+        The index of the point to compute the cumulative probability for
     x : float
-        ???
+        The center of the Gaussian distribution
     sigma : float
-        sigma value of the PSF
+        The width of the Gaussian distribution
     '''
     norm = 1.0 / (2.0 * sigma * sigma)
 
@@ -273,16 +276,19 @@ def kernel_CenterofMass2D(sz, data):
     tuple[float, float]
         (x, y) coordinate to return
     '''
-    tmpx = tmpy = tmpsum = 0.0
-
+    x_sum = y_sum = total_intensity = 0.0
     for ii in range(sz):
         for jj in range(sz):
-            tmpx += data[sz * jj + ii] * ii
-            tmpy += data[sz * jj + ii] * jj
-            tmpsum += data[sz * jj + ii]
+            intensity = data[sz * jj + ii]
+            x_sum += intensity * ii
+            y_sum += intensity * jj
+            total_intensity += intensity
 
-    x = tmpx / tmpsum
-    y = tmpy / tmpsum
+    if total_intensity > 0:
+        x = x_sum / total_intensity
+        y = y_sum / total_intensity
+    else:
+        x = y = sz / 2  # Default to center if total intensity is zero
 
     return x, y
 
@@ -541,37 +547,42 @@ def kernel_DerivativeGauss2D_sigmaxy(ii, jj, theta, dudt):
     Parameters
     ----------
     ii : int
-        _description_
+        The index for the x coordinate
     jj : int
-        _description_
+        The index for the y coordinate
     theta : float[]
-        _description_
+        Parameters for the Gaussian function
     dudt : float[]
-        _description_
+        Output array to store derivatives
 
     Returns
     -------
     tuple[ndarray, float]
         (dudt, model)
     '''
+    # Compute PSFx and PSFy using kernel_IntGauss1D
     PSFx = kernel_IntGauss1D(ii, theta[0], theta[4])
     PSFy = kernel_IntGauss1D(jj, theta[1], theta[5])
 
+    # Compute derivatives with respect to x and y
     dudt[0], _ = kernel_DerivativeIntGauss1D(
         ii, theta[0], theta[4], theta[2], PSFy, False
     )
     dudt[1], _ = kernel_DerivativeIntGauss1D(
         jj, theta[1], theta[5], theta[2], PSFx, False
     )
+    # Compute derivatives with respect to sigma
     dudt[4], _ = kernel_DerivativeIntGauss1DSigma(
         ii, theta[0], theta[4], theta[2], PSFy, False
     )
     dudt[5], _ = kernel_DerivativeIntGauss1DSigma(
         jj, theta[1], theta[5], theta[2], PSFx, False
     )
+    # Update the output derivatives
     dudt[2] = PSFx * PSFy
     dudt[3] = 1.0
 
+    # Update the model output
     model = theta[3] + theta[2] * PSFx * PSFy
 
     return dudt, model

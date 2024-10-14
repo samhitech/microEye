@@ -6,8 +6,7 @@ from microEye.analysis.fitting.pyfit3Dcspline.CPU.CPUsplineLib import *
 
 
 @nb.njit(cache=True)
-def kernel_MLEFit_LM(
-        d_data, PSFSigma, sz, iterations, d_varim=None):
+def kernel_MLEFit_LM(d_data, PSFSigma, sz, iterations, d_varim=None):
     '''
     brief basic MLE fitting kernel.  No additional parameters are computed.
 
@@ -48,9 +47,7 @@ def kernel_MLEFit_LM(
     oldUpdate[:] = 1e13
 
     newDudt = np.zeros(NV, np.float32)
-    maxJump = np.array(
-        [1.0, 1.0, 100.0, 20.0],
-        np.float32)
+    maxJump = np.array([1.0, 1.0, 100.0, 20.0], np.float32)
 
     newErr = 1e12
     oldErr = 1e13
@@ -72,7 +69,7 @@ def kernel_MLEFit_LM(
     # initial values
     newTheta[0], newTheta[1] = kernel_CenterofMass2D(sz, s_data)
     Nmax, newTheta[3] = kernel_GaussFMaxMin2D(sz, PSFSigma, s_data)
-    newTheta[2] = max(0.0, (Nmax-newTheta[3])*2*pi*PSFSigma*PSFSigma)
+    newTheta[2] = max(0.0, (Nmax - newTheta[3]) * 2 * pi * PSFSigma * PSFSigma)
     newTheta[3] = max(newTheta[3], 0.01)
 
     maxJump[2] = max(newTheta[2], maxJump[2])
@@ -87,34 +84,35 @@ def kernel_MLEFit_LM(
     for ii in range(sz):
         for jj in range(sz):
             newDudt, model = kernel_DerivativeGauss2D(
-                ii, jj, PSFSigma, newTheta, newDudt)
+                ii, jj, PSFSigma, newTheta, newDudt
+            )
             if s_varim is not None:
-                model += s_varim[sz*jj+ii]
-                data = s_data[sz*jj+ii] + s_varim[sz*jj+ii]
+                model += s_varim[sz * jj + ii]
+                data = s_data[sz * jj + ii] + s_varim[sz * jj + ii]
             else:
-                data = s_data[sz*jj+ii]
+                data = s_data[sz * jj + ii]
 
-            if (data > 0):
-                newErr = newErr + 2*((model-data)-data*math.log(model/data))
+            if data > 0:
+                newErr = newErr + 2 * ((model - data) - data * math.log(model / data))
             else:
-                newErr = newErr + 2*model
+                newErr = newErr + 2 * model
                 data = 0
 
-            t1 = 1 - data/model
+            t1 = 1 - data / model
             for ll in range(NV):
                 jacobian[ll] += t1 * newDudt[ll]
 
-            t2 = data/math.pow(model, 2)
+            t2 = data / math.pow(model, 2)
             for ll in range(NV):
                 for mm in range(ll, NV, 1):
-                    hessian[ll*NV + mm] += t2 * newDudt[ll] * newDudt[mm]
-                    hessian[mm*NV + ll] = hessian[ll*NV + mm]
+                    hessian[ll * NV + mm] += t2 * newDudt[ll] * newDudt[mm]
+                    hessian[mm * NV + ll] = hessian[ll * NV + mm]
 
     for kk in range(iterations):  # main iterative loop  # noqa: B007
-        if(abs((newErr-oldErr)/newErr) < TOLERANCE):
+        if abs((newErr - oldErr) / newErr) < TOLERANCE:
             break  # CONVERGED
         else:
-            if(newErr > ACCEPTANCE * oldErr):
+            if newErr > ACCEPTANCE * oldErr:
                 # copy Fitdata
 
                 for i in range(NV):
@@ -122,20 +120,20 @@ def kernel_MLEFit_LM(
                     newUpdate[i] = oldUpdate[i]
                 newLambda = oldLambda
                 newErr = oldErr
-                mu = max((1 + newLambda*SCALE_UP)/(1 + newLambda), 1.3)
+                mu = max((1 + newLambda * SCALE_UP) / (1 + newLambda), 1.3)
                 newLambda = SCALE_UP * newLambda
-            elif(newErr < oldErr and errFlag == 0):
+            elif newErr < oldErr and errFlag == 0:
                 newLambda = SCALE_DOWN * newLambda
                 mu = 1 + newLambda
 
             for i in range(NV):
-                hessian[i*NV + i] = hessian[i*NV + i] * mu
+                hessian[i * NV + i] = hessian[i * NV + i] * mu
 
             L[:] = 0
             U[:] = 0
 
             errFlag = kernel_cholesky(hessian, NV, L, U)
-            if (errFlag == 0):
+            if errFlag == 0:
                 for i in range(NV):
                     oldTheta[i] = newTheta[i]
                     oldUpdate[i] = newUpdate[i]
@@ -146,19 +144,19 @@ def kernel_MLEFit_LM(
 
                 # updateFitParameters
                 for ll in range(NV):
-                    if (newUpdate[ll]/oldUpdate[ll] < -0.5):
+                    if newUpdate[ll] / oldUpdate[ll] < -0.5:
                         maxJump[ll] = maxJump[ll] * 0.5
 
-                    newUpdate[ll] = (
-                        newUpdate[ll] /
-                        (1+math.fabs(newUpdate[ll]/maxJump[ll])))
+                    newUpdate[ll] = newUpdate[ll] / (
+                        1 + math.fabs(newUpdate[ll] / maxJump[ll])
+                    )
                     newTheta[ll] = newTheta[ll] - newUpdate[ll]
 
                 # restrict range
-                newTheta[0] = max(newTheta[0], (float(sz)-1)/2-sz/4.0)
-                newTheta[0] = min(newTheta[0], (float(sz)-1)/2+sz/4.0)
-                newTheta[1] = max(newTheta[1], (float(sz)-1)/2-sz/4.0)
-                newTheta[1] = min(newTheta[1], (float(sz)-1)/2+sz/4.0)
+                newTheta[0] = max(newTheta[0], (float(sz) - 1) / 2 - sz / 4.0)
+                newTheta[0] = min(newTheta[0], (float(sz) - 1) / 2 + sz / 4.0)
+                newTheta[1] = max(newTheta[1], (float(sz) - 1) / 2 - sz / 4.0)
+                newTheta[1] = min(newTheta[1], (float(sz) - 1) / 2 + sz / 4.0)
                 newTheta[2] = max(newTheta[2], 1.0)
                 newTheta[3] = max(newTheta[3], 0.01)
 
@@ -169,33 +167,33 @@ def kernel_MLEFit_LM(
                     for jj in range(sz):
                         # calculating derivatives
                         newDudt, model = kernel_DerivativeGauss2D(
-                            ii, jj, PSFSigma, newTheta, newDudt)
+                            ii, jj, PSFSigma, newTheta, newDudt
+                        )
                         if s_varim is not None:
-                            model += s_varim[sz*jj+ii]
-                            data = s_data[sz*jj+ii] + s_varim[sz*jj+ii]
+                            model += s_varim[sz * jj + ii]
+                            data = s_data[sz * jj + ii] + s_varim[sz * jj + ii]
                         else:
-                            data = s_data[sz*jj+ii]
+                            data = s_data[sz * jj + ii]
 
-                        if (data > 0):
-                            newErr = newErr + \
-                                2*((model-data)-data*math.log(model/data))
+                        if data > 0:
+                            newErr = newErr + 2 * (
+                                (model - data) - data * math.log(model / data)
+                            )
                         else:
                             newErr = newErr + 2 * model
                             data = 0
 
-                        t1 = 1 - data/model
+                        t1 = 1 - data / model
                         for ll in range(NV):
                             jacobian[ll] += t1 * newDudt[ll]
 
-                        t2 = data/math.pow(model, 2)
+                        t2 = data / math.pow(model, 2)
                         for ll in range(NV):
                             for mm in range(ll, NV, 1):
-                                hessian[ll*NV+mm] += \
-                                    t2 * newDudt[ll] * newDudt[mm]
-                                hessian[mm*NV+ll] = hessian[ll*NV+mm]
+                                hessian[ll * NV + mm] += t2 * newDudt[ll] * newDudt[mm]
+                                hessian[mm * NV + ll] = hessian[ll * NV + mm]
             else:
-                mu = max(
-                    (1 + newLambda*SCALE_UP)/(1 + newLambda), 1.3)
+                mu = max((1 + newLambda * SCALE_UP) / (1 + newLambda), 1.3)
                 newLambda = SCALE_UP * newLambda
 
     # output iteration
@@ -206,27 +204,26 @@ def kernel_MLEFit_LM(
     for ii in range(sz):
         for jj in range(sz):
             newDudt, model = kernel_DerivativeGauss2D(
-                ii, jj, PSFSigma, newTheta, newDudt)
+                ii, jj, PSFSigma, newTheta, newDudt
+            )
             if s_varim is not None:
-                model += s_varim[sz*jj+ii]
-                data = s_data[sz*jj+ii] + s_varim[sz*jj+ii]
+                model += s_varim[sz * jj + ii]
+                data = s_data[sz * jj + ii] + s_varim[sz * jj + ii]
             else:
-                data = s_data[sz*jj+ii]
+                data = s_data[sz * jj + ii]
 
             # Building the Fisher Information Matrix
             for kk in range(NV):
                 for ll in range(kk, NV, 1):
-                    M[kk*NV+ll] += newDudt[ll] * newDudt[kk] / model
-                    M[ll*NV+kk] = M[kk*NV+ll]
+                    M[kk * NV + ll] += newDudt[ll] * newDudt[kk] / model
+                    M[ll * NV + kk] = M[kk * NV + ll]
 
             # LogLikelyhood
-            if (model > 0):
-                if (data > 0):
-                    Div += \
-                        data*math.log(model) - \
-                        model-data*math.log(data) + data
+            if model > 0:
+                if data > 0:
+                    Div += data * math.log(model) - model - data * math.log(data) + data
                 else:
-                    Div += - model
+                    Div += -model
 
     # Matrix inverse (CRLB=F^-1) and output assigments
     kernel_MatInvN(M, Minv, Diag, NV)
@@ -240,8 +237,7 @@ def kernel_MLEFit_LM(
 
 
 @nb.njit(cache=True)
-def kernel_MLEFit_LM_Sigma(
-        d_data, PSFSigma, sz, iterations, d_varim=None):
+def kernel_MLEFit_LM_Sigma(d_data, PSFSigma, sz, iterations, d_varim=None):
     '''
     basic MLE fitting kernel.  No additional parameters are computed.
 
@@ -282,9 +278,7 @@ def kernel_MLEFit_LM_Sigma(
     newUpdate[:] = 1e13
     oldUpdate[:] = 1e13
     newDudt = np.zeros(NV, np.float32)
-    maxJump = np.array(
-        [1.0, 1.0, 100.0, 20.0, 0.5],
-        np.float32)
+    maxJump = np.array([1.0, 1.0, 100.0, 20.0, 0.5], np.float32)
 
     newErr = 1e12
     oldErr = 1e13
@@ -306,7 +300,7 @@ def kernel_MLEFit_LM_Sigma(
     # initial values
     newTheta[0], newTheta[1] = kernel_CenterofMass2D(sz, s_data)
     Nmax, newTheta[3] = kernel_GaussFMaxMin2D(sz, PSFSigma, s_data)
-    newTheta[2] = max(0.0, (Nmax-newTheta[3])*2*pi*PSFSigma*PSFSigma)
+    newTheta[2] = max(0.0, (Nmax - newTheta[3]) * 2 * pi * PSFSigma * PSFSigma)
     newTheta[3] = max(newTheta[3], 0.01)
     newTheta[4] = PSFSigma
 
@@ -321,35 +315,34 @@ def kernel_MLEFit_LM_Sigma(
     newErr = 0
     for ii in range(sz):
         for jj in range(sz):
-            newDudt, model = kernel_DerivativeGauss2D_sigma(
-                ii, jj, newTheta, newDudt)
+            newDudt, model = kernel_DerivativeGauss2D_sigma(ii, jj, newTheta, newDudt)
             if s_varim is not None:
-                model += s_varim[sz*jj+ii]
-                data = s_data[sz*jj+ii] + s_varim[sz*jj+ii]
+                model += s_varim[sz * jj + ii]
+                data = s_data[sz * jj + ii] + s_varim[sz * jj + ii]
             else:
-                data = s_data[sz*jj+ii]
+                data = s_data[sz * jj + ii]
 
-            if (data > 0):
-                newErr = newErr + 2*((model-data)-data*math.log(model/data))
+            if data > 0:
+                newErr = newErr + 2 * ((model - data) - data * math.log(model / data))
             else:
-                newErr = newErr + 2*model
+                newErr = newErr + 2 * model
                 data = 0
 
-            t1 = 1 - data/model
+            t1 = 1 - data / model
             for ll in range(NV):
                 jacobian[ll] += t1 * newDudt[ll]
 
-            t2 = data/math.pow(model, 2)
+            t2 = data / math.pow(model, 2)
             for ll in range(NV):
                 for mm in range(ll, NV, 1):
-                    hessian[ll*NV + mm] += t2 * newDudt[ll] * newDudt[mm]
-                    hessian[mm*NV + ll] = hessian[ll*NV + mm]
+                    hessian[ll * NV + mm] += t2 * newDudt[ll] * newDudt[mm]
+                    hessian[mm * NV + ll] = hessian[ll * NV + mm]
 
     for kk in range(iterations):  # main iterative loop  # noqa: B007
-        if(abs((newErr-oldErr)/newErr) < TOLERANCE):
+        if abs((newErr - oldErr) / newErr) < TOLERANCE:
             break  # CONVERGED
         else:
-            if(newErr > ACCEPTANCE * oldErr):
+            if newErr > ACCEPTANCE * oldErr:
                 # copy Fitdata
 
                 for i in range(NV):
@@ -357,20 +350,20 @@ def kernel_MLEFit_LM_Sigma(
                     newUpdate[i] = oldUpdate[i]
                 newLambda = oldLambda
                 newErr = oldErr
-                mu = max((1 + newLambda*SCALE_UP)/(1 + newLambda), 1.3)
+                mu = max((1 + newLambda * SCALE_UP) / (1 + newLambda), 1.3)
                 newLambda = SCALE_UP * newLambda
-            elif(newErr < oldErr and errFlag == 0):
+            elif newErr < oldErr and errFlag == 0:
                 newLambda = SCALE_DOWN * newLambda
                 mu = 1 + newLambda
 
             for i in range(NV):
-                hessian[i*NV + i] = hessian[i*NV + i] * mu
+                hessian[i * NV + i] = hessian[i * NV + i] * mu
 
             L[:] = 0
             U[:] = 0
 
             errFlag = kernel_cholesky(hessian, NV, L, U)
-            if (errFlag == 0):
+            if errFlag == 0:
                 for i in range(NV):
                     oldTheta[i] = newTheta[i]
                     oldUpdate[i] = newUpdate[i]
@@ -381,22 +374,22 @@ def kernel_MLEFit_LM_Sigma(
 
                 # updateFitParameters
                 for ll in range(NV):
-                    if (newUpdate[ll]/oldUpdate[ll] < -0.5):
+                    if newUpdate[ll] / oldUpdate[ll] < -0.5:
                         maxJump[ll] = maxJump[ll] * 0.5
 
-                    newUpdate[ll] = (
-                        newUpdate[ll] /
-                        (1+math.fabs(newUpdate[ll]/maxJump[ll])))
+                    newUpdate[ll] = newUpdate[ll] / (
+                        1 + math.fabs(newUpdate[ll] / maxJump[ll])
+                    )
                     newTheta[ll] = newTheta[ll] - newUpdate[ll]
                 # restrict range
-                newTheta[0] = max(newTheta[0], (float(sz)-1)/2-sz/4.0)
-                newTheta[0] = min(newTheta[0], (float(sz)-1)/2+sz/4.0)
-                newTheta[1] = max(newTheta[1], (float(sz)-1)/2-sz/4.0)
-                newTheta[1] = min(newTheta[1], (float(sz)-1)/2+sz/4.0)
+                newTheta[0] = max(newTheta[0], (float(sz) - 1) / 2 - sz / 4.0)
+                newTheta[0] = min(newTheta[0], (float(sz) - 1) / 2 + sz / 4.0)
+                newTheta[1] = max(newTheta[1], (float(sz) - 1) / 2 - sz / 4.0)
+                newTheta[1] = min(newTheta[1], (float(sz) - 1) / 2 + sz / 4.0)
                 newTheta[2] = max(newTheta[2], 1.0)
                 newTheta[3] = max(newTheta[3], 0.01)
                 newTheta[4] = max(newTheta[4], 0.0)
-                newTheta[4] = min(newTheta[4], sz/2.0)
+                newTheta[4] = min(newTheta[4], sz / 2.0)
 
                 newErr = 0
                 jacobian[:] = 0
@@ -405,33 +398,33 @@ def kernel_MLEFit_LM_Sigma(
                     for jj in range(sz):
                         # calculating derivatives
                         newDudt, model = kernel_DerivativeGauss2D_sigma(
-                            ii, jj, newTheta, newDudt)
+                            ii, jj, newTheta, newDudt
+                        )
                         if s_varim is not None:
-                            model += s_varim[sz*jj+ii]
-                            data = s_data[sz*jj+ii] + s_varim[sz*jj+ii]
+                            model += s_varim[sz * jj + ii]
+                            data = s_data[sz * jj + ii] + s_varim[sz * jj + ii]
                         else:
-                            data = s_data[sz*jj+ii]
+                            data = s_data[sz * jj + ii]
 
-                        if (data > 0):
-                            newErr = newErr + \
-                                2*((model-data)-data*math.log(model/data))
+                        if data > 0:
+                            newErr = newErr + 2 * (
+                                (model - data) - data * math.log(model / data)
+                            )
                         else:
                             newErr = newErr + 2 * model
                             data = 0
 
-                        t1 = 1 - data/model
+                        t1 = 1 - data / model
                         for ll in range(NV):
                             jacobian[ll] += t1 * newDudt[ll]
 
-                        t2 = data/math.pow(model, 2)
+                        t2 = data / math.pow(model, 2)
                         for ll in range(NV):
                             for mm in range(ll, NV, 1):
-                                hessian[ll*NV+mm] += \
-                                    t2 * newDudt[ll] * newDudt[mm]
-                                hessian[mm*NV+ll] = hessian[ll*NV+mm]
+                                hessian[ll * NV + mm] += t2 * newDudt[ll] * newDudt[mm]
+                                hessian[mm * NV + ll] = hessian[ll * NV + mm]
             else:
-                mu = max(
-                    (1 + newLambda*SCALE_UP)/(1 + newLambda), 1.3)
+                mu = max((1 + newLambda * SCALE_UP) / (1 + newLambda), 1.3)
                 newLambda = SCALE_UP * newLambda
 
     # output iteration
@@ -442,28 +435,25 @@ def kernel_MLEFit_LM_Sigma(
     Div = 0.0
     for ii in range(sz):
         for jj in range(sz):
-            newDudt, model = kernel_DerivativeGauss2D_sigma(
-                ii, jj, newTheta, newDudt)
+            newDudt, model = kernel_DerivativeGauss2D_sigma(ii, jj, newTheta, newDudt)
             if s_varim is not None:
-                model += s_varim[sz*jj+ii]
-                data = s_data[sz*jj+ii] + s_varim[sz*jj+ii]
+                model += s_varim[sz * jj + ii]
+                data = s_data[sz * jj + ii] + s_varim[sz * jj + ii]
             else:
-                data = s_data[sz*jj+ii]
+                data = s_data[sz * jj + ii]
 
             # Building the Fisher Information Matrix
             for kk in range(NV):
                 for ll in range(kk, NV, 1):
-                    M[kk*NV+ll] += newDudt[ll] * newDudt[kk] / model
-                    M[ll*NV+kk] = M[kk*NV+ll]
+                    M[kk * NV + ll] += newDudt[ll] * newDudt[kk] / model
+                    M[ll * NV + kk] = M[kk * NV + ll]
 
             # LogLikelyhood
-            if (model > 0):
-                if (data > 0):
-                    Div += \
-                        data*math.log(model) - \
-                        model-data*math.log(data) + data
+            if model > 0:
+                if data > 0:
+                    Div += data * math.log(model) - model - data * math.log(data) + data
                 else:
-                    Div += - model
+                    Div += -model
 
     # Matrix inverse (CRLB=F^-1) and output assigments
     kernel_MatInvN(M, Minv, Diag, NV)
@@ -478,8 +468,19 @@ def kernel_MLEFit_LM_Sigma(
 
 @nb.njit(cache=True)
 def kernel_MLEFit_LM_z(
-        d_data, PSFSigma_x, Ax, Ay, Bx, By, gamma, d,
-        PSFSigma_y, sz, iterations, d_varim=None):
+    d_data,
+    PSFSigma_x,
+    Ax,
+    Ay,
+    Bx,
+    By,
+    gamma,
+    d,
+    PSFSigma_y,
+    sz,
+    iterations,
+    d_varim=None,
+):
     '''
     basic MLE fitting kernel.  No additional parameters are computed.
 
@@ -536,9 +537,7 @@ def kernel_MLEFit_LM_z(
     newUpdate[:] = 1e13
     oldUpdate[:] = 1e13
     newDudt = np.zeros(NV, np.float32)
-    maxJump = np.array(
-        [1.0, 1.0, 100.0, 20.0, 2],
-        np.float32)
+    maxJump = np.array([1.0, 1.0, 100.0, 20.0, 2], np.float32)
 
     newErr = 1e12
     oldErr = 1e13
@@ -558,13 +557,11 @@ def kernel_MLEFit_LM_z(
     s_varim = d_varim
 
     # initial values
-    newTheta[0], newTheta[1] = kernel_CenterofMass2D(
-        sz, s_data)
-    Nmax, newTheta[3] = kernel_GaussFMaxMin2D(
-        sz, PSFSigma_x, s_data)
+    newTheta[0], newTheta[1] = kernel_CenterofMass2D(sz, s_data)
+    Nmax, newTheta[3] = kernel_GaussFMaxMin2D(sz, PSFSigma_x, s_data)
     newTheta[2] = max(
-        0.0,
-        (Nmax-newTheta[3])*2*pi*PSFSigma_x*PSFSigma_y*math.sqrt(2.0))
+        0.0, (Nmax - newTheta[3]) * 2 * pi * PSFSigma_x * PSFSigma_y * math.sqrt(2.0)
+    )
     newTheta[3] = max(newTheta[3], 0.01)
     newTheta[4] = 0
 
@@ -580,35 +577,48 @@ def kernel_MLEFit_LM_z(
     for ii in range(sz):
         for jj in range(sz):
             PSFx, PSFy, newDudt, _, model = kernel_DerivativeIntGauss2Dz(
-                ii, jj, newTheta, PSFSigma_x, PSFSigma_y,
-                Ax, Ay, Bx, By, gamma, d, newDudt, None, False)
+                ii,
+                jj,
+                newTheta,
+                PSFSigma_x,
+                PSFSigma_y,
+                Ax,
+                Ay,
+                Bx,
+                By,
+                gamma,
+                d,
+                newDudt,
+                None,
+                False,
+            )
             if s_varim is not None:
-                model += s_varim[sz*jj+ii]
-                data = s_data[sz*jj+ii] + s_varim[sz*jj+ii]
+                model += s_varim[sz * jj + ii]
+                data = s_data[sz * jj + ii] + s_varim[sz * jj + ii]
             else:
-                data = s_data[sz*jj+ii]
+                data = s_data[sz * jj + ii]
 
-            if (data > 0):
-                newErr = newErr + 2*((model-data)-data*math.log(model/data))
+            if data > 0:
+                newErr = newErr + 2 * ((model - data) - data * math.log(model / data))
             else:
-                newErr = newErr + 2*model
+                newErr = newErr + 2 * model
                 data = 0
 
-            t1 = 1 - data/model
+            t1 = 1 - data / model
             for ll in range(NV):
                 jacobian[ll] += t1 * newDudt[ll]
 
-            t2 = data/math.pow(model, 2)
+            t2 = data / math.pow(model, 2)
             for ll in range(NV):
                 for mm in range(ll, NV, 1):
-                    hessian[ll*NV + mm] += t2 * newDudt[ll] * newDudt[mm]
-                    hessian[mm*NV + ll] = hessian[ll*NV + mm]
+                    hessian[ll * NV + mm] += t2 * newDudt[ll] * newDudt[mm]
+                    hessian[mm * NV + ll] = hessian[ll * NV + mm]
 
     for kk in range(iterations):  # main iterative loop  # noqa: B007
-        if(abs((newErr-oldErr)/newErr) < TOLERANCE):
+        if abs((newErr - oldErr) / newErr) < TOLERANCE:
             break  # CONVERGED
         else:
-            if(newErr > ACCEPTANCE * oldErr):
+            if newErr > ACCEPTANCE * oldErr:
                 # copy Fitdata
 
                 for i in range(NV):
@@ -616,20 +626,20 @@ def kernel_MLEFit_LM_z(
                     newUpdate[i] = oldUpdate[i]
                 newLambda = oldLambda
                 newErr = oldErr
-                mu = max((1 + newLambda*SCALE_UP)/(1 + newLambda), 1.3)
+                mu = max((1 + newLambda * SCALE_UP) / (1 + newLambda), 1.3)
                 newLambda = SCALE_UP * newLambda
-            elif(newErr < oldErr and errFlag == 0):
+            elif newErr < oldErr and errFlag == 0:
                 newLambda = SCALE_DOWN * newLambda
                 mu = 1 + newLambda
 
             for i in range(NV):
-                hessian[i*NV + i] = hessian[i*NV + i] * mu
+                hessian[i * NV + i] = hessian[i * NV + i] * mu
 
             L[:] = 0
             U[:] = 0
 
             errFlag = kernel_cholesky(hessian, NV, L, U)
-            if (errFlag == 0):
+            if errFlag == 0:
                 for i in range(NV):
                     oldTheta[i] = newTheta[i]
                     oldUpdate[i] = newUpdate[i]
@@ -640,18 +650,18 @@ def kernel_MLEFit_LM_z(
 
                 # updateFitParameters
                 for ll in range(NV):
-                    if (newUpdate[ll]/oldUpdate[ll] < -0.5):
+                    if newUpdate[ll] / oldUpdate[ll] < -0.5:
                         maxJump[ll] = maxJump[ll] * 0.5
 
-                    newUpdate[ll] = (
-                        newUpdate[ll] /
-                        (1+math.fabs(newUpdate[ll]/maxJump[ll])))
+                    newUpdate[ll] = newUpdate[ll] / (
+                        1 + math.fabs(newUpdate[ll] / maxJump[ll])
+                    )
                     newTheta[ll] = newTheta[ll] - newUpdate[ll]
                 # restrict range
-                newTheta[0] = max(newTheta[0], (float(sz)-1)/2-sz/4.0)
-                newTheta[0] = min(newTheta[0], (float(sz)-1)/2+sz/4.0)
-                newTheta[1] = max(newTheta[1], (float(sz)-1)/2-sz/4.0)
-                newTheta[1] = min(newTheta[1], (float(sz)-1)/2+sz/4.0)
+                newTheta[0] = max(newTheta[0], (float(sz) - 1) / 2 - sz / 4.0)
+                newTheta[0] = min(newTheta[0], (float(sz) - 1) / 2 + sz / 4.0)
+                newTheta[1] = max(newTheta[1], (float(sz) - 1) / 2 - sz / 4.0)
+                newTheta[1] = min(newTheta[1], (float(sz) - 1) / 2 + sz / 4.0)
                 newTheta[2] = max(newTheta[2], 1.0)
                 newTheta[3] = max(newTheta[3], 0.01)
 
@@ -661,36 +671,47 @@ def kernel_MLEFit_LM_z(
                 for ii in range(sz):
                     for jj in range(sz):
                         # calculating derivatives
-                        PSFx, PSFy, newDudt, _, model = \
-                            kernel_DerivativeIntGauss2Dz(
-                                ii, jj, newTheta, PSFSigma_x, PSFSigma_y,
-                                Ax, Ay, Bx, By, gamma, d, newDudt, None, False)
+                        PSFx, PSFy, newDudt, _, model = kernel_DerivativeIntGauss2Dz(
+                            ii,
+                            jj,
+                            newTheta,
+                            PSFSigma_x,
+                            PSFSigma_y,
+                            Ax,
+                            Ay,
+                            Bx,
+                            By,
+                            gamma,
+                            d,
+                            newDudt,
+                            None,
+                            False,
+                        )
                         if s_varim is not None:
-                            model += s_varim[sz*jj+ii]
-                            data = s_data[sz*jj+ii] + s_varim[sz*jj+ii]
+                            model += s_varim[sz * jj + ii]
+                            data = s_data[sz * jj + ii] + s_varim[sz * jj + ii]
                         else:
-                            data = s_data[sz*jj+ii]
+                            data = s_data[sz * jj + ii]
 
-                        if (data > 0):
-                            newErr = newErr + \
-                                2*((model-data)-data*math.log(model/data))
+                        if data > 0:
+                            newErr = newErr + 2 * (
+                                (model - data) - data * math.log(model / data)
+                            )
                         else:
                             newErr = newErr + 2 * model
                             data = 0
 
-                        t1 = 1 - data/model
+                        t1 = 1 - data / model
                         for ll in range(NV):
                             jacobian[ll] += t1 * newDudt[ll]
 
-                        t2 = data/math.pow(model, 2)
+                        t2 = data / math.pow(model, 2)
                         for ll in range(NV):
                             for mm in range(ll, NV, 1):
-                                hessian[ll*NV+mm] += \
-                                    t2 * newDudt[ll] * newDudt[mm]
-                                hessian[mm*NV+ll] = hessian[ll*NV+mm]
+                                hessian[ll * NV + mm] += t2 * newDudt[ll] * newDudt[mm]
+                                hessian[mm * NV + ll] = hessian[ll * NV + mm]
             else:
-                mu = max(
-                    (1 + newLambda*SCALE_UP)/(1 + newLambda), 1.3)
+                mu = max((1 + newLambda * SCALE_UP) / (1 + newLambda), 1.3)
                 newLambda = SCALE_UP * newLambda
 
     # output iteration
@@ -702,28 +723,39 @@ def kernel_MLEFit_LM_z(
     for ii in range(sz):
         for jj in range(sz):
             PSFx, PSFy, newDudt, _, model = kernel_DerivativeIntGauss2Dz(
-                ii, jj, newTheta, PSFSigma_x, PSFSigma_y,
-                Ax, Ay, Bx, By, gamma, d, newDudt, None, False)
+                ii,
+                jj,
+                newTheta,
+                PSFSigma_x,
+                PSFSigma_y,
+                Ax,
+                Ay,
+                Bx,
+                By,
+                gamma,
+                d,
+                newDudt,
+                None,
+                False,
+            )
             if s_varim is not None:
-                model += s_varim[sz*jj+ii]
-                data = s_data[sz*jj+ii] + s_varim[sz*jj+ii]
+                model += s_varim[sz * jj + ii]
+                data = s_data[sz * jj + ii] + s_varim[sz * jj + ii]
             else:
-                data = s_data[sz*jj+ii]
+                data = s_data[sz * jj + ii]
 
             # Building the Fisher Information Matrix
             for kk in range(NV):
                 for ll in range(kk, NV, 1):
-                    M[kk*NV+ll] += newDudt[ll] * newDudt[kk] / model
-                    M[ll*NV+kk] = M[kk*NV+ll]
+                    M[kk * NV + ll] += newDudt[ll] * newDudt[kk] / model
+                    M[ll * NV + kk] = M[kk * NV + ll]
 
             # LogLikelyhood
-            if (model > 0):
-                if (data > 0):
-                    Div += \
-                        data*math.log(model) - \
-                        model-data*math.log(data) + data
+            if model > 0:
+                if data > 0:
+                    Div += data * math.log(model) - model - data * math.log(data) + data
                 else:
-                    Div += - model
+                    Div += -model
 
     # Matrix inverse (CRLB=F^-1) and output assigments
     kernel_MatInvN(M, Minv, Diag, NV)
@@ -737,8 +769,7 @@ def kernel_MLEFit_LM_z(
 
 
 @nb.njit(cache=True)
-def kernel_MLEFit_LM_sigmaxy(
-        d_data, PSFSigma, sz, iterations, d_varim=None):
+def kernel_MLEFit_LM_sigmaxy(d_data, PSFSigma, sz, iterations, d_varim=None):
     '''
     basic MLE fitting kernel.  No additional parameters are computed.
 
@@ -780,9 +811,7 @@ def kernel_MLEFit_LM_sigmaxy(
     oldUpdate[:] = 1e13
     newDudt = np.zeros(NV, np.float32)
     maxJump = np.zeros(NV, np.float32)
-    maxJump = np.array(
-        [1.0, 1.0, 100.0, 20.0, 0.5, 0.5],
-        np.float32)
+    maxJump = np.array([1.0, 1.0, 100.0, 20.0, 0.5, 0.5], np.float32)
 
     newErr = 1e12
     oldErr = 1e13
@@ -802,13 +831,9 @@ def kernel_MLEFit_LM_sigmaxy(
     s_varim = d_varim
 
     # initial values
-    newTheta[0], newTheta[1] = kernel_CenterofMass2D(
-        sz, s_data)
-    Nmax, newTheta[3] = kernel_GaussFMaxMin2D(
-        sz, PSFSigma, s_data)
-    newTheta[2] = max(
-        0.0,
-        (Nmax-newTheta[3])*2*pi*PSFSigma*PSFSigma)
+    newTheta[0], newTheta[1] = kernel_CenterofMass2D(sz, s_data)
+    Nmax, newTheta[3] = kernel_GaussFMaxMin2D(sz, PSFSigma, s_data)
+    newTheta[2] = max(0.0, (Nmax - newTheta[3]) * 2 * pi * PSFSigma * PSFSigma)
     newTheta[3] = max(newTheta[3], 0.01)
     newTheta[4] = PSFSigma
     newTheta[5] = PSFSigma
@@ -817,155 +842,121 @@ def kernel_MLEFit_LM_sigmaxy(
 
     maxJump[3] = max(newTheta[3], maxJump[3])
 
-    for ii in range(NV):
-        oldTheta[ii] = newTheta[ii]
+    oldTheta[:] = newTheta[:]
 
-    # updateFitValues
-    newErr = 0
-    for ii in range(sz):
-        for jj in range(sz):
-            newDudt, model = kernel_DerivativeGauss2D_sigmaxy(
-                ii,  jj, newTheta, newDudt)
-            if s_varim is not None:
-                model += s_varim[sz*jj+ii]
-                data = s_data[sz*jj+ii] + s_varim[sz*jj+ii]
-            else:
-                data = s_data[sz*jj+ii]
+    for _ in range(iterations):
+        # Compute Jacobian and Hessian
+        newErr = 0
+        jacobian.fill(0)
+        hessian.fill(0)
+        for ii in range(sz):
+            for jj in range(sz):
+                # Compute Jacobian
+                newDudt, model = kernel_DerivativeGauss2D_sigmaxy(
+                    ii, jj, newTheta, newDudt
+                )
+                if s_varim is not None:
+                    model += s_varim[sz * jj + ii]
+                    data = s_data[sz * jj + ii] + s_varim[sz * jj + ii]
+                else:
+                    data = s_data[sz * jj + ii]
 
-            if (data > 0):
-                newErr = newErr + 2*((model-data)-data*math.log(model/data))
-            else:
-                newErr = newErr + 2*model
-                data = 0
+                if data > 0:
+                    newErr += 2 * ((model - data) - data * math.log(model / data))
+                else:
+                    newErr += 2 * model
+                    data = 0
 
-            t1 = 1 - data/model
-            for ll in range(NV):
-                jacobian[ll] += t1 * newDudt[ll]
-
-            t2 = data/math.pow(model, 2)
-            for ll in range(NV):
-                for mm in range(ll, NV, 1):
-                    hessian[ll*NV + mm] += t2 * newDudt[ll] * newDudt[mm]
-                    hessian[mm*NV + ll] = hessian[ll*NV + mm]
-
-    for kk in range(iterations):  # main iterative loop  # noqa: B007
-        if(abs((newErr-oldErr)/newErr) < TOLERANCE):
-            break  # CONVERGED
-        else:
-            if(newErr > ACCEPTANCE * oldErr):
-                # copy Fitdata
-                for i in range(NV):
-                    newTheta[i] = oldTheta[i]
-                    newUpdate[i] = oldUpdate[i]
-                newLambda = oldLambda
-                newErr = oldErr
-                mu = max((1 + newLambda*SCALE_UP)/(1 + newLambda), 1.3)
-                newLambda = SCALE_UP * newLambda
-            elif(newErr < oldErr and errFlag == 0):
-                newLambda = SCALE_DOWN * newLambda
-                mu = 1 + newLambda
-
-            for i in range(NV):
-                hessian[i*NV + i] = hessian[i*NV + i] * mu
-
-            L[:] = 0
-            U[:] = 0
-
-            errFlag = kernel_cholesky(hessian, NV, L, U)
-            if (errFlag == 0):
-                for i in range(NV):
-                    oldTheta[i] = newTheta[i]
-                    oldUpdate[i] = newUpdate[i]
-                oldLambda = newLambda
-                oldErr = newErr
-
-                newUpdate = kernel_luEvaluate(L, U, jacobian, NV, newUpdate)
-
-                # updateFitParameters
+                t1 = 1 - data / model
                 for ll in range(NV):
-                    if (newUpdate[ll]/oldUpdate[ll] < -0.5):
-                        maxJump[ll] = maxJump[ll] * 0.5
+                    jacobian[ll] += t1 * newDudt[ll]
 
-                    newUpdate[ll] = (
-                        newUpdate[ll] /
-                        (1+math.fabs(newUpdate[ll]/maxJump[ll])))
-                    newTheta[ll] = newTheta[ll] - newUpdate[ll]
-                # restrict range
-                newTheta[0] = max(newTheta[0], (float(sz)-1)/2-sz/4.0)
-                newTheta[0] = min(newTheta[0], (float(sz)-1)/2+sz/4.0)
-                newTheta[1] = max(newTheta[1], (float(sz)-1)/2-sz/4.0)
-                newTheta[1] = min(newTheta[1], (float(sz)-1)/2+sz/4.0)
-                newTheta[2] = max(newTheta[2], 1.0)
-                newTheta[3] = max(newTheta[3], 0.01)
-                newTheta[4] = max(newTheta[4], PSFSigma/10.0)
-                newTheta[5] = max(newTheta[5], PSFSigma/10.0)
+                # Compute Hessian
+                t2 = data / math.pow(model, 2)
+                for ll in range(NV):
+                    for mm in range(ll, NV, 1):
+                        hessian[ll * NV + mm] += t2 * newDudt[ll] * newDudt[mm]
+                        hessian[mm * NV + ll] = hessian[ll * NV + mm]
 
-                newErr = 0
-                jacobian[:] = 0
-                hessian[:] = 0
-                for ii in range(sz):
-                    for jj in range(sz):
-                        # calculating derivatives
-                        newDudt, model = kernel_DerivativeGauss2D_sigmaxy(
-                            ii,  jj, newTheta, newDudt)
-                        if s_varim is not None:
-                            model += s_varim[sz*jj+ii]
-                            data = s_data[sz*jj+ii] + s_varim[sz*jj+ii]
-                        else:
-                            data = s_data[sz*jj+ii]
+        # Levenberg-Marquardt algorithm
+        if abs((newErr - oldErr) / newErr) < TOLERANCE:
+            break
+        elif newErr > ACCEPTANCE * oldErr:
+            newTheta[:] = oldTheta[:]
+            newUpdate[:] = oldUpdate[:]
+            newLambda = oldLambda
+            newErr = oldErr
+            mu = max((1 + newLambda * SCALE_UP) / (1 + newLambda), 1.3)
+            newLambda = SCALE_UP * newLambda
+        elif newErr < oldErr and errFlag == 0:
+            newLambda = SCALE_DOWN * newLambda
+            mu = 1 + newLambda
 
-                        if (data > 0):
-                            newErr = newErr + \
-                                2*((model-data)-data*math.log(model/data))
-                        else:
-                            newErr = newErr + 2*model
-                            data = 0
+        for i in range(NV):
+            hessian[i * NV + i] *= mu
 
-                        t1 = 1 - data/model
-                        for ll in range(NV):
-                            jacobian[ll] += t1 * newDudt[ll]
+        L[:] = 0
+        U[:] = 0
 
-                        t2 = data/math.pow(model, 2)
-                        for ll in range(NV):
-                            for mm in range(ll, NV, 1):
-                                hessian[ll*NV+mm] += \
-                                    t2 * newDudt[ll] * newDudt[mm]
-                                hessian[mm*NV+ll] = hessian[ll*NV+mm]
-            else:
-                mu = max(
-                    (1 + newLambda*SCALE_UP)/(1 + newLambda), 1.3)
-                newLambda = SCALE_UP * newLambda
+        errFlag = kernel_cholesky(hessian, NV, L, U)
+        if errFlag == 0:
+            oldTheta[:] = newTheta[:]
+            oldUpdate[:] = newUpdate[:]
+            oldLambda = newLambda
+            oldErr = newErr
 
-    # output iteration
+            newUpdate = kernel_luEvaluate(L, U, jacobian, NV, newUpdate)
 
+            # parameter update
+            for ll in range(NV):
+                if newUpdate[ll] / oldUpdate[ll] < -0.5:
+                    maxJump[ll] *= 0.5
+
+                newUpdate[ll] = newUpdate[ll] / (
+                    1 + math.fabs(newUpdate[ll] / maxJump[ll])
+                )
+                newTheta[ll] -= newUpdate[ll]
+
+            # restrict range
+            newTheta[0] = max(newTheta[0], (float(sz) - 1) / 2 - sz / 4.0)
+            newTheta[0] = min(newTheta[0], (float(sz) - 1) / 2 + sz / 4.0)
+            newTheta[1] = max(newTheta[1], (float(sz) - 1) / 2 - sz / 4.0)
+            newTheta[1] = min(newTheta[1], (float(sz) - 1) / 2 + sz / 4.0)
+            newTheta[2] = max(newTheta[2], 1.0)
+            newTheta[3] = max(newTheta[3], 0.01)
+            newTheta[4] = max(newTheta[4], PSFSigma / 10.0)
+            newTheta[5] = max(newTheta[5], PSFSigma / 10.0)
+
+        else:
+            mu = max((1 + newLambda * SCALE_UP) / (1 + newLambda), 1.3)
+            newLambda = SCALE_UP * newLambda
+
+    # Output iteration count
     d_Parameters[NV] = kk
 
-    # Calculating the CRLB and LogLikelihood
+    # Calculate CRLB and LogLikelihood
     Div = 0.0
     for ii in range(sz):
         for jj in range(sz):
-            newDudt, model = kernel_DerivativeGauss2D_sigmaxy(
-                ii,  jj, newTheta, newDudt)
+            newDudt, model = kernel_DerivativeGauss2D_sigmaxy(ii, jj, newTheta, newDudt)
             if s_varim is not None:
-                model += s_varim[sz*jj+ii]
-                data = s_data[sz*jj+ii] + s_varim[sz*jj+ii]
+                model += s_varim[sz * jj + ii]
+                data = s_data[sz * jj + ii] + s_varim[sz * jj + ii]
             else:
-                data = s_data[sz*jj+ii]
+                data = s_data[sz * jj + ii]
 
             # Building the Fisher Information Matrix
             for kk in range(NV):
                 for ll in range(kk, NV, 1):
-                    M[kk*NV+ll] += newDudt[ll] * newDudt[kk] / model
-                    M[ll*NV+kk] = M[kk*NV+ll]
+                    M[kk * NV + ll] += newDudt[ll] * newDudt[kk] / model
+                    M[ll * NV + kk] = M[kk * NV + ll]
 
-            # LogLikelyhood
-            if (model > 0):
-                if (data > 0):
-                    Div += \
-                        data*math.log(model) - \
-                        model-data*math.log(data) + data
+            # LogLikelihood
+            if model > 0:
+                if data > 0:
+                    Div += data * math.log(model) - model - data * math.log(data) + data
                 else:
-                    Div += - model
+                    Div += -model
 
     # Matrix inverse (CRLB=F^-1) and output assigments
     kernel_MatInvN(M, Minv, Diag, NV)
@@ -980,8 +971,16 @@ def kernel_MLEFit_LM_sigmaxy(
 
 @nb.njit(cache=True)
 def kernel_splineMLEFit_z(
-        d_data, d_coeff, spline_xsize, spline_ysize, spline_zsize, sz,
-        iterations, initZ, d_varim=None):
+    d_data,
+    d_coeff,
+    spline_xsize,
+    spline_ysize,
+    spline_zsize,
+    sz,
+    iterations,
+    initZ,
+    d_varim=None,
+):
     '''
     basic MLE fitting kernel.  No additional parameters are computed.
 
@@ -1034,9 +1033,7 @@ def kernel_splineMLEFit_z(
     newDudt = np.zeros(NV, np.float32)
     newUpdate[:] = 1e13
     oldUpdate[:] = 1e13
-    maxJump = np.array(
-        [1.0, 1.0, 100.0, 20.0, 2],
-        np.float32)
+    maxJump = np.array([1.0, 1.0, 100.0, 20.0, 2], np.float32)
 
     newErr = 1e12
     oldErr = 1e13
@@ -1068,27 +1065,31 @@ def kernel_splineMLEFit_z(
 
     # central pixel of spline model
     newTheta[3] = max(newTheta[3], 0.01)
-    newTheta[2] = \
-        (Nmax-newTheta[3]) / d_coeff[
-            int(spline_zsize/2) * (spline_xsize*spline_ysize) +
-            int(spline_ysize/2) * spline_xsize +
-            int(spline_xsize/2)] * 4
+    newTheta[2] = (
+        (Nmax - newTheta[3])
+        / d_coeff[
+            int(spline_zsize / 2) * (spline_xsize * spline_ysize)
+            + int(spline_ysize / 2) * spline_xsize
+            + int(spline_xsize / 2)
+        ]
+        * 4
+    )
 
     # newTheta[4]=float(spline_zsize)/2;
     newTheta[4] = initZ
 
     maxJump[2] = max(newTheta[2], maxJump[2])
     maxJump[3] = max(newTheta[3], maxJump[3])
-    maxJump[4] = max(spline_zsize/3.0, maxJump[4])
+    maxJump[4] = max(spline_zsize / 3.0, maxJump[4])
 
     for ii in range(NV):
         oldTheta[ii] = newTheta[ii]
 
     # updateFitValues
-    xc = -1.0*((newTheta[0]-float(sz)/2)+0.5)
-    yc = -1.0*((newTheta[1]-float(sz)/2)+0.5)
+    xc = -1.0 * ((newTheta[0] - float(sz) / 2) + 0.5)
+    yc = -1.0 * ((newTheta[1] - float(sz) / 2) + 0.5)
 
-    off = math.floor((float(spline_xsize)+1.0-float(sz))/2)
+    off = math.floor((float(spline_xsize) + 1.0 - float(sz)) / 2)
 
     xstart = math.floor(xc)
     xc = xc - xstart
@@ -1103,63 +1104,74 @@ def kernel_splineMLEFit_z(
     # updateFitValues
     newErr = 0
     delta_f, delta_dxf, delta_dyf, delta_dzf = kernel_computeDelta3D(
-        xc, yc, zc, delta_f, delta_dxf, delta_dyf, delta_dzf)
+        xc, yc, zc, delta_f, delta_dxf, delta_dyf, delta_dzf
+    )
 
     for ii in range(sz):
         for jj in range(sz):
             newDudt, model = kernel_DerivativeSpline(
-                ii + xstart + off, jj + ystart + off, zstart,
-                spline_xsize, spline_ysize, spline_zsize,
-                delta_f, delta_dxf, delta_dyf, delta_dzf,
-                s_coeff, newTheta, newDudt)
+                ii + xstart + off,
+                jj + ystart + off,
+                zstart,
+                spline_xsize,
+                spline_ysize,
+                spline_zsize,
+                delta_f,
+                delta_dxf,
+                delta_dyf,
+                delta_dzf,
+                s_coeff,
+                newTheta,
+                newDudt,
+            )
             if s_varim is not None:
-                model += s_varim[sz*jj+ii]
-                data = s_data[sz*jj+ii] + s_varim[sz*jj+ii]
+                model += s_varim[sz * jj + ii]
+                data = s_data[sz * jj + ii] + s_varim[sz * jj + ii]
             else:
-                data = s_data[sz*jj+ii]
+                data = s_data[sz * jj + ii]
 
-            if (data > 0):
-                newErr = newErr + 2*((model-data)-data*math.log(model/data))
+            if data > 0:
+                newErr = newErr + 2 * ((model - data) - data * math.log(model / data))
             else:
-                newErr = newErr + 2*model
+                newErr = newErr + 2 * model
                 data = 0
 
-            t1 = 1 - data/model
+            t1 = 1 - data / model
             for ll in range(NV):
                 jacobian[ll] += t1 * newDudt[ll]
 
-            t2 = data/math.pow(model, 2)
+            t2 = data / math.pow(model, 2)
             for ll in range(NV):
                 for mm in range(ll, NV, 1):
-                    hessian[ll*NV + mm] += t2 * newDudt[ll] * newDudt[mm]
-                    hessian[mm*NV + ll] = hessian[ll*NV + mm]
+                    hessian[ll * NV + mm] += t2 * newDudt[ll] * newDudt[mm]
+                    hessian[mm * NV + ll] = hessian[ll * NV + mm]
 
     for kk in range(iterations):  # main iterative loop  # noqa: B007
-        if(abs((newErr-oldErr)/newErr) < TOLERANCE):
+        if abs((newErr - oldErr) / newErr) < TOLERANCE:
             break  # CONVERGED
         else:
-            if(newErr > ACCEPTANCE * oldErr):
+            if newErr > ACCEPTANCE * oldErr:
                 # copy Fitdata
                 for i in range(NV):
                     newTheta[i] = oldTheta[i]
                     newUpdate[i] = oldUpdate[i]
                 newLambda = oldLambda
                 newErr = oldErr
-                mu = max((1 + newLambda*SCALE_UP)/(1 + newLambda), 1.3)
+                mu = max((1 + newLambda * SCALE_UP) / (1 + newLambda), 1.3)
                 newLambda = SCALE_UP * newLambda
-            elif(newErr < oldErr and errFlag == 0):
+            elif newErr < oldErr and errFlag == 0:
                 newLambda = SCALE_DOWN * newLambda
                 mu = 1 + newLambda
 
             for i in range(NV):
-                hessian[i*NV + i] = hessian[i*NV + i] * mu
+                hessian[i * NV + i] = hessian[i * NV + i] * mu
 
             L[:] = 0
             U[:] = 0
 
             errFlag = kernel_cholesky(hessian, NV, L, U)
 
-            if (errFlag == 0):
+            if errFlag == 0:
                 for i in range(NV):
                     oldTheta[i] = newTheta[i]
                     oldUpdate[i] = newUpdate[i]
@@ -1170,26 +1182,26 @@ def kernel_splineMLEFit_z(
 
                 # updateFitParameters
                 for ll in range(NV):
-                    if (newUpdate[ll]/oldUpdate[ll] < -0.5):
+                    if newUpdate[ll] / oldUpdate[ll] < -0.5:
                         maxJump[ll] = maxJump[ll] * 0.5
 
-                    newUpdate[ll] = (
-                        newUpdate[ll] /
-                        (1+math.fabs(newUpdate[ll]/maxJump[ll])))
+                    newUpdate[ll] = newUpdate[ll] / (
+                        1 + math.fabs(newUpdate[ll] / maxJump[ll])
+                    )
                     newTheta[ll] = newTheta[ll] - newUpdate[ll]
                 # restrict range
-                newTheta[0] = max(newTheta[0], (float(sz)-1)/2-sz/4.0)
-                newTheta[0] = min(newTheta[0], (float(sz)-1)/2+sz/4.0)
-                newTheta[1] = max(newTheta[1], (float(sz)-1)/2-sz/4.0)
-                newTheta[1] = min(newTheta[1], (float(sz)-1)/2+sz/4.0)
+                newTheta[0] = max(newTheta[0], (float(sz) - 1) / 2 - sz / 4.0)
+                newTheta[0] = min(newTheta[0], (float(sz) - 1) / 2 + sz / 4.0)
+                newTheta[1] = max(newTheta[1], (float(sz) - 1) / 2 - sz / 4.0)
+                newTheta[1] = min(newTheta[1], (float(sz) - 1) / 2 + sz / 4.0)
                 newTheta[2] = max(newTheta[2], 1.0)
                 newTheta[3] = max(newTheta[3], 0.01)
                 newTheta[4] = max(newTheta[4], 0.0)
                 newTheta[4] = min(newTheta[4], float(spline_zsize))
 
                 # updateFitValues
-                xc = -1.0*((newTheta[0]-float(sz)/2)+0.5)
-                yc = -1.0*((newTheta[1]-float(sz)/2)+0.5)
+                xc = -1.0 * ((newTheta[0] - float(sz) / 2) + 0.5)
+                yc = -1.0 * ((newTheta[1] - float(sz) / 2) + 0.5)
 
                 xstart = math.floor(xc)
                 xc = xc - xstart
@@ -1203,44 +1215,53 @@ def kernel_splineMLEFit_z(
                 newErr = 0
                 jacobian[:] = 0
                 hessian[:] = 0
-                delta_f, delta_dxf, delta_dyf, delta_dzf = \
-                    kernel_computeDelta3D(
-                        xc, yc, zc, delta_f, delta_dxf, delta_dyf, delta_dzf)
+                delta_f, delta_dxf, delta_dyf, delta_dzf = kernel_computeDelta3D(
+                    xc, yc, zc, delta_f, delta_dxf, delta_dyf, delta_dzf
+                )
 
                 for ii in range(sz):
                     for jj in range(sz):
                         # calculating derivatives
                         newDudt, model = kernel_DerivativeSpline(
-                            ii + xstart + off, jj + ystart + off, zstart,
-                            spline_xsize, spline_ysize, spline_zsize,
-                            delta_f, delta_dxf, delta_dyf, delta_dzf,
-                            s_coeff, newTheta, newDudt)
+                            ii + xstart + off,
+                            jj + ystart + off,
+                            zstart,
+                            spline_xsize,
+                            spline_ysize,
+                            spline_zsize,
+                            delta_f,
+                            delta_dxf,
+                            delta_dyf,
+                            delta_dzf,
+                            s_coeff,
+                            newTheta,
+                            newDudt,
+                        )
                         if s_varim is not None:
-                            model += s_varim[sz*jj+ii]
-                            data = s_data[sz*jj+ii] + s_varim[sz*jj+ii]
+                            model += s_varim[sz * jj + ii]
+                            data = s_data[sz * jj + ii] + s_varim[sz * jj + ii]
                         else:
-                            data = s_data[sz*jj+ii]
+                            data = s_data[sz * jj + ii]
 
-                        if (data > 0):
-                            newErr = newErr + \
-                                2*((model-data)-data*math.log(model/data))
+                        if data > 0:
+                            newErr = newErr + 2 * (
+                                (model - data) - data * math.log(model / data)
+                            )
                         else:
-                            newErr = newErr + 2*model
+                            newErr = newErr + 2 * model
                             data = 0
 
-                        t1 = 1 - data/model
+                        t1 = 1 - data / model
                         for ll in range(NV):
                             jacobian[ll] += t1 * newDudt[ll]
 
-                        t2 = data/math.pow(model, 2)
+                        t2 = data / math.pow(model, 2)
                         for ll in range(NV):
                             for mm in range(ll, NV, 1):
-                                hessian[ll*NV+mm] += \
-                                    t2 * newDudt[ll] * newDudt[mm]
-                                hessian[mm*NV+ll] = hessian[ll*NV+mm]
+                                hessian[ll * NV + mm] += t2 * newDudt[ll] * newDudt[mm]
+                                hessian[mm * NV + ll] = hessian[ll * NV + mm]
             else:
-                mu = max(
-                    (1 + newLambda*SCALE_UP)/(1 + newLambda), 1.3)
+                mu = max((1 + newLambda * SCALE_UP) / (1 + newLambda), 1.3)
                 newLambda = SCALE_UP * newLambda
 
     # output iteration
@@ -1250,8 +1271,8 @@ def kernel_splineMLEFit_z(
     # Calculating the CRLB and LogLikelihood
     Div = 0.0
 
-    xc = -1.0*((newTheta[0]-float(sz)/2)+0.5)
-    yc = -1.0*((newTheta[1]-float(sz)/2)+0.5)
+    xc = -1.0 * ((newTheta[0] - float(sz) / 2) + 0.5)
+    yc = -1.0 * ((newTheta[1] - float(sz) / 2) + 0.5)
 
     # off = (float(spline_xsize)+1.0-2*float(sz))/2;
 
@@ -1265,35 +1286,44 @@ def kernel_splineMLEFit_z(
     zc = newTheta[4] - zstart
 
     delta_f, delta_dxf, delta_dyf, delta_dzf = kernel_computeDelta3D(
-        xc, yc, zc, delta_f, delta_dxf, delta_dyf, delta_dzf)
+        xc, yc, zc, delta_f, delta_dxf, delta_dyf, delta_dzf
+    )
 
     for ii in range(sz):
         for jj in range(sz):
             newDudt, model = kernel_DerivativeSpline(
-                ii + xstart + off, jj + ystart + off, zstart,
-                spline_xsize, spline_ysize, spline_zsize,
-                delta_f, delta_dxf, delta_dyf, delta_dzf,
-                s_coeff, newTheta, newDudt)
+                ii + xstart + off,
+                jj + ystart + off,
+                zstart,
+                spline_xsize,
+                spline_ysize,
+                spline_zsize,
+                delta_f,
+                delta_dxf,
+                delta_dyf,
+                delta_dzf,
+                s_coeff,
+                newTheta,
+                newDudt,
+            )
             if s_varim is not None:
-                model += s_varim[sz*jj+ii]
-                data = s_data[sz*jj+ii] + s_varim[sz*jj+ii]
+                model += s_varim[sz * jj + ii]
+                data = s_data[sz * jj + ii] + s_varim[sz * jj + ii]
             else:
-                data = s_data[sz*jj+ii]
+                data = s_data[sz * jj + ii]
 
             # Building the Fisher Information Matrix
             for kk in range(NV):
                 for ll in range(kk, NV, 1):
-                    M[kk*NV+ll] += newDudt[ll] * newDudt[kk] / model
-                    M[ll*NV+kk] = M[kk*NV+ll]
+                    M[kk * NV + ll] += newDudt[ll] * newDudt[kk] / model
+                    M[ll * NV + kk] = M[kk * NV + ll]
 
             # LogLikelyhood
-            if (model > 0):
-                if (data > 0):
-                    Div += \
-                        data*math.log(model) - \
-                        model-data*math.log(data) + data
+            if model > 0:
+                if data > 0:
+                    Div += data * math.log(model) - model - data * math.log(data) + data
                 else:
-                    Div += - model
+                    Div += -model
 
     # Matrix inverse (CRLB=F^-1) and output assigments
     kernel_MatInvN(M, Minv, Diag, NV)

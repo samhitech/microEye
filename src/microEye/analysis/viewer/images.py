@@ -23,7 +23,7 @@ else:
 from microEye.analysis.checklist_dialog import ChecklistDialog
 from microEye.analysis.cmosMaps import cmosMaps
 from microEye.analysis.filters import BandpassFilter, TemporalMedianFilter
-from microEye.analysis.fitting import pyfit3Dcspline
+from microEye.analysis.fitting import psf, pyfit3Dcspline
 from microEye.analysis.fitting.fit import *
 from microEye.analysis.fitting.phasor_fit import phasor_fit
 from microEye.analysis.fitting.results import (
@@ -32,7 +32,7 @@ from microEye.analysis.fitting.results import (
     ResultsUnits,
 )
 from microEye.analysis.tools.kymograms import KymogramWidget
-from microEye.analysis.viewer.image_options_widget import ImagePrefitWidget, Parameters
+from microEye.analysis.viewer.image_options_widget import FittingOptions, Parameters
 from microEye.analysis.viewer.layers_widget import ImageParamsWidget
 from microEye.qt import (
     QDateTime,
@@ -139,11 +139,12 @@ class StackView(QtWidgets.QWidget):
         self.roi.sigRegionChanged.connect(self.region_changed)
         self.roi.sigRegionChangeFinished.connect(self.slider_changed)
 
-        self.image_prefit_widget.localizeData.connect(self.localize)
-        self.image_prefit_widget.saveCropped.connect(self.save_cropped_img)
-        self.image_prefit_widget.roiEnabled.connect(self.change_roi_visibility)
-        self.image_prefit_widget.roiChanged.connect(self.roi_changed)
-        self.image_prefit_widget.paramsChanged.connect(self.slider_changed)
+        self.fitting_options_widget.localizeData.connect(self.localize)
+        self.fitting_options_widget.extractPSF.connect(self.extract_psf)
+        self.fitting_options_widget.saveCropped.connect(self.save_cropped_img)
+        self.fitting_options_widget.roiEnabled.connect(self.change_roi_visibility)
+        self.fitting_options_widget.roiChanged.connect(self.roi_changed)
+        self.fitting_options_widget.paramsChanged.connect(self.slider_changed)
 
         self.frames_slider.valueChanged.connect(self.slider_changed)
         self.z_slider.valueChanged.connect(self.slider_changed)
@@ -168,7 +169,7 @@ class StackView(QtWidgets.QWidget):
         self.empty_alpha = np.zeros(
             self.stack_handler.shape[-2:] + (4,), dtype=np.uint8
         )
-        self.empty_image[0, 0] = 255
+        # self.empty_image[0, 0] = 255
         self.image_items: list[tuple[pg.ImageItem, np.ndarray]] = []
         self.histogram_items: list[pg.HistogramLUTItem] = []
 
@@ -243,7 +244,7 @@ class StackView(QtWidgets.QWidget):
             self.image_control_layout.addRow(self.z_label, self.z_slider)
         self.image_control_layout.addRow(self.histogram)
 
-        self.image_prefit_widget = ImagePrefitWidget(
+        self.fitting_options_widget = FittingOptions(
             shape=self.stack_handler.shapeTCZYX()[-2:]
         )
 
@@ -264,7 +265,7 @@ class StackView(QtWidgets.QWidget):
         layout_add_elements(
             self.prefit_options_layout,
             self.image_control_layout,
-            self.image_prefit_widget,
+            self.fitting_options_widget,
         )
         self.prefit_options_layout.addStretch()
 
@@ -274,7 +275,7 @@ class StackView(QtWidgets.QWidget):
         '''
         Get a parameter by name from the cache of image_prefit_widget.
         '''
-        return self.image_prefit_widget.get_param(param_name)
+        return self.fitting_options_widget.get_param(param_name)
 
     @Slot()
     def save_cropped_img(self):
@@ -412,7 +413,7 @@ class StackView(QtWidgets.QWidget):
         if self.get_param(Parameters.ENABLE_ROI).value():
             origin = self.roi.pos()  # ROI (x,y)
             dim = self.roi.size()  # ROI (w,h)
-            return origin, dim
+            return (round(origin[0]), round(origin[1])), (int(dim[0]), int(dim[1]))
         else:
             return None
 
@@ -448,7 +449,7 @@ class StackView(QtWidgets.QWidget):
     def region_changed(self):
         x, y = self.roi.pos()
         w, h = self.roi.size()
-        self.image_prefit_widget.set_roi(x, y, w, h)
+        self.fitting_options_widget.set_roi(x, y, w, h)
 
     @Slot()
     def change_roi_visibility(self):
@@ -566,7 +567,7 @@ class StackView(QtWidgets.QWidget):
             img = image._view
 
         # Apply bandpass filter
-        img = self.image_prefit_widget.get_image_filter().run(img)
+        img = self.fitting_options_widget.get_image_filter().run(img)
 
         # Threshold the image
         _, th_img = cv2.threshold(
@@ -595,7 +596,7 @@ class StackView(QtWidgets.QWidget):
     def detect_and_display_keypoints(self, th_img, img, origin):
         # Detect blobs
         points, im_with_keypoints = (
-            self.image_prefit_widget.get_detector().find_peaks_preview(th_img, img)
+            self.fitting_options_widget.get_detector().find_peaks_preview(th_img, img)
         )
 
         # Show keypoints
@@ -611,7 +612,7 @@ class StackView(QtWidgets.QWidget):
 
     def fit_keypoints(self, image, varim, points):
         # method
-        method = self.image_prefit_widget.get_fitting_method()
+        method = self.fitting_options_widget.get_fitting_method()
 
         if method == FittingMethod._2D_Phasor_CPU:
             sz = self.get_param(Parameters.ROI_SIZE).value()
@@ -641,17 +642,19 @@ class StackView(QtWidgets.QWidget):
                 )
             Params = None
 
+            PSF_param = np.array([self.get_param(Parameters.INITIAL_SIGMA).value()])
+
             if method == FittingMethod._2D_Gauss_MLE_fixed_sigma:
                 Params, CRLBs, LogLikelihood = pyfit3Dcspline.CPUmleFit_LM(
-                    rois, 1, np.array([1]), varims, 0
+                    rois, 1, PSF_param, varims, 0
                 )
             elif method == FittingMethod._2D_Gauss_MLE_free_sigma:
                 Params, CRLBs, LogLikelihood = pyfit3Dcspline.CPUmleFit_LM(
-                    rois, 2, np.array([1]), varims, 0
+                    rois, 2, PSF_param, varims, 0
                 )
             elif method == FittingMethod._2D_Gauss_MLE_elliptical_sigma:
                 Params, CRLBs, LogLikelihood = pyfit3Dcspline.CPUmleFit_LM(
-                    rois, 4, np.array([1]), varims, 0
+                    rois, 4, PSF_param, varims, 0
                 )
             elif method == FittingMethod._3D_Gauss_MLE_cspline_sigma:
                 Params, CRLBs, LogLikelihood = pyfit3Dcspline.CPUmleFit_LM(
@@ -697,6 +700,78 @@ class StackView(QtWidgets.QWidget):
             self.image_items[-1][0].setImage(alpha, autoLevels=False)
 
     @Slot()
+    def extract_psf(self):
+        '''Initiates the PSF extraction main thread worker.'''
+        if self.stack_handler is None:
+            return
+
+        filename, _ = getSaveFileName(
+            self,
+            'Save PSF',
+            filter='PSF HDF5 files (*.psf.h5)',
+            directory=os.path.dirname(self.path),
+        )
+
+        if len(filename) > 0:
+
+            def done(res):
+                self.get_param(Parameters.LOCALIZE).setOpts(enabled=True)
+                self.get_param(Parameters.EXTRACT_PSF).setOpts(enabled=True)
+                if res is not None:
+                    self.localizedData.emit(filename)
+
+            print('\nPSF Extraction Protocol:')
+            # Any other args, kwargs are passed to the run function
+            self.worker = QThreadWorker(self.extraction_protocol, filename)
+            self.worker.signals.result.connect(done)
+
+            # Execute
+            self.get_param(Parameters.LOCALIZE).setOpts(enabled=False)
+            self.get_param(Parameters.EXTRACT_PSF).setOpts(enabled=False)
+            self._threadpool.start(self.worker)
+
+    def extraction_protocol(self, filename: str, **kwargs):
+        method = self.fitting_options_widget.get_fitting_method()
+        frames_list = None
+        params = None
+        crlbs = None
+        loglike = None
+
+        if (
+            method == FittingMethod._2D_Phasor_CPU
+            or not cuda.is_available()
+            or not self.get_param(Parameters.LOCALIZE_GPU).value()
+        ):
+            print('\nCPU Fit')
+            # Any other args, kwargs are passed to the run function
+            frames_list, params, crlbs, loglike = self.localizeStackCPU()
+        else:
+            print('\nGPU Fit')
+            # Any other args, kwargs are passed to the run function
+            frames_list, params, crlbs, loglike = self.localizeStackGPU()
+
+        print('\nPSF Extraction:')
+        results = psf.get_psf_rois(
+            self.stack_handler,
+            frames_list,
+            params,
+            crlbs,
+            loglike,
+            method,
+            self.get_param(Parameters.PIXEL_SIZE).value(),
+            self.get_param(Parameters.PSF_ZSTEP).value(),
+            self.get_param(Parameters.ROI_SIZE).value(),
+            self.get_param(Parameters.PSF_UPSAMPLE).value(),
+            self.get_roi_info(),
+            self.get_param(Parameters.Z0_ENABLED).value(),
+            self.get_param(Parameters.Z0_METHOD).value(),
+        )
+
+        results.save_hdf(filename)
+
+        return results
+
+    @Slot()
     def localize(self):
         '''Initiates the localization main thread worker.'''
         if self.stack_handler is None:
@@ -714,10 +789,11 @@ class StackView(QtWidgets.QWidget):
 
         if len(filename) > 0:
             self.export_metadata_to_file(filename)
-            method = self.image_prefit_widget.get_fitting_method()
+            method = self.fitting_options_widget.get_fitting_method()
 
             def done(res):
                 self.get_param(Parameters.LOCALIZE).setOpts(enabled=True)
+                self.get_param(Parameters.EXTRACT_PSF).setOpts(enabled=True)
                 if res is not None:
                     self.fittingResults.extend(res)
                     self.export_loc(filename)
@@ -730,26 +806,25 @@ class StackView(QtWidgets.QWidget):
             ):
                 print('\nCPU Fit')
                 # Any other args, kwargs are passed to the run function
-                self.worker = QThreadWorker(self.localizeStackCPU, filename)
+                self.worker = QThreadWorker(self.localizeStackCPU)
                 self.worker.signals.result.connect(done)
-                # Execute
-                self.get_param(Parameters.LOCALIZE).setOpts(enabled=False)
-                self._threadpool.start(self.worker)
             else:
                 print('\nGPU Fit')
                 # Any other args, kwargs are passed to the run function
                 self.worker = QThreadWorker(self.localizeStackGPU)
                 self.worker.signals.result.connect(done)
-                # Execute
-                self.get_param(Parameters.LOCALIZE).setOpts(enabled=False)
-                self._threadpool.start(self.worker)
+
+            # Execute
+            self.get_param(Parameters.LOCALIZE).setOpts(enabled=False)
+            self.get_param(Parameters.EXTRACT_PSF).setOpts(enabled=False)
+            self._threadpool.start(self.worker)
 
     def _initialize_parameters(self):
         '''
         Common method to initialize parameters, filters, and detectors.
         '''
         # method
-        method = self.image_prefit_widget.get_fitting_method()
+        method = self.fitting_options_widget.get_fitting_method()
 
         # new instance of FittingResults
         self.fittingResults = FittingResults(
@@ -759,7 +834,7 @@ class StackView(QtWidgets.QWidget):
         )
 
         # Filters + Blob detector params
-        filter_obj = self.image_prefit_widget.get_image_filter()
+        filter_obj = self.fitting_options_widget.get_image_filter()
 
         tm_enabled = self.get_param(Parameters.TM_FILTER_ENABLED).value()
 
@@ -769,7 +844,7 @@ class StackView(QtWidgets.QWidget):
             else 0
         )
 
-        detector = self.image_prefit_widget.get_detector()
+        detector = self.fitting_options_widget.get_detector()
 
         # ROI
         roi_info = self.get_roi_info()
@@ -793,7 +868,7 @@ class StackView(QtWidgets.QWidget):
         max_threshold = self.get_param(Parameters.RELATIVE_THRESHOLD_MAX).value()
         roi_size = self.get_param(Parameters.ROI_SIZE).value()
 
-        PSFparam = np.array([1.5])
+        PSFparam = np.array([self.get_param(Parameters.INITIAL_SIGMA).value()])
 
         return {
             'method': method,
@@ -811,13 +886,9 @@ class StackView(QtWidgets.QWidget):
             'detector': detector,
         }
 
-    def localizeStackCPU(self, filename: str, **kwargs):
-        '''CPU Localization main thread worker function.
-
-        Parameters
-        ----------
-        filename : str
-            filename where the fitting results would be saved.
+    def localizeStackCPU(self, **kwargs):
+        '''
+        CPU Localization main thread worker function.
         '''
         options = self._initialize_parameters()
 
@@ -961,7 +1032,7 @@ class StackView(QtWidgets.QWidget):
         self.thread_done += 1
 
     def get_protocol_metadata(self, path):
-        state = self.image_prefit_widget.param_tree.saveState(filter='user')
+        state = self.fitting_options_widget.param_tree.saveState(filter='user')
         metadata = {
             'images': self.path,
             'localizations file': path,
@@ -979,7 +1050,7 @@ class StackView(QtWidgets.QWidget):
 
     def set_protocol_from_metadata(self, metadata: dict):
         others = metadata.pop('Others', None)
-        self.image_prefit_widget.param_tree.restoreState(metadata)
+        self.fitting_options_widget.param_tree.restoreState(metadata)
         # Set intensity scaling
         lr_range = others.get('intensity range', None)
         if lr_range:
@@ -1032,6 +1103,7 @@ class StackView(QtWidgets.QWidget):
         if (
             self.get_param(Parameters.SAVE_CROPPED_IMAGE).opts['enabled']
             and self.get_param(Parameters.LOCALIZE).opts['enabled']
+            and self.get_param(Parameters.EXTRACT_PSF).opts['enabled']
         ):
             # Ask the user if they really want to close the widget
             reply = QtWidgets.QMessageBox.question(
@@ -1077,7 +1149,9 @@ class StackView(QtWidgets.QWidget):
         if os.path.isdir(path) and not path.endswith('.zarr'):
             if not mask_pattern:
                 raise ValueError('No mask pattern provided for a directory path')
-            return TiffSeqHandler(tf.TiffSequence(f'{path}/{mask_pattern}'))
+            return TiffSeqHandler(
+                tf.TiffSequence(f'{path}/{mask_pattern}')
+            )
         elif os.path.isdir(path) and path.endswith('.zarr'):
             return ZarrImageSequence(path)
         elif os.path.isfile(path) and (path.endswith('.tif') or path.endswith('.tiff')):

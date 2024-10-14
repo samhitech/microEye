@@ -413,9 +413,9 @@ def fit_points(
     tuple[np.ndarray, Optional[np.ndarray], Optional[np.ndarray]]
         Fitted parameters, CRLBs, and log-likelihood values.
     '''
-    method = options.get('method', FittingMethod._2D_Phasor_CPU)
+    method : FittingMethod = options.get('method', FittingMethod._2D_Phasor_CPU)
     roi_size = options.get('roi_size', 13)
-    PSFparam = options.get('PSFparam', np.array([1.5]))
+    PSFparam = options.get('PSFparam', np.array([1]))
 
     if method == FittingMethod._2D_Phasor_CPU:
         params = phasor_fit(image, points, roi_size=roi_size)
@@ -427,12 +427,7 @@ def fit_points(
     else:
         rois, varims, coords = get_roi_list_CMOS(image, varim, points, roi_size)
 
-    fit_type = {
-        FittingMethod._2D_Gauss_MLE_fixed_sigma: 1,
-        FittingMethod._2D_Gauss_MLE_free_sigma: 2,
-        FittingMethod._2D_Gauss_MLE_elliptical_sigma: 4,
-        FittingMethod._3D_Gauss_MLE_cspline_sigma: 5,
-    }.get(method, 1)
+    fit_type = method.value
 
     params, crlbs, loglike = CPUmleFit_LM(rois, fit_type, PSFparam, varims, 0)
     params[:, :2] += coords

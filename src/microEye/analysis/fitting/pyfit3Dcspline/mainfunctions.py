@@ -364,7 +364,7 @@ def CPUmleFit_LM(
     PSFparam: np.ndarray,
     varim: np.ndarray,
     initZ: float,
-    iterations: int = 30,
+    iterations: int = 60,
 ):
     '''
     CPU Fit

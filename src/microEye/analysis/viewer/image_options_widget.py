@@ -16,16 +16,6 @@ from microEye.analysis.fitting.results import FittingMethod
 from microEye.qt import QApplication, QtWidgets, Signal, Slot
 from microEye.utils import Tree
 
-FITTING_METHODS = {
-    '2D Phasor-Fit (CPU)': FittingMethod._2D_Phasor_CPU,
-    '2D MLE Gauss-Fit free sigma (GPU/CPU)': \
-        FittingMethod._2D_Gauss_MLE_free_sigma,
-    '2D MLE Gauss-Fit elliptical sigma (GPU/CPU)': \
-        FittingMethod._2D_Gauss_MLE_elliptical_sigma,
-    '3D MLE cSpline (GPU/CPU)': \
-        FittingMethod._3D_Gauss_MLE_cspline_sigma
-}
-
 DETECTORS = {'OpenCV Blob Detector': CV_BlobDetector}
 
 FILTERS = {
@@ -60,22 +50,33 @@ class Parameters(Enum):
     FITTING_METHOD = 'Localization.Fitting Method'
     ROI_SIZE = 'Localization.ROI Size'
     PIXEL_SIZE = 'Localization.Pixel-size'
+    INITIAL_SIGMA = 'Localization.Initial Sigma'
     LOCALIZE_GPU = 'Localization.GPU'
     LOCALIZE = 'Localization.Localize'
+    FIELD_DEPENDENCY = 'PSF.Field Dependency'
+    FIELD_GRID_SIZE = 'PSF.Field Dependency.Grid Size'
+    FIELD_ENABLED = 'PSF.Field Dependency.Enabled'
+    ZERO_PLANE = 'PSF.Zero Plane'
+    Z0_ENABLED = 'PSF.Zero Plane.Enabled'
+    Z0_METHOD = 'PSF.Zero Plane.Method'
+    PSF_ZSTEP = 'PSF.Z Step'
+    PSF_UPSAMPLE = 'PSF.Upsample'
+    EXTRACT_PSF = 'PSF.Extract'
     EXPORT_STATE = 'Settings.Export'
     IMPORT_STATE = 'Settings.Import'
 
 
-class ImagePrefitWidget(Tree):
+class FittingOptions(Tree):
     saveCropped = Signal()
     localizeData = Signal()
+    extractPSF = Signal()
     paramsChanged = Signal()
     roiEnabled = Signal()
     roiChanged = Signal(tuple)
 
     DETECTORS = list(DETECTORS.keys())
     FILTERS = list(FILTERS.keys())
-    FITTING_METHODS = list(FITTING_METHODS.keys())
+    FITTING_METHODS = FittingMethod.get_strings()
     BANDPASS_TYPES = BANDPASS_TYPES.values()
 
     def __init__(
@@ -167,6 +168,7 @@ class ImagePrefitWidget(Tree):
                         'type': 'list',
                         'limits': self.FILTERS,
                         'value': self.FILTERS[0],
+                        'tip': 'Select the type of filter to apply',
                     },
                     {
                         'name': self.FILTERS[0],
@@ -179,7 +181,7 @@ class ImagePrefitWidget(Tree):
                                 'limits': [0.0, 100.0],
                                 'step': 0.1,
                                 'decimals': 2,
-                                'tip': '\u03c3 min',
+                                'tip': 'Standard deviation (\u03c3) min for the filter',
                             },
                             {
                                 'name': 'Factor',
@@ -188,7 +190,7 @@ class ImagePrefitWidget(Tree):
                                 'limits': [0.0, 100.0],
                                 'step': 0.1,
                                 'decimals': 2,
-                                'tip': '\u03c3 max/\u03c3 min',
+                                'tip': 'Ratio of max \u03c3 to min \u03c3.',
                             },
                         ],
                     },
@@ -201,6 +203,7 @@ class ImagePrefitWidget(Tree):
                                 'type': 'list',
                                 'limits': self.BANDPASS_TYPES,
                                 'value': self.BANDPASS_TYPES[0],
+                                'tip': 'Select the type of bandpass filter',
                             },
                             {
                                 'name': 'Center',
@@ -209,7 +212,7 @@ class ImagePrefitWidget(Tree):
                                 'limits': [0.0, 2096.0],
                                 'step': 0.5,
                                 'decimals': 2,
-                                'tip': 'The center of the band in pixels.',
+                                'tip': 'Center frequency in pixels.',
                             },
                             {
                                 'name': 'Width',
@@ -220,7 +223,12 @@ class ImagePrefitWidget(Tree):
                                 'decimals': 2,
                                 'tip': 'The width of the band in pixels',
                             },
-                            {'name': 'Show Filter', 'type': 'bool', 'value': False},
+                            {
+                                'name': 'Show Filter',
+                                'type': 'bool',
+                                'value': False,
+                                'tip': 'Toggle to show or hide the filter',
+                            },
                         ],
                     },
                 ],
@@ -246,6 +254,7 @@ class ImagePrefitWidget(Tree):
                                 'limits': [0.0, 1000.0],
                                 'step': 0.1,
                                 'decimals': 2,
+                                'tip': 'Minimum area of the detected object.',
                             },
                             {
                                 'name': 'Max Area',
@@ -254,6 +263,7 @@ class ImagePrefitWidget(Tree):
                                 'limits': [0.0, 1000.0],
                                 'step': 0.1,
                                 'decimals': 2,
+                                'tip': 'Maximum area of the detected object.',
                             },
                         ],
                     },
@@ -268,6 +278,7 @@ class ImagePrefitWidget(Tree):
                                 'limits': [0.0, 1.0],
                                 'step': 0.01,
                                 'decimals': 3,
+                                'tip': 'Minimum relative threshold for detection.',
                             },
                             {
                                 'name': 'max',
@@ -276,6 +287,7 @@ class ImagePrefitWidget(Tree):
                                 'limits': [0.0, 1.0],
                                 'step': 0.01,
                                 'decimals': 3,
+                                'tip': 'Maximum relative threshold for detection.',
                             },
                         ],
                     },
@@ -295,7 +307,7 @@ class ImagePrefitWidget(Tree):
                         'name': 'GPU',
                         'type': 'bool',
                         'value': True,
-                        'tip': 'Try GPU-accelerated fitting if possible.',
+                        'tip': 'Try GPU-accelerated fitting, if available.',
                     },
                     {
                         'name': 'ROI Size',
@@ -304,6 +316,7 @@ class ImagePrefitWidget(Tree):
                         'limits': [7, 201],
                         'step': 2,
                         'suffix': 'pixel',
+                        'tip': 'Size of the fitting box in pixels.',
                     },
                     {
                         'name': 'Pixel-size',
@@ -313,16 +326,113 @@ class ImagePrefitWidget(Tree):
                         'step': 1,
                         'decimals': 2,
                         'suffix': 'nm',
+                        'tip': 'Size of a pixel in nanometers.',
+                    },
+                    {
+                        'name': 'Initial Sigma',
+                        'type': 'float',
+                        'value': 1.0,
+                        'limits': [0.4, 10],
+                        'step': 0.1,
+                        'decimals': 3,
+                        'suffix': 'pixel',
+                        'tip': 'Initial sigma for fitting.',
                     },
                     {'name': 'Localize', 'type': 'action'},
+                ],
+            },
+            {
+                'name': 'PSF',
+                'type': 'group',
+                'children': [
+                    {
+                        'name': 'Field Dependency',
+                        'type': 'group',
+                        'children': [
+                            {
+                                'name': 'Enabled',
+                                'type': 'bool',
+                                'value': False,
+                                'tip': 'Toggle to enable or disable this option',
+                            },
+                            {
+                                'name': 'Grid Size',
+                                'type': 'int',
+                                'value': 3,
+                                'limits': [3, 15],
+                                'step': 1,
+                                'suffix': 'pixel',
+                                'tip': 'Size of the grid for field dependency.',
+                            },
+                        ],
+                    },
+                    {
+                        'name': 'Zero Plane',
+                        'type': 'group',
+                        'children': [
+                            {
+                                'name': 'Enabled',
+                                'type': 'bool',
+                                'value': False,
+                                'tip': 'Toggle to enable or disable this option',
+                            },
+                            {
+                                'name': 'Method',
+                                'type': 'list',
+                                'limits': [
+                                    'All',
+                                    'Intensity',
+                                    'Min Sigma',
+                                    'Min Sum Sigma',
+                                ],
+                                'value': 'All',
+                                'tip': 'Select the method to determine the zero plane.',
+                            },
+                        ],
+                        'tip': (
+                            'If checked, the algorithm searches for Z=0 and ROIs are'
+                            + ' extracted up and down; otherwise, they are extracted'
+                            + ' from each slice localizations.'
+                        ),
+                    },
+                    {
+                        'name': 'Z Step',
+                        'type': 'int',
+                        'value': 10,
+                        'limits': [1, 1000],
+                        'step': 1,
+                        'suffix': 'nm',
+                        'tip': 'Step size along the Z axis.',
+                    },
+                    {
+                        'name': 'Upsample',
+                        'type': 'int',
+                        'value': 1,
+                        'limits': [1, 200],
+                        'step': 1,
+                        'tip': 'Factor by which to upsample the image.',
+                    },
+                    {
+                        'name': 'Extract',
+                        'type': 'action',
+                        'tip': 'Extract the PSF data from the stack.',
+                    },
                 ],
             },
             {
                 'name': 'Settings',
                 'type': 'group',
                 'children': [
-                    {'name': 'Export', 'type': 'action'},
-                    {'name': 'Import', 'type': 'action'},
+                    {
+                        'name': 'Export',
+                        'type': 'action',
+                        'tip': 'Export the current settings.',
+                    },
+                    {
+                        'name': 'Import',
+                        'type': 'action',
+                        'tip': 'Import settings from a file.',
+                    },
                 ],
             },
         ]
@@ -332,6 +442,7 @@ class ImagePrefitWidget(Tree):
         self.header().setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Stretch)
 
         self.get_param(Parameters.LOCALIZE).sigActivated.connect(self.onLocalize)
+        self.get_param(Parameters.EXTRACT_PSF).sigActivated.connect(self.onExtractPSF)
         self.get_param(Parameters.IMPORT_STATE).sigActivated.connect(self.load_json)
         self.get_param(Parameters.EXPORT_STATE).sigActivated.connect(self.export_json)
         self.get_param(Parameters.SAVE_CROPPED_IMAGE).sigActivated.connect(
@@ -345,6 +456,10 @@ class ImagePrefitWidget(Tree):
     @Slot(object)
     def onLocalize(self, action: Parameter):
         self.localizeData.emit()
+
+    @Slot(object)
+    def onExtractPSF(self, action: Parameter):
+        self.extractPSF.emit()
 
     @Slot(object, object)
     def change(self, param: Parameter, changes: list):
@@ -454,11 +569,11 @@ class ImagePrefitWidget(Tree):
 
     def get_fitting_method(self):
         value = self.get_param_value(Parameters.FITTING_METHOD)
-        return FITTING_METHODS[value]
+        return FittingMethod.from_string(value)
 
 
 if __name__ == '__main__':
     app = QApplication([])
-    my_app = ImagePrefitWidget()
+    my_app = FittingOptions()
     my_app.show()
     app.exec()

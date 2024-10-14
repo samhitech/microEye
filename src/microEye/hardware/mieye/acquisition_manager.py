@@ -218,11 +218,7 @@ def scanAcquisition(
 
         data = []
         vimba_cams = [cam for cam in CameraList.cameras['Vimba'] if not cam['IR']]
-        if (
-            device_manager.kinesisXY.isOpen()[0]
-            and device_manager.kinesisXY.isOpen()[1]
-            and len(vimba_cams) > 0
-        ):
+        if device_manager.kinesisXY.isOpen() and len(vimba_cams) > 0:
             cam: vimba_cam = vimba_cams[0]['Camera']
             for x in range(steps[0]):
                 device_manager.kinesisXY.move_relative(round(step_size[0] / 1000, 4), 0)

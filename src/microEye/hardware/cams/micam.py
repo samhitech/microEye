@@ -14,8 +14,19 @@ class miCamera:
         self.temperature = -127
         self.name = ''
         self.exposure_range = [0.05, 5000]
+        self._width = 512
+        self._height = 512
 
         self.status = {}
+
+
+    @property
+    def height(self):
+        return self._height
+
+    @property
+    def width(self):
+        return self._width
 
     def get_temperature(self):
         return self.temperature

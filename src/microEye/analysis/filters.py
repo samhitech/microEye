@@ -185,7 +185,7 @@ class BANDPASS_TYPES(Enum):
 
     @classmethod
     def values(cls):
-        return np.array([column.name for column in cls])
+        return [column.name for column in cls]
 
 class BandpassFilter(AbstractFilter):
 

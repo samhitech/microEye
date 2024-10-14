@@ -662,8 +662,8 @@ class Vimba_Panel(Camera_Panel):
     def refresh_framerate(self, value=None):
         with self._cam.cam:
             if value:
-                self._cam.setFrameRate(value)
-            self._cam.getFrameRate(False)
+                self._cam.set_framerate(value)
+            self._cam.get_framerate(False)
 
         framerate = self.camera_options.get_param(VimbaParams.FRAMERATE)
         framerate.setLimits(
@@ -673,7 +673,7 @@ class Vimba_Panel(Camera_Panel):
 
     def cam_framerate_changed(self, value):
         with self._cam.cam:
-            self.cam.setAcquisitionFrameRateEnable(
+            self.cam.set_acquisition_framerate_enable(
                 self.camera_options.get_param_value(VimbaParams.FRAMERATE_ENABLED)
             )
 

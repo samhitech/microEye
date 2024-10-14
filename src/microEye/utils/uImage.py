@@ -1,14 +1,84 @@
-
 from typing import Union
 
 import cv2
 import numpy as np
 import tifffile as tf
 import zarr
-from numba import cuda
+from numba import cuda, njit
 
 BYTE = 256
+TWELVE_BIT = 2**12
 WORD = 2**16
+
+
+# Numba-optimized functions
+@njit
+def normalize_image_single_channel(image):
+    image_min = np.min(image)
+    image_max = np.max(image)
+    if image_max == image_min:
+        return np.zeros_like(image, dtype=np.uint16)
+    return ((WORD - 1) * (image - image_min) / (image_max - image_min)).astype(
+        np.uint16
+    )
+
+
+@njit
+def normalize_image_multi_channel(image):
+    height, width, channels = image.shape
+    normalized_image = np.zeros((height, width, channels), dtype=np.uint16)
+    for c in range(channels):
+        channel = image[:, :, c]
+        image_min = np.min(channel)
+        image_max = np.max(channel)
+        if image_max != image_min:
+            normalized_image[..., c] = (
+                (WORD - 1) * (channel - image_min) / (image_max - image_min)
+            ).astype(np.uint16)
+    return normalized_image
+
+
+def normalize_image_numba(image):
+    if image.ndim == 3:
+        return normalize_image_multi_channel(image)
+    else:
+        return normalize_image_single_channel(image)
+
+
+# Numba-accelerated histogram calculation
+@njit
+def numba_histogram(image: np.ndarray, n_bins: int):
+    hist = np.zeros(n_bins, dtype=np.float32)
+    flat_image = image.ravel()
+    for value in flat_image:
+        if 0 <= value < n_bins:
+            hist[int(value)] += 1
+    return hist / flat_image.size
+
+
+# Numba Histogram Function for RGB Images
+@njit
+def numba_histogram_rgb(image, n_bins):
+    channels = image.shape[2]
+    hist = np.zeros((n_bins, channels), dtype=np.float32)
+    for channel in range(channels):
+        for value in image[:, :, channel].ravel():
+            if value < n_bins:
+                hist[value, channel] += 1
+    return hist / (image.shape[0] * image.shape[1])
+
+
+NUMBA_SIZES = {
+    BYTE: 512**2,
+    TWELVE_BIT: 768**2,
+    WORD: 2048**2,
+}
+
+NUMBA_RGB_SIZES = {
+    BYTE: 0,
+    TWELVE_BIT: 0,
+    WORD: 2048**2,
+}
 
 
 class uImage:
@@ -48,7 +118,6 @@ class uImage:
         Height of a pixel.
     '''
 
-
     def __init__(self, image: np.ndarray, axis: str = 'CYX'):
         '''
         Initialize the uImage object.
@@ -60,15 +129,13 @@ class uImage:
         '''
         if axis == 'CYX' and image.ndim == 3:
             # Swap axes for CYX configuration
-            image = np.swapaxes(image, 1, 2).swapaxes(0, 2)
+            image = np.transpose(image, (1, 2, 0))
         elif axis != 'YXC' and image.ndim == 3:
             raise ValueError("Invalid axis. Use 'YXC' or 'CYX'.")
 
         self._axis = 'YXC'  # Force the internal representation to 'YXC'
+
         self.image = image
-
-
-
         self._min = 0
         self._max = BYTE - 1 if image.dtype == np.uint8 else WORD - 1
         self._view = np.zeros(image.shape, dtype=np.uint8)
@@ -78,47 +145,6 @@ class uImage:
         self._stats = {}
         self._pixel_w = 1.0
         self._pixel_h = 1.0
-
-    def normalize_image(self):
-        '''
-        Normalize the input image.
-
-        Returns
-        -------
-        np.ndarray
-            Normalized image.
-        '''
-        if self._isfloat:
-            if self._image.ndim == 3:
-                # For YXC format, normalize along channels
-                image_min = np.min(self._image, axis=(0, 1), keepdims=True)
-                image_max = np.max(self._image, axis=(0, 1), keepdims=True)
-
-                # Avoid division by zero
-                non_zero_mask = (image_max != image_min).squeeze()
-
-                normalized_image = np.zeros_like(self._image, dtype=np.uint16)
-
-                # Perform normalization for each channel separately
-                normalized_image[..., non_zero_mask] = (
-                    (WORD - 1) * (self._image[..., non_zero_mask] - image_min) /
-                    (image_max - image_min)
-                ).astype(np.uint16)
-            else:
-                image_min = self._image.min()
-                image_max = self._image.max()
-
-                if image_max != image_min:
-                    normalized_image = (
-                        (2**16 - 1) * (
-                            self._image - image_min) / (image_max - image_min)
-                    ).astype(np.uint16)
-                else:
-                    normalized_image = np.zeros_like(self._image, dtype=np.uint16)
-        else:
-            normalized_image = None
-
-        return normalized_image
 
     @property
     def image(self):
@@ -143,22 +169,18 @@ class uImage:
             New image data.
         '''
         if value.dtype not in [np.float64, np.float32, np.uint16, np.uint8]:
-            raise Exception(
-                '''Image must be a numpy array of type np.float64,
-                np.float32, np.uint16 or np.uint8.''')
-
-        self._isfloat = (value.dtype == np.float16
-                or value.dtype == np.float32
-                or value.dtype == np.float64)
-
-        if self._isfloat:
-            self._image = value.astype(np.float32)
-        else:
-            self._image = value
-
-        self._norm = self.normalize_image()
+            raise ValueError('Unsupported image dtype.')
         if value.ndim > 3:
             raise ValueError('Unexpected image dimensions. Expected 2D or 3D array.')
+
+        self._isfloat = np.issubdtype(value.dtype, np.floating)
+
+        self._image = value.astype(np.float32) if self._isfloat else value
+
+        if self._isfloat:
+            self._norm = normalize_image_numba(self._image)
+        else:
+            self._norm = None
 
     @property
     def width(self):
@@ -170,10 +192,7 @@ class uImage:
         int
             Width of the image.
         '''
-        if self._image.ndim == 3:
-            return self._image.shape[2]
-        else:
-            return self._image.shape[1]
+        return self._image.shape[2] if self._image.ndim == 3 else self._image.shape[1]
 
     @property
     def height(self):
@@ -185,10 +204,7 @@ class uImage:
         int
             Height of the image.
         '''
-        if self._image.ndim == 3:
-            return self._image.shape[1]
-        else:
-            return self._image.shape[0]
+        return self._image.shape[1] if self._image.ndim == 3 else self._image.shape[0]
 
     @property
     def channels(self):
@@ -200,10 +216,7 @@ class uImage:
         int
             Number of channels.
         '''
-        if self._image.ndim == 3:
-            return self._image.shape[2]
-        else:
-            return None
+        return self._image.shape[2] if self._image.ndim == 3 else None
 
     @property
     def cdf_min(self) -> float:
@@ -247,13 +260,12 @@ class uImage:
             image_min = self._image.min()
             image_max = self._image.max()
 
-            if isinstance(value, (int, float)):
-                return image_min + value * (image_max - image_min) / (WORD - 1)
-            elif isinstance(value, np.ndarray):
+            if isinstance(value, (int, float, np.ndarray)):
                 return image_min + value * (image_max - image_min) / (WORD - 1)
             else:
                 raise ValueError(
-                    'Input type not supported. Use int, float, or np.ndarray.')
+                    'Input type not supported. Use int, float, or np.ndarray.'
+                )
         else:
             return value
 
@@ -263,16 +275,25 @@ class uImage:
         on the cumulative distribution function (CDF).
         '''
         if self._cdf.ndim == 1:
-            self._min = np.where(self._cdf >= self.cdf_min)[0][0]
-            self._max = np.where(self._cdf >= self.cdf_max)[0][0]
+            self._min, self._max = np.searchsorted(
+                self._cdf, [self.cdf_min, self.cdf_max]
+            )
         elif self._cdf.ndim == 2:
             # Considering the cumulative distribution function across all channels
-            min_indices = np.where(np.all(self._cdf >= self.cdf_min, axis=1))[0]
-            max_indices = np.where(np.all(self._cdf >= self.cdf_max, axis=1))[0]
+            min_indices = []
+            max_indices = []
+            for idx in range(self._cdf.shape[1]):
+                # Find indices for cdf_min and cdf_max for each channel
+                min_idx = np.searchsorted(self._cdf[:, idx], self.cdf_min, side='left')
+                max_idx = np.searchsorted(self._cdf[:, idx], self.cdf_max, side='left')
 
-            # Update _min and _max based on all channels
-            self._min, self._max = min(min_indices, default=0), min(
-                max_indices, default=self._cdf.shape[0] - 1)
+                # Append the results
+                min_indices.append(min_idx)
+                max_indices.append(max_idx)
+
+            # Aggregate results across all channels
+            self._min = max(min_indices) if min_indices else 0
+            self._max = max(max_indices) if max_indices else self._cdf.shape[0] - 1
 
         # Ensure _max is greater than _min
         self._max = max(self._min + 1, self._max)
@@ -289,10 +310,10 @@ class uImage:
         threads_per_block = (16, 16)
         blocks_per_grid_x = (
             image_to_use.shape[0] + threads_per_block[0] - 1
-            ) // threads_per_block[0]
+        ) // threads_per_block[0]
         blocks_per_grid_y = (
             image_to_use.shape[1] + threads_per_block[1] - 1
-            ) // threads_per_block[1]
+        ) // threads_per_block[1]
         blocks_per_grid = (blocks_per_grid_x, blocks_per_grid_y)
 
         if self.channels is None:
@@ -301,21 +322,23 @@ class uImage:
 
             # Single-channel image
             generate_lut_single_channel_kernel[blocks_per_grid, threads_per_block](
-                image_to_use, lut_device, 0, 1, self.n_bins)
+                image_to_use, lut_device, 0, 1, self.n_bins
+            )
         else:
             # Allocate memory for the LUT on the GPU
             lut_device = cuda.to_device(
-                np.zeros((self.n_bins, self.channels), dtype=np.int32))
+                np.zeros((self.n_bins, self.channels), dtype=np.int32)
+            )
             # Multi-channel image
             generate_lut_multi_channel_kernel[blocks_per_grid, threads_per_block](
-                image_to_use, lut_device, 0, 1, self.n_bins)
+                image_to_use, lut_device, 0, 1, self.n_bins
+            )
 
         # Copy the LUT from GPU device to host memory
         self._hist = lut_device.copy_to_host().astype(np.float64)
 
         # Normalize the LUT values
-        self._hist = self._hist / float(
-                    np.prod(image_to_use.shape[:2]))
+        self._hist = self._hist / float(np.prod(image_to_use.shape[:2]))
 
         # calculate the cdf
         self._cdf = self._hist.cumsum(axis=0)
@@ -331,27 +354,30 @@ class uImage:
         self.n_bins = BYTE if self._image.dtype == np.uint8 else WORD
 
         if image_to_use.ndim == 3 and self.channels > 1:
-            # Multi-channel image
-            self._hist = np.zeros((self.n_bins, self.channels), dtype=np.float32)
-            for channel in range(self.channels):
-                hist_channel = cv2.calcHist(
-                    [image_to_use[:, :, channel]],
-                    [0], None,
-                    [self.n_bins],
-                    [0, self.n_bins]
-                )
-                self._hist[:, channel] = hist_channel.squeeze() / float(
-                    np.prod(image_to_use.shape[:2]))
-            # Calculate CDF for each channel
+            if np.prod(image_to_use.shape[:2]) <= NUMBA_RGB_SIZES[self.n_bins]:
+                self._hist = numba_histogram_rgb(image_to_use, self.n_bins)
+            else:
+                self._hist = np.array(
+                    [
+                        cv2.calcHist(
+                            [image_to_use[:, :, channel]],
+                            [0],
+                            None,
+                            [self.n_bins],
+                            [0, self.n_bins],
+                        ).squeeze()
+                        for channel in range(self.channels)
+                    ]
+                ).T / float(np.prod(image_to_use.shape[:2]))
             self._cdf = self._hist.cumsum(axis=0)
         else:
             # Calculate histogram for the entire image (single-channel)
-            self._hist = cv2.calcHist(
-                [image_to_use],
-                [0], None,
-                [self.n_bins],
-                [0, self.n_bins]
-            ).squeeze() / float(np.prod(image_to_use.shape))
+            if image_to_use.size <= NUMBA_SIZES[self.n_bins]:
+                self._hist = numba_histogram(image_to_use, self.n_bins)
+            else:
+                self._hist = cv2.calcHist(
+                    [image_to_use], [0], None, [self.n_bins], [0, self.n_bins]
+                ).squeeze() / float(np.prod(image_to_use.shape))
 
             # Calculate CDF for the single channel
             self._cdf = self._hist.cumsum(axis=0).squeeze()
@@ -366,30 +392,35 @@ class uImage:
 
         self.n_bins = BYTE if self._image.dtype == np.uint8 else WORD
         cv2.normalize(
-            src=image_to_use, dst=self._view,
-            alpha=0, beta=255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+            src=image_to_use,
+            dst=self._view,
+            alpha=0,
+            beta=255,
+            norm_type=cv2.NORM_MINMAX,
+            dtype=cv2.CV_8U,
+        )
 
         if image_to_use.ndim == 3 and self.channels > 1:
             # Multi-channel image
-            self._hist = np.zeros((self.n_bins, self.channels), dtype=np.float32)
-            for channel in range(self.channels):
-                hist_channel = cv2.calcHist(
-                    [self._view[:, :, channel]],
-                    [0], None,
-                    [self.n_bins],
-                    [0, self.n_bins]
-                )
-                self._hist[:, channel] = hist_channel.squeeze() / float(
-                    np.prod(self._view.shape[:2]))
-            # Calculate CDF for each channel
+            self._hist = np.array(
+                [
+                    cv2.calcHist(
+                        [self._view[:, :, channel]],
+                        [0],
+                        None,
+                        [self.n_bins],
+                        [0, self.n_bins],
+                    ).squeeze()
+                    for channel in range(self.channels)
+                ]
+            ).T / float(np.prod(self._view.shape[:2]))
             self._cdf = self._hist.cumsum(axis=0)
         else:
             # Single-channel image
             # calculate image histogram
             self._hist = cv2.calcHist(
-                [self._view], [0], None,
-                [self.n_bins], [0, self.n_bins]
-                ).squeeze() / float(np.prod(self._view.shape))
+                [self._view], [0], None, [self.n_bins], [0, self.n_bins]
+            ).squeeze() / float(np.prod(self._view.shape))
             # calculate the cdf
             self._cdf = self._hist.cumsum()
 
@@ -414,9 +445,10 @@ class uImage:
                 self._max = min(max(range[1], 0), self.n_bins - 1)
 
             self._LUT = np.zeros((self.n_bins), dtype=np.uint8)
-            self._LUT[self._min:self._max] = np.linspace(
-                0, 255, self._max - self._min, dtype=np.uint8)
-            self._LUT[self._max:] = 255
+            self._LUT[self._min : self._max] = np.linspace(
+                0, 255, self._max - self._min, dtype=np.uint8
+            )
+            self._LUT[self._max :] = 255
             if not self._isfloat:
                 self._view = self._LUT[self._image]
             else:
@@ -429,9 +461,10 @@ class uImage:
                 self._max = min(max(range[1], 0), 255)
 
             self._LUT = np.zeros((BYTE), dtype=np.uint8)
-            self._LUT[self._min:self._max] = np.linspace(
-                0, 255, self._max - self._min, dtype=np.uint8)
-            self._LUT[self._max:] = 255
+            self._LUT[self._min : self._max] = np.linspace(
+                0, 255, self._max - self._min, dtype=np.uint8
+            )
+            self._LUT[self._max :] = 255
 
             cv2.LUT(self._view, self._LUT, self._view)
 
@@ -447,7 +480,7 @@ class uImage:
         _count = 0
         for i, count in enumerate(self._hist):
             _sum += float(i * count)
-            _sum_of_sq += (i**2)*count
+            _sum_of_sq += (i**2) * count
             _count += count
 
         self._stats['Mean'] = _sum / _count
@@ -486,10 +519,9 @@ class uImage:
             uImage object containing the horizontally split image data.
         '''
         mid = self._image.shape[1] // 2
-        left_view = self._image[:, :mid]
-        right_view = self._image[:, mid:]
-        RGB_img = np.zeros(
-            left_view.shape[:2] + (3,), dtype=np.uint8)
+        left_view, right_view = self._image[:, :mid], self._image[:, mid:]
+
+        RGB_img = np.zeros(left_view.shape[:2] + (3,), dtype=np.uint8)
 
         RGB_img[..., 0] = left_view
         RGB_img[..., 1] = np.fliplr(right_view)
@@ -511,11 +543,9 @@ class uImage:
             Horizontally split view overlay.
         '''
         mid = self._view.shape[1] // 2
-        left_view = self._view[:, :mid]
-        right_view = self._view[:, mid:]
+        left_view, right_view = self._view[:, :mid], self._view[:, mid:]
 
-        _img = np.zeros(
-            left_view.shape[:2] + (3,), dtype=np.uint8)
+        _img = np.zeros(left_view.shape[:2] + (3,), dtype=np.uint8)
         if RGB:
             _img[..., 1] = left_view
             _img[..., 2] = np.fliplr(right_view)
@@ -534,10 +564,8 @@ class uImage:
             Two uImage objects containing the horizontally split image data.
         '''
         mid = self.image.shape[1] // 2
-        left_view = self.image[:, :mid]
-        right_view = self.image[:, mid:]
 
-        return uImage(left_view), uImage(np.fliplr(right_view))
+        return uImage(self.image[:, :mid]), uImage(np.fliplr(self.image[:, mid:]))
 
     @staticmethod
     def fromUINT8(buffer, height, width):
@@ -558,8 +586,7 @@ class uImage:
         uImage
             uImage object created from the UINT8 buffer.
         '''
-        res = np.ndarray(shape=(height, width), dtype='u1', buffer=buffer)
-        return uImage(res)
+        return uImage(np.frombuffer(buffer, dtype=np.uint8).reshape(height, width))
 
     @staticmethod
     def fromUINT16(buffer, height, width):
@@ -580,8 +607,7 @@ class uImage:
         uImage
             uImage object created from the UINT16 buffer.
         '''
-        res = np.ndarray(shape=(height, width), dtype='<u2', buffer=buffer)
-        return uImage(res)
+        return uImage(np.frombuffer(buffer, dtype='<u2').reshape(height, width))
 
     @staticmethod
     def fromBuffer(buffer, height, width, bytes_per_pixel):
@@ -605,38 +631,33 @@ class uImage:
             uImage object created from the buffer or a zero-filled array.
         '''
         if buffer is not None:
-            if bytes_per_pixel == 1:
-                return uImage.fromUINT8(buffer, height, width)
-            else:
-                return uImage.fromUINT16(buffer, height, width)
-        else:
-            return np.zeros((height, width), dtype=np.uint16)
+            return (
+                uImage.fromUINT8(buffer, height, width)
+                if bytes_per_pixel == 1
+                else uImage.fromUINT16(buffer, height, width)
+            )
+        return np.zeros((height, width), dtype=np.uint16)
 
 
 @cuda.jit
 def generate_lut_single_channel_kernel(image, lut, min_value, bin_width, num_bins):
     row, col = cuda.grid(2)
-
     if row < image.shape[0] and col < image.shape[1]:
-        # Calculate the bin index for the pixel value
-        bin_index = int((image[row, col] - min_value) / bin_width)
-        if bin_index >= num_bins:
-            bin_index = num_bins - 1
+        bin_index = min(int((image[row, col] - min_value) / bin_width), num_bins - 1)
         cuda.atomic.add(lut, bin_index, 1)
+
 
 @cuda.jit
 def generate_lut_multi_channel_kernel(image, lut, min_value, bin_width, num_bins):
     row, col = cuda.grid(2)
     channels = lut.shape[1]
-
     if row < image.shape[0] and col < image.shape[1]:
         for channel in range(channels):
-            # Calculate the bin index for the pixel value in each channel
-            bin_index = int(
-                (image[row, col, channel] - min_value) / bin_width)
-            if bin_index >= num_bins:
-                bin_index = num_bins - 1
+            bin_index = min(
+                int((image[row, col, channel] - min_value) / bin_width), num_bins - 1
+            )
             cuda.atomic.add(lut, (bin_index, channel), 1)
+
 
 class ImageSequenceBase:
     '''
@@ -656,6 +677,31 @@ class ImageSequenceBase:
         '''
         self._shape = None
         self._dtype = None
+        self._path = ''
+
+    @property
+    def path(self) -> str:
+        '''
+        Get the path of the image sequence.
+
+        Returns
+        -------
+        str
+            Path of the image sequence.
+        '''
+        return self._path
+
+    @path.setter
+    def path(self, value: str):
+        '''
+        Set the path of the image sequence.
+
+        Parameters
+        ----------
+        value : str
+            New path of the image sequence.
+        '''
+        self._path = value
 
     def __getitem__(self, i):
         '''
@@ -671,16 +717,23 @@ class ImageSequenceBase:
             Retrieved data.
         '''
         if isinstance(i, int):
-            return self.getSlice(slice(i, i + 1))
+            return self.getSlice(slice(i, i + 1, 1))
         elif isinstance(i, slice):
             return self.getSlice(i)
         else:
             raise IndexError('Index must be an integer or a slice')
 
     def getSlice(
-            self, timeSlice=None, channelSlice=None,
-            zSlice=None, ySlice=None, xSlice=None, squeezed=True,
-            four='TCYX', three='TYX'):
+        self,
+        timeSlice=None,
+        channelSlice=None,
+        zSlice=None,
+        ySlice=None,
+        xSlice=None,
+        squeezed=True,
+        four='TCYX',
+        three='TYX',
+    ):
         '''
         Retrieves a slice from the image sequence based on specified indices.
 
@@ -774,48 +827,47 @@ class ImageSequenceBase:
             elif len(self._shape) == 4:
                 if four == 'TCYX':
                     return (
-                        self._shape[0], self._shape[1],
+                        self._shape[0],
+                        self._shape[1],
                         1,
-                        self._shape[2], self._shape[3])
+                        self._shape[2],
+                        self._shape[3],
+                    )
                 elif four == 'CZYX':
                     return (
                         1,
-                        self._shape[0], self._shape[1],
-                        self._shape[2], self._shape[3])
+                        self._shape[0],
+                        self._shape[1],
+                        self._shape[2],
+                        self._shape[3],
+                    )
                 elif four == 'TZYX':
                     return (
                         self._shape[0],
-                        1, self._shape[1],
-                        self._shape[2], self._shape[3])
+                        1,
+                        self._shape[1],
+                        self._shape[2],
+                        self._shape[3],
+                    )
                 else:
-                    raise ValueError(
-                        f'Unsupported dimensions format: {four}')
+                    raise ValueError(f'Unsupported dimensions format: {four}')
             elif len(self._shape) == 3:
                 if three == 'TYX':
-                    return (
-                        self._shape[0], 1, 1,
-                        self._shape[1], self._shape[2])
+                    return (self._shape[0], 1, 1, self._shape[1], self._shape[2])
                 elif three == 'CYX':
-                    return (
-                        1, self._shape[0], 1,
-                        self._shape[1], self._shape[2])
+                    return (1, self._shape[0], 1, self._shape[1], self._shape[2])
                 elif three == 'ZYX':
-                    return (
-                        1, 1, self._shape[0],
-                        self._shape[1], self._shape[2])
+                    return (1, 1, self._shape[0], self._shape[1], self._shape[2])
                 else:
-                    raise ValueError(
-                        f'Unsupported dimensions format: {three}')
+                    raise ValueError(f'Unsupported dimensions format: {three}')
             elif len(self._shape) == 2:
-                return (
-                    1, 1, 1,
-                    self._shape[0], self._shape[1])
+                return (1, 1, 1, self._shape[0], self._shape[1])
             else:
                 raise ValueError(
-                    f'Unsupported number of dimensions: {len(self._shape)}')
+                    f'Unsupported number of dimensions: {len(self._shape)}'
+                )
         else:
             return None
-
 
     def __enter__(self):
         '''
@@ -842,6 +894,7 @@ class ImageSequenceBase:
             Traceback object.
         '''
         self.close()
+
 
 class TiffSeqHandler(ImageSequenceBase):
     '''
@@ -892,6 +945,7 @@ class TiffSeqHandler(ImageSequenceBase):
         super().__init__()
 
         self._tiff_seq = tiff_seq
+        self.path = ','.join(self._tiff_seq.files)
         self._initialize_arrays()
 
     def _initialize_arrays(self):
@@ -925,8 +979,9 @@ class TiffSeqHandler(ImageSequenceBase):
 
         # Check if shapes match
         first_shape = self._zarr[0].shape[1:]
-        if any(shape != first_shape for shape in [
-                arr.shape[1:] for arr in self._zarr[1:]]):
+        if any(
+            shape != first_shape for shape in [arr.shape[1:] for arr in self._zarr[1:]]
+        ):
             raise ValueError('Shapes of TIFF files do not match.')
 
         self._update_properties()
@@ -961,8 +1016,8 @@ class TiffSeqHandler(ImageSequenceBase):
         np.ndarray
             Retrieved data.
         '''
-        if isinstance(i, int):
-            return self._get_slice(slice(i, i + 1))
+        if isinstance(i, int) or np.issubdtype(i, np.integer):
+            return self._get_slice(slice(i, i + 1, 1))
         elif isinstance(i, slice):
             return self._get_slice(i)
         else:
@@ -986,7 +1041,7 @@ class TiffSeqHandler(ImageSequenceBase):
         for idx, cum_frames in enumerate(self._cum_frames):
             if i <= cum_frames - 1:
                 file_idx = idx
-                i -= (cum_frames - self._frames[idx])
+                i -= cum_frames - self._frames[idx]
                 break
         return file_idx, i
 
@@ -1027,24 +1082,30 @@ class TiffSeqHandler(ImageSequenceBase):
             Retrieved data.
         '''
         indices = np.arange(i.start or 0, i.stop)
-        result = np.empty(
-            shape=(0,) + self._zarr[0].shape[1:], dtype=self._dtype)
+        result = np.empty(shape=(0,) + self._zarr[0].shape[1:], dtype=self._dtype)
         for idx, cum_frames in enumerate(self._cum_frames):
             mask = np.logical_and(
-                cum_frames - self._frames[idx] <= indices,
-                indices < cum_frames)
+                cum_frames - self._frames[idx] <= indices, indices < cum_frames
+            )
             if np.sum(mask) > 0:
                 r = indices[mask] - (cum_frames - self._frames[idx])
-                result = np.concatenate((
-                    result,
-                    self._zarr[idx][np.min(r):np.max(r)+1]), axis=0)
+                result = np.concatenate(
+                    (result, self._zarr[idx][np.min(r) : np.max(r) + 1]), axis=0
+                )
         return result
 
     def getSlice(
-            self, timeSlice=None, channelSlice=None,
-            zSlice=None, ySlice=None, xSlice=None,
-            squeezed=True, broadcasted=False,
-            four='TCYX', three='TYX'):
+        self,
+        timeSlice=None,
+        channelSlice=None,
+        zSlice=None,
+        ySlice=None,
+        xSlice=None,
+        squeezed=True,
+        broadcasted=False,
+        four='TCYX',
+        three='TYX',
+    ):
         '''
         Retrieves a slice from the Zarr array based on specified indices.
 
@@ -1087,55 +1148,51 @@ class TiffSeqHandler(ImageSequenceBase):
         data = None
 
         if ndim == 5:
-            data = self[t][
-                ...,
-                c, z, y, x]
+            data = self[t][..., c, z, y, x]
             new_slice = (slice(None),) * 5
         elif ndim == 4:
             if four == 'TCYX':
-                data = self[t][
-                    ...,
-                    c, y, x]
+                data = self[t][..., c, y, x]
                 new_slice = (slice(None),) * 2 + (np.newaxis,) + (slice(None),) * 2
             elif four == 'CZYX':
-                data = self[c][
-                    ...,
-                    z, y, x]
+                data = self[c][..., z, y, x]
                 new_slice = (np.newaxis,) + (slice(None),) * 4
             elif four == 'TZYX':
-                data = self[t][
-                    ...,
-                    z, y, x]
-                new_slice = (slice(None), np.newaxis,) + (slice(None),) * 3
+                data = self[t][..., z, y, x]
+                new_slice = (
+                    slice(None),
+                    np.newaxis,
+                ) + (slice(None),) * 3
             else:
-                raise ValueError(
-                    f'Unsupported dimensions format: {four}')
+                raise ValueError(f'Unsupported dimensions format: {four}')
         elif ndim == 3:
             if three == 'TYX':
-                data = self[t][
-                    ...,
-                    y, x]
-                new_slice = (slice(None), np.newaxis, np.newaxis,) + (slice(None),) * 2
+                data = self[t][..., y, x]
+                new_slice = (
+                    slice(None),
+                    np.newaxis,
+                    np.newaxis,
+                ) + (slice(None),) * 2
             elif three == 'CYX':
-                data = self[c][
-                    ...,
-                    y, x]
-                new_slice = (np.newaxis, slice(None), np.newaxis,) + (slice(None),) * 2
+                data = self[c][..., y, x]
+                new_slice = (
+                    np.newaxis,
+                    slice(None),
+                    np.newaxis,
+                ) + (slice(None),) * 2
             elif three == 'ZYX':
-                data = self[z][
-                    ...,
-                    y, x]
-                new_slice = (np.newaxis, np.newaxis,) + (slice(None),) * 3
+                data = self[z][..., y, x]
+                new_slice = (
+                    np.newaxis,
+                    np.newaxis,
+                ) + (slice(None),) * 3
             else:
-                raise ValueError(
-                    f'Unsupported dimensions format: {three}')
+                raise ValueError(f'Unsupported dimensions format: {three}')
         elif ndim == 2:
-                data = self[0][
-                    y, x]
-                new_slice = (np.newaxis,) * 3 + (slice(None),) * 2
+            data = self[0][y, x]
+            new_slice = (np.newaxis,) * 3 + (slice(None),) * 2
         else:
-            raise ValueError(
-                f'Unsupported number of dimensions: {len(self._shape)}')
+            raise ValueError(f'Unsupported number of dimensions: {len(self._shape)}')
 
         if broadcasted:
             return data[new_slice]
@@ -1200,9 +1257,16 @@ class ZarrImageSequence(ImageSequenceBase):
         self.data = None
 
     def getSlice(
-            self, timeSlice=None, channelSlice=None,
-            zSlice=None, ySlice=None, xSlice=None, squeezed=True,
-            four='TCYX', three='TYX'):
+        self,
+        timeSlice=None,
+        channelSlice=None,
+        zSlice=None,
+        ySlice=None,
+        xSlice=None,
+        squeezed=True,
+        four='TCYX',
+        three='TYX',
+    ):
         '''
         Retrieves a slice from the Zarr array based on specified indices.
 
@@ -1284,17 +1348,20 @@ class ZarrImageSequence(ImageSequenceBase):
         '''
         pass
 
+
 def ifnone(a, b):
     return b if a is None else a
 
+
 def saveZarrImage(
-        path: str,
-        imgSeq: Union[TiffSeqHandler, ZarrImageSequence],
-        timeSlice: slice = None,
-        channelSlice: slice = None,
-        zSlice: slice = None,
-        ySlice: slice = None,
-        xSlice: slice = None):
+    path: str,
+    imgSeq: Union[TiffSeqHandler, ZarrImageSequence],
+    timeSlice: slice = None,
+    channelSlice: slice = None,
+    zSlice: slice = None,
+    ySlice: slice = None,
+    xSlice: slice = None,
+):
     '''
     Saves an image sequence represented by either a TiffSeqHandler
     or ZarrImageSequence to a Zarr store.
@@ -1336,7 +1403,7 @@ def saveZarrImage(
                 1,
                 1,
                 ifnone(ySlice.stop, imgSeq.shape[0]) - ifnone(ySlice.start, 0),
-                ifnone(xSlice.stop, imgSeq.shape[1]) - ifnone(xSlice.start, 0)
+                ifnone(xSlice.stop, imgSeq.shape[1]) - ifnone(xSlice.start, 0),
             )
             chunks = (1, 1, 1, shape[3], shape[4])
         elif ndim == 3:
@@ -1345,54 +1412,46 @@ def saveZarrImage(
                 1,
                 1,
                 ifnone(ySlice.stop, imgSeq.shape[1]) - ifnone(ySlice.start, 0),
-                ifnone(xSlice.stop, imgSeq.shape[2]) - ifnone(xSlice.start, 0)
+                ifnone(xSlice.stop, imgSeq.shape[2]) - ifnone(xSlice.start, 0),
             )
-            chunks = (
-                min(10, shape[0]),
-                1,
-                1,
-                shape[3],
-                shape[4]
-            )
+            chunks = (min(10, shape[0]), 1, 1, shape[3], shape[4])
         elif ndim == 4:
             shape = (
                 ifnone(timeSlice.stop, imgSeq.shape[0]) - ifnone(timeSlice.start, 0),
-                ifnone(
-                    channelSlice.stop, imgSeq.shape[1]) - ifnone(channelSlice.start, 0),
+                ifnone(channelSlice.stop, imgSeq.shape[1])
+                - ifnone(channelSlice.start, 0),
                 1,
                 ifnone(ySlice.stop, imgSeq.shape[2]) - ifnone(ySlice.start, 0),
-                ifnone(xSlice.stop, imgSeq.shape[3]) - ifnone(xSlice.start, 0)
+                ifnone(xSlice.stop, imgSeq.shape[3]) - ifnone(xSlice.start, 0),
             )
-            chunks = (
-                min(10, shape[0]),
-                min(10, shape[1]),
-                1,
-                shape[3],
-                shape[4]
-            )
+            chunks = (min(10, shape[0]), min(10, shape[1]), 1, shape[3], shape[4])
         elif ndim == 5:
             shape = (
                 ifnone(timeSlice.stop, imgSeq.shape[0]) - ifnone(timeSlice.start, 0),
-                ifnone(
-                    channelSlice.stop, imgSeq.shape[1]) - ifnone(channelSlice.start, 0),
+                ifnone(channelSlice.stop, imgSeq.shape[1])
+                - ifnone(channelSlice.start, 0),
                 ifnone(zSlice.stop, imgSeq.shape[2]) - ifnone(zSlice.start, 0),
                 ifnone(ySlice.stop, imgSeq.shape[3]) - ifnone(ySlice.start, 0),
-                ifnone(xSlice.stop, imgSeq.shape[4]) - ifnone(xSlice.start, 0)
+                ifnone(xSlice.stop, imgSeq.shape[4]) - ifnone(xSlice.start, 0),
             )
             chunks = (
                 min(10, shape[0]),
                 min(10, shape[1]),
                 min(10, shape[2]),
                 shape[3],
-                shape[4]
+                shape[4],
             )
         else:
             raise ValueError(f'Unsupported number of dimensions: {ndim}')
 
         zarrImg = zarr.open(
-            path, mode='w-',
-            shape=shape, chunks=chunks,
-            compressor=None, dtype=imgSeq._dtype)
+            path,
+            mode='w-',
+            shape=shape,
+            chunks=chunks,
+            compressor=None,
+            dtype=imgSeq._dtype,
+        )
 
         timeSlice = slice(ifnone(timeSlice.start, 0), shape[0])
 
@@ -1403,28 +1462,20 @@ def saveZarrImage(
                     timeSlice.start,
                     offset,
                 ),
-                min(
-                    timeSlice.stop,
-                    imgSeq._cum_frames[idx]
-                )
+                min(timeSlice.stop, imgSeq._cum_frames[idx]),
             )
 
             # Adjust the tiffSlice based on the offset
             tiffSlice = slice(
-                max(
-                    zarrSlice.start - offset, 0
-                ),
-                min(
-                    zarrSlice.stop - offset,
-                    imgSeq._zarr[idx].shape[0]
-                )
+                max(zarrSlice.start - offset, 0),
+                min(zarrSlice.stop - offset, imgSeq._zarr[idx].shape[0]),
             )
 
             # Use tuple unpacking to apply the slices to the image
             print('Saving ...', end='\r')
             zarrImg[zarrSlice, ...] = imgSeq.getSlice(
-                tiffSlice, channelSlice, zSlice, ySlice, xSlice,
-                broadcasted=True)
+                tiffSlice, channelSlice, zSlice, ySlice, xSlice, broadcasted=True
+            )
 
         print('Done ...', end='\r')
         return True
@@ -1432,11 +1483,10 @@ def saveZarrImage(
         print('Saving ...', end='\r')
         shape = (
             ifnone(timeSlice.stop, imgSeq.shape[0]) - ifnone(timeSlice.start, 0),
-            ifnone(
-                channelSlice.stop, imgSeq.shape[1]) - ifnone(channelSlice.start, 0),
+            ifnone(channelSlice.stop, imgSeq.shape[1]) - ifnone(channelSlice.start, 0),
             ifnone(zSlice.stop, imgSeq.shape[2]) - ifnone(zSlice.start, 0),
             ifnone(ySlice.stop, imgSeq.shape[3]) - ifnone(ySlice.start, 0),
-            ifnone(xSlice.stop, imgSeq.shape[4]) - ifnone(xSlice.start, 0)
+            ifnone(xSlice.stop, imgSeq.shape[4]) - ifnone(xSlice.start, 0),
         )
         chunks = (
             min(10, shape[0]),
@@ -1446,11 +1496,14 @@ def saveZarrImage(
             shape[4],
         )
         zarrImg = zarr.open(
-            path, mode='w-',
-            shape=shape, chunks=chunks,
-            compressor=None, dtype=imgSeq._dtype)
-        zarrImg[:] = imgSeq.getSlice(
-            timeSlice, channelSlice, zSlice, ySlice, xSlice)
+            path,
+            mode='w-',
+            shape=shape,
+            chunks=chunks,
+            compressor=None,
+            dtype=imgSeq._dtype,
+        )
+        zarrImg[:] = imgSeq.getSlice(timeSlice, channelSlice, zSlice, ySlice, xSlice)
 
         print('Done ...', end='\r')
         return True

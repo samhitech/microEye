@@ -117,11 +117,11 @@ class Thorlabs_Panel(Camera_Panel):
         framerate = {
             'name': str(ThorCamParams.FRAMERATE),
             'type': 'float',
-            'value': int(self._cam.currentFrameRate.value),
+            'value': int(self._cam.current_framerate.value),
             'dec': False,
             'decimals': 6,
-            'step': self._cam.incFrameRate.value,
-            'limits': [self._cam.minFrameRate.value, self._cam.maxFrameRate.value],
+            'step': self._cam.increment_framerate.value,
+            'limits': [self._cam.min_framerate.value, self._cam.max_framerate.value],
             'suffix': 'Hz',
         }
         self.camera_options.add_param_child(CamParams.ACQ_SETTINGS, framerate)
@@ -272,7 +272,7 @@ class Thorlabs_Panel(Camera_Panel):
             )
             return  # if acquisition is already going on
 
-        self.cam.set_ROI(*self.camera_options.get_roi_info())
+        self.cam.set_roi(*self.camera_options.get_roi_info())
 
         # setting the highest pixel clock as default
         self.camera_options.set_param_value(
@@ -297,7 +297,7 @@ class Thorlabs_Panel(Camera_Panel):
             )
             return  # if acquisition is already going on
 
-        self.cam.reset_ROI()
+        self.cam.reset_roi()
         self.camera_options.set_roi_info(0, 0, self.cam.width, self.cam.height)
 
         # setting the highest pixel clock as default
@@ -503,7 +503,7 @@ class Thorlabs_Panel(Camera_Panel):
 
         self.camera_options.set_param_value(
             ThorCamParams.FRAMERATE,
-            self._cam.currentFrameRate.value,
+            self._cam.current_framerate.value,
             self.cam_framerate_value_changed,
         )
 
@@ -540,11 +540,11 @@ class Thorlabs_Panel(Camera_Panel):
 
         framerate = self.camera_options.get_param(ThorCamParams.FRAMERATE)
         framerate.setLimits(
-            (self._cam.minFrameRate.value, self._cam.maxFrameRate.value)
+            (self._cam.min_framerate.value, self._cam.max_framerate.value)
         )
-        framerate.setOpts(step=self._cam.incFrameRate.value)
+        framerate.setOpts(step=self._cam.increment_framerate.value)
 
-        self.cam_framerate_value_changed(framerate, self._cam.maxFrameRate.value)
+        self.cam_framerate_value_changed(framerate, self._cam.max_framerate.value)
 
     def refresh_exposure(self, range=False):
         self._cam.get_exposure_range(False)
@@ -686,7 +686,7 @@ class Thorlabs_Panel(Camera_Panel):
                 if not self._cam.capture_video:
                     self._cam.uc480.is_FreezeVideo(self._cam.hCam, IS_DONT_WAIT)
 
-                nRet = self._cam.is_WaitForNextImage(500, not self.mini)
+                nRet = self._cam.wait_for_next_image(500, not self.mini)
                 if nRet == CMD.IS_SUCCESS:
                     self._cam.get_pitch()
                     data = self._cam.get_data()
@@ -756,7 +756,7 @@ class Thorlabs_Panel(Camera_Panel):
                 'flash mode': self.camera_options.get_param_value(
                     ThorCamParams.FLASH_MODE
                 ),
-                'framerate': self.cam.currentFrameRate.value,
+                'framerate': self.cam.current_framerate.value,
                 'exposure': self.cam.exposure_current.value,
                 'flash duration': self.cam.flash_cur.u32Duration,
                 'flash delay': self.cam.flash_cur.s32Delay,

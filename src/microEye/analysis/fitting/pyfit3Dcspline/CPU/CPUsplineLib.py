@@ -8,7 +8,8 @@ from microEye.analysis.fitting.pyfit3Dcspline.CPU.CPUfunctions import *
 
 @nb.njit(cache=True)
 def kernel_computeDelta3D(
-        x_delta, y_delta, z_delta, delta_f, delta_dxf, delta_dyf, delta_dzf):
+    x_delta, y_delta, z_delta, delta_f, delta_dxf, delta_dyf, delta_dzf
+):
     '''
     This function for calculation of the commonterm for
     Cspline is adpopted from:
@@ -48,15 +49,15 @@ def kernel_computeDelta3D(
         for j in range(4):
             cx = 1.0
             for k in range(4):
-                delta_f[i*16 + j*4 + k] = cz * cy * cx
-                if(k < 3):
-                    delta_dxf[i*16+j*4+k+1] = (float(k)+1) * cz * cy * cx
+                delta_f[i * 16 + j * 4 + k] = cz * cy * cx
+                if k < 3:
+                    delta_dxf[i * 16 + j * 4 + k + 1] = (float(k) + 1) * cz * cy * cx
 
-                if(j < 3):
-                    delta_dyf[i*16+(j+1)*4+k] = (float(j)+1) * cz * cy * cx
+                if j < 3:
+                    delta_dyf[i * 16 + (j + 1) * 4 + k] = (float(j) + 1) * cz * cy * cx
 
-                if(i < 3):
-                    delta_dzf[(i+1)*16+j*4+k] = (float(i)+1) * cz * cy * cx
+                if i < 3:
+                    delta_dzf[(i + 1) * 16 + j * 4 + k] = (float(i) + 1) * cz * cy * cx
 
                 cx = cx * x_delta
             cy = cy * y_delta
@@ -86,21 +87,25 @@ def kernel_cholesky(A, n, L, U) -> int:
     '''
     info = 0
     for i in range(n):
-        for j in range(i+1):
+        for j in range(i + 1):
             s = 0.0
             for k in range(j):
-                s += U[i * n + k] * U[j * n + k]
+                s += L[i * n + k] * L[j * n + k]
 
-            if (i == j):
-                if (A[i*n+i]-s >= 0):
-                    U[i * n + j] = math.sqrt(A[i * n + i] - s)
-                    L[j*n+i] = U[i * n + j]
+            if i == j:
+                if A[i * n + i] - s >= 1e-15:  # Improved numerical stability
+                    L[i * n + j] = math.sqrt(A[i * n + i] - s)
+                    U[j * n + i] = L[i * n + j]  # U is the transpose of L
                 else:
                     info = 1
                     return info
             else:
-                U[i * n + j] = (1.0 / U[j * n + j] * (A[i * n + j] - s))
-                L[j*n+i] = U[i * n + j]
+                if L[j * n + j] > 1e-15:  # Avoid division by very small numbers
+                    L[i * n + j] = 1.0 / L[j * n + j] * (A[i * n + j] - s)
+                    U[j * n + i] = L[i * n + j]  # U is the transpose of L
+                else:
+                    info = 1
+                    return info
     return info
 
 
@@ -128,34 +133,58 @@ def kernel_luEvaluate(L, U, b, n, x):
     '''
     # Ax = b -> LUx = b. Then y is defined to be Ux
     # for sigmaxy, we have 6 parameters
-    y = np.zeros(6)
+    y = np.zeros(6, dtype=np.float64)
 
     # Forward solve Ly = b
     for i in range(n):
         y[i] = b[i]
         for j in range(i):
-            y[i] -= L[j*n+i] * y[j]
-        y[i] /= L[i*n+i]
+            y[i] -= L[j * n + i] * y[j]
+        y[i] /= L[i * n + i]
 
     # Backward solve Ux = y
-    for i in range(n-1, -1, -1):
+    for i in range(n - 1, -1, -1):
         x[i] = y[i]
-        for j in range(i+1, n, 1):
-            x[i] -= U[j*n+i] * x[j]
-        x[i] /= U[i*n + i]
+        for j in range(i + 1, n, 1):
+            x[i] -= U[j * n + i] * x[j]
+        x[i] /= U[i * n + i]
 
     return x
 
 
 @nb.njit(
     nb.types.Tuple((nb.float32[:], nb.float32))(
-        nb.int32, nb.int32, nb.int32,
-        nb.int32, nb.int32, nb.int32,
-        nb.float32[:], nb.float32[:], nb.float32[:],
-        nb.float32[:], nb.float32[:], nb.float32[:], nb.float32[:]), cache=True)
+        nb.int32,
+        nb.int32,
+        nb.int32,
+        nb.int32,
+        nb.int32,
+        nb.int32,
+        nb.float32[:],
+        nb.float32[:],
+        nb.float32[:],
+        nb.float32[:],
+        nb.float32[:],
+        nb.float32[:],
+        nb.float32[:],
+    ),
+    cache=True,
+)
 def kernel_DerivativeSpline(
-        xc, yc, zc, xsize, ysize, zsize,
-        delta_f, delta_dxf, delta_dyf, delta_dzf, coeff, theta, dudt):
+    xc,
+    yc,
+    zc,
+    xsize,
+    ysize,
+    zsize,
+    delta_f,
+    delta_dxf,
+    delta_dyf,
+    delta_dzf,
+    coeff,
+    theta,
+    dudt,
+):
     '''
     Parameters
     ----------
@@ -206,20 +235,32 @@ def kernel_DerivativeSpline(
 
     for i in range(64):
         temp += np.float32(
-            delta_f[i] *
-            coeff[i*(xsize*ysize*zsize)+zc*(xsize*ysize)+yc*xsize+xc])
+            delta_f[i]
+            * coeff[
+                i * (xsize * ysize * zsize) + zc * (xsize * ysize) + yc * xsize + xc
+            ]
+        )
         dudt[0] += (
-            delta_dxf[i] *
-            coeff[i*(xsize*ysize*zsize)+zc*(xsize*ysize)+yc*xsize+xc])
+            delta_dxf[i]
+            * coeff[
+                i * (xsize * ysize * zsize) + zc * (xsize * ysize) + yc * xsize + xc
+            ]
+        )
         dudt[1] += (
-            delta_dyf[i] *
-            coeff[i*(xsize*ysize*zsize)+zc*(xsize*ysize)+yc*xsize+xc])
+            delta_dyf[i]
+            * coeff[
+                i * (xsize * ysize * zsize) + zc * (xsize * ysize) + yc * xsize + xc
+            ]
+        )
         dudt[4] += (
-            delta_dzf[i] *
-            coeff[i*(xsize*ysize*zsize)+zc*(xsize*ysize)+yc*xsize+xc])
+            delta_dzf[i]
+            * coeff[
+                i * (xsize * ysize * zsize) + zc * (xsize * ysize) + yc * xsize + xc
+            ]
+        )
 
-    dudt[0] *= -1.0*theta[2]
-    dudt[1] *= -1.0*theta[2]
+    dudt[0] *= -1.0 * theta[2]
+    dudt[1] *= -1.0 * theta[2]
     dudt[4] *= theta[2]
     dudt[2] = temp
     dudt[3] = 1.0

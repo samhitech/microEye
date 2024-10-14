@@ -210,9 +210,8 @@ class Tree(ParameterTree):
         # Handle parameter changes as needed
         pass
 
-
     @Slot(object)
-    def export_json(self, action = None):
+    def export_json(self, action=None):
         '''
         Export parameters to a JSON file.
 
@@ -243,7 +242,7 @@ class Tree(ParameterTree):
 
     # Load parameters from JSON
     @Slot(object)
-    def load_json(self, action = None):
+    def load_json(self, action=None):
         '''
         Load parameters from a JSON file.
 
@@ -259,7 +258,8 @@ class Tree(ParameterTree):
 
         with open(filename, encoding='utf8') as file:
             state = json.load(file)
-        self.param_tree.restoreState(state, blockSignals=False)
+        self.param_tree.restoreState(
+            state, addChildren=False, removeChildren=False, blockSignals=False)
 
     def get_param_paths(self) -> list[str]:
         '''

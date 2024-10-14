@@ -50,12 +50,21 @@ class QThreadWorker(QtCore.QRunnable):
         self.signals = WorkerSignals()
         self.stop_event = threading.Event()
         self._started = False
+        self._done = False
 
         self.kwargs['event'] = self.stop_event
 
         # Add the callback to our kwargs
         if kwargs.get('progress'):
             self.kwargs['progress_callback'] = self.signals.progress
+
+    @property
+    def done(self) -> bool:
+        return self._done
+
+    @property
+    def started(self) -> bool:
+        return self._started
 
     @Slot()
     def run(self):
@@ -76,7 +85,7 @@ class QThreadWorker(QtCore.QRunnable):
             self.signals.result.emit(result)
         finally:
             self.stop_event.set()
-            self.done = True
+            self._done = True
             self.signals.finished.emit()  # Done
 
     def stop(self):
