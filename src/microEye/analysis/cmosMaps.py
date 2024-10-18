@@ -74,7 +74,7 @@ class cmosMaps(QtWidgets.QWidget):
 
         self.exp_spin = QtWidgets.QDoubleSpinBox()
         self.exp_spin.setMinimum(0)
-        self.exp_spin.setMaximum(1e4)
+        self.exp_spin.setMaximum(10000)
         self.exp_spin.setDecimals(5)
         self.exp_spin.setValue(self.expTime)
 
@@ -94,10 +94,10 @@ class cmosMaps(QtWidgets.QWidget):
         self.Y.setMinimum(0)
         self.W.setMinimum(0)
         self.H.setMinimum(0)
-        self.X.setMaximum(1e4)
-        self.Y.setMaximum(1e4)
-        self.W.setMaximum(1e4)
-        self.H.setMaximum(1e4)
+        self.X.setMaximum(10000)
+        self.Y.setMaximum(10000)
+        self.W.setMaximum(10000)
+        self.H.setMaximum(10000)
 
         self.main_layout.addRow(QtWidgets.QLabel('ROI X:'), self.X)
         self.main_layout.addRow(QtWidgets.QLabel('ROI Y:'), self.Y)

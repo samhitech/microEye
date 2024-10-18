@@ -594,13 +594,13 @@ class reglo_digital_module(QMainWindow):
         self.config_Layout.addLayout(pause_time_layout)
 
         self.cycle_label = QtWidgets.QLabel('Number of Cycles: 1')
-        self.cycle_slider = QtWidgets.QSlider(Qt.Horizontal)
+        self.cycle_slider = QtWidgets.QSlider(Qt.Orientation.Horizontal)
         self.cycle_slider.setMinimum(2)
         self.cycle_slider.setMaximum(50)
         self.cycle_slider.valueChanged.connect(self.cycles_changed)
 
         self.inc_label = QtWidgets.QLabel('Speed Increment: 1')
-        self.inc_slider = QtWidgets.QSlider(Qt.Horizontal)
+        self.inc_slider = QtWidgets.QSlider(Qt.Orientation.Horizontal)
         self.inc_slider.setMinimum(1)
         self.inc_slider.setMaximum(50)
         self.inc_slider.valueChanged.connect(self.inc_changed)

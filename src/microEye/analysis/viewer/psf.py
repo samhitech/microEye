@@ -5,8 +5,6 @@ import numpy as np
 import pyqtgraph as pg
 import pyqtgraph.opengl as gl
 from pyqtgraph import functions as fn
-from scipy.optimize import curve_fit
-from scipy.signal import find_peaks, peak_prominences
 
 from microEye.analysis.fitting.psf import PSFdata
 from microEye.analysis.fitting.results import PARAMETER_HEADERS, FittingMethod
@@ -46,6 +44,9 @@ class PSFView(QtWidgets.QWidget):
         self.view_tabs = QtWidgets.QTabWidget()
         self.main_layout.addWidget(self.view_tabs)
 
+        # Default view mode
+        self.view_mode = 'XY'
+
         # Setup different view tabs
         self.setup_merged_view_tab()
         self.setup_3d_view_tab()
@@ -64,15 +65,15 @@ class PSFView(QtWidgets.QWidget):
         visual_layout = QtWidgets.QVBoxLayout()
 
         self.image_widget = pg.GraphicsLayoutWidget()
-        self.view_box = self.image_widget.addViewBox(row=0, col=0)
+        self.view_box: pg.ViewBox = self.image_widget.addViewBox(row=0, col=0)
         self.view_box.setAspectLocked(True)
         self.view_box.setAutoVisible(True)
         self.view_box.enableAutoRange()
         self.view_box.invertY(True)
 
         # Create two image items: one for PSF data and one for grid overlay
-        self.psf_image_item = pg.ImageItem()
-        self.grid_overlay_item = pg.ImageItem()
+        self.psf_image_item: pg.ImageItem = pg.ImageItem(axisOrder='row-major')
+        self.grid_overlay_item: pg.ImageItem = pg.ImageItem(axisOrder='row-major')
         self.view_box.addItem(self.psf_image_item)
         self.view_box.addItem(self.grid_overlay_item)
 
@@ -86,27 +87,28 @@ class PSFView(QtWidgets.QWidget):
 
         visual_layout.addWidget(self.image_widget)
 
-        # Z-slice selection
-        z_slice_layout = QtWidgets.QHBoxLayout()
-        self.z_slice_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.z_slice_spinbox = QtWidgets.QSpinBox()
-        self.z_slice_slider.setMinimum(0)
-        self.z_slice_spinbox.setMinimum(0)
-        self.z_slice_spinbox.setMinimumWidth(75)
+        # Modify Z-slice selection to be more generic
+        slice_layout = QtWidgets.QHBoxLayout()
+        self.slice_label = QtWidgets.QLabel('Z-Slice:')
+        self.slice_slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
+        self.slice_spinbox = QtWidgets.QSpinBox()
+        self.slice_slider.setMinimum(0)
+        self.slice_spinbox.setMinimum(0)
+        self.slice_spinbox.setMinimumWidth(75)
 
-        max_z = len(self.psf_data) - 1
-        self.z_slice_slider.setMaximum(max_z)
-        self.z_slice_spinbox.setMaximum(max_z)
+        max_slice = len(self.psf_data) - 1
+        self.slice_slider.setMaximum(max_slice)
+        self.slice_spinbox.setMaximum(max_slice)
 
-        self.z_slice_slider.valueChanged.connect(self.z_slice_spinbox.setValue)
-        self.z_slice_spinbox.valueChanged.connect(self.z_slice_slider.setValue)
-        self.z_slice_slider.valueChanged.connect(self.update_merged_view)
+        self.slice_slider.valueChanged.connect(self.slice_spinbox.setValue)
+        self.slice_spinbox.valueChanged.connect(self.slice_slider.setValue)
+        self.slice_slider.valueChanged.connect(self.update_merged_view)
 
-        z_slice_layout.addWidget(QtWidgets.QLabel('Z-Slice:'))
-        z_slice_layout.addWidget(self.z_slice_slider)
-        z_slice_layout.addWidget(self.z_slice_spinbox)
+        slice_layout.addWidget(self.slice_label)
+        slice_layout.addWidget(self.slice_slider)
+        slice_layout.addWidget(self.slice_spinbox)
 
-        visual_layout.addLayout(z_slice_layout)
+        visual_layout.addLayout(slice_layout)
 
         merged_layout.addLayout(visual_layout, stretch=2)
 
@@ -128,7 +130,7 @@ class PSFView(QtWidgets.QWidget):
         grid_layout.addRow('Grid Size:', self.grid_size)
 
         # Grid overlay opacity
-        self.grid_opacity = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.grid_opacity = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
         self.grid_opacity.setMinimum(0)
         self.grid_opacity.setMaximum(100)
         self.grid_opacity.setValue(50)
@@ -141,6 +143,13 @@ class PSFView(QtWidgets.QWidget):
         # Display options
         display_group = QtWidgets.QGroupBox('Display Options')
         display_layout = QtWidgets.QVBoxLayout()
+
+        # Add view mode selector
+        display_layout.addWidget(QtWidgets.QLabel('View Mode:'))
+        self.view_mode_combo = QtWidgets.QComboBox()
+        self.view_mode_combo.addItems(['XY', 'XZ', 'YZ'])
+        self.view_mode_combo.currentTextChanged.connect(self.change_view_mode)
+        display_layout.addWidget(self.view_mode_combo)
 
         self.display_mean = QtWidgets.QRadioButton('Mean')
         self.display_median = QtWidgets.QRadioButton('Median')
@@ -159,7 +168,7 @@ class PSFView(QtWidgets.QWidget):
 
         # Add Single ROI selection
         single_roi_layout = QtWidgets.QHBoxLayout()
-        self.single_roi_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.single_roi_slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
         self.single_roi_spinbox = QtWidgets.QSpinBox()
 
         self.single_roi_slider.setMinimum(0)
@@ -199,7 +208,11 @@ class PSFView(QtWidgets.QWidget):
         self.auto_level_checkbox = QtWidgets.QCheckBox('Auto Level')
         self.auto_level_checkbox.setChecked(True)
         self.auto_level_checkbox.stateChanged.connect(self.update_merged_view)
+        self.normalization_checkbox = QtWidgets.QCheckBox('Normalize (Field)')
+        self.normalization_checkbox.setChecked(True)
+        self.normalization_checkbox.stateChanged.connect(self.update_merged_view)
         auto_level_layout.addWidget(self.auto_level_checkbox)
+        auto_level_layout.addWidget(self.normalization_checkbox)
         auto_level_group.setLayout(auto_level_layout)
         controls_layout.addWidget(auto_level_group)
 
@@ -216,9 +229,7 @@ class PSFView(QtWidgets.QWidget):
         self.refresh_btn = QtWidgets.QPushButton('Refresh View')
         self.refresh_btn.clicked.connect(self.update_merged_view)
         self.zero_btn = QtWidgets.QPushButton(f'Zero Plane {self.psf_data.zero_plane}')
-        self.zero_btn.clicked.connect(
-            lambda: self.z_slice_spinbox.setValue(self.psf_data.zero_plane)
-        )
+        self.zero_btn.clicked.connect(self.update_slice_controls)
         controls_layout.addWidget(self.refresh_btn)
         controls_layout.addWidget(self.zero_btn)
 
@@ -262,6 +273,7 @@ class PSFView(QtWidgets.QWidget):
                 'Sigma',
                 'Sigma (sum)',
                 'Sigma (diff)',
+                'Sigma (abs(diff))',
                 'Intensity',
                 'Background',
             ]
@@ -374,7 +386,22 @@ class PSFView(QtWidgets.QWidget):
         type_group = QtWidgets.QGroupBox('Display Type')
         type_layout = QtWidgets.QVBoxLayout()
         self.view_3d_type = QtWidgets.QComboBox()
-        self.view_3d_type.addItems(['Mean', 'Median', 'Standard Deviation'])
+        display_types = [
+            {
+                'name': 'Mean',
+                'value': 'mean',
+            },
+            {
+                'name': 'Median',
+                'value': 'median',
+            },
+            {
+                'name': 'Standard Deviation',
+                'value': 'std',
+            },
+        ]
+        for t in display_types:
+            self.view_3d_type.addItem(t['name'], t['value'])
         self.view_3d_type.currentTextChanged.connect(self.update_3d_view)
         type_layout.addWidget(self.view_3d_type)
         type_group.setLayout(type_layout)
@@ -383,7 +410,7 @@ class PSFView(QtWidgets.QWidget):
         # Opacity control
         opacity_group = QtWidgets.QGroupBox('Opacity')
         opacity_layout = QtWidgets.QVBoxLayout()
-        self.opacity_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.opacity_slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
         self.opacity_slider.setMinimum(0)
         self.opacity_slider.setMaximum(100)
         self.opacity_slider.setValue(10)
@@ -418,92 +445,41 @@ class PSFView(QtWidgets.QWidget):
         self.gl_widget.opts['distance'] = 180
         self.gl_widget.update()
 
+    def get_display_type(self) -> str:
+        '''Get the display type for the merged view.'''
+        if self.display_mean.isChecked():
+            return 'mean'
+        elif self.display_median.isChecked():
+            return 'median'
+        elif self.display_std.isChecked():
+            return 'std'
+        else:
+            return 'roi'
+
     def update_merged_view(self):
-        '''Update the merged slice/field visualization based on current settings.'''
         if self.psf_data is None:
             return
 
-        z_index = self.z_slice_slider.value()
+        slice_index = self.slice_slider.value()
         grid_size = self.grid_size.value()
+        # get display type (mean, median ... etc)
+        display_type = self.get_display_type()
+        norm = self.normalization_checkbox.isChecked()
 
-        if z_index >= len(self.psf_data):
-            return
+        if self.view_mode == 'XY':
+            roi_index = self.single_roi_slider.value()
 
-        # Get field PSF data if needed
-        if grid_size > 1:
-            self.psf_data.get_field_psf(grid_size)
-
-        current_slice = self.psf_data.zslices[z_index]
-        roi_size = self.psf_data.roi_size
-        size = roi_size * grid_size
-
-        # Update single ROI slider/spinbox maximum
-        max_rois = (current_slice['count'] - 1) if current_slice['count'] > 0 else 0
-        self.single_roi_slider.setMaximum(max_rois)
-        self.single_roi_spinbox.setMaximum(max_rois)
-
-        # Create empty arrays for visualization
-        psf_image = np.zeros((size, size))
-        grid_overlay = np.zeros((size, size, 4))  # RGBA for grid overlay
-
-        if grid_size == 1:
-            # Handle single grid case (original slice view)
-            if self.display_mean.isChecked():
-                display_data = current_slice['mean']
-            elif self.display_median.isChecked():
-                display_data = current_slice['median']
-            elif self.display_std.isChecked():
-                display_data = current_slice['std']
-            else:  # Single ROI
-                if current_slice['rois'] is not None and current_slice['count'] > 0:
-                    roi_index = self.single_roi_slider.value()
-                    if roi_index < len(current_slice['rois']):
-                        display_data = current_slice['rois'][roi_index]
-                    else:
-                        display_data = None
-                else:
-                    display_data = None
-
-            if display_data is not None and not np.isnan(display_data).all():
-                psf_image = display_data
-        else:
-            # Handle multiple grid case (field view)
-            colors = [
-                pg.intColor(i, grid_size**2).getRgb() for i in range(grid_size**2)
-            ]
-
-            for field_idx, field_rois in enumerate(current_slice['field']):
-                if not field_rois:
-                    continue
-
-                field_rois = np.array(field_rois)
-
-                if self.display_mean.isChecked():
-                    stat = np.nanmean(field_rois, axis=0)
-                elif self.display_median.isChecked():
-                    stat = np.nanmedian(field_rois, axis=0)
-                elif self.display_std.isChecked():
-                    stat = np.nanstd(field_rois, axis=0)
-                else:  # Single ROI
-                    roi_index = self.single_roi_slider.value()
-                    stat = (
-                        field_rois[roi_index] if roi_index < len(field_rois) else None
-                    )
-
-                if stat is not None:
-                    y = field_idx // grid_size
-                    x = field_idx % grid_size
-                    psf_image[
-                        y * roi_size : (y + 1) * roi_size,
-                        x * roi_size : (x + 1) * roi_size,
-                    ] = stat
-
-                    # Add colored overlay for grid visualization
-                    color = colors[field_idx]
-                    grid_overlay[
-                        y * roi_size : (y + 1) * roi_size,
-                        x * roi_size : (x + 1) * roi_size,
-                    ] = [color[0], color[1], color[2], 128]
+            psf_image, grid_overlay = self.psf_data.get_z_slice(
+                slice_index, display_type, roi_index, grid_size, norm
+            )
+        elif self.view_mode == 'XZ':
+            psf_image, grid_overlay = self.psf_data.get_y_slice(
+                slice_index, display_type, grid_size
+            )
+        else:  # YZ
+            psf_image, grid_overlay = self.psf_data.get_x_slice(
+                slice_index, display_type, grid_size
+            )
 
         # Update the visualization
         if self.auto_level_checkbox.isChecked():
@@ -511,11 +487,19 @@ class PSFView(QtWidgets.QWidget):
         else:
             self.psf_image_item.setImage(psf_image, autoLevels=False)
 
-        self.grid_overlay_item.setImage(grid_overlay)
-        self.update_grid_opacity()
+        if grid_overlay is not None:
+            self.grid_overlay_item.setImage(grid_overlay)
+            self.update_grid_opacity()
+        else:
+            self.grid_overlay_item.clear()
 
         # Update metadata
         self.update_metadata()
+
+    def change_view_mode(self, mode):
+        self.view_mode = mode
+        self.update_slice_controls()
+        self.update_merged_view()
 
     def update_metadata(self):
         '''Update the metadata display in the PSF view tab.'''
@@ -566,30 +550,8 @@ class PSFView(QtWidgets.QWidget):
             zero = self.psf_data.zero_plane
 
             # Prepare volumetric data based on selected type
-            view_type = self.view_3d_type.currentText()
-            volume_data = np.zeros(
-                (len(self.psf_data), self.psf_data.roi_size, self.psf_data.roi_size)
-            )
-
-            for i, z_slice in enumerate(self.psf_data.zslices):
-                if view_type == 'Mean':
-                    volume_data[i] = (
-                        z_slice['mean']
-                        if z_slice['mean'] is not None
-                        else np.zeros(self.psf_data.dim)
-                    )
-                elif view_type == 'Median':
-                    volume_data[i] = (
-                        z_slice['median']
-                        if z_slice['median'] is not None
-                        else np.zeros(self.psf_data.dim)
-                    )
-                elif view_type == 'Standard Deviation':
-                    volume_data[i] = (
-                        z_slice['std']
-                        if z_slice['std'] is not None
-                        else np.zeros(self.psf_data.dim)
-                    )
+            view_type = self.view_3d_type.currentData()
+            volume_data = self.psf_data.get_volume(view_type)
 
             # Normalize data
             if np.all(volume_data == 0):
@@ -615,12 +577,20 @@ class PSFView(QtWidgets.QWidget):
             opacity = self.opacity_slider.value() / 100.0
             d2[..., 3] = (normalized_data * 255 * opacity).astype(np.ubyte)
 
+            # Set scaling ratios for X and Y axes
+            x_ratio = y_ratio = 1  # X and Y are the reference, Z scaled
+            # z_ratio
+            z_ratio = self.psf_data.get_ratio()
+
             # Create and add volume item
             v = gl.GLVolumeItem(d2)
+
+            v.scale(z_ratio, y_ratio, x_ratio)  # Apply scaling in (z, y, x) order
+
             v.translate(
-                -zero,
-                -volume_data.shape[1] // 2,
-                -volume_data.shape[2] // 2,
+                -zero * z_ratio,
+                -volume_data.shape[1] // 2 * y_ratio,
+                -volume_data.shape[2] // 2 * x_ratio,
             )
             self.gl_widget.addItem(v)
 
@@ -658,140 +628,23 @@ class PSFView(QtWidgets.QWidget):
 
     def restore_zero_plane(self):
         if hasattr(self, 'old_zero_plane'):
-            self.psf_data.zero_plane = self.old_zero_plane
+            self.psf_data.zero_plane = self.psf_data.old_zero_plane
             self.update_all_views()
-
-    def gaussian(self, x, a, x0, sigma, offset):
-        return a * np.exp(-((x - x0) ** 2) / (2 * sigma**2)) + offset
 
     def adjust_zero_plane(self):
         if self.psf_data is None:
             return
 
         method = self.zero_plane_method.currentText()
-        start, end = map(
-            int,
-            [
-                v / self.psf_data.z_step + self.psf_data.zero_plane
-                for v in self.range_roi.getRegion()
-            ],
-        )
-
-        # Store the old zero plane for potential restoration
-        self.old_zero_plane = self.psf_data.zero_plane
-
-        # Get the current statistic data
         selected_stat = self.stat_combo.currentText()
-        stat_data = self.get_statistic_data(selected_stat)
 
-        # Slice the data according to the specified range
-        x = np.arange(start, end)
-        y = stat_data[start:end]
-
-        if method == 'Peak':
-            # Find peaks
-            peaks, _ = find_peaks(y)
-            if len(peaks) > 0:
-                # Get peak prominences
-                prominences = peak_prominences(y, peaks)[0]
-                # Select the most prominent peak
-                max_peak = peaks[np.argmax(prominences)]
-                new_zero_plane = start + max_peak
-            else:
-                new_zero_plane = start + np.argmax(y)
-        elif method == 'Valley':
-            # Invert the data to find valleys as peaks
-            inverted_y = -y
-            valleys, _ = find_peaks(inverted_y)
-            if len(valleys) > 0:
-                # Get valley prominences
-                prominences = peak_prominences(inverted_y, valleys)[0]
-                # Select the most prominent valley
-                max_valley = valleys[np.argmax(prominences)]
-                new_zero_plane = start + max_valley
-            else:
-                new_zero_plane = start + np.argmin(y)
-        elif 'Gaussian Fit' in method:
-            if 'Inverted' in method:
-                y = -y
-            try:
-                # Initial guess for Gaussian parameters
-                a_init = np.max(y) - np.min(y)
-                x0_init = x[np.argmax(y)]
-                sigma_init = (end - start) / 4
-                offset_init = np.min(y)
-
-                # Perform Gaussian fit
-                popt, _ = curve_fit(
-                    self.gaussian, x, y, p0=[a_init, x0_init, sigma_init, offset_init]
-                )
-                new_zero_plane = int(popt[1])  # x0 is the center of the Gaussian
-            except Exception:
-                # Fallback to original plane if fitting fails
-                new_zero_plane = self.psf_data.zero_plane
-        else:
-            return  # Keep current zero plane for 'Manual' method
-
-        # Update the zero plane
-        self.psf_data.zero_plane = new_zero_plane
+        self.psf_data.adjust_zero_plane(
+            selected_stat, method, self.range_roi.getRegion()
+        )
 
         # Update the plots
         self.update_roi_statistics()
         self.update_intensity_statistics()
-
-    def get_statistic_data(self, selected_stat):
-        stat_data = []
-        header = PARAMETER_HEADERS[self.psf_data.fitting_method]
-
-        for z_slice in self.psf_data:
-            if z_slice['rois'] is not None and len(z_slice['rois']) > 0:
-                valid_rois = z_slice['rois'][
-                    ~np.isnan(z_slice['rois']).any(axis=(1, 2))
-                ]
-                if len(valid_rois) > 0:
-                    if selected_stat == 'Counts':
-                        stat_data.append(len(valid_rois))
-                    elif selected_stat == 'Sigma':
-                        if 'sigmax' in header and 'sigmay' in header:
-                            sigma_x = np.mean(
-                                z_slice['params'][:, header.index('sigmax')]
-                            )
-                            sigma_y = np.mean(
-                                z_slice['params'][:, header.index('sigmay')]
-                            )
-                            stat_data.append(np.mean([sigma_x, sigma_y]))
-                    elif selected_stat == 'Sigma (sum)':
-                        if 'sigmax' in header and 'sigmay' in header:
-                            sigma_x = np.sum(
-                                z_slice['params'][:, header.index('sigmax')]
-                            )
-                            sigma_y = np.sum(
-                                z_slice['params'][:, header.index('sigmay')]
-                            )
-                            stat_data.append(np.sum([sigma_x, sigma_y]))
-                    elif selected_stat == 'Sigma (diff)':
-                        if 'sigmax' in header and 'sigmay' in header:
-                            sigma_x = np.mean(
-                                z_slice['params'][:, header.index('sigmax')]
-                            )
-                            sigma_y = np.mean(
-                                z_slice['params'][:, header.index('sigmay')]
-                            )
-                            stat_data.append(abs(sigma_x - sigma_y))
-                    elif selected_stat == 'Intensity':
-                        stat_data.append(
-                            np.mean(z_slice['params'][:, header.index('intensity')])
-                        )
-                    elif selected_stat == 'Background':
-                        stat_data.append(
-                            np.mean(z_slice['params'][:, header.index('background')])
-                        )
-                else:
-                    stat_data.append(np.nan)
-            else:
-                stat_data.append(np.nan)
-
-        return np.array(stat_data)
 
     def update_roi_statistics(self):
         '''Update ROI statistics plot.'''
@@ -801,87 +654,18 @@ class PSFView(QtWidgets.QWidget):
         self.roi_plot.clear()
 
         selected_stat = self.stat_combo.currentText()
-        z_indices = (
-            np.arange(len(self.psf_data)) - self.psf_data.zero_plane
-        ) * self.psf_data.z_step
-        header = PARAMETER_HEADERS[self.psf_data.fitting_method]
-
-        mean_param = []
-        if selected_stat == 'Sigma':
-            if 'sigmax' in header:
-                mean_param.append([])
-            if 'sigmay' in header:
-                mean_param.append([])
-
-        for z_slice in self.psf_data:
-            if z_slice['rois'] is not None:
-                valid_rois = z_slice['rois'][
-                    ~np.isnan(z_slice['rois']).any(axis=(1, 2))
-                ]
-                if selected_stat == 'Counts':
-                    mean_param.append(len(valid_rois))
-                elif len(valid_rois) > 0:
-                    if selected_stat == 'Sigma':
-                        if 'sigmax' in header:
-                            mean_param[0].append(
-                                np.mean(z_slice['params'][:, header.index('sigmax')])
-                                * self.psf_data.pixel_size
-                            )
-                        if 'sigmay' in header:
-                            mean_param[1].append(
-                                np.mean(z_slice['params'][:, header.index('sigmay')])
-                                * self.psf_data.pixel_size
-                            )
-                    elif selected_stat == 'Sigma (sum)':
-                        sum_sigma = 0
-                        if 'sigmax' in header:
-                            sum_sigma += (
-                                np.mean(z_slice['params'][:, header.index('sigmax')])
-                                * self.psf_data.pixel_size
-                            )
-                        if 'sigmay' in header:
-                            sum_sigma += (
-                                np.mean(z_slice['params'][:, header.index('sigmay')])
-                                * self.psf_data.pixel_size
-                            )
-                        mean_param.append(sum_sigma)
-                    elif selected_stat == 'Sigma (diff)':
-                        sigma_x = (
-                            np.mean(z_slice['params'][:, header.index('sigmax')])
-                            * self.psf_data.pixel_size
-                        )
-                        sigma_y = (
-                            np.mean(z_slice['params'][:, header.index('sigmay')])
-                            * self.psf_data.pixel_size
-                        )
-                        mean_param.append(abs(sigma_x - sigma_y))
-                    elif selected_stat == 'Intensity':
-                        mean_param.append(
-                            np.mean(z_slice['params'][:, header.index('intensity')])
-                        )
-                    elif selected_stat == 'Background':
-                        mean_param.append(
-                            np.mean(z_slice['params'][:, header.index('background')])
-                        )
-                else:
-                    if selected_stat == 'Sigma':
-                        if 'sigmax' in header:
-                            mean_param[0].append(np.nan)
-                        if 'sigmay' in header:
-                            mean_param[1].append(np.nan)
-                    else:
-                        mean_param.append(np.nan)
-            else:
-                mean_param.append(np.nan)
+        z_indices, param_stat = self.psf_data.get_stats(selected_stat)
 
         # Plot selected statistic
         if selected_stat == 'Sigma':
-            if 'sigmax' in header:
-                self.roi_plot.plot(z_indices, mean_param[0], pen='b', name='Sigma X')
-            if 'sigmay' in header:
-                self.roi_plot.plot(z_indices, mean_param[1], pen='r', name='Sigma Y')
+            if 1 <= len(param_stat) <= 2:
+                self.roi_plot.plot(z_indices, param_stat[0], pen='b', name='Sigma X')
+                if len(param_stat) == 2:
+                    self.roi_plot.plot(
+                        z_indices, param_stat[1], pen='r', name='Sigma Y'
+                    )
         else:
-            self.roi_plot.plot(z_indices, mean_param, pen='b', name=selected_stat)
+            self.roi_plot.plot(z_indices, param_stat, pen='b', name=selected_stat)
 
         # Update zero plane line
         zero_line_roi = pg.InfiniteLine(pos=0, angle=90, pen='w', movable=False)
@@ -911,35 +695,12 @@ class PSFView(QtWidgets.QWidget):
 
         self.intensity_plot.clear()
 
-        z_indices = (
-            np.arange(len(self.psf_data)) - self.psf_data.zero_plane
-        ) * self.psf_data.z_step
-        mean_intensities = []
-        median_intensities = []
-        std_intensities = []
-
-        for z_slice in self.psf_data:
-            if z_slice['rois'] is not None:
-                valid_rois = z_slice['rois'][
-                    ~np.isnan(z_slice['rois']).any(axis=(1, 2))
-                ]
-                if len(valid_rois) > 0:
-                    mean_intensities.append(np.mean(valid_rois))
-                    median_intensities.append(np.median(valid_rois))
-                    std_intensities.append(np.std(valid_rois))
-                else:
-                    mean_intensities.append(np.nan)
-                    median_intensities.append(np.nan)
-                    std_intensities.append(np.nan)
-            else:
-                mean_intensities.append(np.nan)
-                median_intensities.append(np.nan)
-                std_intensities.append(np.nan)
+        _indices, _mean, _median, _std = self.psf_data.get_intensity_stats()
 
         # Plot intensity statistics
-        self.intensity_plot.plot(z_indices, mean_intensities, pen='r', name='Mean')
-        self.intensity_plot.plot(z_indices, median_intensities, pen='g', name='Median')
-        self.intensity_plot.plot(z_indices, std_intensities, pen='y', name='Std Dev')
+        self.intensity_plot.plot(_indices, _mean, pen='r', name='Mean')
+        self.intensity_plot.plot(_indices, _median, pen='g', name='Median')
+        self.intensity_plot.plot(_indices, _std, pen='y', name='Std Dev')
 
         # Update zero plane line
         zero_line_intensity = pg.InfiniteLine(pos=0, angle=90, pen='w', movable=False)
@@ -962,6 +723,34 @@ class PSFView(QtWidgets.QWidget):
             self.update_roi_statistics()
             self.update_intensity_statistics()
 
+    def update_slice_controls(self):
+        if self.view_mode == 'XY':
+            self.slice_label.setText('Z-Slice:')
+            max_slice = len(self.psf_data) - 1
+
+            # set viewbox aspect ratio
+            ratio = 1
+            zero = self.psf_data.zero_plane
+        else:
+            if self.view_mode == 'XZ':
+                self.slice_label.setText('Y-Slice:')
+            else:  # YZ
+                self.slice_label.setText('X-Slice:')
+
+            max_slice = self.psf_data.roi_size - 1
+
+            # set viewbox aspect ratio
+            ratio = self.psf_data.get_ratio()
+            zero = max_slice // 2
+
+        # set viewbox aspect ratio
+        self.view_box.setAspectLocked(True, ratio)
+
+        self.slice_slider.setMaximum(max_slice)
+        self.slice_spinbox.setMaximum(max_slice)
+        self.zero_btn.setText(f'Zero Plane {zero}')
+        self.slice_slider.setValue(zero)
+
     def set_psf_data(self, psf_data: 'PSFdata'):
         '''Set new PSF data and update all views.
 
@@ -972,10 +761,7 @@ class PSFView(QtWidgets.QWidget):
         '''
         self.psf_data = psf_data
 
-        # Update Z-slice slider and spinbox ranges
-        max_z = len(psf_data) - 1
-        self.z_slice_slider.setMaximum(max_z)
-        self.z_slice_spinbox.setMaximum(max_z)
-
+        # Update slice controls
+        self.update_slice_controls()
         # Update all views
         self.update_all_views()

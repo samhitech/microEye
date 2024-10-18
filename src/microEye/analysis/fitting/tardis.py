@@ -65,7 +65,7 @@ class TARDIS_Widget(QtWidgets.QWidget):
 
         self.bins = QtWidgets.QSpinBox()
         self.bins.setMinimum(5)
-        self.bins.setMaximum(1e4)
+        self.bins.setMaximum(10000)
         self.bins.setValue(1200)
 
         self.tardis_lay.addRow(
@@ -74,7 +74,7 @@ class TARDIS_Widget(QtWidgets.QWidget):
 
         self.maxDist = QtWidgets.QSpinBox()
         self.maxDist.setMinimum(5)
-        self.maxDist.setMaximum(1e4)
+        self.maxDist.setMaximum(10000)
         self.maxDist.setValue(1200)
 
         self.tardis_lay.addRow(

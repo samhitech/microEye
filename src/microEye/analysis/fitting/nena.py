@@ -220,7 +220,7 @@ class NeNA_Widget(QtWidgets.QDialog):
 
         self.bins = QtWidgets.QSpinBox()
         self.bins.setMinimum(5)
-        self.bins.setMaximum(1e4)
+        self.bins.setMaximum(10000)
         self.bins.setValue(200)
 
         self.fitlay.addRow(

@@ -844,7 +844,7 @@ def kernel_MLEFit_LM_sigmaxy(d_data, PSFSigma, sz, iterations, d_varim=None):
 
     oldTheta[:] = newTheta[:]
 
-    for _ in range(iterations):
+    for kk in range(iterations):  # noqa: B007
         # Compute Jacobian and Hessian
         newErr = 0
         jacobian.fill(0)

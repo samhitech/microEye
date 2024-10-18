@@ -7,10 +7,17 @@ import cv2
 import h5py
 import numba as nb
 import numpy as np
+import pyqtgraph as pg
+from scipy.optimize import curve_fit
+from scipy.signal import find_peaks, peak_prominences
 from tqdm import tqdm
 
 from microEye.analysis.fitting.results import PARAMETER_HEADERS
 from microEye.utils.uImage import TiffSeqHandler, ZarrImageSequence, uImage
+
+
+def gaussian(x, a, x0, sigma, offset):
+    return a * np.exp(-((x - x0) ** 2) / (2 * sigma**2)) + offset
 
 
 class PSFdata:
@@ -18,11 +25,15 @@ class PSFdata:
         self, data_dict: dict[str, Union[int, np.ndarray, list, float]]
     ) -> None:
         self._data = data_dict
+        self._last_field = 0
 
     def get_field_psf(self, grid_size: int = 3):
         '''
         Get PSF field for the given grid size.
         '''
+        if self._last_field == grid_size:
+            return
+
         width, height = self.dim
         width *= self.upsample
         height *= self.upsample
@@ -45,6 +56,8 @@ class PSFdata:
                 if idx >= 0:
                     zslice['field'][idx].append(zslice['rois'][i].copy())
                 zslice['field_idx'][i] = idx
+
+        self._last_field = grid_size
 
     @property
     def zslices(self) -> list[dict[str, Union[int, np.ndarray, list, float]]]:
@@ -178,6 +191,501 @@ class PSFdata:
             return result
         else:
             raise StopIteration
+
+    def get_z_slice(
+        self,
+        z_index: int,
+        type: str = 'mean',
+        roi_index: int = 0,
+        grid_size: int = 1,
+        normalize: bool = False,
+    ) -> tuple[Optional[np.ndarray], Optional[np.ndarray]]:
+        """
+        Get the XY slice for the given z-index.
+
+        Parameters:
+        -----------
+        z_index : int
+            The z-index of the slice
+        type : str, optional
+            The type of data to return, by default 'mean'
+            Options: 'mean', 'std', 'median', 'roi'
+        roi_index : int, optional
+            The index of the ROI to return, by default 0
+        grid_size : int, optional
+            The grid size for field PSF, by default 1
+        normalize : bool, optional
+            Whether to normalize the data, by default False
+
+        Returns:
+        --------
+        tuple[np.ndarray, np.ndarray]
+            The data array and grid overlay
+        """
+        # check if Z index is in bounds
+        if z_index >= len(self.zslices):
+            raise IndexError(f'Z index {z_index} out of bounds')
+
+        # get the z-slice
+        zslice = self.zslices[z_index]
+
+        # check if roi index is in bounds
+        if roi_index >= zslice['count']:
+            raise IndexError(
+                f'ROI index {roi_index} out of bounds for z-slice {z_index}'
+            )
+
+        # limit grid_size from 1 to 5
+        grid_size = max(1, min(grid_size, 5))
+
+        # get the ROI
+        if type in ['mean', 'median', 'std', 'roi']:
+            if grid_size == 1:
+                if type == 'roi':
+                    data = zslice['rois'][roi_index]
+                    return None if np.isnan(data).any() else data, None
+                return zslice[type], None
+            else:
+                self.get_field_psf(grid_size)
+                colors = [
+                    pg.intColor(i, grid_size**2).getRgb() for i in range(grid_size**2)
+                ]
+
+                roi_size = self.roi_size
+                size = roi_size * grid_size
+
+                # Create empty arrays for visualization
+                psf_image = np.zeros((size, size))
+                # RGBA for grid overlay
+                grid_overlay = np.zeros((size, size, 4))
+
+                for field_idx, field_rois in enumerate(zslice['field']):
+                    if not field_rois:
+                        continue
+
+                    field_rois = np.array(field_rois)
+
+                    if type == 'mean':
+                        stat = np.nanmean(field_rois, axis=0)
+                    elif type == 'median':
+                        stat = np.nanmedian(field_rois, axis=0)
+                    elif type == 'std':
+                        stat = np.nanstd(field_rois, axis=0)
+                    else:  # Single ROI
+                        stat = (
+                            field_rois[roi_index]
+                            if roi_index < len(field_rois)
+                            else None
+                        )
+
+                    if stat is not None:
+                        y = field_idx // grid_size
+                        x = field_idx % grid_size
+                        psf_image[
+                            y * roi_size : (y + 1) * roi_size,
+                            x * roi_size : (x + 1) * roi_size,
+                        ] = 2**16 * stat / np.sum(stat) if normalize else stat
+
+                        # Add colored overlay for grid visualization
+                        color = colors[field_idx]
+                        grid_overlay[
+                            y * roi_size : (y + 1) * roi_size,
+                            x * roi_size : (x + 1) * roi_size,
+                        ] = [color[0], color[1], color[2], 128]
+                return psf_image, grid_overlay
+        else:
+            raise ValueError(f'Invalid type {type}')
+
+    def get_longitudinal_slice(
+        self,
+        index: int,
+        type: str = 'mean',
+        grid_size: int = 1,
+        sagittal: bool = True,
+        normalize: bool = False,
+    ) -> tuple[Optional[np.ndarray], Optional[np.ndarray]]:
+        """
+        Get the longitudinal slice for the given index.
+
+        Parameters
+        ----------
+        index : int
+            The index of the slice
+        type : str, optional
+            The type of data to return, by default 'mean'
+            Options: 'mean', 'median', 'std'
+        grid_size : int, optional
+            The grid size for field PSF, by default 1
+        sagittal : bool, optional
+            Whether to get the sagittal slice, or coronal, by default True
+        normalize : bool, optional
+            Whether to normalize the data, by default False
+
+        Returns
+        -------
+        tuple[np.ndarray, np.ndarray]
+            The data array and grid overlay
+        """
+        # check if index is in bounds
+        if index >= self.roi_size:
+            raise IndexError(f'Y index {index} out of bounds')
+
+        # limit grid_size from 1 to 5
+        grid_size = np.clip(grid_size, 1, 5)
+
+        roi_height, roi_width = self.roi_size, len(self.zslices)
+
+        if type not in ['mean', 'median', 'std']:
+            raise ValueError(f'Invalid type {type}')
+
+        if grid_size == 1:
+            data = np.array(
+                [
+                    zslice[type][index] if sagittal else zslice[type][:, index]
+                    for zslice in self.zslices
+                ]
+            ).T
+            return data, None
+
+        self.get_field_psf(grid_size)
+        colors = [pg.intColor(i, grid_size**2).getRgb() for i in range(grid_size**2)]
+
+        height, width = roi_height * grid_size, roi_width * grid_size
+
+        psf_image = np.zeros((height, width))
+        grid_overlay = np.zeros((height, width, 4), dtype=np.uint8)
+
+        stat_func = {'mean': np.nanmean, 'median': np.nanmedian, 'std': np.nanstd}[type]
+
+        grid_painted = []
+        for i, zslice in enumerate(self.zslices):
+            for field_idx, field_rois in enumerate(zslice['field']):
+                if not field_rois:
+                    continue
+
+                field_rois = (
+                    np.array(field_rois)[:, index, :]
+                    if sagittal
+                    else np.array(field_rois)[..., index]
+                )
+                stat = stat_func(field_rois, axis=0)
+
+                if stat is not None:
+                    y, x = divmod(field_idx, grid_size)
+                    psf_image[
+                        y * roi_height : (y + 1) * roi_height, x * roi_width + i
+                    ] = stat
+
+                    if field_idx not in grid_painted:
+                        color = colors[field_idx]
+                        grid_overlay[
+                            y * roi_height : (y + 1) * roi_height,
+                            x * roi_width : (x + 1) * roi_width,
+                        ] = [*color[:3], 128]
+                        grid_painted.append(field_idx)
+
+        return psf_image, grid_overlay
+
+    def get_x_slice(
+        self, x_index: int, type: str = 'mean', grid_size: int = 1
+    ) -> tuple[Optional[np.ndarray], Optional[np.ndarray]]:
+        """
+        Get the YZ slice for the given x-index.
+
+        Parameters
+        ----------
+        x_index : int
+            The x-index of the slice
+        type : str, optional
+            The type of data to return, by default 'mean'
+            Options: 'mean', 'median', 'std'
+        grid_size : int, optional
+            The grid size for field PSF, by default 1
+
+        Returns
+        -------
+        tuple[np.ndarray, np.ndarray]
+            The data array and grid overlay
+        """
+        return self.get_longitudinal_slice(
+            x_index, type=type, grid_size=grid_size, sagittal=False
+        )
+
+    def get_y_slice(
+        self, y_index: int, type: str = 'mean', grid_size: int = 1
+    ) -> tuple[Optional[np.ndarray], Optional[np.ndarray]]:
+        """
+        Get the XZ slice for the given y-index.
+
+        Parameters
+        ----------
+        y_index : int
+            The y-index of the slice
+        type : str, optional
+            The type of data to return, by default 'mean'
+            Options: 'mean', 'median', 'std'
+        grid_size : int, optional
+            The grid size for field PSF, by default 1
+
+        Returns
+        -------
+        tuple[np.ndarray, np.ndarray]
+            The data array and grid overlay
+        """
+        return self.get_longitudinal_slice(
+            y_index, type=type, grid_size=grid_size, sagittal=True
+        )
+
+    def get_volume(self, type: str = 'mean'):
+        """
+        Get the 3D volume for the given type.
+
+        Parameters
+        ----------
+        type : str, optional
+            The type of data to return, by default 'mean'
+
+            Options:
+                'mean' - Mean intensity
+
+                'median' - Median intensity
+
+                'std' - Standard deviation of intensity
+
+        Returns
+        -------
+        np.ndarray
+            The 3D volume data
+        """
+        if type not in ['mean', 'median', 'std']:
+            raise ValueError(f'Invalid type {type}')
+
+        volume_data = np.zeros((len(self), self.roi_size, self.roi_size))
+
+        for i, z_slice in enumerate(self.zslices):
+            volume_data[i] = (
+                z_slice[type]
+                if z_slice[type] is not None
+                else np.zeros((self.roi_size, self.roi_size))
+            )
+
+        return volume_data
+
+    def get_ratio(self) -> float:
+        '''
+        Get the ratio of Z step to lateral pixel size.
+
+        Returns
+        -------
+        float
+            The ratio of Z step to lateral pixel size
+        '''
+        return self.z_step * self.upsample / self.pixel_size
+
+    def get_intensity_stats(self):
+        '''
+        Get the intensity statistics for all z-slices.
+
+        Returns
+        -------
+        _indices, _mean, _median, _std: tuple[np.ndarray, list, list, list]
+            The indices, mean, median, and standard deviation of the intensity values
+        '''
+        _indices = (np.arange(len(self)) - self.zero_plane) * self.z_step
+        _mean = []
+        _median = []
+        _std = []
+
+        for z_slice in self.zslices:
+            if z_slice['rois'] is not None:
+                valid_rois = z_slice['rois'][
+                    ~np.isnan(z_slice['rois']).any(axis=(1, 2))
+                ]
+                if len(valid_rois) > 0:
+                    _mean.append(np.mean(valid_rois))
+                    _median.append(np.median(valid_rois))
+                    _std.append(np.std(valid_rois))
+                else:
+                    _mean.append(np.nan)
+                    _median.append(np.nan)
+                    _std.append(np.nan)
+            else:
+                _mean.append(np.nan)
+                _median.append(np.nan)
+                _std.append(np.nan)
+
+        return _indices, _mean, _median, _std
+
+    def get_stats(self, selected_stat: str):
+        """
+        Get the statistic data for all z-slices.
+
+        Parameters
+        ----------
+        selected_stat : str
+            The selected statistic to return
+            Options:
+                'Counts', 'Sigma', 'Sigma (sum)', 'Sigma (diff)', 'Sigma (abs(diff))',
+                'Intensity', 'Background'
+
+        Returns
+        -------
+        z_indices, param_stat: tuple[np.ndarray, np.ndarray]
+            The z-indices and the statistic data for all z-slices
+        """
+        z_indices = (np.arange(len(self)) - self.zero_plane) * self.z_step
+        header = PARAMETER_HEADERS[self.fitting_method]
+
+        param_stat = []
+        if selected_stat == 'Sigma':
+            if 'sigmax' in header:
+                param_stat.append([])
+            if 'sigmay' in header:
+                param_stat.append([])
+
+        for z_slice in self.zslices:
+            if z_slice['rois'] is not None:
+                valid_rois = z_slice['rois'][
+                    ~np.isnan(z_slice['rois']).any(axis=(1, 2))
+                ]
+                if selected_stat == 'Counts':
+                    param_stat.append(len(valid_rois))
+                elif len(valid_rois) > 0:
+                    if 'Sigma' in selected_stat:
+                        sigma_x = sigma_y = 0
+                        if 'sigmax' in header:
+                            sigma_x = np.mean(
+                                z_slice['params'][:, header.index('sigmax')]
+                            )
+                        if 'sigmay' in header:
+                            sigma_y = np.mean(
+                                z_slice['params'][:, header.index('sigmay')]
+                            )
+                        if selected_stat == 'Sigma':
+                            param_stat[0].append(sigma_x)
+                            param_stat[1].append(sigma_y)
+                        elif selected_stat == 'Sigma (sum)':
+                            param_stat.append(sigma_x + sigma_y)
+                        elif selected_stat == 'Sigma (diff)':
+                            param_stat.append(sigma_x - sigma_y)
+                        elif selected_stat == 'Sigma (abs(diff))':
+                            param_stat.append(abs(sigma_x - sigma_y))
+                        else:
+                            param_stat.append(np.nan)
+                    elif selected_stat == 'Intensity':
+                        param_stat.append(
+                            np.mean(z_slice['params'][:, header.index('intensity')])
+                        )
+                    elif selected_stat == 'Background':
+                        param_stat.append(
+                            np.mean(z_slice['params'][:, header.index('background')])
+                        )
+                else:
+                    if selected_stat == 'Sigma':
+                        if 'sigmax' in header:
+                            param_stat[0].append(np.nan)
+                        if 'sigmay' in header:
+                            param_stat[1].append(np.nan)
+                    else:
+                        param_stat.append(np.nan)
+            else:
+                param_stat.append(np.nan)
+
+        return z_indices, np.array(param_stat)
+
+    def adjust_zero_plane(
+        self, selected_stat: str, method: str, region: tuple[int, int]
+    ):
+        """
+        Adjust the zero plane based on the selected statistic and method.
+
+        Parameters
+        ----------
+        selected_stat : str
+            The selected statistic to use for zero plane adjustment
+
+            Options:
+
+                'Counts', 'Sigma', 'Sigma (sum)', 'Sigma (diff)', 'Sigma (abs(diff))',
+                'Intensity', 'Background'
+        method : str
+            The method to use for zero plane adjustment
+
+            Options: 'Peak', 'Valley', 'Gaussian Fit', 'Gaussian Fit (Inverted)',
+            'Manual'
+        region : tuple[int, int]
+            The region to use for zero plane adjustment
+
+        Returns
+        -------
+        int
+            The new zero plane
+        """
+        if selected_stat == 'Sigma':
+            selected_stat = 'Sigma (sum)'
+
+        start, end = map(
+            int,
+            [v / self.z_step + self.zero_plane for v in region],
+        )
+
+        # Store the old zero plane for potential restoration
+        self.old_zero_plane = self.zero_plane
+
+        _, stat_data = self.get_stats(selected_stat)
+
+        # Slice the data according to the specified range
+        x = np.arange(start, end)
+        y = stat_data[start:end]
+
+        if method == 'Peak':
+            # Find peaks
+            peaks, _ = find_peaks(y)
+            if len(peaks) > 0:
+                # Get peak prominences
+                prominences = peak_prominences(y, peaks)[0]
+                # Select the most prominent peak
+                max_peak = peaks[np.argmax(prominences)]
+                new_zero_plane = start + max_peak
+            else:
+                new_zero_plane = start + np.argmax(y)
+        elif method == 'Valley':
+            # Invert the data to find valleys as peaks
+            inverted_y = -y
+            valleys, _ = find_peaks(inverted_y)
+            if len(valleys) > 0:
+                # Get valley prominences
+                prominences = peak_prominences(inverted_y, valleys)[0]
+                # Select the most prominent valley
+                max_valley = valleys[np.argmax(prominences)]
+                new_zero_plane = start + max_valley
+            else:
+                new_zero_plane = start + np.argmin(y)
+        elif 'Gaussian Fit' in method:
+            if 'Inverted' in method:
+                y = -y
+            try:
+                # Initial guess for Gaussian parameters
+                a_init = np.max(y) - np.min(y)
+                x0_init = x[np.argmax(y)]
+                sigma_init = (end - start) / 4
+                offset_init = np.min(y)
+
+                # Perform Gaussian fit
+                popt, _ = curve_fit(
+                    gaussian, x, y, p0=[a_init, x0_init, sigma_init, offset_init]
+                )
+                new_zero_plane = int(popt[1])  # x0 is the center of the Gaussian
+            except Exception:
+                # Fallback to original plane if fitting fails
+                new_zero_plane = self.zero_plane
+        else:
+            return self.zero_plane  # Keep current zero plane for 'Manual' method
+
+        # Update the zero plane
+        self.zero_plane = new_zero_plane
+
+        return self.zero_plane
 
     def get_consistent_rois(self) -> 'PSFdata':
         '''

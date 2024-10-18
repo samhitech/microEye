@@ -757,7 +757,7 @@ class StackView(QtWidgets.QWidget):
             params,
             crlbs,
             loglike,
-            method,
+            method.value,
             self.get_param(Parameters.PIXEL_SIZE).value(),
             self.get_param(Parameters.PSF_ZSTEP).value(),
             self.get_param(Parameters.ROI_SIZE).value(),

@@ -30,7 +30,7 @@ class port_config(QtWidgets.QDialog):
 
         # dialog buttons
         buttonBox = QtWidgets.QDialogButtonBox()
-        buttonBox.setOrientation(Qt.Horizontal)
+        buttonBox.setOrientation(Qt.Orientation.Horizontal)
         buttonBox.setStandardButtons(
             QtWidgets.QDialogButtonBox.Cancel | QtWidgets.QDialogButtonBox.Ok
         )
