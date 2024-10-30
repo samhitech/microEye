@@ -716,10 +716,10 @@ class ImageSequenceBase:
         np.ndarray or None
             Retrieved data.
         '''
-        if isinstance(i, int):
-            return self.getSlice(slice(i, i + 1, 1))
-        elif isinstance(i, slice):
+        if isinstance(i, slice):
             return self.getSlice(i)
+        elif isinstance(i, int):
+            return self.getSlice(slice(i, i + 1, 1))
         else:
             raise IndexError('Index must be an integer or a slice')
 
@@ -1016,10 +1016,10 @@ class TiffSeqHandler(ImageSequenceBase):
         np.ndarray
             Retrieved data.
         '''
-        if isinstance(i, int) or np.issubdtype(i, np.integer):
-            return self._get_slice(slice(i, i + 1, 1))
-        elif isinstance(i, slice):
+        if isinstance(i, slice):
             return self._get_slice(i)
+        elif isinstance(i, int) or np.issubdtype(i, np.integer):
+            return self._get_slice(slice(i, i + 1, 1))
         else:
             return self._get_slice(slice(None))
 

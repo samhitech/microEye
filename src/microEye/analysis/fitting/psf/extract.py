@@ -12,6 +12,7 @@ from scipy.optimize import curve_fit
 from scipy.signal import find_peaks, peak_prominences
 from tqdm import tqdm
 
+from microEye.analysis.fitting.psf.stats import *
 from microEye.analysis.fitting.results import PARAMETER_HEADERS
 from microEye.utils.uImage import TiffSeqHandler, ZarrImageSequence, uImage
 
@@ -26,6 +27,12 @@ class PSFdata:
     ) -> None:
         self._data = data_dict
         self._last_field = 0
+
+        self.stats_calculator = StatsCalculator(
+            zero_plane=self.zero_plane,
+            z_step=self.z_step,
+            fitting_method=self.fitting_method,
+        )
 
     def get_field_psf(self, grid_size: int = 3):
         '''
@@ -66,6 +73,11 @@ class PSFdata:
     @property
     def fitting_method(self) -> float:
         return self._data.get('fit_method')
+
+    @property
+    def available_stats(self) -> list[str]:
+        # self.stats_calculator.available_stats keys
+        return list(self.stats_calculator.available_stats.keys())
 
     @property
     def pixel_size(self) -> float:
@@ -516,7 +528,12 @@ class PSFdata:
 
         return _indices, _mean, _median, _std
 
-    def get_stats(self, selected_stat: str):
+    def get_stats(
+        self,
+        selected_stat: str,
+        confidence_method: ConfidenceMethod = ConfidenceMethod.NONE,
+        confidence_level: float = 0.95,
+    ):
         """
         Get the statistic data for all z-slices.
 
@@ -527,71 +544,89 @@ class PSFdata:
             Options:
                 'Counts', 'Sigma', 'Sigma (sum)', 'Sigma (diff)', 'Sigma (abs(diff))',
                 'Intensity', 'Background'
+        confidence_method : ConfidenceMethod, optional
+            The method to use for confidence interval calculation,
+            by default ConfidenceMethod.NONE
 
         Returns
         -------
         z_indices, param_stat: tuple[np.ndarray, np.ndarray]
             The z-indices and the statistic data for all z-slices
         """
-        z_indices = (np.arange(len(self)) - self.zero_plane) * self.z_step
-        header = PARAMETER_HEADERS[self.fitting_method]
+        # Simply delegate to the calculator
+        return self.stats_calculator.get_stats(
+            self.zslices,
+            selected_stat,
+            confidence_method,
+            confidence_level,
+        )
 
-        param_stat = []
-        if selected_stat == 'Sigma':
-            if 'sigmax' in header:
-                param_stat.append([])
-            if 'sigmay' in header:
-                param_stat.append([])
+    def get_z_cal(
+        self,
+        selected_stat: str,
+        region: tuple[int, int],
+        confidence_method: ConfidenceMethod = ConfidenceMethod.NONE,
+        confidence_level: float = 0.95,
+        **kwargs,
+    ) -> Union[SlopeResult, CurveResult, dict]:
+        '''
+        Get the slope or curve fit for the selected statistic.
 
-        for z_slice in self.zslices:
-            if z_slice['rois'] is not None:
-                valid_rois = z_slice['rois'][
-                    ~np.isnan(z_slice['rois']).any(axis=(1, 2))
-                ]
-                if selected_stat == 'Counts':
-                    param_stat.append(len(valid_rois))
-                elif len(valid_rois) > 0:
-                    if 'Sigma' in selected_stat:
-                        sigma_x = sigma_y = 0
-                        if 'sigmax' in header:
-                            sigma_x = np.mean(
-                                z_slice['params'][:, header.index('sigmax')]
-                            )
-                        if 'sigmay' in header:
-                            sigma_y = np.mean(
-                                z_slice['params'][:, header.index('sigmay')]
-                            )
-                        if selected_stat == 'Sigma':
-                            param_stat[0].append(sigma_x)
-                            param_stat[1].append(sigma_y)
-                        elif selected_stat == 'Sigma (sum)':
-                            param_stat.append(sigma_x + sigma_y)
-                        elif selected_stat == 'Sigma (diff)':
-                            param_stat.append(sigma_x - sigma_y)
-                        elif selected_stat == 'Sigma (abs(diff))':
-                            param_stat.append(abs(sigma_x - sigma_y))
-                        else:
-                            param_stat.append(np.nan)
-                    elif selected_stat == 'Intensity':
-                        param_stat.append(
-                            np.mean(z_slice['params'][:, header.index('intensity')])
-                        )
-                    elif selected_stat == 'Background':
-                        param_stat.append(
-                            np.mean(z_slice['params'][:, header.index('background')])
-                        )
-                else:
-                    if selected_stat == 'Sigma':
-                        if 'sigmax' in header:
-                            param_stat[0].append(np.nan)
-                        if 'sigmay' in header:
-                            param_stat[1].append(np.nan)
-                    else:
-                        param_stat.append(np.nan)
-            else:
-                param_stat.append(np.nan)
+        Parameters
+        ----------
+        selected_stat : str
+            The selected statistic to use for slope or curve fit
+        region : tuple[int, int]
+            The region to use for slope or curve fit
+        confidence_method : ConfidenceMethod, optional
+            The method to use for confidence interval calculation,
+            by default ConfidenceMethod.NONE
+        confidence_level : float, optional
+            The confidence level for the confidence interval calculation,
+            by default 0.95
 
-        return z_indices, np.array(param_stat)
+        Keyword Arguments
+        -----------------
+        method : CurveFitMethod, optional
+            The method to use for curve fitting, by default CurveFitMethod.CSPLINE
+        derivative_threshold : float, optional
+            The threshold for derivative-based zero crossing detection,
+            by default 0.01
+        smoothing : float, optional
+            The smoothing factor for curve fitting, by default None
+
+        Returns
+        -------
+        Union[SlopeResult, CurveResult]
+            The slope or curve fit result
+        '''
+        method: CurveFitMethod = kwargs.get('method', CurveFitMethod.LINEAR)
+
+        if method == CurveFitMethod.LINEAR:
+            return SlopeAnalyzer.fit_stat_slope(
+                selected_stat,
+                lambda: self.get_stats(
+                    selected_stat, confidence_method, confidence_level
+                ),
+                region,
+                confidence_method,
+                confidence_level,
+            )
+        elif method == CurveFitMethod.ASTIGMATIC_PSF:
+            return None
+        else:
+            derivative_threshold: float = kwargs.get('derivative_threshold', 0.01)
+            smoothing_factor: float = kwargs.get('smoothing', 0.1)
+            return CurveAnalyzer.fit_stat_curve(
+                selected_stat,
+                lambda: self.get_stats(
+                    selected_stat, confidence_method, confidence_level
+                ),
+                region,
+                method,
+                derivative_threshold,
+                smoothing_factor,
+            )
 
     def adjust_zero_plane(
         self, selected_stat: str, method: str, region: tuple[int, int]
@@ -632,7 +667,7 @@ class PSFdata:
         # Store the old zero plane for potential restoration
         self.old_zero_plane = self.zero_plane
 
-        _, stat_data = self.get_stats(selected_stat)
+        _, stat_data, _, _ = self.get_stats(selected_stat, ConfidenceMethod.NONE)
 
         # Slice the data according to the specified range
         x = np.arange(start, end)
@@ -684,6 +719,7 @@ class PSFdata:
 
         # Update the zero plane
         self.zero_plane = new_zero_plane
+        self.stats_calculator.zero_plane = new_zero_plane
 
         return self.zero_plane
 

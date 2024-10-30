@@ -6,7 +6,7 @@ from numpy.core._exceptions import _ArrayMemoryError
 from scipy.interpolate import interp1d
 
 from microEye.analysis.fitting.processing import *
-from microEye.analysis.rendering import gauss_hist_render, hist2D_render
+from microEye.analysis.rendering import BaseRenderer, RenderModes
 
 UNIQUE_COLUMNS = [
     'frame',
@@ -301,12 +301,14 @@ class FittingResults:
                 array[:, 4:6] *= self.pixel_size
 
     def get_column(self, key: DataColumns):
+        if not isinstance(key, DataColumns):
+            raise TypeError(f'Expected DataColumns type, got {type(key)}')
         if self.data[key] is None:
             return np.zeros(self.__len__())
         else:
             return self.data[key]
 
-    def extend(self, data: np.ndarray):
+    def extend(self, data: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]):
         '''Extend results by contents of data array
 
         Parameters
@@ -533,7 +535,7 @@ class FittingResults:
             print('Drift cross-correlation failed: 2 or more bins are required.')
             return
 
-        renderEngine = hist2D_render(pixelSize)
+        renderEngine = BaseRenderer(pixelSize, RenderModes.HISTOGRAM)
 
         x_max = int((np.max(self.data[DataColumns.X]) / renderEngine._pixel_size) + 4)
         y_max = int((np.max(self.data[DataColumns.Y]) / renderEngine._pixel_size) + 4)
@@ -553,7 +555,7 @@ class FittingResults:
                 frame_ids[f * frames_per_bin - 1] if f * frames_per_bin > 0 else 0,
                 frame_ids[(f + 1) * frames_per_bin],
             )
-            image = renderEngine.fromArray(
+            image = renderEngine.from_array(
                 np.c_[
                     self.data[DataColumns.X][mask],
                     self.data[DataColumns.Y][mask],
@@ -596,7 +598,7 @@ class FittingResults:
             self.data[DataColumns.Y],
         )
 
-        drift_corrected_image = renderEngine.render(
+        drift_corrected_image = renderEngine.render_xy(
             self.data[DataColumns.X],
             self.data[DataColumns.Y],
             self.data[DataColumns.INTENSITY],
@@ -607,6 +609,30 @@ class FittingResults:
     def nn_trajectories(
         self, minDistance: float = 0, maxDistance: float = 30, maxOff=1, neighbors=1
     ):
+        '''
+        Perform nearest neighbor trajectory analysis.
+
+        Parameters
+        ----------
+        minDistance : float
+            Minimum distance between neighbors in nanometers
+        maxDistance : float
+            Maximum distance between neighbors in nanometers
+        maxOff : int
+            Maximum length of trajectory in frames
+        neighbors : int
+            Number of nearest neighbors to consider
+
+        Returns
+        -------
+        FittingResults
+            Updated FittingResults object with trajectory information
+
+        Raises
+        ------
+        ValueError
+            If parameters are invalid
+        '''
         self.trackID = np.zeros(self.__len__(), dtype=np.int64)
         self.neighbour_dist = np.zeros(self.__len__(), dtype=np.float64)
         # data = self.dataFrame().to_numpy()
@@ -760,12 +786,10 @@ class FittingResults:
         return self, (unique_frames, drift_x, drift_y)
 
     def zero_coordinates(self):
-        if self.data[DataColumns.X] is not None:
-            self.data[DataColumns.X] -= np.min(self.data[DataColumns.X])
-        if self.data[DataColumns.Y] is not None:
-            self.data[DataColumns.Y] -= np.min(self.data[DataColumns.Y])
-        if self.data[DataColumns.Z] is not None:
-            self.data[DataColumns.Z] -= np.min(self.data[DataColumns.Z])
+        # Use vectorized operations with optional masking
+        for coord in (DataColumns.X, DataColumns.Y, DataColumns.Z):
+            if self.data[coord] is not None:
+                self.data[coord] -= np.min(self.data[coord])
 
     @staticmethod
     def fromFile(filename: str, pixelSize: float):

@@ -73,7 +73,7 @@ class resultsStatsWidget(QtWidgets.QWidget):
                         min_val = df[column].min()
                         max_val = df[column].max()
                     else:
-                        q1, q3 = np.nanpercentile(df[column].to_numpy(), [25, 75])
+                        q1, q3 = np.nanpercentile(df[column].to_numpy(), [10, 90])
                         iqr = q3 - q1
                         min_val = (
                             q1 - 1.5 * iqr

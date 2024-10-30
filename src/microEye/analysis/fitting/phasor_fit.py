@@ -1,7 +1,7 @@
 
 import numpy as np
 
-from microEye.analysis.rendering import radial_cordinate
+from microEye.analysis.utils import radial_coordinate
 
 
 def phasor_fit(image: np.ndarray, points: np.ndarray,
@@ -71,7 +71,7 @@ def roi_mask(roi_size=7):
     roi_shape = [roi_size] * 2
     roi_radius = roi_size / 2
 
-    radius_map, _ = radial_cordinate(roi_shape)
+    radius_map, _ = radial_coordinate(roi_shape)
 
     bg_mask = radius_map > (roi_radius - 0.5)
     sig_mask = radius_map <= roi_radius

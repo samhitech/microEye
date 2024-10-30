@@ -1,14 +1,19 @@
+import json
 import os
+from dataclasses import asdict
+from pprint import pprint
 from typing import Union
 
 import numpy as np
 import pyqtgraph as pg
 import pyqtgraph.opengl as gl
 from pyqtgraph import functions as fn
+from tabulate import tabulate
 
-from microEye.analysis.fitting.psf import PSFdata
+from microEye.analysis.fitting.psf import ConfidenceMethod, PSFdata, stats
 from microEye.analysis.fitting.results import PARAMETER_HEADERS, FittingMethod
-from microEye.qt import QtCore, QtWidgets
+from microEye.qt import QtCore, QtWidgets, getOpenFileName, getSaveFileName
+from microEye.utils.enum_encoder import EnumEncoder
 
 
 class PSFView(QtWidgets.QWidget):
@@ -34,6 +39,8 @@ class PSFView(QtWidgets.QWidget):
             raise TypeError(
                 'PSF data must be a PSFdata object or a path to an HDF5 file.'
             )
+
+        self.fit_result = None
 
         self.setWindowTitle('PSF Data Viewer')
         self._threadpool = QtCore.QThreadPool.globalInstance()
@@ -233,6 +240,11 @@ class PSFView(QtWidgets.QWidget):
         controls_layout.addWidget(self.refresh_btn)
         controls_layout.addWidget(self.zero_btn)
 
+        # Export PSF data
+        self.export_btn = QtWidgets.QPushButton('Export PSF Data')
+        self.export_btn.clicked.connect(self._export_psf_data)
+        controls_layout.addWidget(self.export_btn)
+
         # Add stretch to push controls to the top
         controls_layout.addStretch()
 
@@ -263,64 +275,99 @@ class PSFView(QtWidgets.QWidget):
         self.roi_plot.addItem(self.range_roi)
         self.range_roi.sigRegionChanged.connect(self.update_range_spinboxes)
 
+        left_options = QtWidgets.QFormLayout()
+        left_layout.addLayout(left_options)
+
         # Statistic selection for ROI plot
-        stat_selection_layout = QtWidgets.QHBoxLayout()
-        stat_selection_layout.addWidget(QtWidgets.QLabel('Select statistic:'))
         self.stat_combo = QtWidgets.QComboBox()
-        self.stat_combo.addItems(
-            [
-                'Counts',
-                'Sigma',
-                'Sigma (sum)',
-                'Sigma (diff)',
-                'Sigma (abs(diff))',
-                'Intensity',
-                'Background',
-            ]
+        for stat in self.psf_data.available_stats:
+            self.stat_combo.addItem(stat)
+        self.stat_combo.currentTextChanged.connect(self.update_roi_statistics)
+        left_options.addRow(
+            'Select statistic:',
+            self.stat_combo,
         )
-        stat_selection_layout.addWidget(self.stat_combo)
-        left_layout.addLayout(stat_selection_layout)
+        # add confidence enum combo:
+        self.confidence_combo = QtWidgets.QComboBox()
+        for c in ConfidenceMethod:
+            self.confidence_combo.addItem(c.name, c)
+        self.confidence_combo.currentIndexChanged.connect(self.update_roi_statistics)
+        left_options.addRow(
+            'Confidence method:',
+            self.confidence_combo,
+        )
+        # add confedence interval spin box 0 to 100
+        self.confidence_spinbox = QtWidgets.QSpinBox()
+        self.confidence_spinbox.setMinimum(0)
+        self.confidence_spinbox.setMaximum(100)
+        self.confidence_spinbox.setValue(95)
+        self.confidence_spinbox.valueChanged.connect(self.update_roi_statistics)
+        left_options.addRow(
+            'Confidence interval:',
+            self.confidence_spinbox,
+        )
 
         # Refresh button for left graph
         self.refresh_roi_btn = QtWidgets.QPushButton('Refresh ROI Statistics')
         self.refresh_roi_btn.clicked.connect(self.update_roi_statistics)
-        left_layout.addWidget(self.refresh_roi_btn)
+        left_options.addWidget(self.refresh_roi_btn)
 
         # Add zero plane adjustment controls
-        zero_plane_widget = QtWidgets.QWidget()
-        zero_plane_layout = QtWidgets.QHBoxLayout()
-        zero_plane_widget.setLayout(zero_plane_layout)
-
         self.zero_plane_method = QtWidgets.QComboBox()
         self.zero_plane_method.addItems(
             ['Manual', 'Peak', 'Valley', 'Gaussian Fit', 'Gaussian Fit (Inverted)']
         )
-        zero_plane_layout.addWidget(QtWidgets.QLabel('Zero Plane Method:'))
-        zero_plane_layout.addWidget(self.zero_plane_method)
+        left_options.addRow('Zero Plane Method:', self.zero_plane_method)
+
+        # Add range widgets
+        range_controls_layout = QtWidgets.QHBoxLayout()
 
         # Update spinboxes for range selection
-        self.zero_plane_range_start = QtWidgets.QSpinBox()
-        self.zero_plane_range_start.setMinimumWidth(75)
-        self.zero_plane_range_end = QtWidgets.QSpinBox()
-        self.zero_plane_range_end.setMinimumWidth(75)
-        zero_plane_layout.addWidget(QtWidgets.QLabel('Range:'))
-        zero_plane_layout.addWidget(self.zero_plane_range_start)
-        zero_plane_layout.addWidget(QtWidgets.QLabel('to'))
-        zero_plane_layout.addWidget(self.zero_plane_range_end)
+        self.z_range_start = QtWidgets.QSpinBox()
+        self.z_range_start.setMinimumWidth(75)
+        self.z_range_end = QtWidgets.QSpinBox()
+        self.z_range_end.setMinimumWidth(75)
+        range_controls_layout.addWidget(QtWidgets.QLabel('Range:'))
+        range_controls_layout.addWidget(self.z_range_start)
+        range_controls_layout.addWidget(QtWidgets.QLabel('to'))
+        range_controls_layout.addWidget(self.z_range_end)
 
-        self.zero_plane_range_start.valueChanged.connect(self.update_range_roi)
-        self.zero_plane_range_end.valueChanged.connect(self.update_range_roi)
+        self.z_range_start.valueChanged.connect(self.update_range_roi)
+        self.z_range_end.valueChanged.connect(self.update_range_roi)
+        # Add range controls to left options
+        left_options.addRow('Range:', range_controls_layout)
+
+        # Add CurveFitMethods Combo
+        self.curve_fit_combo = QtWidgets.QComboBox()
+        for m in stats.CurveFitMethod:
+            self.curve_fit_combo.addItem(m.name, m)
+
+        left_options.addRow('Curve Fit Method:', self.curve_fit_combo)
 
         # Add restore button
-        self.restore_zero_plane_btn = QtWidgets.QPushButton('Restore Zero Plane')
-        self.restore_zero_plane_btn.clicked.connect(self.restore_zero_plane)
-        zero_plane_layout.addWidget(self.restore_zero_plane_btn)
+        buttons_layout = QtWidgets.QHBoxLayout()
+        self.restore_zero_plane_btn = QtWidgets.QPushButton(
+            'Restore Zero Plane', clicked=self.restore_zero_plane
+        )
+        buttons_layout.addWidget(self.restore_zero_plane_btn)
 
-        self.adjust_zero_plane_btn = QtWidgets.QPushButton('Adjust Zero Plane')
-        self.adjust_zero_plane_btn.clicked.connect(self.adjust_zero_plane)
-        zero_plane_layout.addWidget(self.adjust_zero_plane_btn)
+        self.adjust_zero_plane_btn = QtWidgets.QPushButton(
+            'Adjust Zero Plane', clicked=self.adjust_zero_plane
+        )
+        buttons_layout.addWidget(self.adjust_zero_plane_btn)
 
-        left_layout.addWidget(zero_plane_widget)
+        self.slope_btn = QtWidgets.QPushButton('Fit Curve', clicked=self.fit_stat_curve)
+        buttons_layout.addWidget(self.slope_btn)
+        self.export_fit_btn = QtWidgets.QPushButton(
+            'Export', clicked=self.export_fit_curve
+        )
+        buttons_layout.addWidget(self.export_fit_btn)
+        self.import_fit_btn = QtWidgets.QPushButton(
+            'Import', clicked=self.import_fit_curve
+        )
+        buttons_layout.addWidget(self.import_fit_btn)
+
+        left_options.addRow(buttons_layout)
 
         # Right graph (Intensity plot)
         right_widget = QtWidgets.QWidget()
@@ -339,8 +386,8 @@ class PSFView(QtWidgets.QWidget):
         self.refresh_intensity_btn.clicked.connect(self.update_intensity_statistics)
         right_layout.addWidget(self.refresh_intensity_btn)
 
-        stats_layout.addWidget(left_widget)
-        stats_layout.addWidget(right_widget)
+        stats_layout.addWidget(left_widget, 2)
+        stats_layout.addWidget(right_widget, 1)
 
         self.view_tabs.addTab(stats_widget, 'Statistics')
 
@@ -617,13 +664,13 @@ class PSFView(QtWidgets.QWidget):
     def update_range_spinboxes(self):
         mn, mx = self.range_roi.getRegion()
         zero = self.psf_data.zero_plane
-        self.zero_plane_range_start.setValue(int(mn / self.psf_data.z_step + zero))
-        self.zero_plane_range_end.setValue(int(mx / self.psf_data.z_step + zero))
+        self.z_range_start.setValue(int(mn / self.psf_data.z_step + zero))
+        self.z_range_end.setValue(int(mx / self.psf_data.z_step + zero))
 
     def update_range_roi(self):
         zero = self.psf_data.zero_plane
-        start = (self.zero_plane_range_start.value() - zero) * self.psf_data.z_step
-        end = (self.zero_plane_range_end.value() - zero) * self.psf_data.z_step
+        start = (self.z_range_start.value() - zero) * self.psf_data.z_step
+        end = (self.z_range_end.value() - zero) * self.psf_data.z_step
         self.range_roi.setRegion((start, end))
 
     def restore_zero_plane(self):
@@ -646,47 +693,113 @@ class PSFView(QtWidgets.QWidget):
         self.update_roi_statistics()
         self.update_intensity_statistics()
 
-    def update_roi_statistics(self):
-        '''Update ROI statistics plot.'''
+    def fit_stat_curve(self):
         if self.psf_data is None:
             return
 
-        self.roi_plot.clear()
-
         selected_stat = self.stat_combo.currentText()
-        z_indices, param_stat = self.psf_data.get_stats(selected_stat)
+        self.fit_result = self.psf_data.get_z_cal(
+            selected_stat=selected_stat,
+            region=self.range_roi.getRegion(),
+            confidence_method=self.confidence_combo.currentData(),
+            confidence_level=self.confidence_spinbox.value() / 100,
+            method=self.curve_fit_combo.currentData(),
+        )
 
-        # Plot selected statistic
-        if selected_stat == 'Sigma':
-            if 1 <= len(param_stat) <= 2:
-                self.roi_plot.plot(z_indices, param_stat[0], pen='b', name='Sigma X')
-                if len(param_stat) == 2:
-                    self.roi_plot.plot(
-                        z_indices, param_stat[1], pen='r', name='Sigma Y'
+        self.plot_curve_fit()
+
+    def plot_curve_fit(self):
+        if self.fit_result:
+            # Plot the curve fit
+            if isinstance(self.fit_result, stats.SlopeResult):
+                x_fit = (
+                    np.arange(len(self.psf_data)) - self.psf_data.zero_plane
+                ) * self.psf_data.z_step
+                y_fit = self.fit_result.slope * x_fit + self.fit_result.intercept
+
+                y_lower = y_upper = None
+                if self.fit_result.slope_ci:
+                    y_lower = (
+                        self.fit_result.slope_ci[0] * x_fit + self.fit_result.intercept
                     )
-        else:
-            self.roi_plot.plot(z_indices, param_stat, pen='b', name=selected_stat)
+                    y_upper = (
+                        self.fit_result.slope_ci[1] * x_fit + self.fit_result.intercept
+                    )
 
-        # Update zero plane line
-        zero_line_roi = pg.InfiniteLine(pos=0, angle=90, pen='w', movable=False)
-        self.roi_plot.addItem(zero_line_roi)
+                self._add_stat_with_confidence(
+                    x_fit,
+                    y_fit,
+                    y_lower,
+                    y_upper,
+                    'Calibration Slope',
+                    (0, 255, 0, 150),
+                )
+            elif isinstance(self.fit_result, stats.CurveResult):
+                x_fit = (
+                    np.arange(len(self.psf_data)) - self.psf_data.zero_plane
+                ) * self.psf_data.z_step
+                y_fit = self.fit_result.get_data(x_fit)
 
-        # Update range ROI
-        z_range = (0, (len(self.psf_data) - 1))
-        self.range_roi.setRegion((z_indices.min(), z_indices.max()))
-        self.zero_plane_range_start.setRange(*z_range)
-        self.zero_plane_range_end.setRange(*z_range)
-        self.zero_plane_range_start.setValue(0)
-        self.zero_plane_range_end.setValue(z_range[1])
-        self.roi_plot.addItem(self.range_roi)
+                y_lower = y_upper = None
 
-        # Add legend
-        self.roi_plot.addLegend()
+                self._add_stat_with_confidence(
+                    x_fit,
+                    y_fit,
+                    y_lower,
+                    y_upper,
+                    'Calibration Curve',
+                    (0, 255, 0, 150),
+                )
+            elif isinstance(self.fit_result, dict):
+                x_fit = self.fit_result['fitted_curves']['z']
+                y_fit = [
+                    self.fit_result['fitted_curves']['sigma_x'],
+                    self.fit_result['fitted_curves']['sigma_y'],
+                ]
 
-        # Set plot title and labels
-        self.roi_plot.setTitle(f'{selected_stat} Over Z')
-        self.roi_plot.setLabel('left', selected_stat)
-        self.roi_plot.setLabel('bottom', 'Z-Slice')
+                y_lower = y_upper = None
+
+                self._add_stat_with_confidence(
+                    x_fit,
+                    y_fit[0],
+                    y_lower,
+                    y_upper,
+                    'Sigma X Curve',
+                    (0, 255, 0, 150),
+                )
+                self._add_stat_with_confidence(
+                    x_fit,
+                    y_fit[1],
+                    y_lower,
+                    y_upper,
+                    'Sigma X Curve',
+                    (0, 255, 255, 150),
+                )
+
+            # use tabulate to print out the slope results info in stats text
+            # pprint(asdict(self.fit_result))
+
+    def export_fit_curve(self):
+        if self.fit_result is None:
+            return
+
+        if stats.export_fit_curve(
+            self.fit_result, self, os.path.dirname(self.psf_data.path)
+        ):
+            print(
+                f'Fit curve exported!'
+            )
+
+    def import_fit_curve(self):
+        fit_result, _ = stats.import_fit_curve(
+            self,
+            os.path.dirname(self.psf_data.path),
+        )
+
+        if fit_result:
+            self.fit_result = fit_result
+            self.range_roi.setRegion(self.fit_result.significant_region)
+            self.plot_curve_fit()
 
     def update_intensity_statistics(self):
         '''Update intensity statistics plot.'''
@@ -765,3 +878,126 @@ class PSFView(QtWidgets.QWidget):
         self.update_slice_controls()
         # Update all views
         self.update_all_views()
+
+    def update_roi_statistics(self):
+        '''Update ROI statistics plot with confidence intervals where applicable.'''
+        if self.psf_data is None:
+            return
+
+        self.roi_plot.clear()
+        selected_stat = self.stat_combo.currentText()
+        z_indices, param_stat, param_min, param_max = self.psf_data.get_stats(
+            selected_stat,
+            self.confidence_combo.currentData(),
+            self.confidence_spinbox.value() / 100,
+        )
+
+        # Plot based on statistic type
+        if selected_stat == 'Sigma':
+            self._plot_sigma_stats(z_indices, param_stat, param_min, param_max)
+        else:
+            self._plot_single_stat(
+                z_indices, param_stat, param_min, param_max, selected_stat
+            )
+
+        self._setup_plot_elements(z_indices, selected_stat)
+
+    def _plot_sigma_stats(self, z_indices, param_stat, param_min, param_max):
+        '''Plot sigma statistics with confidence intervals.'''
+        colors = {
+            'x': (0, 0, 255, 150),
+            'y': (255, 0, 0, 150),
+        }  # Semi-transparent blue and red
+
+        if 1 <= len(param_stat) <= 2:
+            # Plot X sigma
+            self._add_stat_with_confidence(
+                z_indices,
+                param_stat[0],
+                param_min[0],
+                param_max[0],
+                'Sigma X',
+                colors['x'],
+            )
+
+            # Plot Y sigma if available
+            if len(param_stat) == 2:
+                self._add_stat_with_confidence(
+                    z_indices,
+                    param_stat[1],
+                    param_min[1],
+                    param_max[1],
+                    'Sigma Y',
+                    colors['y'],
+                )
+
+    def _plot_single_stat(self, z_indices, param_stat, param_min, param_max, stat_name):
+        '''Plot a single statistic with confidence interval.'''
+        self._add_stat_with_confidence(
+            z_indices,
+            param_stat,
+            param_min,
+            param_max,
+            stat_name,
+            (0, 0, 255, 150),  # Semi-transparent blue
+        )
+
+    def _add_stat_with_confidence(self, x, y, y_min, y_max, name, color):
+        '''Add a statistic line with confidence interval fill.'''
+        # Main line
+        pen = pg.mkPen(color=color, width=2)
+        self.roi_plot.plot(x, y, pen=pen, name=name)
+
+        # Confidence interval fill
+        if y_min is not None and y_max is not None:
+            fill = pg.FillBetweenItem(
+                pg.PlotCurveItem(x, y_max),
+                pg.PlotCurveItem(x, y_min),
+                brush=pg.mkBrush((*color[:3], 50)),  # More transparent for fill
+            )
+            self.roi_plot.addItem(fill)
+
+    def _setup_plot_elements(self, z_indices, selected_stat):
+        '''Setup common plot elements.'''
+        # Zero plane line
+        zero_line_roi = pg.InfiniteLine(pos=0, angle=90, pen='w', movable=False)
+        self.roi_plot.addItem(zero_line_roi)
+
+        # Range ROI setup
+        z_range = (0, (len(self.psf_data) - 1))
+        self.range_roi.setRegion((z_indices.min(), z_indices.max()))
+
+        # Update range controls
+        self._update_range_controls(z_range)
+
+        # Add plot elements
+        self.roi_plot.addItem(self.range_roi)
+        self.roi_plot.addLegend()
+
+        # Set labels
+        self._set_plot_labels(selected_stat)
+
+    def _update_range_controls(self, z_range):
+        '''Update range control values and limits.'''
+        self.z_range_start.setRange(*z_range)
+        self.z_range_end.setRange(*z_range)
+        self.z_range_start.setValue(0)
+        self.z_range_end.setValue(z_range[1])
+
+    def _set_plot_labels(self, selected_stat):
+        '''Set plot title and axis labels.'''
+        self.roi_plot.setTitle(f'{selected_stat} Over Z')
+        self.roi_plot.setLabel('left', selected_stat)
+        self.roi_plot.setLabel('bottom', 'Z-Slice')
+
+    def _export_psf_data(self):
+        '''Export PSF data to an HDF5 file.'''
+        filename, _ = getSaveFileName(
+            self,
+            'Save PSF Data',
+            os.path.dirname(self.psf_data.path),
+            'HDF5 PSF Files (*.psf.h5)',
+        )
+
+        if filename:
+            self.psf_data.save_hdf(filename)

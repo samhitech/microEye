@@ -559,7 +559,7 @@ class Dummy_Panel(Camera_Panel):
                     try:
                         image = uImage(self.acq_job.frame.image)
 
-                        image.equalizeLUT()
+                        image.equalizeLUT(nLUT=True)
 
                         scale_factor = get_scaling_factor(image.height, image.width)
 
@@ -610,7 +610,7 @@ class Dummy_Panel(Camera_Panel):
                     try:
                         image = uImage(self.acq_job.frame.image)
 
-                        image.equalizeLUT()
+                        image.equalizeLUT(nLUT=True)
 
                         scale_factor = get_scaling_factor(image.height, image.width)
 

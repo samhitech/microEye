@@ -15,7 +15,7 @@ from microEye.analysis.fitting.pyfit3Dcspline import (
     get_roi_list_CMOS,
 )
 from microEye.analysis.fitting.results import *
-from microEye.qt import QtWidgets, Signal
+from microEye.qt import Qt, QtWidgets, Signal
 from microEye.utils.uImage import TiffSeqHandler, ZarrImageSequence, uImage
 
 
@@ -602,9 +602,9 @@ def get_rois_lists_GPU(
 ):
     gain: Union[float, np.ndarray] = kwargs.get('gain', 1)
     offset: Union[float, np.ndarray] = kwargs.get('offset', 0)
-    varim: np.ndarray = kwargs.get('varim', None)
-    roi_info = kwargs.get('roi_info', None)
-    irange = kwargs.get('irange', None)
+    varim: np.ndarray = kwargs.get('varim')
+    roi_info = kwargs.get('roi_info')
+    irange = kwargs.get('irange')
     rel_threshold: float = kwargs.get('rel_threshold', 0.4)
     max_threshold: float = kwargs.get('max_threshold', 1.0)
     tm_window: int = kwargs.get('tm_window', 0)

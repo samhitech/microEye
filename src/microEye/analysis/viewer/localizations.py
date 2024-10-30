@@ -11,12 +11,18 @@ import tifffile as tf
 from microEye.analysis.checklist_dialog import ChecklistDialog
 from microEye.analysis.fitting.nena import NeNA_Widget
 from microEye.analysis.fitting.processing import plot_drift
-from microEye.analysis.fitting.results import UNIQUE_COLUMNS, FittingResults
+from microEye.analysis.fitting.psf import stats
+from microEye.analysis.fitting.results import (
+    UNIQUE_COLUMNS,
+    DataColumns,
+    FittingResults,
+)
 from microEye.analysis.fitting.results_stats import resultsStatsWidget
 from microEye.analysis.fitting.tardis import TARDIS_Widget
+from microEye.analysis.processing import FRC_resolution_binomial, plot_frc
 from microEye.analysis.rendering import *
-from microEye.analysis.tools.kymograms import KymogramWidget
 from microEye.analysis.viewer.layers_widget import ImageParamsWidget
+from microEye.analysis.viewer.volume import PointCloudViewer, VolumeViewerWindow
 from microEye.qt import Qt, QtCore, QtGui, QtWidgets, getOpenFileName, getSaveFileName
 from microEye.utils.gui_helper import *
 from microEye.utils.thread_worker import QThreadWorker
@@ -200,6 +206,30 @@ class LocalizationsView(QtWidgets.QWidget):
                     )
                 )
 
+    def update_position(self):
+        '''Update the position label.'''
+        if self.projection_cbox.currentData() in [3, 4, 5]:
+            self.position_label.setVisible(True)
+            self.position.setVisible(True)
+
+            projection = self.projection_cbox.currentData() - 3
+            if projection == 0:
+                column = DataColumns.Z
+            elif projection == 1:
+                column = DataColumns.Y
+            else:
+                column = DataColumns.X
+
+            self.position_label.setText('Z Position [nm]:')
+            self.position.setRange(
+                self.fittingResults.data[column].min(),
+                self.fittingResults.data[column].max(),
+            )
+            self.position.setValue(self.position.minimum())
+        else:
+            self.position_label.setVisible(False)
+            self.position.setVisible(False)
+
     def render_loc(self):
         '''Update the rendered super-res image.
 
@@ -212,16 +242,191 @@ class LocalizationsView(QtWidgets.QWidget):
             return None
         elif len(self.fittingResults) > 0:
             render_idx = self.render_cbox.currentData()
-            if render_idx == 0:
-                renderClass = hist2D_render(self.super_px_size.value())
-            elif render_idx == 1:
-                renderClass = gauss_hist_render(self.super_px_size.value())
-            img = renderClass.render(*self.fittingResults.toRender())
-            # TODO: here
-            self.image_items[0][0].setImage(img, autoLevels=True)
+            projection = self.projection_cbox.currentData()
+
+            renderClass = BaseRenderer(
+                self.xy_binsize.value(), self.z_binsize.value(), RenderModes(render_idx)
+            )
+            if 0 <= projection < 3:
+                img = renderClass.render(
+                    Projection(projection),
+                    self.fittingResults.data[DataColumns.X],
+                    self.fittingResults.data[DataColumns.Y],
+                    self.fittingResults.data[DataColumns.Z],
+                    self.fittingResults.data[DataColumns.INTENSITY],
+                )
+
+                self.image_items[0][0].setImage(
+                    img, autoLevels=self.auto_level.isChecked()
+                )
+
+                if projection == 0:
+                    self.view_box.setAspectLocked(True, 1)
+                else:
+                    self.view_box.setAspectLocked(
+                        True, self.xy_binsize.value() / self.z_binsize.value()
+                    )
+            if 3 <= projection < 6:
+                projection -= 3
+
+                if projection == 0:
+                    self.view_box.setAspectLocked(True, 1)
+                    width = self.z_binsize.value()
+                else:
+                    self.view_box.setAspectLocked(
+                        True, self.xy_binsize.value() / self.z_binsize.value()
+                    )
+                    width = self.xy_binsize.value()
+
+                img = renderClass.render_slice(
+                    Projection(projection),
+                    self.fittingResults.data[DataColumns.X],
+                    self.fittingResults.data[DataColumns.Y],
+                    self.fittingResults.data[DataColumns.Z],
+                    self.fittingResults.data[DataColumns.INTENSITY],
+                    self.position.value(),
+                    width,
+                )
+
+                self.image_items[0][0].setImage(
+                    img, autoLevels=self.auto_level.isChecked()
+                )
+            else:
+                return None
+
             return img
         else:
             return None
+
+    def extract_z(self):
+        '''Extract Z values from the fitting results.'''
+        if self.fittingResults is None:
+            return None
+        if len(self.fittingResults) < 1:
+            return
+
+        if self.cal_curve_cbox.currentData() == stats.CurveFitMethod.LINEAR:
+            self.fittingResults.data[DataColumns.Z] = (
+                (
+                    self.fittingResults.data[DataColumns.X_SIGMA]
+                    / self.fittingResults.data[DataColumns.Y_SIGMA]
+                )
+                - self.z_cal_intercept.value()
+            ) / self.z_cal_slope.value()
+            self.results_plot.setData(self.fittingResults.dataFrame())
+        elif self.cal_curve_cbox.currentData() == stats.CurveFitMethod.CSPLINE:
+            if self.z_cal_curve:
+                self.fittingResults.data[DataColumns.Z] = (
+                    stats.CurveAnalyzer.get_z_from_y_array_optimized(
+                        self.fittingResults.data[DataColumns.X_SIGMA]
+                        / self.fittingResults.data[DataColumns.Y_SIGMA],
+                        self.z_cal_curve,
+                        region=[-450, 450],
+                    )
+                )
+                self.results_plot.setData(self.fittingResults.dataFrame())
+
+    def _load_calibration(self):
+        '''Load a calibration file.'''
+        self.z_cal_curve, path = stats.import_fit_curve(
+            self,
+            os.path.dirname(self.path),
+        )
+        if self.z_cal_curve is not None:
+            self.cal_file_path.setText(path)
+            if self.z_cal_curve.method == stats.CurveFitMethod.LINEAR:
+                self.cal_file_path.setText(path)
+                self.cal_curve_cbox.setCurrentIndex(0)
+                self.z_cal_slope.setValue(self.z_cal_curve.slope)
+                self.z_cal_intercept.setValue(self.z_cal_curve.intercept)
+            elif self.z_cal_curve.method == stats.CurveFitMethod.CSPLINE:
+                self.cal_file_path.setText(path)
+                self.cal_curve_cbox.setCurrentIndex(1)
+
+    def _plot_calibration(self):
+        '''Plot the calibration curve.'''
+        if self.z_cal_curve is not None:
+            plt = pg.plot()
+            plt.showGrid(x=True, y=True)
+            legend = plt.addLegend()
+            legend.anchor(itemPos=(1, 0), parentPos=(1, 0))
+            plt.setWindowTitle('Z Calibration')
+            plt.setLabel('left', 'Sigma Ratio (X/Y)')
+            plt.setLabel('bottom', 'Z [nm]')
+
+            # Zero plane line
+            plt.plotItem.addLine(x=0, pen='w')
+
+            if self.z_cal_curve.method == stats.CurveFitMethod.LINEAR:
+                pen = pg.mkPen(color=(0, 0, 255, 150), width=2)
+                plt.plot(
+                    self.z_cal_curve.data['z'],
+                    self.z_cal_curve.data['ratio'],
+                    pen=pen,
+                    name='data',
+                )
+                pen = pg.mkPen(color=(0, 255, 0, 150), width=2)
+                plt.plot(
+                    self.z_cal_curve.data['z'],
+                    np.array(self.z_cal_curve.data['z']) * self.z_cal_curve.slope
+                    + self.z_cal_curve.intercept,
+                    pen=pen,
+                    name='fit',
+                )
+
+                # Confidence interval fill
+                fill = pg.FillBetweenItem(
+                    pg.PlotCurveItem(
+                        self.z_cal_curve.data['z'],
+                        self.z_cal_curve.data['lower_bounds'],
+                    ),
+                    pg.PlotCurveItem(
+                        self.z_cal_curve.data['z'],
+                        self.z_cal_curve.data['upper_bounds'],
+                    ),
+                    brush=pg.mkBrush((0, 255, 0, 50)),  # More transparent for fill
+                )
+                plt.addItem(fill)
+
+                plt.show()
+            else:
+                pen = pg.mkPen(color=(0, 0, 255, 150), width=2)
+                plt.plot(
+                    self.z_cal_curve.parameters['x_data'],
+                    self.z_cal_curve.parameters['y_data'],
+                    pen=pen,
+                    name='data',
+                )
+                pen = pg.mkPen(color=(0, 255, 0, 150), width=2)
+                plt.plot(
+                    self.z_cal_curve.parameters['x_data'],
+                    self.z_cal_curve.get_data(self.z_cal_curve.parameters['x_data']),
+                    pen=pen,
+                    name='fit',
+                )
+
+                plt.show()
+
+    def render_3D(self):
+        '''
+        Render a 3D view of the super-res image.
+        '''
+        if self.fittingResults is None:
+            return None
+        elif len(self.fittingResults) > 0:
+            renderClass = PointCloudRenderer(
+                self.xy_binsize.value(), self.z_binsize.value()
+            )
+            # Render point cloud
+            points, intensities, metadata = renderClass.render(
+                self.fittingResults.data[DataColumns.X],
+                self.fittingResults.data[DataColumns.Y],
+                self.fittingResults.data[DataColumns.Z],
+                self.fittingResults.data[DataColumns.INTENSITY],
+            )
+            volume_viewer = PointCloudViewer(points, intensities, metadata)
+        else:
+            return
 
     def render_tracks(self):
         pass
@@ -230,22 +435,47 @@ class LocalizationsView(QtWidgets.QWidget):
         '''Set up the Localization tab.'''
         # Render tab layout
         self.localization_widget, self.localization_form = create_widget(
-            QtWidgets.QFormLayout
+            QtWidgets.QVBoxLayout
         )
         self.tab_widget.addTab(self.localization_widget, 'Localization')
 
         # Render layout
 
         self.render_cbox = QtWidgets.QComboBox()
-        self.render_cbox.addItem('2D Histogram', 0)
-        self.render_cbox.addItem('2D Gaussian Histogram', 1)
+        self.render_cbox.addItem('2D Histogram (Intensity)', 0)
+        self.render_cbox.addItem('2D Histogram (Events)', 1)
+        self.render_cbox.addItem('2D Gaussian Histogram', 2)
 
-        self.super_px_size = create_spin_box(
-            min_value=0, max_value=200, initial_value=10
+        self.projection_cbox = QtWidgets.QComboBox()
+        self.projection_cbox.addItem('XY', 0)
+        self.projection_cbox.addItem('XY (slice)', 3)
+        self.projection_cbox.addItem('XZ', 1)
+        self.projection_cbox.addItem('XZ (slice)', 4)
+        self.projection_cbox.addItem('YZ', 2)
+        self.projection_cbox.addItem('YZ (slice)', 5)
+
+        self.projection_cbox.currentIndexChanged.connect(lambda: self.update_position())
+
+        self.auto_level = QtWidgets.QCheckBox('Auto-stretch')
+        self.auto_level.setChecked(True)
+
+        self.xy_binsize = create_spin_box(min_value=0, max_value=200, initial_value=10)
+        self.z_binsize = create_spin_box(min_value=0, max_value=200, initial_value=50)
+
+        self.position_label = QtWidgets.QLabel('Position [nm]:')
+        self.position = create_double_spin_box(
+            min_value=0, max_value=200, single_step=10, decimals=6, initial_value=0
         )
+        self.position_label.setVisible(False)
+        self.position.setVisible(False)
+        self.position.valueChanged.connect(lambda: self.render_loc())
 
         self.refresh_btn = QtWidgets.QPushButton(
-            'Refresh SuperRes Image', clicked=lambda: self.render_loc()
+            'Refresh 2D View', clicked=lambda: self.render_loc()
+        )
+
+        self.display_3d_btn = QtWidgets.QPushButton(
+            '3D View', clicked=lambda: self.render_3D()
         )
 
         # Render GroupBox
@@ -253,12 +483,74 @@ class LocalizationsView(QtWidgets.QWidget):
         flocalization = QtWidgets.QFormLayout()
         localization.setLayout(flocalization)
 
-        flocalization.addRow(QtWidgets.QLabel('Rendering Method:'), self.render_cbox)
+        flocalization.addRow('Rendering Method:', self.render_cbox)
+        flocalization.addRow('Projection:', self.projection_cbox)
+        flocalization.addRow('XY binsize [nm]:', self.xy_binsize)
+        flocalization.addRow('Z binsize [nm]:', self.z_binsize)
+        flocalization.addRow(self.position_label, self.position)
         flocalization.addRow(
-            QtWidgets.QLabel('S-res pixel-size [nm]:'), self.super_px_size
+            create_hbox_layout(self.auto_level, self.refresh_btn, self.display_3d_btn)
         )
-        flocalization.addRow(self.refresh_btn)
         # End Localization GroupBox
+
+        # Z Extraction
+        self.z_cal_curve = None
+        z_extract = QtWidgets.QGroupBox('Z Extraction')
+        z_extract_form = QtWidgets.QFormLayout()
+        z_extract.setLayout(z_extract_form)
+
+        self.cal_curve_cbox = QtWidgets.QComboBox()
+        for c in [stats.CurveFitMethod.LINEAR, stats.CurveFitMethod.CSPLINE]:
+            self.cal_curve_cbox.addItem(c.name, c)
+        self.cal_curve_cbox.currentIndexChanged.connect(
+            lambda: [
+                z_extract_form.setRowVisible(
+                    idx, self.cal_curve_cbox.currentIndex() == 0
+                )
+                for idx in [1, 2]
+            ]
+        )
+
+        self.z_cal_slope = create_double_spin_box(
+            min_value=0, max_value=200, decimals=8, initial_value=0.000800867
+        )
+        self.z_cal_intercept = create_double_spin_box(
+            min_value=0, max_value=200, decimals=8, initial_value=1.00927
+        )
+        self.load_cal_btn = QtWidgets.QPushButton(
+            'Load Z Calibration', clicked=lambda: self._load_calibration()
+        )
+        self.plot_cal_btn = QtWidgets.QPushButton(
+            'Calibration Curve', clicked=lambda: self._plot_calibration()
+        )
+        # display loaded file path in multiline readonly edit box
+        self.cal_file_path = QtWidgets.QTextEdit()
+        self.cal_file_path.setReadOnly(True)
+        self.cal_file_path.setFixedHeight(60)
+        self.cal_file_path.setLineWrapMode(QtWidgets.QTextEdit.LineWrapMode.WidgetWidth)
+        self.cal_file_path.setPlaceholderText('No file loaded')
+
+        self.extract_z_btn = QtWidgets.QPushButton(
+            'Extract Z', clicked=lambda: self.extract_z()
+        )
+        z_extract_form.addRow(
+            'Calibration Method:',
+            self.cal_curve_cbox,
+        )
+        z_extract_form.addRow(
+            'Z Calibration (slope):',
+            self.z_cal_slope,
+        )
+        z_extract_form.addRow(
+            'Z Calibration (intercept):',
+            self.z_cal_intercept,
+        )
+        z_extract_form.addRow(
+            create_hbox_layout(self.extract_z_btn, self.load_cal_btn, self.plot_cal_btn)
+        )
+        z_extract_form.addRow(self.cal_file_path)
+
+        # End Z Extraction
 
         self.drift_cross_args = QtWidgets.QHBoxLayout()
 
@@ -286,14 +578,15 @@ class LocalizationsView(QtWidgets.QWidget):
 
         fdrift.addRow(QtWidgets.QLabel('Drift X-Corr. (bins, pixelSize, upsampling):'))
         fdrift.addRow(self.drift_cross_args)
-        fdrift.addRow(self.drift_cross_btn)
-        fdrift.addRow(self.drift_fdm_btn)
+        fdrift.addRow(create_hbox_layout(self.drift_cross_btn, self.drift_fdm_btn))
         # End Drift GroupBox
 
         self.frc_cbox = QtWidgets.QComboBox()
         self.frc_cbox.addItem('Binomial')
         self.frc_cbox.addItem('Odd/Even')
         self.frc_cbox.addItem('Halves')
+
+        precision_btns = QtWidgets.QHBoxLayout()
         self.frc_res_btn = QtWidgets.QPushButton(
             'FRC Resolution', clicked=lambda: self.FRC_estimate()
         )
@@ -312,9 +605,10 @@ class LocalizationsView(QtWidgets.QWidget):
         precision.setLayout(fprecision)
 
         fprecision.addRow(QtWidgets.QLabel('FRC Method:'), self.frc_cbox)
-        fprecision.addWidget(self.frc_res_btn)
-        fprecision.addWidget(self.NeNA_btn)
-        fprecision.addWidget(self.tardis_btn)
+        precision_btns.addWidget(self.frc_res_btn)
+        precision_btns.addWidget(self.NeNA_btn)
+        precision_btns.addWidget(self.tardis_btn)
+        fprecision.addRow(precision_btns)
         # End Precision GroupBox
 
         self.nneigh_merge_args = QtWidgets.QHBoxLayout()
@@ -368,7 +662,6 @@ class LocalizationsView(QtWidgets.QWidget):
             parent=self,
         )
 
-        self.im_exp_layout = QtWidgets.QHBoxLayout()
         self.import_loc_btn = QtWidgets.QPushButton(
             'Import', clicked=lambda: self.import_loc()
         )
@@ -376,15 +669,16 @@ class LocalizationsView(QtWidgets.QWidget):
             'Export', clicked=lambda: self.export_loc()
         )
 
-        self.im_exp_layout.addWidget(self.import_loc_btn)
-        self.im_exp_layout.addWidget(self.export_loc_btn)
+        self.localization_form.addWidget(localization)
+        self.localization_form.addWidget(z_extract)
+        self.localization_form.addWidget(drift)
+        self.localization_form.addWidget(precision)
+        self.localization_form.addWidget(nearestN)
 
-        self.localization_form.addRow(localization)
-        self.localization_form.addRow(drift)
-        self.localization_form.addRow(precision)
-        self.localization_form.addRow(nearestN)
-
-        self.localization_form.addRow(self.im_exp_layout)
+        self.localization_form.addLayout(
+            create_hbox_layout(self.import_loc_btn, self.export_loc_btn)
+        )
+        self.localization_form.addStretch()
 
     def setup_data_filters_tab(self):
         '''Set up the Data Filters tab.'''
@@ -433,7 +727,7 @@ class LocalizationsView(QtWidgets.QWidget):
                 try:
                     return FRC_resolution_binomial(
                         np.c_[data[0], data[1], data[2]],
-                        self.super_px_size.value(),
+                        self.xy_binsize.value(),
                         frc_method,
                     )
                 except Exception:
@@ -443,7 +737,7 @@ class LocalizationsView(QtWidgets.QWidget):
             def done(results):
                 self.frc_res_btn.setDisabled(False)
                 if results is not None:
-                    plotFRC(*results)
+                    plot_frc(*results)
         else:
             return
 
@@ -688,15 +982,12 @@ class LocalizationsView(QtWidgets.QWidget):
         if df is not None:
             if df.count().min() > 1:
                 render_idx = self.render_cbox.currentData()
-                if render_idx == 0:
-                    renderClass = hist2D_render(self.super_px_size.value())
-                elif render_idx == 1:
-                    renderClass = gauss_hist_render(self.super_px_size.value())
-                img = renderClass.render(
+                renderClass = BaseRenderer(
+                    self.xy_binsize.value(), RenderModes(render_idx)
+                )
+                img = renderClass.render_xy(
                     df['x'].to_numpy(), df['y'].to_numpy(), df['intensity'].to_numpy()
                 )
-                # img_norm = cv2.normalize(
-                #     img, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
                 self.image_items[0][0].setImage(img, autoLevels=False)
             else:
                 # Create a black image

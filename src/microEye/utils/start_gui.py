@@ -72,6 +72,9 @@ def StartGUI(cls: type, *args, **kwargs):
     splash(cls.__name__)
     print(pyjokes.get_joke())
     # create a QApp
+    QtWidgets.QApplication.setAttribute(
+        QtCore.Qt.ApplicationAttribute.AA_ShareOpenGLContexts
+    )
     app = QApplication(sys.argv)
     # set darkmode from *qdarkstyle* (not compatible with pyqt6)
     # Additional stylesheet
