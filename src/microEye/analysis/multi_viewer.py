@@ -99,13 +99,10 @@ class multi_viewer(QMainWindow):
         self._zoom = 1
         self._n_levels = 4096
 
-        # Initialize variables
-        self.fittingResults = None
-
         # Threading
         self._threadpool = QtCore.QThreadPool.globalInstance()
         print(
-            'Multithreading with maximum %d threads' % self._threadpool.maxThreadCount()
+            f'Multithreading with maximum {self._threadpool.maxThreadCount()} threads'
         )
 
         # Set the path
@@ -368,7 +365,7 @@ class multi_viewer(QMainWindow):
             ) or path.endswith('.tsv'):
                 results = FittingResults.fromFile(path, 1)
                 if results is not None:
-                    view = LocalizationsView(path, results)
+                    view = LocalizationsView(results)
                     print('Done importing results.')
                 else:
                     print('Error importing results.')

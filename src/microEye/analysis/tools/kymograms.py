@@ -796,6 +796,8 @@ class KymogramWidget(QtWidgets.QWidget):
         current_frame: int,
         max_frame: int,
         roi_info: tuple[int, int] = None,
+        channel: int = 0,
+        zSlice: int = 0,
     ):
         if tiffSeq_Handler is None:
             return
@@ -854,7 +856,7 @@ class KymogramWidget(QtWidgets.QWidget):
                         zero = np.zeros(1)
                         t_points = window_range[1] - window_range[0] + 1
                         for frame_idx in range(window_range[0], window_range[1] + 1):
-                            data = tiffSeq_Handler.getSlice(frame_idx, 0, 0)
+                            data = tiffSeq_Handler.getSlice(frame_idx, channel, zSlice)
                             rois_row = None
                             for points in rois:
                                 if len(points) > 1:
@@ -999,36 +1001,39 @@ class KymogramWidget(QtWidgets.QWidget):
         tiffSeq_Handler: Union[ZarrImageSequence, TiffSeqHandler],
         current_frame: int,
         window_range: tuple[int, int],
+        **kwargs,
     ):
         condition = self.kymogram_roi_selector.currentText()
+        c = kwargs.get('channel', 0)
+        z = kwargs.get('slice', 0)
 
         if condition == 'current':
-            return tiffSeq_Handler.getSlice(current_frame, 0, 0)
+            return tiffSeq_Handler.getSlice(current_frame, c, z)
         elif condition == 'average':
             return np.mean(
                 tiffSeq_Handler.getSlice(
-                    slice(window_range[0], window_range[1] + 1), 0, 0
+                    slice(window_range[0], window_range[1] + 1), c, z
                 ),
                 axis=0,
             )
         elif condition == 'maximum':
             return np.max(
                 tiffSeq_Handler.getSlice(
-                    slice(window_range[0], window_range[1] + 1), 0, 0
+                    slice(window_range[0], window_range[1] + 1), c, z
                 ),
                 axis=0,
             )
         elif condition == 'sum':
             return np.sum(
                 tiffSeq_Handler.getSlice(
-                    slice(window_range[0], window_range[1] + 1), 0, 0
+                    slice(window_range[0], window_range[1] + 1), c, z
                 ),
                 axis=0,
             )
         elif condition == 'std':
             return np.std(
                 tiffSeq_Handler.getSlice(
-                    slice(window_range[0], window_range[1] + 1), 0, 0
+                    slice(window_range[0], window_range[1] + 1), c, z
                 ),
                 axis=0,
             )

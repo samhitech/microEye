@@ -270,9 +270,48 @@ def plot_drift(frames_new, interpx, interpy, title='Drift Cross-Correlation'):
     plt.setXRange(0, np.max(frames_new))
 
     # setting vertical range
-    plt.setYRange(0, 1)
+    # plt.setYRange(0, 1)
 
     plt.plot(frames_new, interpx, pen='r', symbol=None, symbolBrush=0.2, name='x-drift')
     plt.plot(frames_new, interpy, pen='y', symbol=None, symbolBrush=0.2, name='y-drift')
+
+    print('Done ...', end='\r')
+
+
+def plot_animation_stats(
+    frame_bin_centers, locs_per_bin, title='Localizations per Frames Bin'
+):
+    print('Plotting Stats ...', end='\r')
+
+    # Calculate bin edges from centers
+    bin_width = frame_bin_centers[1] - frame_bin_centers[0]
+    bin_edges = np.concatenate([
+        frame_bin_centers - bin_width/2,
+        [frame_bin_centers[-1] + bin_width/2]
+    ])
+
+    # plot results
+    plt = pg.plot()
+
+    plt.showGrid(x=True, y=True)
+    plt.addLegend()
+
+    # set properties of the label for y axis
+    plt.setLabel('left', 'Localizations', units='counts')
+
+    # set properties of the label for x axis
+    plt.setLabel('bottom', 'Frame', units='')
+
+    plt.setWindowTitle(title)
+
+    # plot bar plot using bin edges instead of centers
+    plt.plot(
+        bin_edges,
+        locs_per_bin,
+        stepMode='center',
+        fillLevel=0,
+        fillOutline=True,
+        brush=(0, 0, 255, 150),
+    )
 
     print('Done ...', end='\r')

@@ -134,6 +134,10 @@ class PSFdata:
         return self._data.get('stack')
 
     @property
+    def headers(self) -> str:
+        return PARAMETER_HEADERS[self.fitting_method]
+
+    @property
     def rois(self):
         return [zslice['rois'] for zslice in self.zslices]
 
@@ -813,6 +817,7 @@ class PSFdata:
             hdf.attrs['fit_method'] = self.fitting_method
             hdf.attrs['zero_plane'] = self.zero_plane
             hdf.attrs['roi_info'] = json.dumps(self.roi_info)
+            hdf.attrs['params_headers'] = json.dumps(self.headers)
 
             # Save zslices data
             zslices_group = hdf.create_group('zslices')
@@ -909,6 +914,7 @@ def get_roi_list(image: np.ndarray, points: np.ndarray, roi_size=7):
 
     roi_list = np.zeros((points.shape[0], roi_size, roi_size), np.float32)
     coord_list = np.zeros_like(points)
+    mask = np.zeros(points.shape[0])
 
     half_size = roi_size // 2
     y_max, x_max = image.shape
@@ -942,8 +948,9 @@ def get_roi_list(image: np.ndarray, points: np.ndarray, roi_size=7):
         else:
             coord_list[r, :] = [x_start, y_start]
             roi_list[r] = image[y_start:y_end, x_start:x_end]
+            mask[r] = 1
 
-    return roi_list, coord_list
+    return roi_list, coord_list, mask
 
 
 def find_best_z(point_params: np.ndarray, z0_criteria: str, headers: list[str]):
@@ -996,6 +1003,7 @@ def get_psf_rois(
     roi_info: Optional[tuple] = None,
     find_z0: bool = False,
     z0_criteria: str = 'all',
+    channel: int = 0,
 ) -> 'PSFdata':
     '''
     Get PSF ROIs for the given frame list.
@@ -1020,10 +1028,11 @@ def get_psf_rois(
 
         z0 = find_best_z(frame_params, z0_criteria, headers)
     else:
-        z0 = max(frame_list) // 2
+        # z0 = max(frame_list) // 2
+        z0 = None
 
     def process_frame(index: int) -> dict[str, Union[int, np.ndarray, list, float]]:
-        image = stack_handler.getSlice(index, 0, 0)
+        image = stack_handler.getSlice(index, channel, 0)
 
         if roi_info is not None:
             origin, dim = roi_info
@@ -1069,8 +1078,14 @@ def get_psf_rois(
         res = get_roi_list(image, points, roi_size)
 
         if res:
-            rois, coords = res
+            rois, coords, mask = res
             count = rois.shape[0]
+
+            mask = mask.astype(bool)
+
+            param = param[mask]
+            crlb = crlb[mask]
+            logl = logl[mask]
         else:
             rois, coords = None, None
             count = 0
@@ -1107,7 +1122,8 @@ def get_psf_rois(
             'stack': stack_handler.path,
             'roi_info': roi_info,
             'fit_method': fit_method,
-            'zero_plane': z0,
+            'zero_plane': z0 if z0 else max(frame_list) // 2,
             'z_step': z_step,
+            'params_headers': headers,
         }
     )

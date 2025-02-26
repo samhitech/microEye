@@ -125,8 +125,8 @@ class io_single_laser(QtSerialPort.QSerialPort):
                 self.SendCommand(io_single_laser.START)
                 # self.SendCommand(io_single_laser.STATUS)
                 self.GetInfo()
-                self.SetPower(1)
                 self.GetMaxPower()
+                # self.SetPower(1)
 
     def CloseCOM(self):
         '''Closes the serial port.'''

@@ -81,6 +81,14 @@ class DeviceManager(QtCore.QObject):
         if isinstance(self.stage, PzFocController):
             self.stage.moveStage(dir, steps)
 
+    def moveRequest(self, axis, direction, step):
+        if axis in ['x', 'y']:
+            dist = direction * step
+            args = [dist, 0] if axis == 'x' else [0, dist]
+            self.kinesisXY.move_relative(*args)
+        else:
+            self.stage.moveStage(direction, step) if self.stage else None
+
     def hid_report(self, reportedEvent: Buttons):
         self._handle_z_stage_events(reportedEvent)
         self._handle_xy_stage_events(reportedEvent)

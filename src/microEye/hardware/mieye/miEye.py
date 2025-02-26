@@ -12,7 +12,12 @@ from microEye.hardware.mieye.acquisition_manager import AcquisitionManager
 from microEye.hardware.mieye.devices_manager import DeviceManager
 from microEye.hardware.protocols import ExperimentDesigner, WeakObjects
 from microEye.hardware.stages import FocusStabilizer, PzFocController
-from microEye.hardware.widgets import DevicesView, devicesParams, focusWidget
+from microEye.hardware.widgets import (
+    Controller,
+    DevicesView,
+    devicesParams,
+    focusWidget,
+)
 from microEye.qt import (
     QT_API,
     QAction,
@@ -87,10 +92,8 @@ class miEye_module(QMainWindow):
         )
 
         # Threading
-        print(
-            'Multithreading with maximum %d threads'
-            % QtCore.QThreadPool.globalInstance().maxThreadCount()
-        )
+        max_threads = QtCore.QThreadPool.globalInstance().maxThreadCount()
+        print(f'Multithreading with maximum {max_threads} threads')
 
         # IR Detector Widget
         self.IR_Widget = None
@@ -118,6 +121,30 @@ class miEye_module(QMainWindow):
         centerPoint = QApplication.primaryScreen().availableGeometry().center()
         qtRectangle.moveCenter(centerPoint)
         self.move(qtRectangle.topLeft())
+
+    def LayoutInit(self):
+        '''Initializes the window layout'''
+
+        self.init_controller()
+        self.init_devices_dock()
+        # self.init_ir_dock()
+        self.init_stages_dock()
+        self.init_py_dock()
+        self.init_protocol_dock()
+        self.init_lasers_dock()
+        self.init_cam_dock()
+        self.init_focus_dock()
+        self.tabifyDocks()
+
+        self.init_menubar()
+
+    def init_controller(self):
+        self.controller = Controller()
+        self.controller.stage_move_requested.connect(
+            self.device_manager.moveRequest)
+
+        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.controller)
+
 
     def init_devices_dock(self):
         # General settings groupbox
@@ -274,6 +301,7 @@ class miEye_module(QMainWindow):
         file_menu.addAction(auto_load_config)
 
         docks: list[QtWidgets.QDockWidget] = [
+            self.controller,
             self.devicesDock,
             self.pyDock,
             self.stagesDock,
@@ -311,22 +339,10 @@ class miEye_module(QMainWindow):
         self.tabifyDockWidget(self.lasersDock, self.protocolDock)
         self.tabifyDockWidget(self.lasersDock, self.pyDock)
 
+        self.tabifyDockWidget(self.stagesDock, self.controller)
+
+        self.stagesDock.raise_()
         self.focus.raise_()
-
-    def LayoutInit(self):
-        '''Initializes the window layout'''
-
-        self.init_devices_dock()
-        # self.init_ir_dock()
-        self.init_stages_dock()
-        self.init_py_dock()
-        self.init_protocol_dock()
-        self.init_lasers_dock()
-        self.init_cam_dock()
-        self.init_focus_dock()
-        self.tabifyDocks()
-
-        self.init_menubar()
 
     def scriptTest(self):
         exec(self.pyEditor.toPlainText())
@@ -671,6 +687,15 @@ def generateConfig(mieye: miEye_module):
         (mieye.pyDock.geometry().width(), mieye.pyDock.geometry().height()),
         mieye.pyDock.isVisible(),
     )
+    config['Controller'] = (
+        mieye.controller.isFloating(),
+        (
+            mieye.controller.mapToGlobal(QtCore.QPoint(0, 0)).x(),
+            mieye.controller.mapToGlobal(QtCore.QPoint(0, 0)).y(),
+        ),
+        (mieye.controller.geometry().width(), mieye.controller.geometry().height()),
+        mieye.controller.isVisible(),
+    )
 
     with open(filename, 'w') as file:
         json.dump(config, file, indent=2)
@@ -743,9 +768,7 @@ def loadConfig(mieye: miEye_module, auto_connect=True):
             for _panel in config['LaserPanels']:
                 panel = CombinerLaserWidget() if bool(_panel[2]) else SingleMatchBox()
                 mieye.laserPanels.append(panel)
-                mieye.lasersTabs.addTab(
-                    panel, f'Laser #{mieye.lasersTabs.count() + 1}'
-                )
+                mieye.lasersTabs.addTab(panel, f'Laser #{mieye.lasersTabs.count() + 1}')
                 panel.set_param_value(RelayParams.PORT, str(_panel[0]))
                 panel.set_param_value(RelayParams.BAUDRATE, int(_panel[1]))
                 panel.set_config()
@@ -823,6 +846,19 @@ def loadConfig(mieye: miEye_module, auto_connect=True):
             )
         else:
             mieye.pyDock.setFloating(False)
+
+    if 'Controller' in config:
+        mieye.controller.setVisible(bool(config['Controller'][3]))
+        if bool(config['Controller'][0]):
+            mieye.controller.setFloating(True)
+            mieye.controller.setGeometry(
+                config['Controller'][1][0],
+                config['Controller'][1][1],
+                config['Controller'][2][0],
+                config['Controller'][2][1],
+            )
+        else:
+            mieye.controller.setFloating(False)
 
     if auto_connect:
         for func in funcs:

@@ -26,6 +26,7 @@ FILTERS = {
 
 class Parameters(Enum):
     AUTO_STRETCH = 'Options.Auto-Stretch'
+    CHANNEL = 'Options.Channel'
     ENABLE_ROI = 'Options.Enable ROI'
     ROI_X = 'Options.ROI.x'
     ROI_Y = 'Options.ROI.y'
@@ -81,17 +82,45 @@ class FittingOptions(Tree):
 
     def __init__(
         self,
-        shape: tuple[int, int] = (128, 128),
+        shape: tuple = (1, 1, 1, 128, 128),
         debug=False,
         parent: Optional['QtWidgets.QWidget'] = None,
     ):
         self._debug = debug
+
+        if shape is None or len(shape) < 5:
+            raise ValueError('Shape must be a 5-tuple')
+        
         self._shape = shape
 
         self._filters = {key: None for key in self.FILTERS}
         self._detectors = {key: None for key in self.DETECTORS}
 
         super().__init__(parent)
+
+    @property
+    def imageWidth(self):
+        length = len(self._shape)
+        return self._shape[length - 1]
+
+    @property
+    def imageHeight(self):
+        length = len(self._shape)
+        return self._shape[length - 2]
+
+    @property
+    def imageDepth(self):
+        length = len(self._shape)
+        return self._shape[length - 3]
+
+    @property
+    def imageChannels(self):
+        length = len(self._shape)
+        return self._shape[length - 4]
+
+    @property
+    def imageFrames(self):
+        return self._shape[0]
 
     def create_parameters(self):
         # Create an initial parameter tree with a Layers group
@@ -110,7 +139,7 @@ class FittingOptions(Tree):
                                 'name': 'x',
                                 'type': 'int',
                                 'value': 0,
-                                'limits': [0, self._shape[1]],
+                                'limits': [0, self.imageWidth],
                                 'step': 1,
                                 'suffix': 'pixel',
                             },
@@ -118,23 +147,23 @@ class FittingOptions(Tree):
                                 'name': 'y',
                                 'type': 'int',
                                 'value': 0,
-                                'limits': [0, self._shape[0]],
+                                'limits': [0, self.imageHeight],
                                 'step': 1,
                                 'suffix': 'pixel',
                             },
                             {
                                 'name': 'width',
                                 'type': 'int',
-                                'value': self._shape[1],
-                                'limits': [0, self._shape[1]],
+                                'value': self.imageWidth,
+                                'limits': [0, self.imageWidth],
                                 'step': 1,
                                 'suffix': 'pixel',
                             },
                             {
                                 'name': 'height',
                                 'type': 'int',
-                                'value': self._shape[0],
-                                'limits': [0, self._shape[0]],
+                                'value': self.imageHeight,
+                                'limits': [0, self.imageHeight],
                                 'step': 1,
                                 'suffix': 'pixel',
                             },

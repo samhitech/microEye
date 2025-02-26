@@ -317,8 +317,10 @@ def pre_process_frame(
     offset = options.get('offset', 0)
     tm_window = options.get('tm_window', 0)
     roi_info = options.get('roi_info')
+    c = options.get('channel', 0)
+    z = options.get('zSlice', 0)
 
-    image = stack_handler.getSlice(index, 0, 0)
+    image = stack_handler.getSlice(index, c, z)
     image = image * gain - offset
 
     if tm_window > 1:
@@ -609,9 +611,12 @@ def get_rois_lists_GPU(
     max_threshold: float = kwargs.get('max_threshold', 1.0)
     tm_window: int = kwargs.get('tm_window', 0)
     roi_size: int = kwargs.get('roi_size', 13)
+    c: int = kwargs.get('channel', 0)
+    z: int = kwargs.get('zSlice', 0)
+
 
     def process_image(k: int) -> tuple[list, list, list, list]:
-        image = stack_handler.getSlice(k, 0, 0)
+        image = stack_handler.getSlice(k, c, z)
         image = (image * gain) - offset
 
         if tm_window > 1:

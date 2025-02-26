@@ -33,7 +33,7 @@ from microEye.analysis.fitting.results import (
 )
 from microEye.analysis.tools.kymograms import KymogramWidget
 from microEye.analysis.viewer.image_options_widget import FittingOptions, Parameters
-from microEye.analysis.viewer.layers_widget import ImageParamsWidget
+from microEye.analysis.viewer.layers_widget import ImageItemsWidget
 from microEye.qt import (
     QDateTime,
     Qt,
@@ -112,25 +112,7 @@ class StackView(QtWidgets.QWidget):
         # Load Metadata
         self.load_ome_metadata()
 
-        nTime = self.stack_handler.shapeTCZYX()[1]
-        for idx in range(nTime + 1):
-            image_item = self.addImageItem(
-                self.empty_image if idx < nTime else self.empty_alpha,
-                1,
-                'Plus' if 0 < idx < nTime else 'SourceOver',
-            )
-
-            histogram_item = pg.HistogramLUTItem(
-                gradientPosition='bottom', orientation='horizontal'
-            )
-            histogram_item.setImageItem(image_item)
-            if 0 < idx < nTime:
-                image_item.setCompositionMode(
-                    QtGui.QPainter.CompositionMode.CompositionMode_Plus
-                )
-
-            self.image_widget.addItem(histogram_item, row=1 + idx, col=0)
-            self.histogram_items.append(histogram_item)
+        self.addStackLayers()
 
         self.connnectSignals()
         self.centerROI()
@@ -162,17 +144,25 @@ class StackView(QtWidgets.QWidget):
             row=0, col=0, invertY=True
         )
 
-        self.view_box.setAspectLocked()
+        self.view_box.setAspectLocked(True)
+        self.view_box.setAutoVisible(True)
+        self.view_box.enableAutoRange()
         self.view_box.invertY(True)
 
         self.empty_image = np.zeros(self.stack_handler.shape[-2:], dtype=np.uint8)
         self.empty_alpha = np.zeros(
             self.stack_handler.shape[-2:] + (4,), dtype=np.uint8
         )
-        # self.empty_image[0, 0] = 255
-        self.image_items: list[tuple[pg.ImageItem, np.ndarray]] = []
-        self.histogram_items: list[pg.HistogramLUTItem] = []
 
+        # histogram item
+        self.histogram_item = pg.HistogramLUTItem(
+            gradientPosition='bottom', orientation='horizontal'
+        )
+        self.levels_maps = []
+
+        self.image_widget.addItem(self.histogram_item, row=1, col=0)
+
+        # Add ROI
         self.roi = pg.RectROI(
             [-8, 14], [6, 5], scaleSnap=True, translateSnap=True, movable=False
         )
@@ -181,23 +171,85 @@ class StackView(QtWidgets.QWidget):
         self.roi.setVisible(False)
         self.view_box.addItem(self.roi)
 
+        # Add ScatterPlotItem for localizations
+        self.scatter_locs = pg.ScatterPlotItem()
+        self.scatter_locs.setBrush(color='b')
+        self.scatter_locs.setSymbol('x')
+        self.scatter_locs.setZValue(999)  # Ensure points are on top of image
+        self.view_box.addItem(self.scatter_locs)
+
         # Add the two sub-main layouts
         self.main_layout.addWidget(self.image_widget, 3)
 
-    def addImageItem(
-        self, image: np.ndarray, opacity: float = 1.0, compMode='SourceOver'
-    ):
-        # Create the ImageItem and set its view to self.view_box
-        image_item = pg.ImageItem(
-            image, axisOrder='row-major', opacity=max(min(opacity, 1), 0)
+    def setImage(self, image: np.ndarray, autoLevels: bool = True, **kwargs):
+        '''Set the image data.'''
+        if image is None or self.image_layers.currentLayer is None:
+            return
+
+        index = kwargs.pop('index', self.image_layers.currentIndex)
+
+        self.image_layers.getImageItemAt(index).setImage(
+            image, autoLevels=autoLevels, **kwargs
         )
+
+    def addImageItem(
+        self,
+        image: np.ndarray,
+        opacity: float = 1.0,
+        compMode='SourceOver',
+        name='Layer',
+    ):
+        """Add an image item to the view.
+
+        Parameters
+        ----------
+        image : np.ndarray
+            The image data.
+        opacity : float, optional
+            The opacity of the image, by default 1.0.
+        compMode : str, optional
+            The composition mode, by default 'SourceOver'.
+        name : str, optional
+            The name of the image item layer, by default 'Layer'.
+
+        Returns
+        -------
+        pg.ImageItem
+            The added image item.
+        """
+        # Create the ImageItem and set its view to self.view_box
+        image_item = self.image_layers.add_layer(image, opacity, compMode, name=name)
+        self.levels_maps.append({})
+
         # Add the ImageItem to the ViewBox
         self.view_box.addItem(image_item)
 
-        self.image_items.append([image_item, image])
-        self.image_layers.add_layer(compMode)
-
         return image_item
+
+    def addStackLayers(self):
+        if self.stack_handler is None:
+            return
+
+        # Get the last part of the path
+        path = (
+            self.stack_handler.path
+            if len(self.stack_handler.path.split('/')) < 3
+            else '/'.join(self.stack_handler.path.split('/')[-2:])
+        )
+
+        count = self.image_layers.count()
+
+        nChannel = self.stack_handler.shapeTCZYX()[
+            1
+        ]  # TODO: add stack shape method pop-up
+        for idx in range(nChannel + 1):
+            image_item = self.addImageItem(
+                self.empty_image if count < 1 else self.empty_alpha,
+                compMode='SourceOver' if count < 1 else 'Plus',
+                name=path if idx < nChannel else 'Localization Layer',
+            )
+
+        self.image_layers.currentIndex = 0
 
     def setupOptionsTab(self):
         self.image_control_layout = QtWidgets.QFormLayout()
@@ -206,6 +258,10 @@ class StackView(QtWidgets.QWidget):
         self.frames_label = QtWidgets.QLabel('Time Axis:')
         self.frames_slider = LabelledSlider(
             None, True, (0, self.stack_handler.shapeTCZYX()[0] - 1)
+        )
+        self.c_label = QtWidgets.QLabel('Channel Axis:')
+        self.c_slider = LabelledSlider(
+            None, True, (0, self.stack_handler.shapeTCZYX()[1] - 1)
         )
         self.z_label = QtWidgets.QLabel('Z Axis:')
         self.z_slider = LabelledSlider(
@@ -240,12 +296,14 @@ class StackView(QtWidgets.QWidget):
 
         if self.frames_slider.maximum() > 0:
             self.image_control_layout.addRow(self.frames_label, self.frames_slider)
+        if self.c_slider.maximum() > 0:
+            self.image_control_layout.addRow(self.c_label, self.c_slider)
         if self.z_slider.maximum() > 0:
             self.image_control_layout.addRow(self.z_label, self.z_slider)
         self.image_control_layout.addRow(self.histogram)
 
         self.fitting_options_widget = FittingOptions(
-            shape=self.stack_handler.shapeTCZYX()[-2:]
+            shape=self.stack_handler.shapeTCZYX()
         )
 
         # Localization GroupBox
@@ -321,44 +379,46 @@ class StackView(QtWidgets.QWidget):
 
     def setupLayersTab(self):
         # Layers tab
-        self.image_layers = ImageParamsWidget()
+        self.image_layers = ImageItemsWidget()
+        self.image_layers.setReadonly()
 
-        self.image_layers.paramsChanged.connect(self.updateLayer)
+        self.image_layers.layerChanged.connect(self.updateLayer)
+        self.image_layers.layerRemoved.connect(
+            lambda index: self.levels_maps.pop(index)
+        )
 
         self.tab_widget.addTab(self.image_layers, 'Layers')
 
-    def updateLayer(self, param, changes: list):
-        for param, _, data in changes:
-            path = self.image_layers.param_tree.childPath(param)
+    def updateLayer(self, current: int, previous: int, imageItem: pg.ImageItem):
+        '''Update the layer settings.
 
-            if len(path) > 1:
-                parameter = path[-1]
-                parent = path[-2]
-            else:
-                parameter = '.'.join(path) if path is not None else param.name()
-                parent = None
+        Parameters
+        ----------
+        current : int
+            The current layer index.
+        previous : int
+            The previous layer index.
+        imageItem : pg.ImageItem
+            The image item.
+        '''
+        if current == -1 or imageItem is None:
+            return
 
-            if parameter in ['Opacity', 'Visible']:
-                idx = int(parent.split(' ')[-1]) - 1
-                layer = self.image_layers.param_tree.param('Layers').child(parent)
-                opacity = (
-                    data if parameter == 'Opacity' else layer.child('Opacity').value()
-                )
-                visible = (
-                    int(data)
-                    if parameter == 'Visible'
-                    else int(layer.child('Visible').value())
-                )
+        if previous >= 0 and previous < len(self.levels_maps):
+            self.levels_maps[previous]['colorMap'] = (
+                self.histogram_item.gradient.colorMap()
+            )
+            self.levels_maps[previous]['levels'] = self.histogram_item.getLevels()
 
-                if idx < len(self.image_items):
-                    self.image_items[idx][0].setOpts(opacity=visible * (opacity / 100))
-            elif parameter == 'CompositionMode':
-                idx = int(parent.split(' ')[-1]) - 1
-                self.image_items[idx][0].setCompositionMode(
-                    getattr(
-                        QtGui.QPainter.CompositionMode, 'CompositionMode_' + str(data)
-                    )
-                )
+        self.histogram_item.setImageItem(imageItem)
+
+        if current >= 0 and current < len(self.levels_maps):
+            self.histogram_item.gradient.setColorMap(
+                self.levels_maps[current].get('colorMap', None)
+            )
+            self.histogram_item.setLevels(
+                *self.levels_maps[current].get('levels', None)
+            )
 
     def setupKymogramTab(self):
         # Creating the kymogram tab layout
@@ -501,12 +561,12 @@ class StackView(QtWidgets.QWidget):
 
     def update_images(self):
         if self.uImage._view.ndim == 2:
-            self.image_items[0][1] = self.uImage._view
-            self.image_items[0][0].setImage(self.uImage._view)
+            # self.image_items[0][1] = self.uImage._view
+            self.setImage(self.uImage._view, index=0)
         elif self.uImage._view.ndim == 3:
             for idx in range(self.uImage._view.shape[2]):
-                self.image_items[idx][1] = self.uImage._view[..., idx]
-                self.image_items[idx][0].setImage(self.uImage._view[..., idx])
+                # self.image_items[idx][1] = self.uImage._view[..., idx]
+                self.setImage(self.uImage._view[..., idx], index=idx)
 
     def apply_cmos_maps(self, image):
         varim = None
@@ -534,7 +594,7 @@ class StackView(QtWidgets.QWidget):
 
     def update_display(self):
         image = self.stack_handler.getSlice(
-            self.frames_slider.value(), None, self.z_slider.value()
+            self.frames_slider.value(), self.c_slider.value(), self.z_slider.value()
         )
 
         varim = self.apply_cmos_maps(image)
@@ -553,7 +613,10 @@ class StackView(QtWidgets.QWidget):
             if image.ndim == 2:
                 self.apply_realtime_localization(image, varim, roiInfo)
         else:
-            self.image_items[-1][0].setImage(self.empty_alpha, autoLevels=False)
+            self.image_layers.getImageItemAt(-1).setImage(
+                self.empty_alpha, autoLevels=False
+            )
+            self.scatter_locs.clear()
 
     def preprocess_image(self, image: uImage, roi_info):
         if roi_info is not None:
@@ -610,29 +673,36 @@ class StackView(QtWidgets.QWidget):
 
         return points
 
-    def fit_keypoints(self, image, varim, points):
-        # method
+    def fit_keypoints(self, image, varim, points, return_points=False):
+        '''Fit detected points using selected fitting method.
+
+        Parameters
+        ----------
+        image : ndarray
+            Input image
+        varim : ndarray
+            Variance image (optional)
+        points : ndarray
+            Initial point coordinates
+        return_points : bool
+            If True, returns fitted point coordinates instead of visualization
+
+        Returns
+        -------
+        ndarray
+            Either visualization image with fitted keypoints or array of fitted
+            coordinates
+        '''
+        if len(points) == 0:
+            return None
+
         method = self.fitting_options_widget.get_fitting_method()
+        sz = self.get_param(Parameters.ROI_SIZE).value()
+        fitted_coords = None
 
         if method == FittingMethod._2D_Phasor_CPU:
-            sz = self.get_param(Parameters.ROI_SIZE).value()
-            sub_fit = phasor_fit(image, points, True, sz)
-
-            if sub_fit is not None:
-                keypoints = [cv2.KeyPoint(*point, size=1.0) for point in sub_fit[:, :2]]
-
-                # Draw detected blobs as red circles.
-                im_with_keypoints = cv2.drawKeypoints(
-                    self.empty_image,
-                    keypoints,
-                    None,
-                    (0, 0, 255),
-                    flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS,
-                )
-            else:
-                im_with_keypoints = None
+            fitted_coords = phasor_fit(image, points, True, sz)
         else:
-            sz = self.get_param(Parameters.ROI_SIZE).value()
             if varim is None:
                 varims = None
                 rois, coords = pyfit3Dcspline.get_roi_list(image, points, sz)
@@ -661,27 +731,25 @@ class StackView(QtWidgets.QWidget):
                     rois, 5, np.ones((64, 4, 4, 4), dtype=np.float32), varims, 0
                 )
 
-            if Params is not None:
-                keypoints = [
-                    cv2.KeyPoint(
-                        Params[idx, 0] + coords[idx, 0],
-                        Params[idx, 1] + coords[idx, 1],
-                        size=1.0,
-                    )
-                    for idx in range(rois.shape[0])
-                ]
+            fitted_coords = coords + Params[:, :2]
 
-                # Draw detected blobs as red circles.
-                im_with_keypoints = cv2.drawKeypoints(
-                    self.empty_image,
-                    keypoints,
-                    None,
-                    (0, 0, 255),
-                    flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS,
-                )
-            else:
-                im_with_keypoints = None
-        return im_with_keypoints
+        if fitted_coords is None:
+            return None
+
+        if return_points:
+            return fitted_coords
+
+        # Draw visualization
+        keypoints = [cv2.KeyPoint(*point, size=1.0) for point in fitted_coords[:, :2]]
+        vis_img = cv2.drawKeypoints(
+            self.empty_image,
+            keypoints,
+            None,
+            (0, 0, 255),
+            cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS,
+        )
+
+        return vis_img
 
     def apply_realtime_localization(self, image, varim, roiInfo):
         th_img, img, origin = self.preprocess_image(self.uImage, roiInfo)
@@ -689,15 +757,21 @@ class StackView(QtWidgets.QWidget):
         # Detect blobs.
         points = self.detect_and_display_keypoints(th_img, img, origin)
 
-        im_with_keypoints = (
-            self.fit_keypoints(image, varim, points) if len(points) > 0 else None
-        )
+        # im_with_keypoints = (
+        #     self.fit_keypoints(image, varim, points) if len(points) > 0 else None
+        # )
 
-        if im_with_keypoints is not None:
-            alpha = self.empty_alpha.copy()
-            alpha[..., :3] = im_with_keypoints
-            alpha[..., 3] = im_with_keypoints[..., 2]
-            self.image_items[-1][0].setImage(alpha, autoLevels=False)
+        # if im_with_keypoints is not None:
+        #     alpha = self.empty_alpha.copy()
+        #     alpha[..., :3] = im_with_keypoints
+        #     alpha[..., 3] = im_with_keypoints[..., 2]
+        #     self.image_layers.getImageItemAt(-1).setImage(alpha, autoLevels=False)
+
+        if len(points) > 0:
+            points = self.fit_keypoints(image, varim, points, return_points=True)
+            self.scatter_locs.setData(
+                pos=points + 0.5, size=10, brush='b', symbol='x', pxMode=True
+            )
 
     @Slot()
     def extract_psf(self):
@@ -765,6 +839,7 @@ class StackView(QtWidgets.QWidget):
             self.get_roi_info(),
             self.get_param(Parameters.Z0_ENABLED).value(),
             self.get_param(Parameters.Z0_METHOD).value(),
+            channel=self.c_slider.value(),
         )
 
         results.save_hdf(filename)
@@ -884,6 +959,8 @@ class StackView(QtWidgets.QWidget):
             'PSFparam': PSFparam,
             'filter': filter_obj,
             'detector': detector,
+            'channel': self.c_slider.value(),
+            'zSlice': self.z_slider.value(),
         }
 
     def localizeStackCPU(self, **kwargs):
@@ -992,30 +1069,20 @@ class StackView(QtWidgets.QWidget):
                 if col in options:
                     exp_columns.append(col)
 
-            if '.tsv' in filename:
-                dataFrame.to_csv(
-                    filename,
-                    index=False,
-                    columns=exp_columns,
-                    float_format=self.export_options.export_precision.text(),
-                    sep='\t',
-                    encoding='utf-8',
-                )
-            elif '.h5' in filename:
-                dataFrame[exp_columns].to_hdf(
-                    filename, key='microEye', index=False, complevel=0
-                )
-
-            if 'Super-res image' in options:
-                pass
-                # sres_img = self.renderLoc()
-                # tf.imsave(
-                #     filename.replace('.tsv', '_super_res.tif'),
-                #     sres_img,
-                #     photometric='minisblack',
-                #     append=True,
-                #     bigtiff=True,
-                #     ome=False)
+            if exp_columns:
+                if '.tsv' in filename:
+                    dataFrame.to_csv(
+                        filename,
+                        index=False,
+                        columns=exp_columns,
+                        float_format=self.export_options.export_precision.text(),
+                        sep='\t',
+                        encoding='utf-8',
+                    )
+                elif '.h5' in filename:
+                    dataFrame[exp_columns].to_hdf(
+                        filename, key='microEye', index=False, complevel=0
+                    )
 
     def update_lists(self, result: np.ndarray):
         '''Extends the fitting results by results emitted
@@ -1149,9 +1216,7 @@ class StackView(QtWidgets.QWidget):
         if os.path.isdir(path) and not path.endswith('.zarr'):
             if not mask_pattern:
                 raise ValueError('No mask pattern provided for a directory path')
-            return TiffSeqHandler(
-                tf.TiffSequence(f'{path}/{mask_pattern}')
-            )
+            return TiffSeqHandler(tf.TiffSequence(f'{path}/{mask_pattern}'))
         elif os.path.isdir(path) and path.endswith('.zarr'):
             return ZarrImageSequence(path)
         elif os.path.isfile(path) and (path.endswith('.tif') or path.endswith('.tiff')):

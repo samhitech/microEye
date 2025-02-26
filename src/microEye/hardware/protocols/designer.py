@@ -143,6 +143,7 @@ class ExperimentDesignerView(QtWidgets.QGraphicsView):
         # Add Export and Import actions
         context_menu.addAction('Export (protocol)', self.export_protocol)
         context_menu.addAction('Import (protocol)', self.import_protocol)
+        context_menu.addAction('Import & Execute', self.import_execute_protocol)
 
         # Show the context menu
         context_menu.exec(event.globalPos())
@@ -170,11 +171,21 @@ class ExperimentDesignerView(QtWidgets.QGraphicsView):
             self, 'Import Protocol', '', 'JSON Files (*.json)'
         )
 
-        if file_name:
-            with open(file_name) as file:
-                protocol_data = json.load(file)
-                self.scene_manager.load_actions(protocol_data)
+        if not file_name:
+            return False
 
+        with open(file_name) as file:
+            protocol_data = json.load(file)
+            self.scene_manager.load_actions(protocol_data)
+
+        return True
+
+    def import_execute_protocol(self):
+        '''
+        Handle importing and executing the protocol from a JSON file.
+        '''
+        if self.import_protocol():
+            self.scene_manager.execute_actions()
 
 class ExperimentDesigner(QtWidgets.QWidget):
     HEADER = '> <span style="color:#0f0;">Experiment Designer ('

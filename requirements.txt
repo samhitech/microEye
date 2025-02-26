@@ -8,6 +8,7 @@ numpy==1.26.4
 ome_types==0.5.2
 opencv_python==4.9.0.80
 pandas==2.2.3
+pco==2.2.1
 pyfiglet==1.0.2
 pyflakes==3.2.0
 pyjokes==0.6.0

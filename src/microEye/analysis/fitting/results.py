@@ -6,7 +6,7 @@ from numpy.core._exceptions import _ArrayMemoryError
 from scipy.interpolate import interp1d
 
 from microEye.analysis.fitting.processing import *
-from microEye.analysis.rendering import BaseRenderer, RenderModes
+from microEye.analysis.rendering import BaseRenderer, Projection, RenderModes
 
 UNIQUE_COLUMNS = [
     'frame',
@@ -233,6 +233,7 @@ class FittingResults:
         unit=ResultsUnits.Pixel,
         pixelSize=130.0,
         fittingMethod=FittingMethod._2D_Phasor_CPU,
+        path=None,
     ):
         '''Fitting Results
 
@@ -242,10 +243,17 @@ class FittingResults:
             unit of localized points, by default ResultsUnits.Pixel
         pixelSize : float, optional
             pixel size in nanometers, by default 130.0
+        fittingMethod : FittingMethod, optional
+            fitting method used, by default FittingMethod._2D_Phasor_CPU
+        path : str, optional
+            path to file, by default None
         '''
         self.unit = unit
         self.pixel_size = pixelSize
         self.fitting_method = fittingMethod
+        self.path = path
+        self.colormap = None
+        self.intensity_range = None
         if fittingMethod > -1:
             self.parameterHeader = PARAMETER_HEADERS[fittingMethod.value]
         else:
@@ -505,6 +513,78 @@ class FittingResults:
             self.data[DataColumns.Y],
             self.data[DataColumns.INTENSITY],
         )
+
+    def toAnimation(self, n_bins=10, pixelSize=10, **kwargs):
+        '''Returns columns for animation
+        Parameters
+        ----------
+        n_bins : int, optional
+            Number of bins, by default 10
+        pixelSize : int, optional
+            Pixel size, by default 10
+        **kwargs : dict
+            Additional keyword arguments for rendering
+
+        Returns
+        -------
+        tuple(np.ndarray, np.ndarray, np.ndarray)
+            tuple contains animation stack, frame bins, locs per bin
+        '''
+        # Get kwargs for rendering
+        renderMode: RenderModes = kwargs.get('renderMode', RenderModes.HISTOGRAM)
+        z_pixel_size = kwargs.get('z_pixel_size')
+        projection: Projection = kwargs.get('projection', Projection.XY)
+
+        # Get unique frames
+        unique_frames = np.unique(self.data[DataColumns.FRAME])
+
+        # Check edge cases
+        if len(unique_frames) < 2:
+            print('Animation failed: 2 or more frames are required.')
+            return None, None, None
+
+        if n_bins < 2:
+            print('Animation failed: 2 or more bins are required.')
+            return None, None, None
+
+        frames_per_bin = int(np.floor(np.max(unique_frames) / n_bins))
+
+        if frames_per_bin < 2:
+            print('Animation failed: 2 or more frames per bin are required.')
+            return None, None, None
+
+        renderEngine = BaseRenderer(pixelSize, z_pixel_size, renderMode)
+
+        x_max = int((np.max(self.data[DataColumns.X]) / renderEngine._pixel_size) + 4)
+        y_max = int((np.max(self.data[DataColumns.Y]) / renderEngine._pixel_size) + 4)
+
+        frame_ids = np.cumsum(
+            np.bincount(self.data[DataColumns.FRAME].astype(np.int64))
+        )
+
+        sub_images = []
+        locs_per_bin = []
+        frames = []
+
+        for f in range(0, n_bins):
+            mask = slice(
+                frame_ids[f * frames_per_bin - 1] if f * frames_per_bin > 0 else 0,
+                frame_ids[(f + 1) * frames_per_bin],
+            )
+            image = renderEngine.render(
+                projection,
+                self.data[DataColumns.X][mask],
+                self.data[DataColumns.Y][mask],
+                self.data[DataColumns.Z][mask] if self.data[DataColumns.Z] else None,
+                self.data[DataColumns.INTENSITY][mask],
+                (y_max, x_max),
+            )
+            locs_per_bin.append(mask.stop - mask.start)
+            frames.append(f * frames_per_bin + frames_per_bin / 2)
+            sub_images.append(image)
+            print(f'Bins: {f + 1:d}/{n_bins:d}', end='\r')
+
+        return np.array(sub_images), np.array(frames), np.array(locs_per_bin),
 
     def drift_cross_correlation(self, n_bins=10, pixelSize=10, upsampling=100):
         '''Corrects the XY drift using cross-correlation measurments
@@ -817,13 +897,16 @@ class FittingResults:
                 'Supported file types are dataframes ' + 'stored as .tsv or .h5 files.'
             )
 
-        return FittingResults.fromDataFrame(dataFrame, pixelSize)
+        return FittingResults.fromDataFrame(dataFrame, pixelSize, path=filename)
 
     @staticmethod
-    def fromDataFrame(dataFrame: pd.DataFrame, pixelSize: float):
+    def fromDataFrame(dataFrame: pd.DataFrame, pixelSize: float = 1, **kwargs):
         fittingResults = None
         fittingResults = FittingResults(
-            ResultsUnits.Nanometer, 1, FittingMethod._External
+            ResultsUnits.Nanometer,
+            pixelSize,
+            FittingMethod._External,
+            kwargs.get('path'),
         )
 
         for column in dataFrame.columns.values.tolist():
