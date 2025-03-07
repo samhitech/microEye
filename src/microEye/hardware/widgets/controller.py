@@ -10,6 +10,9 @@ from microEye.utils.gui_helper import GaussianOffSet
 
 class Controller(QtWidgets.QDockWidget):
     stage_move_requested = Signal(str, int, int)  # axis, direction, mode
+    stage_stop_requested = Signal(str)  # axis
+    stage_home_requested = Signal(str)  # axis
+    stage_toggle_lock = Signal(str)  # axis
 
     def __init__(self):
         ''' '''
@@ -90,25 +93,23 @@ class Controller(QtWidgets.QDockWidget):
         # Fine movement buttons
         self.btn_y_up_fine = QtWidgets.QPushButton('+')
         self.btn_y_down_fine = QtWidgets.QPushButton('-')
-        self.btn_x_left_fine = QtWidgets.QPushButton('-')  # Changed from ◄
-        self.btn_x_right_fine = QtWidgets.QPushButton('+')  # Changed from ►
+        self.btn_x_left_fine = QtWidgets.QPushButton('-')
+        self.btn_x_right_fine = QtWidgets.QPushButton('+')
+
+        self.btn_xy_stop = QtWidgets.QPushButton('⚠')
+        self.btn_xy_stop.setToolTip('Stop XY movement immediately!')
 
         # Set size policies and styling
-        for btn in [self.btn_y_up, self.btn_y_down, self.btn_x_left, self.btn_x_right]:
-            btn.setFixedSize(50, 50)
-            btn.setStyleSheet('''
-                QPushButton {
-                    font-weight: bold;
-                    font-size: 22px;
-                    padding: 0px;
-                }
-            ''')
-
         for btn in [
+            self.btn_y_up,
+            self.btn_y_down,
+            self.btn_x_left,
+            self.btn_x_right,
             self.btn_y_up_fine,
             self.btn_y_down_fine,
             self.btn_x_left_fine,
             self.btn_x_right_fine,
+            self.btn_xy_stop,
         ]:
             btn.setFixedSize(50, 50)
             btn.setStyleSheet('''
@@ -118,6 +119,7 @@ class Controller(QtWidgets.QDockWidget):
                     padding: 0px;
                 }
             ''')
+
 
         # Layout XY controls
         xy_layout.addWidget(self.btn_y_up_fine, 1, 2)
@@ -130,6 +132,8 @@ class Controller(QtWidgets.QDockWidget):
         xy_layout.addWidget(self.btn_x_right, 2, 4)
         xy_layout.addWidget(self.btn_x_right_fine, 2, 3)
 
+        xy_layout.addWidget(self.btn_xy_stop, 2, 2)
+
         xy_group.setLayout(xy_layout)
 
         # Z Controls group
@@ -140,12 +144,18 @@ class Controller(QtWidgets.QDockWidget):
         self.btn_z_down = QtWidgets.QPushButton('--')
         self.btn_z_up_fine = QtWidgets.QPushButton('+')
         self.btn_z_down_fine = QtWidgets.QPushButton('-')
+        self.btn_z_home = QtWidgets.QPushButton('🏠︎')
+        self.btn_z_home.setToolTip('Move to home position')
+        self.btn_z_toggle_stabilizer = QtWidgets.QPushButton('🔒')
+        self.btn_z_toggle_stabilizer.setToolTip('Toggle Z-axis stabilizer')
 
         for btn in [
             self.btn_z_up,
             self.btn_z_down,
             self.btn_z_up_fine,
             self.btn_z_down_fine,
+            self.btn_z_home,
+            self.btn_z_toggle_stabilizer,
         ]:
             btn.setFixedSize(50, 50)
             btn.setStyleSheet('''
@@ -160,6 +170,8 @@ class Controller(QtWidgets.QDockWidget):
         z_layout.addWidget(self.btn_z_up_fine)
         z_layout.addWidget(self.btn_z_down_fine)
         z_layout.addWidget(self.btn_z_down)
+        z_layout.addWidget(self.btn_z_home)
+        z_layout.addWidget(self.btn_z_toggle_stabilizer)
         z_group.setLayout(z_layout)
 
         # Create a container widget for XY and Z controls
@@ -187,11 +199,22 @@ class Controller(QtWidgets.QDockWidget):
         self.btn_y_up_fine.clicked.connect(lambda: self.move_stage('y', 1, 'fine'))
         self.btn_y_down_fine.clicked.connect(lambda: self.move_stage('y', -1, 'fine'))
 
+        self.btn_xy_stop.clicked.connect(
+            lambda: self.stage_stop_requested.emit('xy')
+        )
+
         # Z movements
         self.btn_z_up.clicked.connect(lambda: self.move_stage('z', 1, 'coarse'))
         self.btn_z_down.clicked.connect(lambda: self.move_stage('z', -1, 'coarse'))
         self.btn_z_up_fine.clicked.connect(lambda: self.move_stage('z', 1, 'fine'))
         self.btn_z_down_fine.clicked.connect(lambda: self.move_stage('z', -1, 'fine'))
+
+        self.btn_z_home.clicked.connect(
+            lambda: self.stage_home_requested.emit('z')
+        )
+        self.btn_z_toggle_stabilizer.clicked.connect(
+            lambda: self.stage_toggle_lock.emit('z')
+        )
 
     def move_stage(self, axis, direction, mode):
         if axis in ['x', 'y']:

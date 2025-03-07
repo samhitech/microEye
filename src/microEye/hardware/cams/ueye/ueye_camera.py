@@ -214,10 +214,10 @@ class IDS_Camera(miCamera):
         self.status['Camera'] = {
             'Model': self.sInfo.strSensorName.decode('utf-8'),
             'Serial no.:\t': self.cInfo.SerNo.decode('utf-8'),
-            'Pixel Clock [MHz]': self.pixel_clock.value}
+            'Pixel Clock [MHz]': self.pixel_clock.value,
+        }
 
-        self.status['Temperature'] = {
-            'Value': self.temperature, 'Unit': 'Celsius'}
+        self.status['Temperature'] = {'Value': self.temperature, 'Unit': 'Celsius'}
 
         self.status['Exposure'] = {
             'Value': self.exposure_current.value,
@@ -637,7 +637,7 @@ class IDS_Camera(miCamera):
         if nRet != ueye.IS_SUCCESS:
             print('is_PixelClock ERROR')
         elif output:
-            print('Pixel Clock %d MHz' % self.pixel_clock.value)
+            print(f'Pixel Clock {self.pixel_clock.value} MHz')
         return self.pixel_clock.value
 
     def get_exposure_range(self, output=True):

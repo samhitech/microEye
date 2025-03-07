@@ -444,6 +444,14 @@ class LaserRelayController:
 
         self.__view.set_param_value(RelayParams.PORT_STATE, 'open')
 
+    def disconnect(self):
+        '''
+        Disconnect from the laser relay.
+        '''
+        self.__relay.close()
+
+        self.__view.set_param_value(RelayParams.PORT_STATE, 'closed')
+
     def isALEX(self) -> bool:
         '''
         Check if the ALEX flag is set.

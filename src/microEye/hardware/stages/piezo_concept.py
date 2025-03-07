@@ -443,6 +443,12 @@ class PzFocController:
         '''
         self.stage.open()
 
+    def disconnect(self):
+        '''
+        Closes the stage serial port.
+        '''
+        self.stage.close()
+
     def isOpen(self):
         '''
         Check if the stage is open.

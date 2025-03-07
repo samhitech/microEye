@@ -81,11 +81,25 @@ class DeviceManager(QtCore.QObject):
         if isinstance(self.stage, PzFocController):
             self.stage.moveStage(dir, steps)
 
+    def stopRequest(self, axis):
+        if axis in ['x', 'y', 'xy']:
+            self.kinesisXY.stop()
+
+    def homeRequest(self, axis):
+        if axis == 'z':
+            self.stage.stage.HOME()
+
+    def toggleLock(self, axis):
+        if axis == 'z':
+            FocusStabilizer.instance().toggleFocusStabilization()
+
     def moveRequest(self, axis, direction, step):
         if axis in ['x', 'y']:
             dist = direction * step
             args = [dist, 0] if axis == 'x' else [0, dist]
-            self.kinesisXY.move_relative(*args)
+            self.kinesisXY_view.runAsync(
+                self.kinesisXY.move_relative, *args
+            )
         else:
             self.stage.moveStage(direction, step) if self.stage else None
 

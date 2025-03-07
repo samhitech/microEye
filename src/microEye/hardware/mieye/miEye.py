@@ -140,11 +140,14 @@ class miEye_module(QMainWindow):
 
     def init_controller(self):
         self.controller = Controller()
-        self.controller.stage_move_requested.connect(
-            self.device_manager.moveRequest)
+        self.controller.stage_move_requested.connect(self.device_manager.moveRequest)
+        self.controller.stage_stop_requested.connect(self.device_manager.stopRequest)
+        self.controller.stage_home_requested.connect(self.device_manager.homeRequest)
+        self.controller.stage_toggle_lock.connect(self.device_manager.toggleLock)
+
+
 
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.controller)
-
 
     def init_devices_dock(self):
         # General settings groupbox
@@ -285,6 +288,10 @@ class miEye_module(QMainWindow):
         load_config.triggered.connect(lambda: loadConfig(self, False))
         auto_load_config = QAction('Load Config. && Connect', self)
         auto_load_config.triggered.connect(lambda: loadConfig(self, True))
+        disconnect_devices = QAction('Disconnect Devices', self)
+        disconnect_devices.triggered.connect(lambda: shutdown(self, False))
+        shutdown_and_exit = QAction('Exit & Disconnect Devices', self)
+        shutdown_and_exit.triggered.connect(lambda: shutdown(self))
 
         github = QAction('microEye Github', self)
         github.triggered.connect(
@@ -299,6 +306,8 @@ class miEye_module(QMainWindow):
         file_menu.addAction(save_config)
         file_menu.addAction(load_config)
         file_menu.addAction(auto_load_config)
+        file_menu.addAction(disconnect_devices)
+        file_menu.addAction(shutdown_and_exit)
 
         docks: list[QtWidgets.QDockWidget] = [
             self.controller,
@@ -487,7 +496,7 @@ class miEye_module(QMainWindow):
                 self.getRelaySettings()
             )
 
-        for _, cam_list in CameraList.cameras.items():
+        for _, cam_list in CameraList.CAMERAS.items():
             for cam in cam_list:
                 cam['Panel'].updateInfo()
 
@@ -865,6 +874,35 @@ def loadConfig(mieye: miEye_module, auto_connect=True):
             retry_exec(func)
 
     print('Config.json file loaded!')
+
+
+def shutdown(mieye: miEye_module, exit=True):
+    '''Disconnects all devices and exits the application.'''
+
+    if mieye.camList.autofocusCam:
+        mieye.camList.autofocusCam.stop()
+
+    funcs = [
+        mieye.camList.removeAllCameras,
+        mieye.device_manager.laserRelayCtrllr.disconnect,
+        mieye.device_manager.elliptecView.close,
+        mieye.device_manager.stage.disconnect,
+        mieye.device_manager.kinesisXY.close,
+    ]
+
+    for panel in mieye.laserPanels:
+        funcs.append(panel.Laser.CloseCOM)
+
+    for func in funcs:
+        retry_exec(func)
+
+    print('All devices disconnected!')
+    if not exit:
+        return
+
+    import sys
+
+    sys.exit(0)
 
 
 if __name__ == '__main__':

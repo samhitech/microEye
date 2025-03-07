@@ -10,6 +10,7 @@ from microEye.analysis.filters import (
     AbstractFilter,
     BandpassFilter,
     DoG_Filter,
+    PassFilter
 )
 from microEye.analysis.fitting.fit import AbstractDetector, CV_BlobDetector
 from microEye.analysis.fitting.results import FittingMethod
@@ -19,6 +20,7 @@ from microEye.utils import Tree
 DETECTORS = {'OpenCV Blob Detector': CV_BlobDetector}
 
 FILTERS = {
+    'None': PassFilter,
     'Difference of Gaussians': DoG_Filter,
     'Fourier Bandpass Filter': BandpassFilter,
 }
@@ -574,6 +576,11 @@ class FittingOptions(Tree):
                     self.get_param_value(Parameters.SHOW_FILTER),
                 )
             return self._filters[value]
+        elif filter_class is PassFilter:
+            filter: PassFilter = self._filters.get(value, None)
+            if filter is None:
+                self._filters[value] = PassFilter()
+            return filter
         else:
             return AbstractFilter()
 

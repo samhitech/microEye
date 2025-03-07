@@ -4,5 +4,6 @@ from microEye.analysis.filters.spatial import (
     BandpassFilter,
     DoG_Filter,
     GaussFilter,
+    PassFilter,
 )
 from microEye.analysis.filters.temporal import TemporalMedianFilter

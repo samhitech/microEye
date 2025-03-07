@@ -9,6 +9,16 @@ from scipy.fftpack import fft2, fftshift, ifft2, ifftshift
 from microEye.analysis.filters.base import AbstractFilter
 
 
+class PassFilter(AbstractFilter):
+    def run(self, image: np.ndarray) -> np.ndarray:
+        return image
+
+    def get_metadata(self):
+        '''Return metadata about the Pass filter.'''
+        return {
+            'name': 'Pass Filter'
+        }
+
 class DoG_Filter(AbstractFilter):
     def __init__(self, sigma: float = 1, factor: float = 2.5) -> None:
         '''Difference of Gauss init

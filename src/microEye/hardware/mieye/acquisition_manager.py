@@ -177,7 +177,7 @@ class AcquisitionManager(QtCore.QObject):
             self.scan_worker.stop()
 
     def update_directories(self, value: str):
-        for _, cam_list in CameraList.cameras.items():
+        for _, cam_list in CameraList.CAMERAS.items():
             for cam in cam_list:
                 panel: Camera_Panel = cam['Panel']
                 panel._directory = value
@@ -217,7 +217,7 @@ def scanAcquisition(
             return
 
         data = []
-        vimba_cams = [cam for cam in CameraList.cameras['Vimba'] if not cam['IR']]
+        vimba_cams = [cam for cam in CameraList.CAMERAS['Vimba'] if not cam['IR']]
         if device_manager.kinesisXY.isOpen() and len(vimba_cams) > 0:
             cam: vimba_cam = vimba_cams[0]['Camera']
             for x in range(steps[0]):
@@ -307,7 +307,7 @@ def z_stack_acquisition(
 
         data = []
         peak = None
-        vimba_cams = [cam for cam in CameraList.cameras['Vimba'] if not cam['IR']]
+        vimba_cams = [cam for cam in CameraList.CAMERAS['Vimba'] if not cam['IR']]
         if device_manager.stage.isOpen() and len(vimba_cams) > 0 and nFrames > 0:
             cam: miCamera = vimba_cams[0]['Camera']
             cam_pan: Camera_Panel = vimba_cams[0]['Panel']

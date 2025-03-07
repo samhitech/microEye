@@ -37,7 +37,7 @@ class CameraList(QtWidgets.QWidget):
     cameraAdded = Signal(Camera_Panel, bool)
     cameraRemoved = Signal(Camera_Panel, bool)
 
-    cameras = {'uEye': [], 'Vimba': [], 'UC480': [], 'miDummy': []}
+    CAMERAS = {'uEye': [], 'Vimba': [], 'UC480': [], 'miDummy': []}
 
     def __init__(self, parent: typing.Optional['QtWidgets.QWidget'] = None):
         '''
@@ -118,7 +118,7 @@ class CameraList(QtWidgets.QWidget):
             self.cached_autofocusCam = next(
                 (
                     cam['Panel']
-                    for _, cam_list in CameraList.cameras.items()
+                    for _, cam_list in CameraList.CAMERAS.items()
                     for cam in cam_list
                     if cam['IR']
                 ),
@@ -212,7 +212,7 @@ class CameraList(QtWidgets.QWidget):
         ids_cam = IDS_Camera(camera_id)
         ids_cam.initialize()
         ids_panel = IDS_Panel(ids_cam, mini, self.get_cam_title(cam))
-        CameraList.cameras['uEye'].append(
+        CameraList.CAMERAS['uEye'].append(
             {'Camera': ids_cam, 'Panel': ids_panel, 'IR': mini}
         )
         return ids_panel
@@ -239,7 +239,7 @@ class CameraList(QtWidgets.QWidget):
         n_ret = thor_cam.initialize()
         if n_ret == CMD.IS_SUCCESS:
             thor_panel = Thorlabs_Panel(thor_cam, mini, self.get_cam_title(cam))
-            CameraList.cameras['UC480'].append(
+            CameraList.CAMERAS['UC480'].append(
                 {'Camera': thor_cam, 'Panel': thor_panel, 'IR': mini}
             )
             return thor_panel
@@ -266,7 +266,7 @@ class CameraList(QtWidgets.QWidget):
         '''
         v_cam = vimba_cam(camera_id)
         v_panel = Vimba_Panel(v_cam, mini, self.get_cam_title(cam))
-        CameraList.cameras['Vimba'].append(
+        CameraList.CAMERAS['Vimba'].append(
             {'Camera': v_cam, 'Panel': v_panel, 'IR': mini}
         )
         return v_panel
@@ -288,7 +288,7 @@ class CameraList(QtWidgets.QWidget):
             The camera panel, or None if the camera could not be added.
         '''
         dummy_panel = Dummy_Panel(mini, self.get_cam_title(cam))
-        CameraList.cameras['miDummy'].append(
+        CameraList.CAMERAS['miDummy'].append(
             {'Camera': dummy_panel.cam, 'Panel': dummy_panel, 'IR': mini}
         )
         return dummy_panel
@@ -355,7 +355,7 @@ class CameraList(QtWidgets.QWidget):
         cam : dict
             The camera information dictionary.
         '''
-        cams: list[dict] = CameraList.cameras.get(cam['Driver'], [])
+        cams: list[dict] = CameraList.CAMERAS.get(cam['Driver'], [])
         if cams:
             for item in cams:
                 pan: Camera_Panel = item['Panel']
@@ -365,9 +365,7 @@ class CameraList(QtWidgets.QWidget):
                             'Please stop acquisition before removing!'
                         )
                     else:
-                        if isinstance(pan.cam, IDS_Camera) or isinstance(  # noqa: SIM101
-                            pan.cam, thorlabs_camera
-                        ):  # noqa: SIM101
+                        if isinstance(pan.cam, (IDS_Camera, thorlabs_camera)):
                             pan.cam.free_memory()
                             pan.cam.dispose()
                         if isinstance(item['Camera'], miDummy):
@@ -387,6 +385,44 @@ class CameraList(QtWidgets.QWidget):
                     return
         else:
             self._display_warning_message('Device/Panel not found!')
+
+    def removeAllCameras(self):
+        '''
+        Remove all cameras.
+        Stops any active acquisitions and properly disposes of camera resources.
+        '''
+        for _, camera_list in self.CAMERAS.items():
+            # Create a copy of the list since we'll be modifying it during iteration
+            for camera_info in camera_list[:]:
+                panel: Camera_Panel = camera_info['Panel']
+
+                # Stop acquisition if running
+                if panel.cam.acquisition:
+                    panel.stop()
+
+                # Clean up based on camera type
+                if isinstance(panel.cam, (IDS_Camera, thorlabs_camera)):
+                    panel.cam.free_memory()
+                    panel.cam.dispose()
+
+                # Remove dummy camera instances
+                if isinstance(camera_info['Camera'], miDummy):
+                    miDummy.instances.remove(camera_info['Camera'])
+
+                # Stop any acquisition jobs
+                if panel.acq_job is not None:
+                    panel.acq_job.stop_threads = True
+
+                # Remove from parent and clean up panel
+                panel._dispose_cam = True
+                if camera_info['IR']:
+                    panel.setParent(None)
+                else:
+                    panel.close()
+                    panel.setParent(None)
+
+                # Remove from camera list
+                camera_list.remove(camera_info)
 
     def refresh_list(self):
         '''
