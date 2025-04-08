@@ -1,3 +1,6 @@
+from microEye._version import __version__, version_info
+
+
 def getArgs():
     import argparse
     import os
@@ -38,9 +41,7 @@ def getArgs():
 
 ARGS = getArgs()
 
-VERSION = '2.3.1'
-
-from microEye.qt import *  # noqa: I001, E402
 import microEye.analysis.fitting.pyfit3Dcspline as pyfit3Dcspline  # noqa: E402
 from microEye.analysis import multi_viewer  # noqa: E402
 from microEye.hardware import miEye_module  # noqa: E402
+from microEye.qt import *  # noqa: I001, E402

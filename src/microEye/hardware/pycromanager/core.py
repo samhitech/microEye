@@ -2,6 +2,7 @@ import time
 from typing import Any, Optional, Union
 
 from pycromanager import Core
+from pycromanager.mm_java_classes import DEFAULT_BRIDGE_PORT
 
 from microEye.hardware.pycromanager.enums import *
 from microEye.hardware.pycromanager.utils import *
@@ -19,25 +20,60 @@ RECONNECT_DELAY = 5  # seconds
 
 # @add_timeout_to_all_methods
 class PycroCore:
-    _CORE = None
-    _instance = None
+    _CORE: Core = None
+    _instances: dict[int, 'PycroCore'] = {}
+    _LOADED_DEVICES = {}
 
     def __new__(cls, *args, **kwargs):
+        port = kwargs.get('port', DEFAULT_BRIDGE_PORT)
         # If the single instance doesn't exist, create a new one
-        if not cls._instance:
-            cls._instance = super().__new__(cls, *args, **kwargs)
+        if not cls._instances.get(port):
+            cls._instances[port] = super().__new__(cls)
         # Return the single instance
-        return cls._instance
+        return cls._instances.get(port)
 
     @classmethod
-    def instance(cls):
-        if cls._instance is None:
-            return PycroCore()
+    def instance(cls, port: int = DEFAULT_BRIDGE_PORT) -> 'PycroCore':
+        if cls._instances.get(port) is None:
+            return PycroCore(port=port)
 
-        return cls._instance
+        return cls._instances.get(port)
 
-    def __init__(self):
+    @classmethod
+    def get_camera_list(cls) -> list[dict]:
+        cams = []
+
+        for idx, (port, instance) in enumerate(cls._instances.items()):
+            cams.append(
+                {
+                    'Camera ID': instance.get_camera_device(),
+                    'Device ID': f'{port}-{idx}',
+                    'Sensor ID': 'NA',
+                    'Status': 'NA',
+                    'InUse': 0,
+                    'Model': 'PycroCamera',
+                    'Serial': 'NA',
+                    'Driver': 'PycroCore',
+                    'Name': instance.get_device_name(instance.get_camera_device()),
+                }
+            )
+
+        return cams
+
+    def __init__(self, **kwargs):
+        self.port = kwargs.get('port', DEFAULT_BRIDGE_PORT)
         self.connect()
+
+        if not self.is_connected():
+            raise ConnectionError('Failed to connect to Micro-Manager')
+
+        self._LOADED_DEVICES = {}
+        # print(self.get_loaded_devices())
+        for type in DeviceType:
+            for label in self.get_loaded_devices():
+                if type == self.get_device_type(label):
+                    self._LOADED_DEVICES[type] = label
+        # print(self._LOADED_DEVICES)
 
     def connect(self):
         if self.is_connected():
@@ -45,7 +81,7 @@ class PycroCore:
 
         for attempt in range(MAX_RECONNECT_ATTEMPTS):
             try:
-                self._CORE = Core(timeout=5000)
+                self._CORE = Core(timeout=5000, port=self.port, convert_camel_case=True)
                 print(f'Successfully connected on attempt {attempt + 1}')
                 return
             except Exception as e:
@@ -56,13 +92,19 @@ class PycroCore:
                     time.sleep(RECONNECT_DELAY)
         raise ConnectionError('Failed to connect after maximum attempts')
 
+    def close(self):
+        if hasattr(self._CORE, '_close'):
+            self._CORE._close()
+        self._CORE = None
+        del PycroCore._instances[self.port]
+
     def reconnect(self):
         print('Attempting to reconnect...')
         self.connect()
 
     def is_connected(self):
         # This is a simple check. You might want to implement a more robust check
-        return PycroCore._CORE is not None and bool(self.get_version_info())
+        return self._CORE is not None and bool(self.get_version_info())
 
     def add_galvo_polygon_vertex(
         self, galvo_label: str, polygon_index: int, x: float, y: float
@@ -166,6 +208,8 @@ class PycroCore:
         res = self._CORE.detect_device(device_label)
         if hasattr(res, 'swig_value'):
             return DeviceDetectionStatus(res.swig_value())
+        elif isinstance(res, int):
+            return DeviceDetectionStatus(res)
 
         return None
 
@@ -332,6 +376,8 @@ class PycroCore:
         res = self._CORE.get_device_type(label)
         if res and hasattr(res, 'swig_value'):
             return DeviceType(res.swig_value())
+        elif isinstance(res, int):
+            return DeviceType(res)
 
         return None
 
@@ -541,6 +587,14 @@ class PycroCore:
 
     def get_property_upper_limit(self, label: str, prop_name: str) -> float:
         return self._CORE.get_property_upper_limit(label, prop_name)
+
+    def get_property_limits(self, label: str, prop_name: str) -> tuple[float, float]:
+        if not self.has_property_limits(label, prop_name):
+            return None, None
+
+        return self.get_property_lower_limit(
+            label, prop_name
+        ), self.get_property_upper_limit(label, prop_name)
 
     def get_remaining_image_count(self) -> int:
         return self._CORE.get_remaining_image_count()
@@ -995,6 +1049,9 @@ class PycroCore:
         '''TODO: test'''
         self._CORE.set_image_processor_device(proc_label)
 
+    def set_metadata_profile(self, profile: MetadataProfile) -> None:
+        self._CORE.set_metadata_profile(profile.value)
+
     def set_multi_roi(self, rois: list[Any]) -> None:
         '''TODO: test'''
         self._CORE.set_multi_roi(rois)
@@ -1373,4 +1430,4 @@ class PycroCore:
 
 
 if __name__ == '__main__':
-    PycroCore()
+    PycroCore.instance()

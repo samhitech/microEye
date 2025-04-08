@@ -9,10 +9,10 @@ from microEye.utils.gui_helper import GaussianOffSet
 
 
 class Controller(QtWidgets.QDockWidget):
-    stage_move_requested = Signal(str, int, int)  # axis, direction, mode
-    stage_stop_requested = Signal(str)  # axis
-    stage_home_requested = Signal(str)  # axis
-    stage_toggle_lock = Signal(str)  # axis
+    stage_move_requested = Signal(str, int, float)
+    stage_stop_requested = Signal(str)
+    stage_home_requested = Signal(str)
+    stage_toggle_lock = Signal(str)
 
     def __init__(self):
         ''' '''

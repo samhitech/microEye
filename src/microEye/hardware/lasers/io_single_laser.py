@@ -315,6 +315,7 @@ class SingleMatchBox(Tree):
     get_relay_state()
         Gets the state of the relay.
     '''
+
     PARAMS = MB_Params
     removed = Signal(object)
 
@@ -364,7 +365,7 @@ class SingleMatchBox(Tree):
             {
                 'name': str(MB_Params.SERIAL_PORT),
                 'type': 'group',
-                'expanded' : False,
+                'expanded': False,
                 'children': [
                     {
                         'name': str(MB_Params.PORT),
@@ -380,8 +381,7 @@ class SingleMatchBox(Tree):
                         'value': 115200,
                         'limits': [
                             baudrate
-                            for baudrate in \
-                                QtSerialPort.QSerialPortInfo.standardBaudRates()
+                            for baudrate in QtSerialPort.QSerialPortInfo.standardBaudRates()
                         ],
                     },
                     {'name': str(MB_Params.SET_PORT), 'type': 'action'},
@@ -565,7 +565,9 @@ class SingleMatchBox(Tree):
 
         self.param_tree = Parameter.create(name='', type='group', children=params)
         self.param_tree.sigTreeStateChanged.connect(self.change)
-        self.header().setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        self.header().setSectionResizeMode(
+            QtWidgets.QHeaderView.ResizeMode.ResizeToContents
+        )
 
         self.get_param(MB_Params.STATE).sigValueChanged.connect(
             lambda: self.laser_state_changed()
@@ -683,9 +685,32 @@ class SingleMatchBox(Tree):
         except Exception:
             return ''
 
+    def get_config(self) -> dict:
+        '''
+        Returns the current configuration of the laser device as a dictionary.
+        '''
+        return {
+            'port': self.Laser.portName(),
+            'baudrate': self.Laser.baudRate(),
+            'class': self.__class__.__name__,
+        }
+
+    def load_config(self, config: dict) -> bool:
+        '''
+        Loads the configuration from the given dictionary.
+        '''
+        port = config.get('port')
+        baudrate = config.get('baudrate')
+        if port:
+            self.Laser.setPortName(port)
+            self.set_param_value(MB_Params.PORT, port)
+        if baudrate:
+            self.Laser.setBaudRate(baudrate)
+            self.set_param_value(MB_Params.BAUDRATE, baudrate)
+
     def remove_widget(self):
         if self.parent() and not self.Laser.isOpen():
-            # self.parent().layout().removeWidget(self)
+            self.parent().removeWidget(self)
             self.removed.emit(self)
             self.deleteLater()
         else:

@@ -1,22 +1,22 @@
 import json
 import os
 import warnings
+import weakref
 import webbrowser
+from enum import Enum
 
-import numpy as np
 from scipy.optimize import OptimizeWarning
 
 from microEye.hardware.cams import *
 from microEye.hardware.lasers import *
 from microEye.hardware.mieye.acquisition_manager import AcquisitionManager
-from microEye.hardware.mieye.devices_manager import DeviceManager
-from microEye.hardware.protocols import ExperimentDesigner, WeakObjects
-from microEye.hardware.stages import FocusStabilizer, PzFocController
+from microEye.hardware.mieye.devices_manager import DEVICES, DeviceManager
+from microEye.hardware.protocols import ExperimentDesigner
+from microEye.hardware.pycromanager.widgets import BridgesWidget, HeadlessManagerWidget
+from microEye.hardware.stages import FocusStabilizer
 from microEye.hardware.widgets import (
     Controller,
     DevicesView,
-    devicesParams,
-    focusWidget,
 )
 from microEye.qt import (
     QT_API,
@@ -33,6 +33,21 @@ from microEye.utils.retry_exec import retry_exec
 from microEye.utils.start_gui import StartGUI
 
 warnings.filterwarnings('ignore', category=OptimizeWarning)
+
+
+class DOCKS(Enum):
+    DEVICES = 0
+    LASERS = 1
+    STAGES = 2
+    FOCUS = 3
+    CAMERAS = 4
+    PYSCRIPT = 5
+    PROTOCOLS = 6
+    CONTROLLER = 7
+    FOCUS_CAMERA = 8
+
+    def get_key(self):
+        return self.name.lower() + '_dock'
 
 
 class miEye_module(QMainWindow):
@@ -76,8 +91,11 @@ class miEye_module(QMainWindow):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.device_manager = DeviceManager(self)
-        self.acquisition_manager = AcquisitionManager(self.device_manager)
+        self.device_manager = DeviceManager()
+        self.acquisition_manager = AcquisitionManager()
+
+        self.device_manager.widgetAdded.connect(self._add_widgets)
+        self.device_manager.widgetRemoved.connect(self._remove_widgets)
 
         # setting title
         self.setWindowTitle('miEye module')
@@ -95,14 +113,16 @@ class miEye_module(QMainWindow):
         max_threads = QtCore.QThreadPool.globalInstance().maxThreadCount()
         print(f'Multithreading with maximum {max_threads} threads')
 
-        # IR Detector Widget
-        self.IR_Widget = None
+        # IR 1D array
+        self.ir_array_dock = None
 
         # IR 2D Camera
         self.cam_dock = None
 
         # Layout
         self.LayoutInit()
+
+        self.device_manager.init_devices()
 
         # Statues Bar Timer
         self.timer = QtCore.QTimer()
@@ -125,6 +145,12 @@ class miEye_module(QMainWindow):
     def LayoutInit(self):
         '''Initializes the window layout'''
 
+        self.dock_widgets: weakref.WeakValueDictionary[DOCKS, QtWidgets.QDockWidget] = (
+            weakref.WeakValueDictionary()
+        )
+
+        self.labelStyle = {'color': '#FFF', 'font-size': '10pt'}
+
         self.init_controller()
         self.init_devices_dock()
         # self.init_ir_dock()
@@ -133,21 +159,26 @@ class miEye_module(QMainWindow):
         self.init_protocol_dock()
         self.init_lasers_dock()
         self.init_cam_dock()
-        self.init_focus_dock()
         self.tabifyDocks()
 
         self.init_menubar()
 
     def init_controller(self):
         self.controller = Controller()
-        self.controller.stage_move_requested.connect(self.device_manager.moveRequest)
-        self.controller.stage_stop_requested.connect(self.device_manager.stopRequest)
-        self.controller.stage_home_requested.connect(self.device_manager.homeRequest)
-        self.controller.stage_toggle_lock.connect(self.device_manager.toggleLock)
+        self.controller.stage_move_requested.connect(
+            DeviceManager.instance().moveRequest
+        )
+        self.controller.stage_stop_requested.connect(
+            DeviceManager.instance().stopRequest
+        )
+        self.controller.stage_home_requested.connect(
+            DeviceManager.instance().homeRequest
+        )
+        self.controller.stage_toggle_lock.connect(DeviceManager.instance().toggleLock)
 
-
-
-        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.controller)
+        self.addDockWidget(
+            Qt.DockWidgetArea.LeftDockWidgetArea, self.controller, DOCKS.CONTROLLER
+        )
 
     def init_devices_dock(self):
         # General settings groupbox
@@ -158,21 +189,25 @@ class miEye_module(QMainWindow):
         )
         devicesWidget = QtWidgets.QWidget()
         self.devicesDock.setWidget(devicesWidget)
-        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.devicesDock)
+        self.addDockWidget(
+            Qt.DockWidgetArea.RightDockWidgetArea, self.devicesDock, DOCKS.DEVICES
+        )
 
         # vertical layout
-        devicesLayout = QtWidgets.QHBoxLayout()
+        devicesLayout = QtWidgets.QGridLayout()
         devicesWidget.setLayout(devicesLayout)
 
-        devicesLayout.addWidget(self.device_manager.hid_controller)
-
         self.devicesView = DevicesView()
-        self.devicesView.setDetectorActivated.connect(self.setIRcam)
-        self.devicesView.resetDetectorActivated.connect(self.resetIRcam)
-        self.devicesView.addLaserActivated.connect(self.add_laser_panel)
-        self.devicesView.setStageActivated.connect(self.setStage)
+        self.devicesView.setDetectorActivated.connect(
+            self.device_manager._set_ir_array_detector
+        )
+        self.devicesView.resetDetectorActivated.connect(
+            self.device_manager._remove_ir_array_detector
+        )
+        self.devicesView.addLaserActivated.connect(self.device_manager._add_laser)
+        self.devicesView.setStageActivated.connect(self.device_manager._set_z_stage)
 
-        devicesLayout.addWidget(self.devicesView)
+        devicesLayout.addWidget(self.devicesView, 0, 1)
 
     def init_stages_dock(self):
         # Stages Tab (Elliptec + Kinesis Tab + Scan Acquisition)
@@ -185,21 +220,13 @@ class miEye_module(QMainWindow):
         self.stagesWidget.setMinimumWidth(350)
         self.stagesDock.setWidget(self.stagesWidget)
 
-        self.setStage(self.devicesView.get_param_value(devicesParams.STAGE))
-
-        self.stagesWidget.addTab(
-            DeviceManager.WIDGETS[DeviceManager.DEVICES.XY_STAGE], 'Kinesis XY Stage'
-        )
-
-        self.stagesWidget.addTab(
-            DeviceManager.WIDGETS[DeviceManager.DEVICES.ELLIPTEC], 'Elliptec Devices'
-        )
-
         self.stagesWidget.addTab(
             self.acquisition_manager.acquisitionWidget, 'Scan Acquistion'
         )
 
-        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.stagesDock)
+        self.addDockWidget(
+            Qt.DockWidgetArea.LeftDockWidgetArea, self.stagesDock, DOCKS.STAGES
+        )
 
     def init_py_dock(self):
         # Py Script Editor
@@ -212,7 +239,9 @@ class miEye_module(QMainWindow):
         self.pyEditor.exec_btn.clicked.connect(lambda: self.scriptTest())
         self.pyDock.setWidget(self.pyEditor)
 
-        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.pyDock)
+        self.addDockWidget(
+            Qt.DockWidgetArea.RightDockWidgetArea, self.pyDock, DOCKS.PYSCRIPT
+        )
 
     def init_protocol_dock(self):
         self.protocolDock = QtWidgets.QDockWidget('Protocols', self)
@@ -223,7 +252,9 @@ class miEye_module(QMainWindow):
         self.actionEditor = ExperimentDesigner()
         self.protocolDock.setWidget(self.actionEditor)
 
-        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.protocolDock)
+        self.addDockWidget(
+            Qt.DockWidgetArea.RightDockWidgetArea, self.protocolDock, DOCKS.PROTOCOLS
+        )
 
     def init_lasers_dock(self):
         # Lasers Tab
@@ -232,7 +263,7 @@ class miEye_module(QMainWindow):
             QtWidgets.QDockWidget.DockWidgetFeature.DockWidgetFloatable
             | QtWidgets.QDockWidget.DockWidgetFeature.DockWidgetMovable
         )
-        self.lasersLayout = QtWidgets.QHBoxLayout()
+        self.lasersLayout = QtWidgets.QGridLayout()
 
         self.lasersWidget = QtWidgets.QWidget()
         self.lasersWidget.setLayout(self.lasersLayout)
@@ -241,12 +272,11 @@ class miEye_module(QMainWindow):
 
         self.lasersDock.setWidget(self.lasersWidget)
 
-        self.laserPanels = []
+        self.lasersLayout.addWidget(self.lasersTabs, 0, 1)
 
-        self.lasersLayout.addWidget(self.device_manager.laserRelayCtrllr.view)
-        self.lasersLayout.addWidget(self.lasersTabs)
-
-        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.lasersDock)
+        self.addDockWidget(
+            Qt.DockWidgetArea.RightDockWidgetArea, self.lasersDock, DOCKS.LASERS
+        )
 
     def init_cam_dock(self):
         # cameras tab
@@ -256,21 +286,9 @@ class miEye_module(QMainWindow):
             | QtWidgets.QDockWidget.DockWidgetFeature.DockWidgetMovable
         )
 
-        self.camList = CameraList()
-        self.camList.cameraAdded.connect(self.add_camera)
-        self.camList.cameraRemoved.connect(self.remove_camera)
-
-        self.camDock.setWidget(self.camList)
-
-        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.camDock)
-
-    def init_focus_dock(self):
-        # focusWidget
-        self.labelStyle = {'color': '#FFF', 'font-size': '10pt'}
-        self.focus = focusWidget()
-        WeakObjects.addObject(self.focus)
-
-        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.focus)
+        self.addDockWidget(
+            Qt.DockWidgetArea.RightDockWidgetArea, self.camDock, DOCKS.CAMERAS
+        )
 
     def init_menubar(self):
         # Create menu bar
@@ -279,6 +297,7 @@ class miEye_module(QMainWindow):
         # Create file menu
         file_menu = menu_bar.addMenu('File')
         view_menu = menu_bar.addMenu('View')
+        tools_menu = menu_bar.addMenu('Tools')
         help_menu = menu_bar.addMenu('Help')
 
         # Create exit action
@@ -289,9 +308,11 @@ class miEye_module(QMainWindow):
         auto_load_config = QAction('Load Config. && Connect', self)
         auto_load_config.triggered.connect(lambda: loadConfig(self, True))
         disconnect_devices = QAction('Disconnect Devices', self)
-        disconnect_devices.triggered.connect(lambda: shutdown(self, False))
+        disconnect_devices.triggered.connect(
+            lambda: self.device_manager.shutdown(self, False)
+        )
         shutdown_and_exit = QAction('Exit & Disconnect Devices', self)
-        shutdown_and_exit.triggered.connect(lambda: shutdown(self))
+        shutdown_and_exit.triggered.connect(lambda: self.device_manager.shutdown(self))
 
         github = QAction('microEye Github', self)
         github.triggered.connect(
@@ -316,7 +337,6 @@ class miEye_module(QMainWindow):
             self.stagesDock,
             self.camDock,
             self.lasersDock,
-            self.focus,
         ]
 
         def connect(action: QAction, dock: QtWidgets.QDockWidget):
@@ -328,6 +348,13 @@ class miEye_module(QMainWindow):
             if '6' in QT_API:
                 connect(dock_act, dock)
             view_menu.addAction(dock_act)
+
+        # Tools menu
+        pycro_headless = HeadlessManagerWidget.get_menu_action(self)
+        core_instances = BridgesWidget.get_menu_action(self)
+
+        tools_menu.addAction(pycro_headless)
+        tools_menu.addAction(core_instances)
 
         help_menu.addAction(github)
         help_menu.addAction(pypi)
@@ -344,14 +371,12 @@ class miEye_module(QMainWindow):
 
         self.tabifyDockWidget(self.lasersDock, self.devicesDock)
         self.tabifyDockWidget(self.lasersDock, self.camDock)
-        self.tabifyDockWidget(self.lasersDock, self.focus)
         self.tabifyDockWidget(self.lasersDock, self.protocolDock)
         self.tabifyDockWidget(self.lasersDock, self.pyDock)
 
         self.tabifyDockWidget(self.stagesDock, self.controller)
 
         self.stagesDock.raise_()
-        self.focus.raise_()
 
     def scriptTest(self):
         exec(self.pyEditor.toPlainText())
@@ -365,102 +390,100 @@ class miEye_module(QMainWindow):
         dock.setWidget(content)
         return dock
 
-    def add_camera(self, panel: Camera_Panel, ir: bool):
-        if ir:
-            panel._frames = FocusStabilizer.instance().buffer
-            self.cam_dock = self.getDockWidget(panel._cam.name, panel)
-            self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.cam_dock)
-            self.tabifyDockWidget(self.lasersDock, self.cam_dock)
-            self.focus.graph_IR.setLabel('left', 'Signal', '', **self.labelStyle)
-        else:
-            panel.setWindowTitle(panel.title())
-            panel.show()
+    def _add_widgets(self, device: DEVICES, widget: QtWidgets.QWidget):
+        if device == DEVICES.LASER:
+            self.lasersTabs.addTab(widget, f'Laser #{self.lasersTabs.count() + 1}')
 
-        WeakObjects.addObject(panel)
+            self.lasersTabs.setCurrentIndex(self.lasersTabs.count() - 1)
 
-    def remove_camera(self, panel: Camera_Panel, ir: bool):
-        if ir:
-            self.removeDockWidget(self.cam_dock)
-            self.cam_dock.deleteLater()
-            self.cam_dock = None
-        else:
-            pass
-
-        WeakObjects.removeObject(panel)
-
-    def isEmpty(self):
-        if self.camList.autofocusCam:
-            return self.camList.autofocusCam.isEmpty
-        elif not self.device_manager.IR_Cam.isDummy():
-            return self.device_manager.IR_Cam.isEmpty
-        else:
-            return True
-
-    def isImage(self):
-        if self.camList.autofocusCam:
-            return True
-        elif not self.device_manager.IR_Cam.isDummy():
-            return False
-        else:
-            return False
-
-    def BufferGet(self):
-        if self.camList.autofocusCam:
-            return self.camList.autofocusCam.get(True)
-        elif not self.device_manager.IR_Cam.isDummy():
-            return self.device_manager.IR_Cam.buffer.get()
-        else:
-            return np.zeros((256, 256), dtype=np.uint16)
-
-    def BufferSize(self):
-        if self.camList.autofocusCam:
-            return self.camList.autofocusCam.bufferSize
-        elif not self.device_manager.IR_Cam.isDummy():
-            return 0
-        else:
-            return 0
-
-    def getRelaySettings(self):
-        '''Returns the RelayBox setting command.
-
-        Returns
-        -------
-        str
-            the RelayBox setting command.
-        '''
-        config = ''
-        for panel in self.laserPanels:
-            config += panel.GetRelayState()
-        return self.device_manager.laserRelayCtrllr.getCommand(config)
-
-    def add_laser_panel(self, value: str):
-        if 'IO MatchBox' in value:
-            if 'Combiner' in value:
-                combiner = CombinerLaserWidget()
-                combiner.removed.connect(self.laser_panel_removed)
-                self.laserPanels.append(combiner)
-                self.lasersTabs.addTab(
-                    combiner, f'Laser #{self.lasersTabs.count() + 1}'
+        elif device == DEVICES.IR_CAM:
+            if isinstance(widget, Camera_Panel):
+                # IR camera widget
+                self.cam_dock = self.getDockWidget(widget._cam.name, widget)
+                self.addDockWidget(
+                    Qt.DockWidgetArea.RightDockWidgetArea,
+                    self.cam_dock,
+                    DOCKS.FOCUS_CAMERA,
                 )
-                WeakObjects.addObject(combiner)
-            elif 'Single' in value:
-                laser = SingleMatchBox()
-                laser.removed.connect(self.laser_panel_removed)
-                self.laserPanels.append(laser)
-                self.lasersTabs.addTab(laser, f'Laser #{self.lasersTabs.count() + 1}')
-                WeakObjects.addObject(laser)
+                self.tabifyDockWidget(self.lasersDock, self.cam_dock)
+                self.cam_dock.raise_()  # Bring to front
+                self.device_manager.focus.graph_IR.setLabel(
+                    'left', 'Signal', '', **self.labelStyle
+                )
 
-    def laser_panel_removed(self, panel):
-        index = self.lasersTabs.indexOf(panel)
-        self.lasersTabs.removeTab(index)
-        WeakObjects.removeObject(panel)
+            else:
+                if self.ir_array_dock is None:
+                    self.ir_array_dock = QtWidgets.QDockWidget('Array Detector')
+                    self.ir_array_dock.setFeatures(
+                        QtWidgets.QDockWidget.DockWidgetFeature.DockWidgetFloatable
+                        | QtWidgets.QDockWidget.DockWidgetFeature.DockWidgetMovable
+                    )
+                    self.addDockWidget(
+                        Qt.DockWidgetArea.RightDockWidgetArea,
+                        self.ir_array_dock,
+                        DOCKS.FOCUS_CAMERA,
+                    )
+                    self.tabifyDockWidget(self.devicesDock, self.ir_array_dock)
+
+                self.ir_array_dock.setWidget(widget)
+                self.ir_array_dock.raise_()  # Bring to front
+                self.device_manager.focus.graph_IR.setLabel(
+                    'left', 'Signal', 'V', **self.labelStyle
+                )
+
+        elif device == DEVICES.Z_STAGE:
+            self.stagesWidget.insertTab(0, widget, 'Z-Stage')
+            self.stagesWidget.setCurrentIndex(0)
+
+        elif device == DEVICES.XY_STAGE:
+            self.stagesWidget.insertTab(1, widget, 'XY-Stage')
+            self.stagesWidget.setCurrentIndex(1)
+
+        elif device == DEVICES.ELLIPTEC:
+            self.stagesWidget.insertTab(2, widget, 'Elliptec Devices')
+            self.stagesWidget.setCurrentIndex(2)
+
+        elif device == DEVICES.HID_CONTROLLER:
+            devicesLayout = self.devicesDock.widget().layout()
+
+            devicesLayout.addWidget(widget, 0, 0)
+
+        elif device == DEVICES.LASER_RELAY:
+            self.lasersLayout.addWidget(widget, 0, 0)
+
+        elif device == DEVICES.FocusStabilizer:
+            self.addDockWidget(
+                Qt.DockWidgetArea.RightDockWidgetArea, widget, DOCKS.FOCUS
+            )
+            self.tabifyDockWidget(self.lasersDock, widget)
+            widget.raise_()  # Bring to front
+        elif device == DEVICES.CAM_LIST:
+            self.camDock.setWidget(widget)
+
+    def _remove_widgets(self, device: DEVICES, widget: QtWidgets.QWidget):
+        if device == DEVICES.LASER:
+            index = self.lasersTabs.indexOf(widget)
+            self.lasersTabs.removeTab(index)
+        elif device == DEVICES.IR_CAM:
+            if isinstance(widget, Camera_Panel):
+                self.removeDockWidget(self.cam_dock)
+                self.cam_dock.deleteLater()
+                self.cam_dock = None
+
+            else:
+                self.removeDockWidget(self.ir_array_dock)
+                self.ir_array_dock.deleteLater()
+                self.ir_array_dock = None
+
+        elif device == DEVICES.Z_STAGE:
+            pass
 
     def update_gui(self):
         '''Recurring timer updates the status bar and GUI'''
 
         RelayBox = '    |  Relay ' + (
             'connected'
-            if self.device_manager.laserRelayCtrllr.isOpen()
+            if DeviceManager.instance().laser_relay.isOpen()
             else 'disconnected'
         )
 
@@ -470,8 +493,10 @@ class miEye_module(QMainWindow):
         )
 
         Worker = f'    | Execution time: {FocusStabilizer.instance()._exec_time:.0f}'
-        if self.camList.autofocusCam:
-            Worker += f'    | Frames Buffer: {self.BufferSize():d}'
+        if DeviceManager.instance().camList.autofocusCam:
+            Worker += (
+                f'    | Frames Buffer: {FocusStabilizer.instance().bufferSize():d}'
+            )
         self.statusBar().showMessage(
             f'{QT_API} | '
             + 'Time: '
@@ -483,92 +508,34 @@ class miEye_module(QMainWindow):
         )
 
         # update indicators
-        self.device_manager.elliptecView.updateHighlight()
+        DeviceManager.instance().elliptecView.updateHighlight()
 
-        self.device_manager.laserRelayCtrllr.updatePortState()
-        if not self.device_manager.laserRelayCtrllr.isOpen():
-            self.device_manager.laserRelayCtrllr.refreshPorts()
-            self.device_manager.laserRelayCtrllr.updateHighlight(
-                self.getRelaySettings()
+        DeviceManager.instance().laser_relay.updatePortState()
+        if not DeviceManager.instance().laser_relay.isOpen():
+            DeviceManager.instance().laser_relay.refreshPorts()
+            DeviceManager.instance().laser_relay.updateHighlight(
+                self.device_manager.laser_relay_settings()
             )
         else:
-            self.device_manager.laserRelayCtrllr.updateHighlight(
-                self.getRelaySettings()
+            DeviceManager.instance().laser_relay.updateHighlight(
+                self.device_manager.laser_relay_settings()
             )
 
         for _, cam_list in CameraList.CAMERAS.items():
             for cam in cam_list:
                 cam['Panel'].updateInfo()
 
-        if self.device_manager.stage:
-            self.device_manager.stage.updatePortState()
-            self.device_manager.stage.refreshPorts()
+        if DeviceManager.instance().stage:
+            DeviceManager.instance().stage.updatePortState()
+            DeviceManager.instance().stage.refreshPorts()
 
-    def setIRcam(self, value: str):
-        if self.camList.autofocusCam:
-            QtWidgets.QMessageBox.warning(
-                self,
-                'Warning',
-                f'Please remove {self.camList.autofocusCam.title()}.',
-                QtWidgets.QMessageBox.StandardButton.Ok,
-            )
-            return
+    def addDockWidget(
+        self, area: Qt.DockWidgetArea, widget: QtWidgets.QDockWidget, key: DOCKS
+    ):
+        super().addDockWidget(area, widget)
 
-        if self.device_manager.IR_Cam.isOpen:
-            QtWidgets.QMessageBox.warning(
-                self,
-                'Warning',
-                f'Please disconnect {self.device_manager.IR_Cam.name}.',
-                QtWidgets.QMessageBox.StandardButton.Ok,
-            )
-            return
-
-        if 'TSL1401' in value:
-            self.device_manager.IR_Cam = ParallaxLineScanner()
-            if self.IR_Widget is not None:
-                self.removeDockWidget(self.IR_Widget)
-                self.IR_Widget.deleteLater()
-            self.IR_Widget = QtWidgets.QDockWidget('IR Cam')
-            self.IR_Widget.setFeatures(
-                QtWidgets.QDockWidget.DockWidgetFeature.DockWidgetFloatable
-                | QtWidgets.QDockWidget.DockWidgetFeature.DockWidgetMovable
-            )
-            self.IR_Widget.setWidget(self.device_manager.IR_Cam.getQWidget())
-            self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.IR_Widget)
-            self.tabifyDockWidget(self.devicesDock, self.IR_Widget)
-            self.focus.graph_IR.setLabel('left', 'Signal', 'V', **self.labelStyle)
-
-    def resetIRcam(self):
-        if self.device_manager.IR_Cam.isOpen:
-            QtWidgets.QMessageBox.warning(
-                self,
-                'Warning',
-                f'Please disconnect {self.device_manager.IR_Cam.name}.',
-                QtWidgets.QMessageBox.StandardButton.Ok,
-            )
-            return
-
-        if self.IR_Widget is not None:
-            self.removeDockWidget(self.IR_Widget)
-            self.IR_Widget.deleteLater()
-        self.IR_Widget = None
-        self.device_manager.IR_Cam = IR_Cam()
-
-    def setStage(self, value: str):
-        if self.device_manager.stage and self.device_manager.stage.isOpen():
-            return
-
-        if self.device_manager.stage:
-            WeakObjects.removeObject(self.device_manager.stage.view)
-            self.device_manager.stage.view.remove_widget()
-
-        if 'FOC100' in value:
-            self.device_manager.stage = PzFocController()
-            self.device_manager.stage.view.removed.connect(
-                lambda: WeakObjects.addObject(self.device_manager.stage.view)
-            )
-            self.stagesWidget.insertTab(0, self.device_manager.stage.view, 'Z-Stage')
-            WeakObjects.addObject(self.device_manager.stage.view)
+        if key and key not in self.dock_widgets:
+            self.dock_widgets[key] = widget
 
     def StartGUI():
         '''Initializes a new QApplication and miEye_module.
@@ -590,121 +557,37 @@ class miEye_module(QMainWindow):
 
 def generateConfig(mieye: miEye_module):
     filename = 'config.json'
-    config = {
-        'LaserRelay': (
-            mieye.device_manager.laserRelayCtrllr.portName(),
-            mieye.device_manager.laserRelayCtrllr.baudRate(),
-        ),
-        'Elliptec': (
-            mieye.device_manager.elliptecView.portName(),
-            mieye.device_manager.elliptecView.baudRate(),
-        ),
-        'PiezoStage': (
-            mieye.device_manager.stage.stage.serial.portName(),
-            mieye.device_manager.stage.stage.serial.baudRate(),
-        ),
-        'KinesisX': (
-            mieye.device_manager.kinesisXY.X_Kinesis.portName(),
-            mieye.device_manager.kinesisXY.X_Kinesis.baudRate(),
-        ),
-        'KinesisY': (
-            mieye.device_manager.kinesisXY.Y_Kinesis.portName(),
-            mieye.device_manager.kinesisXY.Y_Kinesis.baudRate(),
-        ),
-        'FocusStabilizer': {
-            'ROI_x': mieye.focus.roi.x(),
-            'ROI_y': mieye.focus.roi.y(),
-            'ROI_length': mieye.focus.roi.state['size'][1],
-            'ROI_angle': mieye.focus.roi.state['angle'] % 360,
-            'ROI_Width': FocusStabilizer.instance().line_width,
-            'PID': FocusStabilizer.instance().getPID(),
-            'PixelCalCoeff': FocusStabilizer.instance().pixelCalCoeff(),
-            'UseCal': FocusStabilizer.instance().useCal(),
-            'Inverted': FocusStabilizer.instance().isInverted(),
+
+    config = mieye.device_manager.get_config()
+
+    # mieye.dock_widgets = [
+
+    config['miEye_module'] = {
+        'position': {
+            'x': mieye.mapToGlobal(QtCore.QPoint(0, 0)).x(),
+            'y': mieye.mapToGlobal(QtCore.QPoint(0, 0)).y(),
         },
+        'size': {
+            'width': mieye.geometry().width(),
+            'height': mieye.geometry().height(),
+        },
+        'is_maximized': mieye.isMaximized(),
     }
 
-    config['miEye_module'] = (
-        (
-            mieye.mapToGlobal(QtCore.QPoint(0, 0)).x(),
-            mieye.mapToGlobal(QtCore.QPoint(0, 0)).y(),
-        ),
-        (mieye.geometry().width(), mieye.geometry().height()),
-        mieye.isMaximized(),
-    )
-
-    config['LaserPanels'] = [
-        (
-            panel.Laser.portName(),
-            panel.Laser.baudRate(),
-            type(panel) is CombinerLaserWidget,
-        )
-        for panel in mieye.laserPanels
-    ]
-
-    config['LasersDock'] = (
-        mieye.lasersDock.isFloating(),
-        (
-            mieye.lasersDock.mapToGlobal(QtCore.QPoint(0, 0)).x(),
-            mieye.lasersDock.mapToGlobal(QtCore.QPoint(0, 0)).y(),
-        ),
-        (mieye.lasersDock.geometry().width(), mieye.lasersDock.geometry().height()),
-        mieye.lasersDock.isVisible(),
-    )
-    config['devicesDock'] = (
-        mieye.devicesDock.isFloating(),
-        (
-            mieye.devicesDock.mapToGlobal(QtCore.QPoint(0, 0)).x(),
-            mieye.devicesDock.mapToGlobal(QtCore.QPoint(0, 0)).y(),
-        ),
-        (mieye.devicesDock.geometry().width(), mieye.devicesDock.geometry().height()),
-        mieye.devicesDock.isVisible(),
-    )
-    config['stagesDock'] = (
-        mieye.stagesDock.isFloating(),
-        (
-            mieye.stagesDock.mapToGlobal(QtCore.QPoint(0, 0)).x(),
-            mieye.stagesDock.mapToGlobal(QtCore.QPoint(0, 0)).y(),
-        ),
-        (mieye.stagesDock.geometry().width(), mieye.stagesDock.geometry().height()),
-        mieye.stagesDock.isVisible(),
-    )
-    config['focus'] = (
-        mieye.focus.isFloating(),
-        (
-            mieye.focus.mapToGlobal(QtCore.QPoint(0, 0)).x(),
-            mieye.focus.mapToGlobal(QtCore.QPoint(0, 0)).y(),
-        ),
-        (mieye.focus.geometry().width(), mieye.focus.geometry().height()),
-        mieye.focus.isVisible(),
-    )
-    config['camDock'] = (
-        mieye.camDock.isFloating(),
-        (
-            mieye.camDock.mapToGlobal(QtCore.QPoint(0, 0)).x(),
-            mieye.camDock.mapToGlobal(QtCore.QPoint(0, 0)).y(),
-        ),
-        (mieye.camDock.geometry().width(), mieye.camDock.geometry().height()),
-        mieye.camDock.isVisible(),
-    )
-    config['pyDock'] = (
-        mieye.pyDock.isFloating(),
-        (
-            mieye.pyDock.mapToGlobal(QtCore.QPoint(0, 0)).x(),
-            mieye.pyDock.mapToGlobal(QtCore.QPoint(0, 0)).y(),
-        ),
-        (mieye.pyDock.geometry().width(), mieye.pyDock.geometry().height()),
-        mieye.pyDock.isVisible(),
-    )
-    config['Controller'] = (
-        mieye.controller.isFloating(),
-        (
-            mieye.controller.mapToGlobal(QtCore.QPoint(0, 0)).x(),
-            mieye.controller.mapToGlobal(QtCore.QPoint(0, 0)).y(),
-        ),
-        (mieye.controller.geometry().width(), mieye.controller.geometry().height()),
-        mieye.controller.isVisible(),
-    )
+    for _, (key, widget) in enumerate(mieye.dock_widgets.items()):
+        if isinstance(widget, QtWidgets.QDockWidget):
+            config[key.get_key()] = {
+                'is_floating': widget.isFloating(),
+                'position': {
+                    'x': widget.mapToGlobal(QtCore.QPoint(0, 0)).x(),
+                    'y': widget.mapToGlobal(QtCore.QPoint(0, 0)).y(),
+                },
+                'size': {
+                    'width': widget.geometry().width(),
+                    'height': widget.geometry().height(),
+                },
+                'is_visible': widget.isVisible(),
+            }
 
     with open(filename, 'w') as file:
         json.dump(config, file, indent=2)
@@ -725,184 +608,40 @@ def loadConfig(mieye: miEye_module, auto_connect=True):
         config = json.load(file)
 
     if 'miEye_module' in config:
-        if bool(config['miEye_module'][2]):
+        if (
+            'is_maximized' in config['miEye_module']
+            and config['miEye_module']['is_maximized']
+        ):
             mieye.showMaximized()
         else:
             mieye.setGeometry(
-                config['miEye_module'][0][0],
-                config['miEye_module'][0][1],
-                config['miEye_module'][1][0],
-                config['miEye_module'][1][1],
+                config['miEye_module'].get('position', {}).get('x', 100),
+                config['miEye_module'].get('position', {}).get('y', 100),
+                config['miEye_module'].get('size', {}).get('width', 1200),
+                config['miEye_module'].get('size', {}).get('height', 920),
             )
 
-    if 'FocusStabilizer' in config:
-        fStabilizer = config['FocusStabilizer']
-        if isinstance(fStabilizer, dict):
-            mieye.focus.updateRoiParams(fStabilizer)
-            mieye.focus.set_roi()
+    for dock in DOCKS:
+        if dock.get_key() in config:
+            dock_config: dict = config[dock.get_key()]
+            widget = mieye.dock_widgets[dock]
+            widget.setVisible(bool(dock_config.get('is_visible', True)))
+            if bool(dock_config.get('is_floating', False)):
+                widget.setFloating(True)
+                widget.setGeometry(
+                    dock_config['position']['x'],
+                    dock_config['position']['y'],
+                    dock_config['size']['width'],
+                    dock_config['size']['height'],
+                )
+            else:
+                widget.setFloating(False)
 
-    if 'LaserRelay' in config:
-        mieye.device_manager.laserRelayCtrllr.setPortName(str(config['LaserRelay'][0]))
-        mieye.device_manager.laserRelayCtrllr.setBaudRate(int(config['LaserRelay'][1]))
-    if 'Elliptec' in config:
-        mieye.device_manager.elliptecView.setPortName(config['Elliptec'][0])
-        mieye.device_manager.elliptecView.setBaudRate(int(config['Elliptec'][1]))
-    if 'PiezoStage' in config:
-        mieye.device_manager.stage.setPortName(str(config['PiezoStage'][0]))
-        mieye.device_manager.stage.setBaudRate(int(config['PiezoStage'][1]))
-    if 'KinesisX' in config:
-        mieye.device_manager.kinesisXY.X_Kinesis.setPortName(str(config['KinesisX'][0]))
-        # mieye.device_manager.kinesisXY.X_Kinesis.setBaudRate(
-        #     int(config['KinesisX'][1]))
-    if 'KinesisY' in config:
-        mieye.device_manager.kinesisXY.Y_Kinesis.setPortName(str(config['KinesisY'][0]))
-        # mieye.device_manager.kinesisXY.Y_Kinesis.setBaudRate(
-        #     int(config['KinesisY'][1]))
-
-    funcs = [
-        mieye.device_manager.laserRelayCtrllr.connect,
-        mieye.device_manager.elliptecView.open,
-        mieye.device_manager.stage.connect,
-        mieye.device_manager.kinesisXY.open,
-    ]
-
-    if 'LaserPanels' in config:
-        if config['LaserPanels'] is not None:
-            for panel in mieye.laserPanels:
-                panel.Laser.CloseCOM()
-                panel.remove_widget()
-
-            mieye.laserPanels.clear()
-
-            for _panel in config['LaserPanels']:
-                panel = CombinerLaserWidget() if bool(_panel[2]) else SingleMatchBox()
-                mieye.laserPanels.append(panel)
-                mieye.lasersTabs.addTab(panel, f'Laser #{mieye.lasersTabs.count() + 1}')
-                panel.set_param_value(RelayParams.PORT, str(_panel[0]))
-                panel.set_param_value(RelayParams.BAUDRATE, int(_panel[1]))
-                panel.set_config()
-                funcs.append(panel.laser_connect)
-
-    if 'LasersDock' in config:
-        mieye.lasersDock.setVisible(bool(config['LasersDock'][3]))
-        if bool(config['LasersDock'][0]):
-            mieye.lasersDock.setFloating(True)
-            mieye.lasersDock.setGeometry(
-                config['LasersDock'][1][0],
-                config['LasersDock'][1][1],
-                config['LasersDock'][2][0],
-                config['LasersDock'][2][1],
-            )
-        else:
-            mieye.lasersDock.setFloating(False)
-    if 'devicesDock' in config:
-        mieye.devicesDock.setVisible(bool(config['devicesDock'][3]))
-        if bool(config['devicesDock'][0]):
-            mieye.devicesDock.setFloating(True)
-            mieye.devicesDock.setGeometry(
-                config['devicesDock'][1][0],
-                config['devicesDock'][1][1],
-                config['devicesDock'][2][0],
-                config['devicesDock'][2][1],
-            )
-        else:
-            mieye.devicesDock.setFloating(False)
-    if 'stagesDock' in config:
-        mieye.stagesDock.setVisible(bool(config['stagesDock'][3]))
-        if bool(config['stagesDock'][0]):
-            mieye.stagesDock.setFloating(True)
-            mieye.stagesDock.setGeometry(
-                config['stagesDock'][1][0],
-                config['stagesDock'][1][1],
-                config['stagesDock'][2][0],
-                config['stagesDock'][2][1],
-            )
-        else:
-            mieye.stagesDock.setFloating(False)
-    if 'focus' in config:
-        mieye.focus.setVisible(bool(config['focus'][3]))
-        if bool(config['focus'][0]):
-            mieye.focus.setFloating(True)
-            mieye.focus.setGeometry(
-                config['focus'][1][0],
-                config['focus'][1][1],
-                config['focus'][2][0],
-                config['focus'][2][1],
-            )
-        else:
-            mieye.focus.setFloating(False)
-    if 'camDock' in config:
-        mieye.camDock.setVisible(bool(config['camDock'][3]))
-        if bool(config['camDock'][0]):
-            mieye.camDock.setFloating(True)
-            mieye.camDock.setGeometry(
-                config['camDock'][1][0],
-                config['camDock'][1][1],
-                config['camDock'][2][0],
-                config['camDock'][2][1],
-            )
-        else:
-            mieye.camDock.setFloating(False)
-    if 'pyDock' in config:
-        mieye.pyDock.setVisible(bool(config['pyDock'][3]))
-        if bool(config['pyDock'][0]):
-            mieye.pyDock.setFloating(True)
-            mieye.pyDock.setGeometry(
-                config['pyDock'][1][0],
-                config['pyDock'][1][1],
-                config['pyDock'][2][0],
-                config['pyDock'][2][1],
-            )
-        else:
-            mieye.pyDock.setFloating(False)
-
-    if 'Controller' in config:
-        mieye.controller.setVisible(bool(config['Controller'][3]))
-        if bool(config['Controller'][0]):
-            mieye.controller.setFloating(True)
-            mieye.controller.setGeometry(
-                config['Controller'][1][0],
-                config['Controller'][1][1],
-                config['Controller'][2][0],
-                config['Controller'][2][1],
-            )
-        else:
-            mieye.controller.setFloating(False)
-
+    mieye.device_manager.load_config(config)
     if auto_connect:
-        for func in funcs:
-            retry_exec(func)
+        mieye.device_manager.auto_connect()
 
     print('Config.json file loaded!')
-
-
-def shutdown(mieye: miEye_module, exit=True):
-    '''Disconnects all devices and exits the application.'''
-
-    if mieye.camList.autofocusCam:
-        mieye.camList.autofocusCam.stop()
-
-    funcs = [
-        mieye.camList.removeAllCameras,
-        mieye.device_manager.laserRelayCtrllr.disconnect,
-        mieye.device_manager.elliptecView.close,
-        mieye.device_manager.stage.disconnect,
-        mieye.device_manager.kinesisXY.close,
-    ]
-
-    for panel in mieye.laserPanels:
-        funcs.append(panel.Laser.CloseCOM)
-
-    for func in funcs:
-        retry_exec(func)
-
-    print('All devices disconnected!')
-    if not exit:
-        return
-
-    import sys
-
-    sys.exit(0)
 
 
 if __name__ == '__main__':

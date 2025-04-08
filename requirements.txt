@@ -3,12 +3,14 @@ dask==2024.5.2
 h5py==3.11.0
 hidapi==0.14.0
 matplotlib==3.9.2
+mmpycore==0.3.16
 numba==0.60.0
 numpy==1.26.4
 ome_types==0.5.2
 opencv_python==4.9.0.80
 pandas==2.2.3
-pco==2.2.1
+pco==2.3.0
+pycromanager==1.0.2
 pyfiglet==1.0.2
 pyflakes==3.2.0
 pyjokes==0.6.0

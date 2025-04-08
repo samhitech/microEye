@@ -3,7 +3,7 @@ from typing import Any, Callable, Optional
 
 from pyqtgraph.parametertree import Parameter
 
-from microEye import VERSION
+from microEye import __version__
 from microEye.hardware.stages.elliptec.baseDevice import DeviceDirection
 from microEye.hardware.stages.elliptec.deviceStatus import DeviceStatusValues
 from microEye.hardware.stages.elliptec.ellDevices import *
@@ -348,7 +348,7 @@ class ElliptecStageView(Tree):
         address = device.address
         dev_type = device.deviceInfo.DeviceType
         stage_path = (
-            f'{str(ElliptecStageParams.DEVICES)}.' f'ELL{dev_type.value} - {address}'
+            f'{str(ElliptecStageParams.DEVICES)}.ELL{dev_type.value} - {address}'
         )
 
         self.connectParamSignal(
@@ -450,28 +450,42 @@ class ElliptecStageView(Tree):
 
 class ElliptecView(QtWidgets.QTabWidget):
     HEADER = '> <span style="color:#0f0;">Elliptec Driver ('
-    HEADER += f'<span style="color:#aaf;">microEye v{VERSION}</span>)</span>'
+    HEADER += f'<span style="color:#aaf;">microEye v{__version__}</span>)</span>'
 
-    def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
+    def __init__(
+        self,
+        elleptic: Optional[ELLDevices] = None,
+        parent: Optional[QtWidgets.QWidget] = None,
+    ) -> None:
         super().__init__(parent)
 
-        self.initUI()
+        self.initUI(elleptic)
 
-    def initUI(self):
+    def initUI(self, elleptic: Optional[ELLDevices] = None):
         '''
         Initializes the ElliptecView UI.
         '''
+
+        # Set window properties
+        self.setWindowTitle('Elliptec Driver')
+
         # Create the output terminal
         self._output = QtWidgets.QPlainTextEdit()
         self._output.setReadOnly(True)
         self._output.appendHtml(self.HEADER)
         self._output.setStyleSheet('QPlainTextEdit { background-color: #111;}')
 
-        self._ellDevices = ELLDevices()
+        # Create the ELLDevices controller
+        if elleptic:
+            self._ellDevices = elleptic
+        else:
+            self._ellDevices = ELLDevices()
         self._ellDevices.MessageUpdates.outputUpdated.connect(self.handleOutputUpdate)
         self._ellDevices.MessageUpdates.parameterUpdated.connect(
             self.handleParameterUpdate
         )
+        DevicePort.instance().dataSent.connect(self.handleDataSent)
+        DevicePort.instance().dataReceived.connect(self.handleDataReceived)
 
         # Create the devices tab
         self._elliptecStageView = ElliptecStageView(controller=self._ellDevices)
@@ -480,11 +494,6 @@ class ElliptecView(QtWidgets.QTabWidget):
         self.addTab(self._elliptecStageView, 'Devices')
         self.addTab(self._output, 'Output')
 
-        # Set window properties
-        self.setWindowTitle('Elliptec Driver')
-
-        DevicePort.instance().dataSent.connect(self.handleDataSent)
-        DevicePort.instance().dataReceived.connect(self.handleDataReceived)
 
     def isOpen(self):
         return DevicePort.isOpen()
@@ -631,7 +640,7 @@ class ElliptecView(QtWidgets.QTabWidget):
                         param.setValue(slot)
             except Exception as e:
                 self._output.appendHtml(
-                    f'<span style="color: red;">' f'Device #{address} error: {e}</span>'
+                    f'<span style="color: red;">Device #{address} error: {e}</span>'
                 )
         elif update_type in [
             MessageUpdater.UpdateTypes.PolarizerPositions,
@@ -647,7 +656,7 @@ class ElliptecView(QtWidgets.QTabWidget):
                 #     _device_view_models[address].update_home_offset(home_offset)
             except Exception as e:
                 self._output.appendHtml(
-                    f'<span style="color: red;">' f'Device #{address} error: {e}</span>'
+                    f'<span style="color: red;">Device #{address} error: {e}</span>'
                 )
         elif update_type == MessageUpdater.UpdateTypes.JogstepSize and isinstance(
             data, (float, int)
@@ -669,7 +678,7 @@ class ElliptecView(QtWidgets.QTabWidget):
                 #     _device_view_models[address].update_jogstep_size(jog_step)
             except Exception as e:
                 self._output.appendHtml(
-                    f'<span style="color: red;">' f'Device #{address} error: {e}</span>'
+                    f'<span style="color: red;">Device #{address} error: {e}</span>'
                 )
 
     def __str__(self):

@@ -162,7 +162,7 @@ class RegloDigital(QtSerialPort.QSerialPort):
         return self._send_command(self.Address + self._id_number_)
 
     def set_pump_head_id(self, new_id: int) -> str:
-        return self._send_command(self.Address + self._id_number_ + ('%04d' % new_id))
+        return self._send_command(self.Address + self._id_number_ + f'{new_id:04d}')
 
     def get_speed(self) -> str:
         return self._send_command(self.Address + self._speed_, 8)
@@ -186,11 +186,11 @@ class RegloDigital(QtSerialPort.QSerialPort):
         if digits == '#':
             return '#'
         else:
-            return self._send_command(
-                self.Address
-                + self._cal_flowrate_
-                + (('%*.*f') % (5, int(digits), flowrate)).replace('.', '')
-            )
+            # Format with right number of decimal places, then remove decimal point
+            formatted = f'{flowrate:.{int(digits)}f}'.replace('.', '')
+            # Ensure total length is 5 by padding with zeros if needed
+            formatted = formatted.zfill(5)
+            return self._send_command(self.Address + self._cal_flowrate_ + formatted)
 
     def get_tubing_inner_diameter(self) -> str:
         return self._send_command(self.Address + self._tubing_inner_diameter_, 6)
@@ -199,7 +199,7 @@ class RegloDigital(QtSerialPort.QSerialPort):
         res = self._send_command(
             self.Address
             + self._tubing_inner_diameter_
-            + ('%04d' % diameter).replace('.', '')
+            + f'{diameter:04d}'.replace('.', '')
         )
         return res
 
@@ -209,19 +209,19 @@ class RegloDigital(QtSerialPort.QSerialPort):
     def set_disp_time(self, time: int) -> str:
         value = min(9999, max(0, time))
         return self._send_command(
-            self.Address + self._disp_time_ + ('%04d' % value).replace('.', '')
+            self.Address + self._disp_time_ + f'{value:04d}'.replace('.', '')
         )
 
     def set_disp_time_min(self, time: int) -> str:
         value = min(899, max(0, time))
         return self._send_command(
-            self.Address + self._disp_time_min_ + ('%03d' % value).replace('.', '')
+            self.Address + self._disp_time_min_ + f'{value:03d}'.replace('.', '')
         )
 
     def set_disp_time_hour(self, time: int) -> str:
         value = min(999, max(0, time))
         return self._send_command(
-            self.Address + self._disp_time_hour_ + ('%03d' % value).replace('.', '')
+            self.Address + self._disp_time_hour_ + f'{value:03d}'.replace('.', '')
         )
 
     def get_roller_steps(self) -> str:
@@ -230,13 +230,13 @@ class RegloDigital(QtSerialPort.QSerialPort):
     def set_roller_steps(self, steps: int) -> str:
         value = min(65535, max(1, steps))
         return self._send_command(
-            self.Address + self._roller_steps_ + ('%05d' % value).replace('.', '')
+            self.Address + self._roller_steps_ + f'{value:05d}'.replace('.', '')
         )
 
     def set_roller_steps_plus(self, steps: int) -> str:
         value = min(9999, max(0, steps))
         return self._send_command(
-            self.Address + self._roller_steps_plus_ + ('%04d' % value).replace('.', '')
+            self.Address + self._roller_steps_plus_ + f'{value:04d}'.replace('.', '')
         )
 
     def get_roller_step_nanoliter(self) -> str:
@@ -277,7 +277,7 @@ class RegloDigital(QtSerialPort.QSerialPort):
     def set_roller_back_steps(self, steps: int) -> str:
         value = min(100, max(0, steps))
         return self._send_command(
-            self.Address + self._roller_back_steps_ + ('%04d' % value).replace('.', '')
+            self.Address + self._roller_back_steps_ + f'{value:04d}'.replace('.', '')
         )
 
     def get_pause_time(self) -> str:
@@ -286,19 +286,19 @@ class RegloDigital(QtSerialPort.QSerialPort):
     def set_pause_time(self, time: int) -> str:
         value = min(9999, max(0, time))
         return self._send_command(
-            self.Address + self._pause_time_ + ('%04d' % value).replace('.', '')
+            self.Address + self._pause_time_ + f'{value:04d}'.replace('.', '')
         )
 
     def set_pause_time_min(self, time: int) -> str:
         value = min(899, max(0, time))
         return self._send_command(
-            self.Address + self._pause_time_min_ + ('%04d' % value).replace('.', '')
+            self.Address + self._pause_time_min_ + f'{value:04d}'.replace('.', '')
         )
 
     def set_pause_time_hour(self, time: int) -> str:
         value = min(999, max(0, time))
         return self._send_command(
-            self.Address + self._pause_time_hour_ + ('%04d' % value).replace('.', '')
+            self.Address + self._pause_time_hour_ + f'{value:04d}'.replace('.', '')
         )
 
     def get_disp_cycles(self) -> str:
@@ -307,7 +307,7 @@ class RegloDigital(QtSerialPort.QSerialPort):
     def set_disp_cycles(self, cycles: int) -> str:
         value = min(9999, max(0, cycles))
         return self._send_command(
-            self.Address + self._pause_time_ + ('%04d' % value).replace('.', '')
+            self.Address + self._pause_time_ + f'{value:04d}'.replace('.', '')
         )
 
     def get_total_vol(self) -> str:
@@ -383,7 +383,7 @@ class reglo_digital_module(QMainWindow):
         # Threading
         self._threadpool = QtCore.QThreadPool.globalInstance()
         print(
-            'Multithreading with maximum %d threads' % self._threadpool.maxThreadCount()
+            f'Multithreading with maximum {self._threadpool.maxThreadCount()} threads'
         )
 
         self.show()

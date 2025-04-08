@@ -6,8 +6,8 @@ class LabelledSlider(QtWidgets.QWidget):
     A custom widget representing a labeled slider with optional range labels.
 
     Attributes:
-        finished (pyqtSignal): Signal emitted when editing is finished.
-        valueChanged (pyqtSignal): Signal emitted when value is changed.
+        finished (Signal): Signal emitted when editing is finished.
+        valueChanged (Signal): Signal emitted when value is changed.
     '''
 
     finished = Signal()

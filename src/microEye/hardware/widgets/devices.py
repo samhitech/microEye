@@ -51,7 +51,7 @@ class DevicesView(Tree):
         super().__init__(parent=parent)
 
     def getDetectors(self):
-        return ['Parallax CCD (TSL1401)']
+        return ['Demo Line Scanner', 'Parallax CCD (TSL1401)']
 
     def getLasers(self):
         return ['IO MatchBox Single Laser', 'IO MatchBox Laser Combiner']

@@ -15,7 +15,7 @@ class QListSlider(QtWidgets.QSlider):
         list or array of values.
     '''
     elementChanged = Signal([int, int], [int, float])
-    '''Element changed pyqtSignal,
+    '''Element changed Signal,
     supports (index: int, value: int) or (index: int, value: float) functions.
     '''
 

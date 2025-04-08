@@ -17,7 +17,7 @@ class focusWidget(QtWidgets.QDockWidget):
 
         Set up the GUI layout, including the ROI settings, buttons, and graph widgets.
         '''
-        super().__init__('IR Automatic Focus Stabilization')
+        super().__init__('Focus Stabilization')
 
         # Remove close button from dock widgets
         self.setFeatures(
@@ -127,18 +127,6 @@ class focusWidget(QtWidgets.QDockWidget):
             # use the plot reference to update the data for that line.
             self.__plot_ref.setData(xdata, data)
 
-        # updates the IR graph with data fit
-        if self.__plotfit_ref is None:
-            # create plot reference when None
-            self.__plotfit_ref = self.graph_IR.plot(
-                xdata, GaussianOffSet(xdata, *FocusStabilizer.instance().fit_params)
-            )
-        else:
-            # use the plot reference to update the data for that line.
-            self.__plotfit_ref.setData(
-                xdata, GaussianOffSet(xdata, *FocusStabilizer.instance().fit_params)
-            )
-
         if self.__center_ref is None:
             # create plot reference when None
             self.__center_ref = self.graph_Peak.plot(
@@ -150,6 +138,22 @@ class focusWidget(QtWidgets.QDockWidget):
             self.__center_ref.setData(
                 FocusStabilizer.instance().peak_time,
                 FocusStabilizer.instance().peak_positions,
+            )
+
+        if FocusStabilizer.instance().fit_params is None:
+            # no fit params available, so return
+            return
+
+        # updates the IR graph with data fit
+        if self.__plotfit_ref is None:
+            # create plot reference when None
+            self.__plotfit_ref = self.graph_IR.plot(
+                xdata, GaussianOffSet(xdata, *FocusStabilizer.instance().fit_params)
+            )
+        else:
+            # use the plot reference to update the data for that line.
+            self.__plotfit_ref.setData(
+                xdata, GaussianOffSet(xdata, *FocusStabilizer.instance().fit_params)
             )
 
     def updateRoiParams(self, params: dict):
@@ -235,6 +239,26 @@ class focusWidget(QtWidgets.QDockWidget):
         self.focusStabilizerView.set_param_value(FocusStabilizerParams.Y2, y[1])
 
         self.roi.updateFlag = False
+
+    def get_config(self) -> dict:
+        return {
+            'ROI_x': self.roi.x(),
+            'ROI_y': self.roi.y(),
+            'ROI_length': self.roi.state['size'][1],
+            'ROI_angle': self.roi.state['angle'] % 360,
+            'ROI_Width': FocusStabilizer.instance().line_width,
+            'PID': FocusStabilizer.instance().getPID(),
+            'PixelCalCoeff': FocusStabilizer.instance().pixelCalCoeff(),
+            'UseCal': FocusStabilizer.instance().useCal(),
+            'Inverted': FocusStabilizer.instance().isInverted(),
+        }
+    
+    def load_config(self, config: dict) -> None:
+        if not isinstance(config, dict):
+            raise TypeError('Configuration must be a dictionary.')
+
+        self.updateRoiParams(config)
+        self.set_roi()
 
     def __str__(self):
         return 'Focus Stabilization Widget'

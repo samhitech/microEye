@@ -15,288 +15,118 @@ from microEye.utils.parameter_tree import Tree
 from microEye.utils.thread_worker import *
 
 
-class KinesisDevice(QtCore.QObject):
-    '''Class for controlling Thorlab Z825B 25mm actuator by a KDC101'''
-
-    dataReceived = Signal(str)
-    '''Signal emitted when data is received from the device'''
-    onWrite = Signal(bytearray)
-    '''Signal emitted when data is written to the device'''
-
-    def __init__(self, portName='COM12', baudrate=115200) -> None:
-        super().__init__()
-
-        self.__serial = QtSerialPort.QSerialPort(None, readyRead=self.rx_slot)
-        self.setPortName(portName)
-        self.setBaudRate(baudrate)
-
-        self.__buffer = []
-        self.__responses = deque(maxlen=256)
-
-        self.onWrite.connect(lambda data: self.__serial.write(data))
-
-    def open(self, portName: str = None):
-        '''
-        Open the serial port.
-        '''
-        if portName:
-            self.__serial.setPortName(portName)
-
-        if not self.isOpen():
-            self.__serial.open(QtCore.QIODevice.OpenModeFlag.ReadWrite)
-
-        return self.isOpen()
-
-    def close(self):
-        '''
-        Close the serial port.
-        '''
-        if self.isOpen():
-            self.__serial.close()
-
-    def isOpen(self):
-        '''
-        Check if the serial port is open.
-
-        Returns
-        -------
-        bool
-            True if the serial port is open, False otherwise.
-        '''
-        return self.__serial.isOpen()
-
-    def portName(self):
-        '''
-        Get the name of the serial port.
-
-        Returns
-        -------
-        str
-            The name of the serial port.
-        '''
-        return self.__serial.portName()
-
-    def setPortName(self, name: str):
-        '''
-        Set the name of the serial port.
-
-        Parameters
-        ----------
-        name : str
-            The new port name.
-        '''
-        if not self.isOpen():
-            self.__serial.setPortName(name)
-
-    def baudRate(self):
-        '''
-        Get the baud rate for the serial port.
-
-        Returns
-        -------
-        int
-            The baud rate.
-        '''
-        return self.__serial.baudRate()
-
-    def setBaudRate(self, baudRate: int):
-        '''
-        Set the baud rate for the serial port.
-
-        Parameters
-        ----------
-        baudRate : int
-            The new baud rate.
-        '''
-        if not self.isOpen():
-            self.__serial.setBaudRate(baudRate)
-
-    def write(self, bytes: list[int]):
-        self.onWrite.emit(bytearray(bytes))
-
-    def identify(self, channelID=0x0, dist=0x50, source=0x1):
-        if self.isOpen():
-            _IDENTIFY = [0x23, 0x2, channelID, 0x0, dist, source]
-            self.write(_IDENTIFY)
-
-    def home(self, channelID=0x0, dist=0x50, source=0x1):
-        if self.isOpen():
-            _HOME = [0x43, 0x04, channelID, 0x0, dist, source]
-            self.write(_HOME)
-
-    def jog_fw(self, channelID=0x0, dist=0x50, source=0x1):
-        if self.isOpen():
-            _JOG_FW = [0x6A, 0x04, channelID, 0x1, dist, source]
-            self.write(_JOG_FW)
-
-    def jog_bw(self, channelID=0x0, dist=0x50, source=0x1):
-        if self.isOpen():
-            _JOG_BW = [0x6A, 0x04, channelID, 0x2, dist, source]
-            self.write(_JOG_BW)
-
-    def move_absolute(self, distance=0.1, channelID=0x0, dist=0x50, source=0x1):
-        if self.isOpen():
-            _distance = int(34555 * distance)
-            _ABSOLUTE = [0x53, 0x04, 0x06, 0x00, dist | 0x80, source]
-            _Params = [channelID, 0x0] + list(
-                _distance.to_bytes(4, 'little', signed=True)
-            )
-            self.write(_ABSOLUTE)
-            self.write(_Params)
-
-    def move_relative(self, distance=0.1, channelID=0x0, dist=0x50, source=0x1):
-        if self.isOpen():
-            _distance = int(34555 * distance)
-            _RELATIVE = [0x48, 0x04, 0x06, 0x00, dist | 0x80, source]
-            _Params = [channelID, 0x0] + list(
-                _distance.to_bytes(4, 'little', signed=True)
-            )
-            self.write(_RELATIVE)
-            self.write(_Params)
-
-    def move_stop(self, channelID=0x0, dist=0x50, source=0x1):
-        if self.isOpen():
-            _STOP = [0x65, 0x04, channelID, 0x2, dist, source]
-            self.write(_STOP)
-
-    def rx_slot(self):
-        '''
-        Handle incoming data from the serial port.
-        '''
-        try:
-            HOMED = [0x44, 0x04, 0x01, 0x00, 0x01, 0x50]
-
-            data = self.__serial.readAll().data()
-            self.__buffer.extend(list(data))
-
-            while len(self.__buffer) >= 6:
-                message = self.__buffer[:6]
-                self.__buffer = self.__buffer[6:]
-
-                if message and all(m == h for m, h in zip(message, HOMED)):
-                    self.__responses.append(str(message))
-                    self.dataReceived.emit(str(message))
-        except Exception as e:
-            self.__serial.errorOccurred.emit(str(e))
-
-    def hasResponse(self):
-        '''
-        Check if there is a response in the buffer.
-
-        Returns
-        -------
-        bool
-            True if there is a response, False otherwise.
-        '''
-        return len(self.__responses) > 0
-
-    def clearResponses(self):
-        '''
-        Clear the response buffer.
-        '''
-        self.__responses.clear()
-        self.__buffer = []
-
-    def getNextResponse(self):
-        '''
-        Get the next response from the buffer.
-
-        Returns
-        -------
-        str
-            The next response from the buffer.
-        '''
-        if not self.hasResponse():
-            return None
-
-        return self.__responses.popleft()
-
-    def wait_for_response(
-        self,
-        timeout: int = 30000,
-    ):
-        while not self.hasResponse() and timeout > 0:
-            QtCore.QThread.msleep(50)
-            timeout -= 50
-
-        print('done')
-
-        return self.getNextResponse()
-
-
-class KinesisXY:
+class KinesisXY(QtCore.QObject):
     '''Class for controlling Two Kinesis Devices as an XY Stage'''
 
-    def __init__(self, x_port='COM12', y_port='COM11'):
-        self.X_Kinesis = KDC101Controller(portName=x_port)
-        self.Y_Kinesis = KDC101Controller(portName=y_port)
-        self.min = [0, 0]
-        self.max = [25, 25]
+    asyncStarted = Signal()
+    asyncFinished = Signal()
+
+    def __init__(self, x_port='COM12', y_port='COM11', parent=None, **kwargs):
+        super().__init__(parent=parent)
+        self.X = KDC101Controller(portName=x_port)
+        self.Y = KDC101Controller(portName=y_port)
+        self.min = kwargs.get('min', [0, 0])
+        self.max = kwargs.get('max', [25, 25])
+        self.center_pos = kwargs.get('center', [17, 13])
         self.prec = 4
         self.busy = False
 
     @property
     def position(self) -> tuple[float, float]:
-        return self.X_Kinesis.position, self.Y_Kinesis.position
+        return self.X.position, self.Y.position
 
-    def home(self):
-        self.X_Kinesis.home()
-        self.Y_Kinesis.home()
-        return True
+    def home(self, is_async=True):
+        self.run_async(self.X.home, is_async=is_async)
+        self.run_async(self.Y.home, is_async=is_async)
 
-    def center(self, x_center=17, y_center=17):
-        return self.move_absolute(x_center, y_center, True)
+    def center(self, x_center=None, y_center=None, is_async=True):
+        '''Move to the center of the stage.'''
+        self.move_absolute(
+            x_center if x_center is not None else self.center_pos[0],
+            y_center if y_center is not None else self.center_pos[1],
+            is_async=is_async,
+        )
 
-    def move_absolute(self, x, y, force=False):
+    def move_absolute(self, x, y, force=False, is_async=True):
         x = round(max(self.min[0], min(self.max[0], x)), self.prec)
         y = round(max(self.min[1], min(self.max[1], y)), self.prec)
-        if x != self.X_Kinesis.position or force:
-            self.X_Kinesis.move_absolute(x)
-        if y != self.Y_Kinesis.position or force:
-            self.Y_Kinesis.move_absolute(y)
+        if x != self.X.position or force:
+            self.run_async(self.X.move_absolute, x, is_async=is_async)
+        if y != self.Y.position or force:
+            self.run_async(self.Y.move_absolute, y, is_async=is_async)
 
-        return self.position
-
-    def move_relative(self, x, y):
+    def move_relative(self, x, y, is_async=True):
         x = round(x, self.prec)
         y = round(y, self.prec)
         if x != 0:
-            self.X_Kinesis.move_relative(x)
+            self.run_async(self.X.move_relative, x, is_async=is_async)
         if y != 0:
-            self.Y_Kinesis.move_relative(y)
+            self.run_async(self.Y.move_relative, y, is_async=is_async)
 
     def stop(self):
-        self.X_Kinesis.move_stop()
-        self.Y_Kinesis.move_stop()
+        self.X.move_stop()
+        self.Y.move_stop()
 
     def open(self):
         '''Opens the serial ports.'''
-        res = self.X_Kinesis.open() and self.Y_Kinesis.open()
+        res = self.X.open() and self.Y.open()
         return res
 
     def close(self):
         '''Closes the serial ports.'''
-        self.X_Kinesis.close()
-        self.Y_Kinesis.close()
+        self.X.close()
+        self.Y.close()
+
+    def run_async(self, callback, *args, is_async=True):
+        if self.isOpen() and not self.busy:
+            self.X.clearResponses()
+            self.Y.clearResponses()
+
+            def worker_callback():
+                try:
+                    self.busy = True
+                    self.asyncStarted.emit()
+                    callback(*args)
+                except Exception as e:
+                    traceback.print_exc()
+                finally:
+                    self.busy = False
+                    self.asyncFinished.emit()
+
+            if is_async:
+                _worker = QThreadWorker(worker_callback, nokwargs=True)
+
+                QtCore.QThreadPool.globalInstance().start(_worker)
+            else:
+                worker_callback()
 
     def isOpen(self):
-        return all([self.X_Kinesis.isOpen(), self.Y_Kinesis.isOpen()])
+        return all([self.X.isOpen(), self.Y.isOpen()])
 
-    def open_dialog(self):
-        '''Opens a port config dialog
-        for the serial port.
-        '''
-        if not self.X_Kinesis.isOpen() and not self.Y_Kinesis.isOpen():
-            x_dialog = port_config(title='X Controller Config.')
-            y_dialog = port_config(title='Y Controller Config.')
-            if x_dialog.exec():
-                portname, baudrate = x_dialog.get_results()
-                self.X_Kinesis.setPortName(portname)
-                # self.X_Kinesis.setBaudRate(baudrate)
-            if y_dialog.exec():
-                portname, baudrate = y_dialog.get_results()
-                self.Y_Kinesis.setPortName(portname)
-                # self.Y_Kinesis.setBaudRate(baudrate)
+    def get_config(self) -> dict:
+        return {
+            'X': {
+                'port': self.X.portName(),
+                'baudrate': self.X.baudRate(),
+            },
+            'Y': {
+                'port': self.Y.portName(),
+                'baudrate': self.Y.baudRate(),
+            },
+        }
+
+    def load_config(self, config: dict):
+        if isinstance(config, dict):
+            x_config = config.get('X', {})
+            y_config = config.get('Y', {})
+
+            if isinstance(x_config, dict):
+                self.X.setBaudRate(x_config.get('baudrate', 115200))
+                self.X.setPortName(x_config.get('port', 'COM12'))
+
+            if isinstance(y_config, dict):
+                self.Y.setBaudRate(y_config.get('baudrate', 115200))
+                self.Y.setPortName(y_config.get('port', 'COM13'))
 
     def getViewWidget(self):
         '''Generates a QGroupBox with XY
@@ -478,6 +308,11 @@ class KinesisView(Tree):
 
         self.initializeSignals()
 
+        self.__stage.asyncStarted.connect(
+            lambda: self.set_param_value(XYStageParams.STATUS, 'busy')
+        )
+        self.__stage.asyncFinished.connect(self.updateControls)
+
     def initializeSignals(self):
         self._connect_movement_signals()
         self._connect_identification_signals()
@@ -509,49 +344,32 @@ class KinesisView(Tree):
         param = XYStageParams('.'.join(path))
 
         if param == XYStageParams.MOVE:
-            self.runAsync(
-                self.__stage.move_absolute,
+            self.__stage.move_absolute(
                 self.get_param_value(XYStageParams.X_POSITION),
                 self.get_param_value(XYStageParams.Y_POSITION),
             )
         elif param == XYStageParams.HOME:
-            self.runAsync(self.__stage.home)
+            self.__stage.home()
         elif param == XYStageParams.CENTER:
-            self.runAsync(self.__stage.center)
+            self.__stage.center()
         elif param == XYStageParams.STOP:
             self.__stage.stop()
         elif param == XYStageParams.X_JUMP_P:
-            self.runAsync(
-                self.__stage.move_relative, self.get_param_value(XYStageParams.JUMP), 0
-            )
+            self.__stage.move_relative(self.get_param_value(XYStageParams.JUMP), 0)
         elif param == XYStageParams.X_JUMP_N:
-            self.runAsync(
-                self.__stage.move_relative, -self.get_param_value(XYStageParams.JUMP), 0
-            )
+            self.__stage.move_relative(-self.get_param_value(XYStageParams.JUMP), 0)
         elif param == XYStageParams.X_STEP_P:
-            self.runAsync(
-                self.__stage.move_relative, self.get_param_value(XYStageParams.STEP), 0
-            )
+            self.__stage.move_relative(self.get_param_value(XYStageParams.STEP), 0)
         elif param == XYStageParams.X_STEP_N:
-            self.runAsync(
-                self.__stage.move_relative, -self.get_param_value(XYStageParams.STEP), 0
-            )
+            self.__stage.move_relative(-self.get_param_value(XYStageParams.STEP), 0)
         elif param == XYStageParams.Y_JUMP_P:
-            self.runAsync(
-                self.__stage.move_relative, 0, self.get_param_value(XYStageParams.JUMP)
-            )
+            self.__stage.move_relative(0, self.get_param_value(XYStageParams.JUMP))
         elif param == XYStageParams.Y_JUMP_N:
-            self.runAsync(
-                self.__stage.move_relative, 0, -self.get_param_value(XYStageParams.JUMP)
-            )
+            self.__stage.move_relative(0, -self.get_param_value(XYStageParams.JUMP))
         elif param == XYStageParams.Y_STEP_P:
-            self.runAsync(
-                self.__stage.move_relative, 0, self.get_param_value(XYStageParams.STEP)
-            )
+            self.__stage.move_relative(0, self.get_param_value(XYStageParams.STEP))
         elif param == XYStageParams.Y_STEP_N:
-            self.runAsync(
-                self.__stage.move_relative, 0, -self.get_param_value(XYStageParams.STEP)
-            )
+            self.__stage.move_relative(0, -self.get_param_value(XYStageParams.STEP))
 
     def _connect_identification_signals(self):
         identification_params = [
@@ -571,9 +389,9 @@ class KinesisView(Tree):
         param = XYStageParams('.'.join(path))
 
         if param == XYStageParams.ID_X:
-            self.__stage.X_Kinesis.identify()
+            self.__stage.X.identify()
         elif param == XYStageParams.ID_Y:
-            self.__stage.Y_Kinesis.identify()
+            self.__stage.Y.identify()
 
     def _connect_configuration_signals(self):
         configuration_params = [
@@ -617,9 +435,7 @@ class KinesisView(Tree):
             # self.setBaudRate(self.get_param_value(XYStageParams.BAUDRATE), X)
 
     def setPortName(self, name: str, X: bool = True):
-        serial: KDC101Controller = (
-            self.__stage.X_Kinesis if X else self.__stage.Y_Kinesis
-        )
+        serial: KDC101Controller = self.__stage.X if X else self.__stage.Y
         if not serial.isOpen():
             serial.setPortName(name)
 
@@ -673,6 +489,12 @@ class KinesisView(Tree):
 
         self.get_param(param).activate()
 
+    def moveRelative(self, x: float, y: float):
+        self.__stage.move_relative(x, y)
+
+    def moveAbsolute(self, x: float, y: float):
+        self.__stage.move_absolute(x, y)
+
     def updateHighlight(self):
         '''
         Updates the highlight style of the "Connect" action.
@@ -713,29 +535,10 @@ class KinesisView(Tree):
             )
 
     def updatePositions(self):
-        self.__stage.busy = False
         self.set_param_value(XYStageParams.STATUS, 'idle')
 
-        self.set_param_value(
-            XYStageParams.X_POSITION, self.__stage.X_Kinesis.state.position
-        )
-        self.set_param_value(
-            XYStageParams.Y_POSITION, self.__stage.Y_Kinesis.state.position
-        )
-
-    def runAsync(self, callback, *args):
-        if self.isOpen() and not self.__stage.busy:
-            self.__stage.X_Kinesis.clearResponses()
-            self.__stage.Y_Kinesis.clearResponses()
-
-            self.__stage.busy = True
-            self.set_param_value(XYStageParams.STATUS, 'busy')
-
-            _worker = QThreadWorker(callback, *args, nokwargs=True)
-            # Execute
-            _worker.signals.finished.connect(lambda: self.updatePositions())
-
-            self.__threadpool.start(_worker)
+        self.set_param_value(XYStageParams.X_POSITION, self.__stage.X.state.position)
+        self.set_param_value(XYStageParams.Y_POSITION, self.__stage.Y.state.position)
 
     def __str__(self):
         return 'Kinesis KDC101 + Z825B'

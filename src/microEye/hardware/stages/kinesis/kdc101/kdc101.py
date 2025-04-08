@@ -41,9 +41,9 @@ class KDC101State:
     limit_switch_cw_soft_limit: float = 0.0
     limit_switch_ccw_soft_limit: float = 0.0
     limit_switch_soft_limit_mode: int = 0
-    response_msg_id : int = 0
-    response_code : int = 0
-    response_notes : str = ''
+    response_msg_id: int = 0
+    response_code: int = 0
+    response_notes: str = ''
 
 
 class KDC101Controller(QtCore.QObject):
@@ -54,7 +54,7 @@ class KDC101Controller(QtCore.QObject):
     ENCODER_COUNT = 34555
     SOFTLIMIT_FACTOR = 134218
 
-    dataReceived = Signal(tuple)
+    dataReceived = Signal(KDC101_RESPONSES, dict)
     '''Signal emitted when data is received from the device'''
     onWrite = Signal(bytearray)
     '''Signal emitted when data is written to the device'''
@@ -254,6 +254,29 @@ class KDC101Controller(QtCore.QObject):
             The name of the serial port.
         '''
         return self.__serial.portName()
+
+    def baudRate(self):
+        '''
+        Get the baud rate of the serial port.
+
+        Returns
+        -------
+        int
+            The baud rate of the serial port.
+        '''
+        return self.__serial.baudRate()
+
+    def setBaudRate(self, baudRate: int):
+        '''
+        Set the baud rate of the serial port.
+
+        Parameters
+        ----------
+        baudRate : int
+            The new baud rate.
+        '''
+        if not self.isOpen():
+            self.__serial.setBaudRate(baudRate)
 
     def setPortName(self, name: str):
         '''
@@ -647,8 +670,8 @@ class KDC101Controller(QtCore.QObject):
                     )
                     print(response_enum, parsed_data)
                     self.__responses.append((response_enum, parsed_data))
-                    self.dataReceived.emit((response_enum, parsed_data))
                     self._handle_state_update(response_enum, parsed_data)
+                    self.dataReceived.emit(response_enum, parsed_data)
                 except ValueError as e:
                     print(f'Error interpreting response: {e}')
 
@@ -664,7 +687,18 @@ class KDC101Controller(QtCore.QObject):
 
     def wait_for_response(
         self, expected_response: KDC101_RESPONSES, timeout: int = 60000
-    ) -> Optional[tuple[KDC101_RESPONSES, dict]]:
+    ) -> tuple[KDC101_RESPONSES, dict]:
+        '''
+        This method blocks until the expected response is received or
+        the specified timeout is reached.
+
+        Parameters
+        ----------
+        expected_response : KDC101_RESPONSES
+            The expected response type.
+        timeout : int, optional
+            The timeout in milliseconds (default is 60000).
+        '''
         start_time = QtCore.QDateTime.currentMSecsSinceEpoch()
 
         while QtCore.QDateTime.currentMSecsSinceEpoch() - start_time < timeout:
@@ -673,8 +707,12 @@ class KDC101Controller(QtCore.QObject):
                 if response_enum == expected_response:
                     return response_enum, parsed_data
 
+            if not self.isOpen():
+                print('Serial port closed while waiting for response.')
+                return None, None
+
             QtCore.QCoreApplication.processEvents()
             QtCore.QThread.msleep(10)
 
         print(f'Timeout waiting for response: {expected_response}')
-        return None
+        return None, None

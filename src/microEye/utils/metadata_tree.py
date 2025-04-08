@@ -81,7 +81,7 @@ class MetadataEditorTree(Tree):
 
     Attributes
     ----------
-    paramsChanged : pyqtSignal
+    paramsChanged : Signal
         Signal for parameter changed event.
 
     DICHROIC_SUGGESTIONS : list
@@ -109,9 +109,11 @@ class MetadataEditorTree(Tree):
     '''
 
     EMISSION_FILTERS = [
+        '740/40 Bandpass (11)',
         '697/75 Bandpass (1)',
         '692/40 Bandpass (2)',
         '630/69 Bandpass (9)',
+        '600/40 Bandpass (10)',
         '591.5/43 Bandpass (3)',
         '575/35 Bandpass (4)',
         '550 Longpass (5)',
@@ -127,6 +129,9 @@ class MetadataEditorTree(Tree):
 
     EXCITATION_FILTERS = [
         '405/488/532/638 MultiBand',
+        '405/488/561/638 MultiBand',
+        '515/10 BandPass',
+        '561/03 BandPass',
         '640/10 BandPass',
         'Other/None',
     ]
@@ -153,7 +158,7 @@ class MetadataEditorTree(Tree):
         params = [
             {'name': 'Experiment', 'type': 'group', 'children': [
                 {'name': str(MetaParams.EXPERIMENT_NAME),
-                 'type': 'str', 'value': 'Experiment_001'},
+                 'type': 'str', 'value': '001_Experiment'},
                 {'name': str(MetaParams.EXP_DESC), 'type': 'text', 'value': ''},
                 {'name': str(MetaParams.EXP_EMAIL), 'type': 'str', 'value': ''},
                 {'name': str(MetaParams.EXP_FNAME), 'type': 'str', 'value': ''},

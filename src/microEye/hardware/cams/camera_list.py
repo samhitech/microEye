@@ -6,6 +6,8 @@ from microEye.hardware.cams.dummy.dummy_panel import Dummy_Panel
 from microEye.hardware.cams.micam import miDummy
 from microEye.hardware.cams.thorlabs.thorlabs import CMD, thorlabs_camera
 from microEye.hardware.cams.thorlabs.thorlabs_panel import Thorlabs_Panel
+from microEye.hardware.pycromanager.devices import PycroCamera, PycroCore
+from microEye.hardware.pycromanager.widgets import PycroPanel
 from microEye.qt import QtGui, QtWidgets, Signal
 
 try:
@@ -37,7 +39,7 @@ class CameraList(QtWidgets.QWidget):
     cameraAdded = Signal(Camera_Panel, bool)
     cameraRemoved = Signal(Camera_Panel, bool)
 
-    CAMERAS = {'uEye': [], 'Vimba': [], 'UC480': [], 'miDummy': []}
+    CAMERAS = {'uEye': [], 'Vimba': [], 'UC480': [], 'miDummy': [], 'PycroCore': []}
 
     def __init__(self, parent: typing.Optional['QtWidgets.QWidget'] = None):
         '''
@@ -186,6 +188,8 @@ class CameraList(QtWidgets.QWidget):
                 return self._add_vimba_camera(cam, cam['Camera ID'], mini)
             elif driver == 'miDummy':
                 return self._add_dummy_camera(cam, mini)
+            elif driver == 'PycroCore':
+                return self._add_pycro_camera(cam, cam['Device ID'], mini)
             else:
                 self._display_warning_message(f'Unsupported camera driver: {driver}')
         else:
@@ -293,6 +297,34 @@ class CameraList(QtWidgets.QWidget):
         )
         return dummy_panel
 
+    def _add_pycro_camera(self, cam, camera_id, mini):
+        '''
+        Add a PycroManager camera.
+
+        Parameters
+        ----------
+        cam : dict
+            The camera information dictionary.
+        camera_id : int
+            The camera ID / Label.
+        mini : bool
+            True to add a mini camera panel, False to add a full camera panel.
+
+        Returns
+        -------
+        Camera_Panel | None
+            The camera panel, or None if the camera could not be added.
+        '''
+        pycro_cam = PycroCamera(
+            cam['Camera ID'], port=int(cam['Device ID'].split('-')[0])
+        )
+
+        pycro_pan = PycroPanel(pycro_cam, mini, self.get_cam_title(cam))
+        CameraList.CAMERAS['PycroCore'].append(
+            {'Camera': pycro_cam, 'Panel': pycro_pan, 'IR': mini}
+        )
+        return pycro_pan
+
     def _display_warning_message(self, message):
         '''
         Display a warning message.
@@ -320,7 +352,7 @@ class CameraList(QtWidgets.QWidget):
         str
             The camera title.
         '''
-        return f'{cam["Model"]} {cam["Serial"]}'
+        return f"{cam['Driver']} | {cam['Model']}"
 
     def remove_camera_clicked(self):
         '''
@@ -441,6 +473,9 @@ class CameraList(QtWidgets.QWidget):
 
         if vb is not None:
             self.cam_list += get_camera_list()
+
+        if hasattr(PycroCore, 'get_camera_list'):
+            self.cam_list += PycroCore.get_camera_list()
 
         if self.cam_list is None:
             self.cam_list = []

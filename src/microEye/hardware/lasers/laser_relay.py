@@ -552,5 +552,43 @@ class LaserRelayController:
         '''
         return config + ('ALEXON' if self.isALEX() else 'ALEXOFF') + '\r'
 
+    def get_config(self) -> dict:
+        '''
+        Get the current configuration of the laser relay.
+
+        Returns
+        -------
+        dict
+            The current configuration of the laser relay.
+        '''
+        return {
+            'port': self.__relay.portName(),
+            'baudrate': self.__relay.baudRate(),
+            'alex': self.isALEX(),
+        }
+    
+    def load_config(self, config: dict):
+        '''
+        Load the configuration from a dictionary.
+
+        Parameters
+        ----------
+        config : dict
+            The configuration dictionary to load.
+        '''
+        if not isinstance(config, dict):
+            raise TypeError("Config must be a dictionary.")
+        
+        port = config.get('port')
+        baudrate = config.get('baudrate')
+        alex = config.get('alex')
+
+        if port:
+            self.setPortName(port)
+        if baudrate:
+            self.setBaudRate(baudrate)
+        if alex:
+            self.__relay.setALEX(alex)
+
     def __str__(self):
         return 'Laser Relay Controller'

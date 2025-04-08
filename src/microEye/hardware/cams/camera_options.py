@@ -89,16 +89,6 @@ class CameraOptions(Tree):
 
     PARAMS = CamParams
 
-    paramsChanged: Signal = Signal(GroupParameter, list)
-    '''Signal emitted when parameters are changed.
-
-    Parameters
-    ----------
-    GroupParameter
-        The group parameter that was changed.
-    list
-        A list of changes made to the parameter.
-    '''
     setROI: Signal = Signal()
     resetROI: Signal = Signal()
     centerROI: Signal = Signal()
@@ -144,13 +134,13 @@ class CameraOptions(Tree):
                     {
                         'name': str(CamParams.EXPERIMENT_NAME),
                         'type': 'str',
-                        'value': 'Experiment_001',
+                        'value': '001_Experiment',
                     },
                     {
                         'name': str(CamParams.FRAMES),
                         'type': 'int',
-                        'value': 1e6,
-                        'limits': [1, 1e9],
+                        'value': int(1e6),
+                        'limits': [1, int(1e9)],
                     },
                     {'name': str(CamParams.SAVE_DATA), 'type': 'bool', 'value': False},
                 ],
@@ -480,6 +470,40 @@ class CameraOptions(Tree):
                 rois.append(list(map(int, child.value().split(', '))))
         return rois
 
+    def setZoom(self, value: float):
+        '''
+        Set the zoom value.
+        '''
+        param = self.get_param(CamParams.RESIZE_DISPLAY)
+
+        if param and param.opts['enabled']:
+            param.setValue(value)
+
+    def change(self, param: Parameter, changes: list):
+        '''
+        Handle parameter changes as needed.
+
+        This method handles the changes made to the parameters in the parameter
+        tree.
+
+        Parameters
+        ----------
+        param : Parameter
+            The parameter that triggered the change.
+        changes : list
+            List of changes.
+
+        Returns
+        -------
+        None
+        '''
+        # Handle parameter changes as needed
+        for p, _, data in changes:
+            path = self.param_tree.childPath(p)
+
+            self.paramsChanged.emit(
+                p, data)
+
     @property
     def isTiff(self):
         '''
@@ -587,6 +611,11 @@ class CameraOptions(Tree):
         '''
         return self.get_param_value(CamParams.SAVE_DATA)
 
+    def toggleSaveData(self):
+        param = self.get_param(CamParams.SAVE_DATA)
+        if param:
+            param.setValue(not param.value())
+
     @property
     def isPreview(self):
         '''
@@ -599,6 +628,11 @@ class CameraOptions(Tree):
         '''
         return self.get_param_value(CamParams.PREVIEW)
 
+    def togglePreview(self):
+        param = self.get_param(CamParams.PREVIEW)
+        if param:
+            param.setValue(not param.value())
+
     @property
     def isAutostretch(self):
         '''
@@ -610,6 +644,11 @@ class CameraOptions(Tree):
             True if the auto-stretch option is set, False otherwise.
         '''
         return self.get_param_value(CamParams.AUTO_STRETCH)
+
+    def toggleAutostretch(self):
+        param = self.get_param(CamParams.AUTO_STRETCH)
+        if param:
+            param.setValue(not param.value())
 
     @property
     def isDisplayStats(self):

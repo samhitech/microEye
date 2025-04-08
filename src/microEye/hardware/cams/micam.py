@@ -19,7 +19,6 @@ class miCamera:
 
         self.status = {}
 
-
     @property
     def height(self):
         return self._height
@@ -85,6 +84,7 @@ class miDummy(miCamera):
         self._height = kwargs.get('height', 512)
         self._width = kwargs.get('width', 512)
 
+
         self.binning_horizontal = kwargs.get('binning_horizontal', 1)
         self.binning_vertical = kwargs.get('binning_vertical', 1)
         self.bit_depth = kwargs.get('bit_depth', 12)
@@ -97,16 +97,31 @@ class miDummy(miCamera):
         self.flux = kwargs.get('flux', 0)
         self.pattern_type = kwargs.get('pattern_type', 'Sinusoidal')
         self.pattern_offset = kwargs.get('pattern_offset', 0)
+
+        # Sinusoidal pattern parameters
         self.sinusoidal_frequency = kwargs.get('sinusoidal_frequency', 0.01)
         self.sinusoidal_phase = kwargs.get('sinusoidal_phase', 0.0)
         self.sinusoidal_amplitude = kwargs.get('sinusoidal_amplitude', 0.1e5)
         self.sinusoidal_direction = kwargs.get('sinusoidal_direction', 'd')
 
+        # Single molecule parameters
         self.sm_intensity = kwargs.get('sm_intensity', 5000)
         self.sm_density = kwargs.get('sm_density', 0.5)
         self.sm_pixel_size = kwargs.get('sm_pixel_size', 114.17)
         self.sm_wavelength = kwargs.get('sm_wavelength', 650)
         self.sm_na = kwargs.get('sm_na', 1.49)
+
+        # Gaussian pattern Drift parameters
+        self.drift_current_velocity = 0.0  # Current drift velocity
+        self.drift_center = self.width // 2
+        self.drift_speed = 0.10
+        self.drift_period = 80
+        self.drift_momentum = 0.85
+        self.drift_random_walk_factor = 0.80
+        self.drift_vibration_amplitude = 0.1
+        self.drift_sigma_x = 5
+        self.drift_sigma_y = 20
+        self.drift_amplitude = 5000
 
         self.__roi = None
         self._meshes = None
@@ -349,11 +364,8 @@ class miDummy(miCamera):
     def get_gaussian_beam_pattern(
         self,
         time: float,
-        amplitude: float = 5000,
-        sigma: float = 20,
         center_x: Optional[float] = None,
         center_y: Optional[float] = None,
-        drift_speed: float = 10,
     ):
         '''
         Generate a Gaussian beam pattern for the flux array.
@@ -370,15 +382,10 @@ class miDummy(miCamera):
             The current time.
         amplitude : float, optional
             The amplitude of the Gaussian pattern (default is 5000).
-        sigma : float, optional
-            The standard deviation of the Gaussian pattern (default is 20).
         center_x : float, optional
             The x-coordinate of the center of the Gaussian pattern (default is None).
         center_y : float, optional
             The y-coordinate of the center of the Gaussian pattern (default is None).
-        drift_speed : float, optional
-            The speed at which the Gaussian beam center drifts over the x-axis
-            (default is 10).
 
         Returns
         -------
@@ -386,7 +393,37 @@ class miDummy(miCamera):
             A 2D numpy array representing the Gaussian beam pattern.
         '''
         if center_x is None:
-            center_x = self.width // 2 + drift_speed * np.cos(2 * np.pi * time / 10)
+            # 1. Slow sinusoidal drift (thermal/mechanical creep)
+            slow_drift = np.sin(2 * np.pi * time / self.drift_period)
+            # 2. Brownian motion / random walk component
+            # (use momentum to avoid jerky movement)
+            random_component = np.random.normal(0, self.drift_random_walk_factor)
+            self.drift_current_velocity = (
+                self.drift_momentum * self.drift_current_velocity
+                + (1 - self.drift_momentum) * random_component
+            )
+            # 3. Small high-frequency vibrations (building vibrations, etc)
+            vibration = (
+                self.drift_vibration_amplitude * np.sin(0.1 * time) * np.random.random()
+            )
+            # Combine all drift components
+            drift_amount = (
+                slow_drift * self.drift_speed
+                + self.drift_current_velocity
+                + vibration
+            )
+
+            # Update drift center with bounds checking
+            self.drift_center += drift_amount
+            edge_margin = max(10, self.width // 10)
+            if self.drift_center < edge_margin:
+                self.drift_center = edge_margin
+                self.drift_current_velocity *= -0.5  # Bounce back with damping
+            elif self.drift_center > self.width - edge_margin:
+                self.drift_center = self.width - edge_margin
+                self.drift_current_velocity *= -0.5  # Bounce back with damping
+
+            center_x = self.drift_center
         if center_y is None:
             center_y = self.height // 2
 
@@ -394,8 +431,9 @@ class miDummy(miCamera):
         y = np.arange(self.height)
         X, Y = np.meshgrid(x, y)
 
-        pattern = amplitude * np.exp(
-            -((X - center_x) ** 2 + (Y - center_y) ** 2) / (2 * sigma**2)
+        pattern = self.drift_amplitude * np.exp(
+            -((X - center_x) ** 2) / (2 * self.drift_sigma_x**2)
+            - ((Y - center_y) ** 2) / (2 * self.drift_sigma_y**2)
         )
 
         if pattern.min() < 0:
@@ -436,10 +474,7 @@ class miDummy(miCamera):
         elif self.pattern_type.lower() == 'single molecule sim':
             flux = 0
         elif self.pattern_type.lower() == 'gaussian':
-            flux = self.get_gaussian_beam_pattern(
-                time,
-                center_x=None, center_y=None,
-                drift_speed=10)
+            flux = self.get_gaussian_beam_pattern(time, center_x=None, center_y=None)
         else:
             flux = self.flux
 
@@ -467,36 +502,18 @@ if __name__ == '__main__':
     import matplotlib.animation as animation
     import matplotlib.pyplot as plt
 
-    #     setup = '''
-    # import numpy as np
-    # from micam import miCamera, miDummy
-
-    # cam = miDummy()
-    # type = 'r'
-    #     '''
-
-    #     stmt = '''
-    # cam.get_dummy_image_from_pattern(0, offset=1000, type=type)
-    #     '''
-
-    #     total_time = timeit.timeit(stmt=stmt, setup=setup, number=100)
-    #     avg_time = total_time / 100
-    #     print(f'Average time per call: {avg_time:.6f} seconds')
-
     # create a dummy camera object
     cam = miDummy()
-    type = 'r'
+    cam.pattern_type = 'gaussian'
 
     # set up animation
     fig, ax = plt.subplots()
-    im = ax.imshow(
-        cam.get_dummy_image_from_pattern(0, offset=1000, type=type), cmap='gray', vmin=0
-    )
+    im = ax.imshow(cam.get_dummy_image_from_pattern(0), cmap='gray', vmin=0)
 
     plt.colorbar(im)
 
     def update(frame):
-        img = cam.get_dummy_image_from_pattern(frame, offset=1000, type=type)
+        img = cam.get_dummy_image_from_pattern(frame)
         im.set_data(img)
         return (im,)
 

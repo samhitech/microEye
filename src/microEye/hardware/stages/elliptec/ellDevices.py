@@ -14,11 +14,10 @@ class ELLDevices(QtCore.QObject):
         self._selected_device: Optional[EllDevice] = None
         self._devices: dict[str, EllDevice] = {}
         self._message_updater = MessageUpdater()
-        self._is_connected = False
 
     @property
-    def IsConnected(self) -> bool:
-        return self._is_connected
+    def IsOpen(self) -> bool:
+        return DevicePort.isOpen()
 
     def SendFreeCommand(self, free_command: str) -> bool:
         self._message_updater.update_output('Sending free command...')
@@ -99,14 +98,36 @@ class ELLDevices(QtCore.QObject):
     def MessageUpdates(self) -> MessageUpdater:
         return self._message_updater
 
-    def Connect(self) -> bool:
-        if self.SelectedDevice and self.SelectedDevice.is_address_valid:
-            self._is_connected = True
-        return self._is_connected
+    def open(self) -> bool:
+        DevicePort.open()
 
-    def Disconnect(self) -> bool:
-        self._is_connected = False
-        return self._is_connected
+    def close(self) -> bool:
+        DevicePort.close()
+
+    def baudrate(self) -> int:
+        return DevicePort.baudRate()
+
+    def set_baudrate(self, baudrate: int) -> bool:
+        return DevicePort.setBaudRate(baudrate)
+
+    def portname(self) -> str:
+        return DevicePort.portName()
+
+    def set_portname(self, portname: str) -> bool:
+        return DevicePort.setPortName(portname)
+
+    def get_config(self) -> dict:
+        return {
+            'port': DevicePort.portName(),
+            'baudrate': DevicePort.baudRate(),
+        }
+
+    def load_config(self, config: dict) -> bool:
+        if 'port' in config:
+            self.set_portname(config['port'])
+        if 'baudrate' in config:
+            self.set_baudrate(config['baudrate'])
+        return True
 
     @property
     def ValidAddress(self) -> list[str]:

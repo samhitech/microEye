@@ -233,6 +233,9 @@ class FocusStabilizer(QtCore.QObject):
     def put(self, value: np.ndarray):
         self.__buffer.put(value)
 
+    def bufferSize(self):
+        return len(self.__buffer.queue)
+
     def isEmpty(self):
         return self.__buffer.empty()
 
@@ -416,10 +419,8 @@ class FocusStabilizer(QtCore.QObject):
                     if self.isImage(image):
                         if self.preview():
                             self.updateViewBox.emit(image.copy())
-                        line_roi = get_kymogram_row(
-                            image, self.X, self.Y, self.line_width
-                        )
-                    self.peak_fit(line_roi.copy())
+                        image = get_kymogram_row(image, self.X, self.Y, self.line_width)
+                    self.peak_fit(image.copy())
                     if self.file is not None:
                         with open(self.file, 'ab') as file:
                             np.savetxt(
@@ -431,7 +432,7 @@ class FocusStabilizer(QtCore.QObject):
                             )
                         self.num_frames_saved = 1 + self.num_frames_saved
                     counter = counter + 1
-                    self.updatePlots.emit(line_roi.copy())
+                    self.updatePlots.emit(image.copy())
                 QtCore.QThread.usleep(100)  # sleep for 100us
             except Exception as e:
                 traceback.print_exc()
@@ -755,6 +756,13 @@ class FocusStabilizerView(Tree):
                 FocusStabilizerParams.PREVIEW_IMAGE
             ):
                 FocusStabilizer.instance().setPreview(data)
+
+    def toggleFocusStabilization(self):
+        '''Toggles the focus stabilization.'''
+        self.set_param_value(
+            FocusStabilizerParams.TRACKING_ENABLED,
+            not self.get_param_value(FocusStabilizerParams.TRACKING_ENABLED),
+        )
 
     def start_IR(self):
         '''Starts the IR peak position acquisition and

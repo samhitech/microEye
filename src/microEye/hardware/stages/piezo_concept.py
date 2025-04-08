@@ -63,7 +63,7 @@ class PzFocSignals(QtCore.QObject):
 class PzFoc:
     '''PiezoConcept FOC 1-axis stage adapter.'''
 
-    def __init__(self):
+    def __init__(self, max_um: int = 100):
         '''
         Initializes a PiezoConcept FOC 1-axis stage adapter.
         '''
@@ -73,11 +73,16 @@ class PzFoc:
         self.LastCmd = ''
         self.Received = ''
 
-        self.max = 100 * 1000
+        self.max_um = max_um
 
         self.serial = QtSerialPort.QSerialPort(None, readyRead=self.rx_piezo)
         self.serial.setBaudRate(115200)
         self.serial.setPortName('COM5')
+
+    @property
+    def max_nm(self) -> int:
+        '''Maximum stage position in nanometers.'''
+        return self.max_um * 1000
 
     def isOpen(self):
         '''Returns True if connected.'''
@@ -134,9 +139,18 @@ class PzFoc:
     def HOME(self):
         '''Centers the stage position along the Z axis.'''
         if self.isOpen():
-            self.ZPosition = self.max // 2
-            self.write(b'MOVEZ 50u\n')
-            self.LastCmd = 'MOVRZ'
+            self.ZPosition = self.max_nm // 2
+            self.write(f'MOVEZ {self.max_um // 2}u\n'.encode())
+            self.LastCmd = 'MOVEZ'
+
+    def ABSOLUTE(self, pos: int):
+        '''
+        Moves the stage to an absolute position.
+        '''
+        if self.isOpen():
+            self.ZPosition = min(max(pos, 0), self.max_nm)
+            self.write(f'MOVEZ {pos}u\n'.encode())
+            self.LastCmd = 'MOVEZ'
 
     def REFRESH(self):
         '''Refresh the stage position
@@ -161,7 +175,7 @@ class PzFoc:
             If the serial port is not open or an error occurs while writing.
         '''
         if self.isOpen():
-            self.ZPosition = min(max(self.ZPosition + step, 0), self.max)
+            self.ZPosition = min(max(self.ZPosition + step, 0), self.max_nm)
             self.write(('MOVEZ ' + str(self.ZPosition) + 'n\n').encode('utf-8'))
             self.LastCmd = 'MOVEZ'
 
@@ -180,7 +194,7 @@ class PzFoc:
             If the serial port is not open or an error occurs while writing.
         '''
         if self.isOpen():
-            self.ZPosition = min(max(self.ZPosition - step, 0), self.max)
+            self.ZPosition = min(max(self.ZPosition - step, 0), self.max_nm)
             self.write(('MOVEZ ' + str(self.ZPosition) + 'n\n').encode('utf-8'))
             self.LastCmd = 'MOVEZ'
 
@@ -203,6 +217,7 @@ class PzFoc:
         else:
             match = re.search(r' *(\d+\.\d+).*um.*', self.Received)
             if match:
+                self.ZPosition = int(float(match.group(1)) * 1000)
                 self.signals.positionChanged.emit(float(match.group(1)))
 
     def getQWidget(self):
@@ -235,10 +250,6 @@ class PzFocView(Tree):
 
         super().__init__(parent=parent)
 
-        self.stage.signals.positionChanged.connect(
-            lambda value: self.set_param_value(StageParams.Z_POSITION, value)
-        )
-
     def create_parameters(self):
         '''
         Create the parameter tree structure.
@@ -262,7 +273,7 @@ class PzFocView(Tree):
             {
                 'name': str(StageParams.SERIAL_PORT),
                 'type': 'group',
-                'expanded' : False,
+                'expanded': False,
                 'children': [
                     {
                         'name': str(StageParams.PORT),
@@ -277,9 +288,8 @@ class PzFocView(Tree):
                         'type': 'list',
                         'value': 115200,
                         'limits': [
-                            baudrate
-                            for baudrate in \
-                                QtSerialPort.QSerialPortInfo.standardBaudRates()
+                            bd
+                            for bd in QtSerialPort.QSerialPortInfo.standardBaudRates()
                         ],
                     },
                     {'name': str(StageParams.SET_PORT), 'type': 'action'},
@@ -335,27 +345,6 @@ class PzFocView(Tree):
             QtWidgets.QHeaderView.ResizeMode.ResizeToContents
         )
 
-        self.get_param(StageParams.SET_PORT).sigActivated.connect(self.set_config)
-        self.get_param(StageParams.OPEN).sigActivated.connect(lambda: self.stage.open())
-        self.get_param(StageParams.CLOSE).sigActivated.connect(
-            lambda: self.stage.close()
-        )
-
-        self.get_param(StageParams.REMOVE).sigActivated.connect(self.remove_widget)
-
-        self.get_param(StageParams.HOME).sigActivated.connect(self.stage.HOME)
-        self.get_param(StageParams.REFRESH).sigActivated.connect(self.stage.REFRESH)
-
-    def set_config(self):
-        '''Sets the serial port configuration.
-
-        This method sets the serial port configuration based on the current
-        settings in the parameter tree.
-        '''
-        if not self.stage.isOpen():
-            self.stage.setPortName(self.get_param_value(StageParams.PORT))
-            self.stage.setBaudRate(self.get_param_value(StageParams.BAUDRATE))
-
     def remove_widget(self):
         '''
         Remove the widget from the parent layout.
@@ -363,7 +352,7 @@ class PzFocView(Tree):
         This method removes the widget from the parent layout and deletes it.
         '''
         if self.parent() and not self.stage.isOpen():
-            self.parent().layout().removeWidget(self)
+            self.parent().removeWidget(self)
             self.removed.emit(self)
             self.deleteLater()
         else:
@@ -371,6 +360,7 @@ class PzFocView(Tree):
 
     def __str__(self):
         return f'Piezo Concept FOC Stage ({self.stage.serial.portName()})'
+
 
 class PzFocController:
     def __init__(self, stage: PzFoc = None, view: PzFocView = None):
@@ -412,6 +402,33 @@ class PzFocController:
                 False, self.view.get_param_value(StageParams.STEP), True
             )
         )
+
+        self.view.get_param(StageParams.SET_PORT).sigActivated.connect(self.set_config)
+        self.view.get_param(StageParams.OPEN).sigActivated.connect(
+            lambda: self.stage.open()
+        )
+        self.view.get_param(StageParams.CLOSE).sigActivated.connect(
+            lambda: self.stage.close()
+        )
+
+        self.view.get_param(StageParams.HOME).sigActivated.connect(self.stage.HOME)
+        self.view.get_param(StageParams.REFRESH).sigActivated.connect(
+            self.stage.REFRESH
+        )
+
+        self.stage.signals.positionChanged.connect(
+            lambda value: self.set_param_value(StageParams.Z_POSITION, value)
+        )
+
+    def set_config(self):
+        '''Sets the serial port configuration.
+
+        This method sets the serial port configuration based on the current
+        settings in the parameter tree.
+        '''
+        if not self.stage.isOpen():
+            self.stage.setPortName(self.view.get_param_value(StageParams.PORT))
+            self.stage.setBaudRate(self.view.get_param_value(StageParams.BAUDRATE))
 
     def setPortName(self, value: str):
         '''
@@ -489,6 +506,21 @@ class PzFocController:
         else:
             self.view.set_param_value(StageParams.STEP, value)
 
+    def moveAbsolute(self, pos: int):
+        '''
+        Move the stage to an absolute position.
+
+        Parameters
+        ----------
+        pos : int
+            The absolute position to move to in nanometers.
+        '''
+        focusStabilizer = FocusStabilizer.instance()
+        if focusStabilizer is not None and focusStabilizer.isFocusStabilized():
+            return
+
+        self.stage.ABSOLUTE(pos)
+
     def moveStage(self, dir: bool, step_arg: Union[int, bool], interface: bool = False):
         '''
         Move the stage in a specified direction by a specified
@@ -503,9 +535,9 @@ class PzFocController:
             Direction of the movement. If True, moves the stage up, else moves it down.
         step_arg: Union[int, bool]
             Number of steps to move in the specified direction.
-            If provided as a boolean and True, moves the stage up by the value of the
-            JUMP parameter, otherwise, moves the stage up or down by the value of the
-            STEP parameter.
+            If provided as a `bool`:
+            - `True`: Moves the stage by the value of the JUMP parameter.
+            - `False`: Moves the stage by the value of the STEP parameter.
         interface : bool, optional
             If True, moves the center pixel value instead of the Z position
             when FocusStabilizer is stabilizing and use calibration is set to True.
@@ -556,6 +588,20 @@ class PzFocController:
                     for info in QtSerialPort.QSerialPortInfo.availablePorts()
                 ]
             )
+
+    def get_config(self) -> dict:
+        '''Get the current configuration of the stage.'''
+        return {
+            'port': self.stage.serial.portName(),
+            'baudrate': self.stage.serial.baudRate(),
+            'max_um': self.stage.max_um,
+        }
+
+    def load_config(self, config: dict) -> None:
+        '''Load the configuration of the stage from a dictionary.'''
+        self.stage.setPortName(config.get('port', 'COM5'))
+        self.stage.setBaudRate(config.get('baudrate', 115200))
+        self.stage.max_um = config.get('max_um', 100)
 
     def __str__(self):
         return 'Piezo Concept FOC Stage Controller'

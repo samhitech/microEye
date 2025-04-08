@@ -532,7 +532,7 @@ class ParameterAdjustmentDialog(QtWidgets.QDialog):
                 value_editor.setMaximum(param_limits[1])
             else:
                 value_editor.setMinimum(0)
-                value_editor.setMaximum(1e9)
+                value_editor.setMaximum(int(1e9))
             value_editor.setValue(param.value())
         elif param_type == 'bool':
             value_editor = QtWidgets.QCheckBox()

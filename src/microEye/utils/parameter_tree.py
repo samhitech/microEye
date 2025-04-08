@@ -14,13 +14,13 @@ class Tree(ParameterTree):
 
     Attributes
     ----------
-    paramsChanged : pyqtSignal
+    paramsChanged : Signal
         Signal for parameter changed event.
     '''
 
     PARAMS: type[Enum] = None
 
-    paramsChanged = Signal(GroupParameter, list)
+    paramsChanged = Signal(Parameter, object)
     '''Signal emitted when parameters are changed.
 
     Parameters

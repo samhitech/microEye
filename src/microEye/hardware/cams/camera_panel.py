@@ -1,5 +1,6 @@
 import math
 import os
+import re
 import threading
 import time
 import traceback
@@ -14,13 +15,14 @@ from microEye.hardware.cams.camera_options import CameraOptions, CamParams
 from microEye.hardware.cams.jobs import AcquisitionJob
 from microEye.hardware.cams.line_profiler import LineProfiler
 from microEye.hardware.cams.micam import miCamera
+from microEye.hardware.cams.shortcuts import (
+    CameraShortcutsWidget,
+)
 from microEye.qt import QDateTime, Qt, QtCore, QtWidgets, Signal, Slot
 from microEye.utils.expandable_groupbox import ExpandableGroupBox
 from microEye.utils.metadata_tree import MetadataEditorTree, MetaParams
 from microEye.utils.thread_worker import QThreadWorker
 from microEye.utils.uImage import uImage
-
-EXPOSURE_SHORTCUTS = [1, 5, 10, 20, 30, 50, 100, 150, 200, 300, 500, 1000]
 
 
 class Camera_Panel(QtWidgets.QGroupBox):
@@ -57,10 +59,7 @@ class Camera_Panel(QtWidgets.QGroupBox):
         '''
         super().__init__(*args, **kwargs)
 
-        self.setWindowFlags(
-            self.windowFlags() & ~Qt.WindowType.WindowCloseButtonHint
-            | Qt.WindowType.Tool
-        )
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowCloseButtonHint)
 
         self._cam = cam  # miCamera
         # flag true if master (always the first added camera is master)
@@ -136,27 +135,82 @@ class Camera_Panel(QtWidgets.QGroupBox):
 
         self.camera_options = CameraOptions()
 
-        self.cam_exp_shortcuts = QtWidgets.QHBoxLayout()
-        self.cam_exp_shortcuts.addWidget(
-            QtWidgets.QPushButton(
-                'min',
-                clicked=lambda: self.camera_options.set_param_value(
-                    CamParams.EXPOSURE, self._cam.exposure_range[0]
-                ),
-            )
+        # Create the camera shortcuts widget
+        self.cam_shortcuts = CameraShortcutsWidget(
+            camera=self._cam,
         )
 
-        def add_button(layout: QtWidgets.QHBoxLayout, value):
-            layout.addWidget(
-                QtWidgets.QPushButton(
-                    f'{value:.0f} ms', clicked=lambda: self.setExposure(value)
+        def convinient_naming(mode: str):
+            name: str = self.camera_options.get_param_value(CamParams.EXPERIMENT_NAME)
+
+            if mode == 'exposure':
+                match = re.search(
+                    r'(\d+)(?:_ms|ms)', name
+                )  # find any number of format '000_ms' or '00ms'
+                if match:
+                    exposure = self._cam.getExposure()
+                    # update the exposure time in the name
+                    name = name.replace(match.group(0), f'{exposure:03.0f}ms')
+                else:
+                    name = f'{name}_{self._cam.getExposure():03.0f}ms'
+
+            elif mode == 'index':
+                # only from the start of the name
+                match = re.search(r'^\d+', name)
+                if match:
+                    index = int(match.group())
+                    index += 1
+                    name = re.sub(r'^\d+', f'{index:03d}', name)
+                else:
+                    name = f'001_{name}'
+
+
+            self.camera_options.set_param_value(CamParams.EXPERIMENT_NAME, name)
+
+
+        self.cam_shortcuts.exposureChanged.connect(self.setExposure)
+        self.cam_shortcuts.autostretchChanged.connect(
+            self.camera_options.toggleAutostretch
+        )
+        self.cam_shortcuts.previewChanged.connect(self.camera_options.togglePreview)
+        self.cam_shortcuts.saveDataChanged.connect(self.camera_options.toggleSaveData)
+        self.cam_shortcuts.zoomChanged.connect(self.camera_options.setZoom)
+        self.cam_shortcuts.acquisitionStart.connect(self.start_free_run)
+        self.cam_shortcuts.acquisitionStop.connect(self.stop)
+        self.cam_shortcuts.adjustName.connect(convinient_naming)
+
+        # Create the context menu
+        menu = self.cam_shortcuts.create_context_menu(self.camera_options)
+
+        def show_shortcuts(pos):
+            self.cam_shortcuts.blockSignals(True)
+            self.cam_shortcuts.set_exposure(
+                self.camera_options.get_param_value(CamParams.EXPOSURE)
+            )
+            self.cam_shortcuts.set_zoom(
+                self.camera_options.get_param_value(CamParams.RESIZE_DISPLAY)
+            )
+            self.cam_shortcuts.set_autostretch(
+                self.camera_options.get_param_value(CamParams.AUTO_STRETCH)
+            )
+            self.cam_shortcuts.set_preview(
+                self.camera_options.get_param_value(CamParams.PREVIEW)
+            )
+            self.cam_shortcuts.set_save_data(
+                self.camera_options.get_param_value(CamParams.SAVE_DATA)
+            )
+            self.cam_shortcuts.blockSignals(False)
+
+            # display menu but centered horizontally
+            menu.exec(
+                self.main_tab_view.mapToGlobal(
+                    QtCore.QPoint(self.main_tab_view.rect().left(), pos.y())
                 )
             )
 
-        for value in EXPOSURE_SHORTCUTS:
-            add_button(self.cam_exp_shortcuts, value)
+        self.camera_options.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.camera_options.customContextMenuRequested.connect(show_shortcuts)
 
-        self.first_tab_Layout.addRow(self.cam_exp_shortcuts)
         self.first_tab_Layout.addRow(self.camera_options)
 
         self.camera_options.get_param(
@@ -630,7 +684,7 @@ def cam_save(params: AcquisitionJob, **kwargs):
             # save in case frame stack is not empty
             if not params.save_queue.empty():
                 # for save time estimations
-                time = QDateTime.currentDateTime()
+                save_time = QDateTime.currentDateTime()
 
                 # get frame and temp to save from bottom of stack
                 frame, temp = params.save_queue.get()
@@ -645,7 +699,7 @@ def cam_save(params: AcquisitionJob, **kwargs):
 
                 # for save time estimations
                 with params.lock:
-                    params.save_time = time.msecsTo(QDateTime.currentDateTime())
+                    params.save_time = save_time.msecsTo(QDateTime.currentDateTime())
 
                 params.frames_saved += 1
 
@@ -768,7 +822,7 @@ def update_histogram_and_display(params: AcquisitionJob, camp: Camera_Panel):
             )
 
             # display it
-            cv2.imshow(params.name + f' ROI {idx+1}', uimage._view)
+            cv2.imshow(params.name + f' ROI {idx + 1}', uimage._view)
 
         camp.updateRangeSignal.emit(min(mins), max(maxs))
         camp.updateStatsSignal.emit(tuple(images))

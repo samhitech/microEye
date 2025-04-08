@@ -2,7 +2,11 @@ from microEye.hardware.cams.camera_calibration import dark_calibration
 from microEye.hardware.cams.camera_list import CameraList
 from microEye.hardware.cams.camera_panel import Camera_Panel, CamParams
 from microEye.hardware.cams.jobs import AcquisitionJob
-from microEye.hardware.cams.linescan.IR_Cam import IR_Cam, ParallaxLineScanner
+from microEye.hardware.cams.linescan.IR_Cam import (
+    DemoLineScanner,
+    IR_Cam,
+    ParallaxLineScanner,
+)
 from microEye.hardware.cams.micam import miCamera, miDummy
 from microEye.hardware.cams.thorlabs.thorlabs import CMD, thorlabs_camera
 from microEye.hardware.cams.thorlabs.thorlabs_panel import Thorlabs_Panel

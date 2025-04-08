@@ -734,9 +734,32 @@ class CombinerLaserWidget(Tree):
             states += switch.GetRelayState()
         return states
 
+    def get_config(self) -> dict:
+        '''
+        Returns the current configuration of the laser device as a dictionary.
+        '''
+        return {
+            'port': self.Laser.portName(),
+            'baudrate': self.Laser.baudRate(),
+            'class': self.__class__.__name__,
+        }
+
+    def load_config(self, config: dict) -> bool:
+        '''
+        Loads the configuration from the given dictionary.
+        '''
+        port = config.get('port')
+        baudrate = config.get('baudrate')
+        if port:
+            self.Laser.setPortName(port)
+            self.set_param_value(MB_Params.PORT, port)
+        if baudrate:
+            self.Laser.setBaudRate(baudrate)
+            self.set_param_value(MB_Params.BAUDRATE, baudrate)
+
     def remove_widget(self):
         if self.parent() and not self.Laser.isOpen():
-            # self.parent().layout().removeWidget(self)
+            self.parent().removeWidget(self)
             self.removed.emit(self)
             self.deleteLater()
         else:

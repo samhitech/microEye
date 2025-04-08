@@ -117,6 +117,18 @@ class DevicePort(QtCore.QObject):
         return cls.instance().serial.isOpen()
 
     @classmethod
+    def portName(cls) -> str:
+        '''
+        Get the name of the serial port.
+
+        Returns
+        -------
+        str
+            The name of the serial port.
+        '''
+        return cls.instance().serial.portName()
+
+    @classmethod
     def setPortName(cls, name: str):
         '''
         Set the name of the serial port.
@@ -128,6 +140,18 @@ class DevicePort(QtCore.QObject):
         '''
         if not cls.instance().isOpen():
             cls.instance().serial.setPortName(name)
+
+    @classmethod
+    def baudRate(cls) -> int:
+        '''
+        Get the current baud rate.
+
+        Returns
+        -------
+        int
+            The current baud rate.
+        '''
+        return cls.instance().serial.baudRate()
 
     @classmethod
     def setBaudRate(cls, baudRate: int):

@@ -49,6 +49,16 @@ class DummyParams(Enum):
     SINUSOIDAL_AMPLITUDE = 'Acquisition Settings.Sinusoidal Pattern.Amplitude'
     SINUSOIDAL_DIRECTION = 'Acquisition Settings.Sinusoidal Pattern.Direction'
 
+    DRIFT_SIM = 'Acquisition Settings.Drift Simulation'
+    DRIFT_SPEED = DRIFT_SIM + '.Speed [pixel/frames]'
+    DRIFT_PERIOD = DRIFT_SIM + '.Period [frames]'
+    DRIFT_MOMENTUM = DRIFT_SIM + '.Momentum Coefficient'
+    DRIFT_RANDOM_WALK = DRIFT_SIM + '.Random Walk Coefficient'
+    DRIFT_VIBRATION = DRIFT_SIM + '.Vibration Amplitude'
+    DRIFT_SIGMA_X = DRIFT_SIM + r'.$\sigma_x$ [pixels]'
+    DRIFT_SIGMA_Y = DRIFT_SIM + r'.$\sigma_y$ [pixels]'
+    DRIFT_AMPLITUDE = DRIFT_SIM + '.Amplitude'
+
     SM = 'Acquisition Settings.Single Molecule Sim'
     SM_INTENSITY = SM + '.Intensity [photons/loc]'
     SM_DENSITY = SM + '.Density [loc/um]'
@@ -267,6 +277,56 @@ class Dummy_Panel(Camera_Panel):
             ],
         }
 
+        # drift simulation
+        DRIFT_SIM = {
+            'name': str(DummyParams.DRIFT_SIM),
+            'type': 'group',
+            'expanded': False,
+            'children': [
+                {
+                    'name': str(DummyParams.DRIFT_SPEED),
+                    'type': 'float',
+                    'value': 0.1,
+                },
+                {
+                    'name': str(DummyParams.DRIFT_PERIOD),
+                    'type': 'int',
+                    'value': 90,
+                },
+                {
+                    'name': str(DummyParams.DRIFT_MOMENTUM),
+                    'type': 'float',
+                    'value': 0.8,
+                    'limits': [0, 1],
+                },
+                {
+                    'name': str(DummyParams.DRIFT_RANDOM_WALK),
+                    'type': 'float',
+                    'value': 0.80,
+                },
+                {
+                    'name': str(DummyParams.DRIFT_VIBRATION),
+                    'type': 'float',
+                    'value': 0.1,
+                },
+                {
+                    'name': str(DummyParams.DRIFT_SIGMA_X),
+                    'type': 'float',
+                    'value': 5,
+                },
+                {
+                    'name': str(DummyParams.DRIFT_SIGMA_Y),
+                    'type': 'float',
+                    'value': 20,
+                },
+                {
+                    'name': str(DummyParams.DRIFT_AMPLITUDE),
+                    'type': 'float',
+                    'value': 5000,
+                }
+            ],
+        }
+
         # add parameters
         self.camera_options.add_param_child(CamParams.ACQ_SETTINGS, HEIGHT)
         self.camera_options.add_param_child(CamParams.ACQ_SETTINGS, WIDTH)
@@ -283,121 +343,11 @@ class Dummy_Panel(Camera_Panel):
         self.camera_options.add_param_child(CamParams.ACQ_SETTINGS, PATTERN_TYPE)
         self.camera_options.add_param_child(CamParams.ACQ_SETTINGS, PATTERN_OFFSET)
         self.camera_options.add_param_child(CamParams.ACQ_SETTINGS, PATTERN_SINUSOIDAL)
+        self.camera_options.add_param_child(CamParams.ACQ_SETTINGS, DRIFT_SIM)
         self.camera_options.add_param_child(CamParams.ACQ_SETTINGS, SM_SIM)
 
         # update params
-        self.camera_options.get_param(DummyParams.HEIGHT).sigValueChanged.connect(
-            lambda _, new_value: self.update_cam(DummyParams.HEIGHT, new_value)
-        )
-        self.camera_options.get_param(DummyParams.WIDTH).sigValueChanged.connect(
-            lambda _, new_value: self.update_cam(DummyParams.WIDTH, new_value)
-        )
-        self.camera_options.get_param(
-            DummyParams.BINNING_HORIZONTAL
-        ).sigValueChanged.connect(
-            lambda _, new_value: self.update_cam(
-                DummyParams.BINNING_HORIZONTAL, new_value
-            )
-        )
-        self.camera_options.get_param(
-            DummyParams.BINNING_VERTICAL
-        ).sigValueChanged.connect(
-            lambda _, new_value: self.update_cam(
-                DummyParams.BINNING_VERTICAL, new_value
-            )
-        )
-        self.camera_options.get_param(DummyParams.BIT_DEPTH).sigValueChanged.connect(
-            lambda _, new_value: self.update_cam(DummyParams.BIT_DEPTH, new_value)
-        )
-        self.camera_options.get_param(DummyParams.GAIN).sigValueChanged.connect(
-            lambda _, new_value: self.update_cam(DummyParams.GAIN, new_value)
-        )
-        self.camera_options.get_param(
-            DummyParams.FULL_WELL_CAPACITY
-        ).sigValueChanged.connect(
-            lambda _, new_value: self.update_cam(
-                DummyParams.FULL_WELL_CAPACITY, new_value
-            )
-        )
-        self.camera_options.get_param(
-            DummyParams.QUANTUM_EFFICIENCY
-        ).sigValueChanged.connect(
-            lambda _, new_value: self.update_cam(
-                DummyParams.QUANTUM_EFFICIENCY, new_value
-            )
-        )
-        self.camera_options.get_param(DummyParams.DARK_CURRENT).sigValueChanged.connect(
-            lambda _, new_value: self.update_cam(DummyParams.DARK_CURRENT, new_value)
-        )
-        self.camera_options.get_param(
-            DummyParams.READOUT_NOISE
-        ).sigValueChanged.connect(
-            lambda _, new_value: self.update_cam(DummyParams.READOUT_NOISE, new_value)
-        )
-        self.camera_options.get_param(
-            DummyParams.NOISE_BASELINE
-        ).sigValueChanged.connect(
-            lambda _, new_value: self.update_cam(DummyParams.NOISE_BASELINE, new_value)
-        )
-        self.camera_options.get_param(DummyParams.FLUX).sigValueChanged.connect(
-            lambda _, new_value: self.update_cam(DummyParams.FLUX, new_value)
-        )
-        self.camera_options.get_param(DummyParams.PATTERN_TYPE).sigValueChanged.connect(
-            lambda _, new_value: self.update_cam(DummyParams.PATTERN_TYPE, new_value)
-        )
-        self.camera_options.get_param(
-            DummyParams.PATTERN_OFFSET
-        ).sigValueChanged.connect(
-            lambda _, new_value: self.update_cam(DummyParams.PATTERN_OFFSET, new_value)
-        )
-        self.camera_options.get_param(
-            DummyParams.SINUSOIDAL_AMPLITUDE
-        ).sigValueChanged.connect(
-            lambda _, new_value: self.update_cam(
-                DummyParams.SINUSOIDAL_AMPLITUDE, new_value
-            )
-        )
-        self.camera_options.get_param(
-            DummyParams.SINUSOIDAL_FREQUENCY
-        ).sigValueChanged.connect(
-            lambda _, new_value: self.update_cam(
-                DummyParams.SINUSOIDAL_FREQUENCY, new_value
-            )
-        )
-        self.camera_options.get_param(
-            DummyParams.SINUSOIDAL_PHASE
-        ).sigValueChanged.connect(
-            lambda _, new_value: self.update_cam(
-                DummyParams.SINUSOIDAL_PHASE, new_value
-            )
-        )
-        self.camera_options.get_param(
-            DummyParams.SINUSOIDAL_DIRECTION
-        ).sigValueChanged.connect(
-            lambda _, new_value: self.update_cam(
-                DummyParams.SINUSOIDAL_DIRECTION, new_value
-            )
-        )
-
-        self.camera_options.get_param(DummyParams.SM_INTENSITY).sigValueChanged.connect(
-            lambda _, new_value: self.update_cam(DummyParams.SM_INTENSITY, new_value)
-        )
-        self.camera_options.get_param(DummyParams.SM_DENSITY).sigValueChanged.connect(
-            lambda _, new_value: self.update_cam(DummyParams.SM_DENSITY, new_value)
-        )
-        self.camera_options.get_param(
-            DummyParams.SM_PIXEL_SIZE
-        ).sigValueChanged.connect(
-            lambda _, new_value: self.update_cam(DummyParams.SM_PIXEL_SIZE, new_value)
-        )
-        self.camera_options.get_param(
-            DummyParams.SM_WAVELENGTH
-        ).sigValueChanged.connect(
-            lambda _, new_value: self.update_cam(DummyParams.SM_WAVELENGTH, new_value)
-        )
-        self.camera_options.get_param(DummyParams.SM_NA).sigValueChanged.connect(
-            lambda _, new_value: self.update_cam(DummyParams.SM_NA, new_value)
-        )
+        self.camera_options.paramsChanged.connect(self.update_cam)
 
         # start freerun mode button
         freerun = self.get_event_action(DummyParams.FREERUN)
@@ -454,7 +404,15 @@ class Dummy_Panel(Camera_Panel):
         '''
         self._cam = cam
 
-    def update_cam(self, param_name, param_value):
+    def update_cam(self, param, param_value):
+        '''Update the camera parameters.'''
+        path = self.camera_options.param_tree.childPath(param)
+
+        try:
+            param_name = DummyParams('.'.join(path))
+        except ValueError:
+            return
+
         if param_name == DummyParams.HEIGHT:
             self._cam.height = param_value
         elif param_name == DummyParams.WIDTH:
@@ -483,6 +441,7 @@ class Dummy_Panel(Camera_Panel):
             self._cam.pattern_type = param_value
         elif param_name == DummyParams.PATTERN_OFFSET:
             self._cam.pattern_offset = param_value
+
         elif param_name == DummyParams.SINUSOIDAL_AMPLITUDE:
             self._cam.sinusoidal_amplitude = param_value
         elif param_name == DummyParams.SINUSOIDAL_FREQUENCY:
@@ -491,6 +450,7 @@ class Dummy_Panel(Camera_Panel):
             self._cam.sinusoidal_phase = param_value
         elif param_name == DummyParams.SINUSOIDAL_DIRECTION:
             self._cam.sinusoidal_direction = param_value
+
         elif param_name == DummyParams.SM_INTENSITY:
             self._cam.sm_intensity = param_value
         elif param_name == DummyParams.SM_DENSITY:
@@ -501,6 +461,23 @@ class Dummy_Panel(Camera_Panel):
             self._cam.sm_wavelength = param_value
         elif param_name == DummyParams.SM_NA:
             self._cam.sm_na = param_value
+
+        elif param_name == DummyParams.DRIFT_SPEED:
+            self._cam.drift_speed = param_value
+        elif param_name == DummyParams.DRIFT_PERIOD:
+            self._cam.drift_period = param_value
+        elif param_name == DummyParams.DRIFT_MOMENTUM:
+            self._cam.drift_momentum = param_value
+        elif param_name == DummyParams.DRIFT_RANDOM_WALK:
+            self._cam.drift_random_walk_factor = param_value
+        elif param_name == DummyParams.DRIFT_VIBRATION:
+            self._cam.drift_vibration_amplitude = param_value
+        elif param_name == DummyParams.DRIFT_SIGMA_X:
+            self._cam.drift_sigma_x = param_value
+        elif param_name == DummyParams.DRIFT_SIGMA_Y:
+            self._cam.drift_sigma_y = param_value
+        elif param_name == DummyParams.DRIFT_AMPLITUDE:
+            self._cam.drift_amplitude = param_value
 
     def set_ROI(self):
         '''Sets the ROI for the slected miDummy'''

@@ -1,24 +1,28 @@
 {
-  "LaserRelay": [
-    "COM6",
-    115200
-  ],
-  "Elliptec": [
-    "COM9",
-    9600
-  ],
-  "PiezoStage": [
-    "COM5",
-    115200
-  ],
-  "KinesisX": [
-    "COM12",
-    115200
-  ],
-  "KinesisY": [
-    "COM11",
-    115200
-  ],
+  "LaserRelay": {
+    "port": "COM6",
+    "baudrate": 115200,
+    "alex": false
+  },
+  "Elliptec": {
+    "port": "COM1",
+    "baudrate": 9600
+  },
+  "Stage Z": {
+    "port": "COM5",
+    "baudrate": 115200,
+    "max_um": 100
+  },
+  "Stage XY": {
+    "X": {
+      "port": "COM12",
+      "baudrate": 115200
+    },
+    "Y": {
+      "port": "COM11",
+      "baudrate": 115200
+    }
+  },
   "FocusStabilizer": {
     "ROI_x": 25.5,
     "ROI_y": 25.5,
@@ -36,88 +40,116 @@
     "UseCal": false,
     "Inverted": false
   },
-  "miEye_module": [
-    [
-      680,
-      251
-    ],
-    [
-      1200,
-      920
-    ],
-    false
-  ],
-  "LaserPanels": [],
-  "LasersDock": [
-    false,
-    [
-      -110,
-      -699
-    ],
-    [
-      290,
-      450
-    ],
-    true
-  ],
-  "devicesDock": [
-    false,
-    [
-      56,
-      -377
-    ],
-    [
-      124,
-      128
-    ],
-    true
-  ],
-  "stagesDock": [
-    false,
-    [
-      680,
-      279
-    ],
-    [
-      1200,
-      400
-    ],
-    true
-  ],
-  "focus": [
-    false,
-    [
-      680,
-      731
-    ],
-    [
-      1200,
-      420
-    ],
-    true
-  ],
-  "camDock": [
-    false,
-    [
-      -110,
-      -699
-    ],
-    [
-      290,
-      450
-    ],
-    true
-  ],
-  "pyDock": [
-    false,
-    [
-      -39,
-      -408
-    ],
-    [
-      219,
-      159
-    ],
-    true
-  ]
+  "Pycromanager": {
+    "core_instances": [],
+    "headless_instances": {}
+  },
+  "Lasers": [],
+  "miEye_module": {
+    "position": {
+      "x": 680,
+      "y": 251
+    },
+    "size": {
+      "width": 1200,
+      "height": 920
+    },
+    "is_maximized": false
+  },
+  "controller_dock": {
+    "is_floating": false,
+    "position": {
+      "x": -418,
+      "y": -1121
+    },
+    "size": {
+      "width": 598,
+      "height": 872
+    },
+    "is_visible": true
+  },
+  "devices_dock": {
+    "is_floating": false,
+    "position": {
+      "x": 56,
+      "y": -375
+    },
+    "size": {
+      "width": 124,
+      "height": 126
+    },
+    "is_visible": true
+  },
+  "stages_dock": {
+    "is_floating": false,
+    "position": {
+      "x": 680,
+      "y": 307
+    },
+    "size": {
+      "width": 392,
+      "height": 843
+    },
+    "is_visible": true
+  },
+  "pyscript_dock": {
+    "is_floating": false,
+    "position": {
+      "x": -418,
+      "y": -1121
+    },
+    "size": {
+      "width": 598,
+      "height": 872
+    },
+    "is_visible": true
+  },
+  "protocols_dock": {
+    "is_floating": false,
+    "position": {
+      "x": -12,
+      "y": -377
+    },
+    "size": {
+      "width": 192,
+      "height": 128
+    },
+    "is_visible": true
+  },
+  "lasers_dock": {
+    "is_floating": false,
+    "position": {
+      "x": -33,
+      "y": -375
+    },
+    "size": {
+      "width": 213,
+      "height": 126
+    },
+    "is_visible": true
+  },
+  "cameras_dock": {
+    "is_floating": false,
+    "position": {
+      "x": -91,
+      "y": -407
+    },
+    "size": {
+      "width": 271,
+      "height": 158
+    },
+    "is_visible": true
+  },
+  "focus_dock": {
+    "is_floating": false,
+    "position": {
+      "x": 1076,
+      "y": 307
+    },
+    "size": {
+      "width": 804,
+      "height": 843
+    },
+    "is_visible": true
+  }
 }

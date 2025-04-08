@@ -150,7 +150,7 @@ class MetadataEditor(QtWidgets.QWidget):
         layout : QFormLayout
             Layout for the Experiment tab.
         '''
-        self.experiment = create_line_edit('Experiment name:', 'Experiment_001', layout)
+        self.experiment = create_line_edit('Experiment name:', '001_Experiment', layout)
         self.exp_desc = create_text_edit('Experiment description:', '', layout)
         self.exp_email = create_line_edit('Experimenter e-mail:', '', layout)
         self.exp_fName = create_line_edit('Experimenter First name:', '', layout)

@@ -10,7 +10,7 @@ from microEye.analysis.filters import (
     AbstractFilter,
     BandpassFilter,
     DoG_Filter,
-    PassFilter
+    PassFilter,
 )
 from microEye.analysis.fitting.fit import AbstractDetector, CV_BlobDetector
 from microEye.analysis.fitting.results import FittingMethod
@@ -92,7 +92,7 @@ class FittingOptions(Tree):
 
         if shape is None or len(shape) < 5:
             raise ValueError('Shape must be a 5-tuple')
-        
+
         self._shape = shape
 
         self._filters = {key: None for key in self.FILTERS}

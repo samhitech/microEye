@@ -15,7 +15,9 @@ This toolkit is compatible with the [hardware](#hardware) used in our microscope
 ![Package Version](https://img.shields.io/badge/MacOS-Errors-red)
 ![Package Version](https://img.shields.io/badge/Linux-NotTested-lightgray)
 ![Downloads](https://img.shields.io/pypi/dm/microEye.svg)
-![Dependencies](https://img.shields.io/librariesio/release/pypi/microEye)
+
+<!-- ![Dependencies](https://img.shields.io/librariesio/release/pypi/microEye) -->
+
 ![Contributors](https://img.shields.io/github/contributors/samhitech/microEye.svg)
 ![GitHub Last Commit](https://img.shields.io/github/last-commit/samhitech/microEye.svg)
 ![Maintenance](https://img.shields.io/maintenance/yes/2024.svg)
@@ -29,10 +31,10 @@ This toolkit is compatible with the [hardware](#hardware) used in our microscope
 ![GitHub Stars](https://img.shields.io/github/stars/samhitech/microEye.svg)
 
 ```bash
-   __  ____              ____                ___    ____  ___
-  /  |/  (_)__________  / __/_ _____   _  __|_  |  |_  / <  /
- / /|_/ / / __/ __/ _ \/ _// // / -_) | |/ / __/_ _/_ <_ / /
-/_/  /_/_/\__/_/  \___/___/\_, /\__/  |___/____(_)____(_)_/
+   __  ____              ____                ___    ____   ___
+  /  |/  (_)__________  / __/_ _____   _  __|_  |  |_  /  |_  |
+ / /|_/ / / __/ __/ _ \/ _// // / -_) | |/ / __/_ _/_ <_ / __/
+/_/  /_/_/\__/_/  \___/___/\_, /\__/  |___/____(_)____(_)____/
                           /___/
 ```
 
@@ -63,40 +65,41 @@ This toolkit is compatible with the [hardware](#hardware) used in our microscope
 
 1. **Install Python:**
 
-   Download and install the latest [Python](https://www.python.org/downloads/)  ≥3.9 stable release.
+   Download and install the latest [Python](https://www.python.org/downloads/) ≥3.9 stable release.
 
 2. **Install microEye package:**
 
    Open a terminal and execute the following command to install microEye using pip:
 
-    ```powershell
-    pip install microEye --upgrade
-    ```
+   ```powershell
+   pip install microEye --upgrade
+   ```
 
    Or for a specific version:
 
-    ```powershell
-    pip install microEye==version
-    ```
+   ```powershell
+   pip install microEye==version
+   ```
 
 3. **Install required packages: (Optional)**
 
    Download the [requirements.txt](https://github.com/samhitech/microEye/blob/main/requirements.txt) file. Navigate to the directory containing the requirements file in your terminal and run:
 
-    ```powershell
-    pip install -r requirements.txt
-    ```
+   ```powershell
+   pip install -r requirements.txt
+   ```
 
    Note: This step is optional as dependecies are installed with the package.
 
 4. **Install specific hardware drivers: (Optional)**
+
    - For Integrated Optics: Download and install [Laser control software](https://integratedoptics.com/downloads).
    - For IDS uEye CMOS cameras: Install [IDS Software Suite 4.96.1](https://en.ids-imaging.com/download-details/AB00604.html?os=windows&version=win10&bus=64&floatcalc=) for Windows 32/64-bit.
    - For Allied Vision CMOS cameras: Install [Vimba SDK](https://www.alliedvision.com/en/products/vimba-sdk) 5.0 or 6.0 outside the Program Files. Navigate to the directory containing setup.py and run:
 
-        ```powershell
-        python -m pip install .
-        ```
+     ```powershell
+     python -m pip install .
+     ```
 
    - For Thorlabs CMOS cameras: Install [Thorcam](https://www.thorlabs.com/software_pages/ViewSoftwarePage.cfm?Code=ThorCam) in its default directory. Note: Some Thorlabs cameras may be identified as IDS uEye cameras by Windows and may run without Thorcam.
 
@@ -152,9 +155,9 @@ Sounds good, here's the updated section with the simplified commands:
 
 ### The miEye Module
 
-The `miEye_module` provides the primary graphical user interface (GUI) for microscope control and data acquisition, combining the functionalities of the deprecated *Acquisition* and *Control* modules.
+The `miEye_module` provides the primary graphical user interface (GUI) for microscope control and data acquisition, combining the functionalities of the deprecated _Acquisition_ and _Control_ modules.
 
-| miEye module (NOT UP TO DATE)                                                                                         | Acquisition Camera                                                                                      |
+| miEye module (NOT UP TO DATE)                                                                        | Acquisition Camera                                                                                      |
 | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | ![miEye](https://github.com/samhitech/microEye/assets/89871015/20c5573a-e489-478e-adfc-29410bc6d4c2) | ![CamStack](https://github.com/samhitech/microEye/assets/89871015/ead95989-54ce-4643-b5a3-4461c36f6b14) |
 
@@ -240,7 +243,7 @@ Schematic overview of the miEye instrument:
 | --------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | ![Quad Scheme](https://user-images.githubusercontent.com/89871015/182302644-9fdf8615-75c3-4702-9913-d1a535f60e22.png) | ![Scheme GIT](https://user-images.githubusercontent.com/89871015/182302694-3f70d058-b1b6-4ef5-9cc2-aec9b58a05f0.png) |
 
-**Key Components:** *AC:* Achromat lens, *AS:* Aspheric lens, *BFP:* Back-focal plane, *TL:* Tube lens, *B:* B-coated N-BK7 optics, *BS:* Beamsplitter.
+**Key Components:** _AC:_ Achromat lens, _AS:_ Aspheric lens, _BFP:_ Back-focal plane, _TL:_ Tube lens, _B:_ B-coated N-BK7 optics, _BS:_ Beamsplitter.
 
 ## Hardware
 
@@ -254,17 +257,17 @@ Schematic overview of the miEye instrument:
 
 ### Additional Hardware
 
-| Hardware                     | Description                                                                                                                                                           | Link                                                                                                                               |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| Integrated Optics MatchBox   | Multi-wavelength Laser Combiner, Single Laser MatchBox                                                                                                                | [Link](https://integratedoptics.com/products/wavelength-combiners)                                                                 |
-| Piezo Concept FOC            | Nanopositioner for microscope objectives                                                                                                                              | [Link](https://piezoconcept-store.squarespace.com/1-axis/p/foc)                                                                    |
-| Thorlabs Elliptec ELL6/ELL9/ELL12  | Dual/Four/Six-Position Slider | [ELL6](https://www.thorlabs.com/thorproduct.cfm?partnumber=ELL6), [ELL9](https://www.thorlabs.com/thorproduct.cfm?partnumber=ELL9), [ELL12](https://www.thorlabs.com/thorproduct.cfm?partnumber=ELL12) |
-| Thorlabs Elliptec ELL14  | Rotation Mount: SM1 Threaded | [ELL14](https://www.thorlabs.com/thorproduct.cfm?partnumber=ELL14) |
-| Thorlabs Elliptec ELL20  | Linear Stage: 60 mm Travel    | [ELL20](https://www.thorlabs.com/thorproduct.cfm?partnumber=ELL20) |
-| Thorlabs KDC101              | Kinesis Controller for Z825B/[Z925B](https://www.thorlabs.com/thorproduct.cfm?partnumber=Z925B) actuators (Activate USB VCP to access the COM port in device manager) | [Link](https://www.thorlabs.com/thorproduct.cfm?partnumber=KDC101)                                                                 |
-| Parallax TSL1401-DB (#28317) | Linescan Camera Module                                                                                                                                                | [Link](https://eu.mouser.com/ProductDetail/Parallax/28317?qs=%2Fha2pyFaduiCRhuOAXMuCmQIeG1Q3R01m6Y1EH%252BmN80%3D)                 |
-| RelayBox Arduino             | For laser control using camera GPIO signals                                                                                                                           | [RelayBox](https://github.com/samhitech/RelayBox)                                                                                  |
-| miEye OSF Project Parts List | Parts list of miEye OSF Project                                                                                                                                       | [Link](https://osf.io/j2fqy/)                                                                                                      |
+| Hardware                          | Description                                                                                                                                                           | Link                                                                                                                                                                                                   |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Integrated Optics MatchBox        | Multi-wavelength Laser Combiner, Single Laser MatchBox                                                                                                                | [Link](https://integratedoptics.com/products/wavelength-combiners)                                                                                                                                     |
+| Piezo Concept FOC                 | Nanopositioner for microscope objectives                                                                                                                              | [Link](https://piezoconcept-store.squarespace.com/1-axis/p/foc)                                                                                                                                        |
+| Thorlabs Elliptec ELL6/ELL9/ELL12 | Dual/Four/Six-Position Slider                                                                                                                                         | [ELL6](https://www.thorlabs.com/thorproduct.cfm?partnumber=ELL6), [ELL9](https://www.thorlabs.com/thorproduct.cfm?partnumber=ELL9), [ELL12](https://www.thorlabs.com/thorproduct.cfm?partnumber=ELL12) |
+| Thorlabs Elliptec ELL14           | Rotation Mount: SM1 Threaded                                                                                                                                          | [ELL14](https://www.thorlabs.com/thorproduct.cfm?partnumber=ELL14)                                                                                                                                     |
+| Thorlabs Elliptec ELL20           | Linear Stage: 60 mm Travel                                                                                                                                            | [ELL20](https://www.thorlabs.com/thorproduct.cfm?partnumber=ELL20)                                                                                                                                     |
+| Thorlabs KDC101                   | Kinesis Controller for Z825B/[Z925B](https://www.thorlabs.com/thorproduct.cfm?partnumber=Z925B) actuators (Activate USB VCP to access the COM port in device manager) | [Link](https://www.thorlabs.com/thorproduct.cfm?partnumber=KDC101)                                                                                                                                     |
+| Parallax TSL1401-DB (#28317)      | Linescan Camera Module                                                                                                                                                | [Link](https://eu.mouser.com/ProductDetail/Parallax/28317?qs=%2Fha2pyFaduiCRhuOAXMuCmQIeG1Q3R01m6Y1EH%252BmN80%3D)                                                                                     |
+| RelayBox Arduino                  | For laser control using camera GPIO signals                                                                                                                           | [RelayBox](https://github.com/samhitech/RelayBox)                                                                                                                                                      |
+| miEye OSF Project Parts List      | Parts list of miEye OSF Project                                                                                                                                       | [Link](https://osf.io/j2fqy/)                                                                                                                                                                          |
 
 ### Pycro-Manager Hardware
 
@@ -302,18 +305,22 @@ Special thanks to the following projects and libraries that make this work possi
 - **SMAP/fit3Dcspline**: The original code, provided as a part of the Ries group [SMAP software](https://github.com/jries/SMAP/tree/master/fit3Dcspline). The `pyfit3Dcspline` module in our project is a Python adaptation of this functionality, offering both CPU and GPU accelerated fitting of Single-Molecule Localization Microscopy (SMLM) data. For more details, refer to the pyfit3Dcspline [README](https://github.com/samhitech/microEye/tree/main/src/microEye/analysis/fitting/pyfit3Dcspline/README.md).
 
 - **ACCéNT**: a partial implementation of the photon free calibration within the acquisition pipeline which generates pixel-wise mean and variance images.
+
   > Robin Diekmann, Joran Deschamps, Yiming Li, Aline Tschanz, Maurice Kahnwald, Ulf Matti, Jonas Ries, "Photon-free (s)CMOS camera characterization for artifact reduction in high- and super-resolution microscopy", bioRxiv 2021.04.16.440125. [doi: 2021.04.16.440125](https://doi.org/10.1101/2021.04.16.440125)
 
 - **Phasor Fit**: We have implemented the 2D phasor fitting algorithm in Python for fast pre-fitting visualization of localizations.
+
   > K.J.A. Martens, A.N. Bader, S. Baas, B. Rieger, J. Hohlbein. "Phasor based single-molecule localization microscopy in 3D (pSMLM-3D): an algorithm for MHz localization rates using standard CPUs," bioRxiv, 2017. [DOI: 10.1101/191957](https://doi.org/10.1101/191957).
 
 - **Endesfelder Lab/SMLMComputational**: A numba accelerated adaptation of Drift Correction, Fourier Ring Correlation (FRC) structural resolution and Nearest Neighbour Analysis (NeNA) for localization precision from [Endesfelder Lab](https://github.com/Endesfelder-Lab/SMLMComputational).
+
   > Raw data to results: a hands-on introduction and overview of computational analysis for single-molecule localization microscopy", Martens et al., (2022), Frontiers in Bioinformatics. [Paper](https://www.frontiersin.org/articles/10.3389/fbinf.2021.817254)
 
 - **TARDIS (Temporal Analysis of Relative Distances)**: We have developed a partial Python implementation of TARDIS without fitting for now. For more information, refer to the [TARDIS software releases](https://github.com/kjamartens/TARDIS-public). The underlying algorithms and scientific details of TARDIS are detailed in the manuscript:
   > Martens et al., “Temporal analysis of relative distances (TARDIS) is a robust, parameter-free alternative to single-particle tracking”, Nature Methods (2024). [Link](https://rdcu.be/dv1sr)
 
 **Note**: I'm committed to maintaining an accurate acknowledgment list for our project. However, if I inadvertently miss acknowledging your work, please don't hesitate to reach out to us. I appreciate your understanding, and I'm doing my best to manage all acknowledgments amidst my other responsibilities.
+
 > I make it a standard practice to cite and provide credit within a function's docstring whenever I draw inspiration from any external reference.
 
 ## Citation
@@ -323,6 +330,7 @@ If you find our work or software helpful in your research or project, we kindly 
 > M.N. Alsamsam, A. Kopūstas, M. Jurevičiūtė, and M. Tutkus, “The miEye: Bench-top super-resolution microscope with cost-effective equipment,” HardwareX 12, e00368 (2022). [Paper](https://doi.org/10.1016/j.ohx.2022.e00368)
 
 Additionally, we would appreciate it if you could provide a link to our GitHub repository or any relevant publication associated with the software.
+
 > Alsamsam, M. N. microEye, <https://github.com/samhitech/microEye> [Computer software]
 
 Thank you for your support!

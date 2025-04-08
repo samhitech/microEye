@@ -29,9 +29,8 @@ class AcquisitionManager(QtCore.QObject):
     acquisitionStarted = Signal()
     acquisitionFinished = Signal(object)
 
-    def __init__(self, device_manager: DeviceManager):
+    def __init__(self):
         super().__init__()
-        self.device_manager = device_manager
 
         self.acquisitionWidget = ScanAcquisitionWidget()
         WeakObjects.addObject(self.acquisitionWidget)
@@ -51,7 +50,7 @@ class AcquisitionManager(QtCore.QObject):
         self.acquisitionWidget.stopAcquisitionZ.connect(self.stop_scan_acquisition)
         self.acquisitionWidget.openLastTileXY.connect(self.show_last_tile)
         self.acquisitionWidget.directoryChanged.connect(self.update_directories)
-        self.acquisitionWidget.moveZ.connect(self.device_manager.moveStage)
+        self.acquisitionWidget.moveZ.connect(DeviceManager.instance().moveStage)
 
     def result_scan_acquisition(self, data):
         self._scanning = False
@@ -63,11 +62,8 @@ class AcquisitionManager(QtCore.QObject):
             self.lastTile.show()
 
     def _connect_tile_position_signal(self, tile: TiledImageSelector):
-        kinesisView: KinesisView = DeviceManager.WIDGETS[DeviceManager.DEVICES.XY_STAGE]
         tile.positionSelected.connect(
-            lambda x, y: kinesisView.runAsync(
-                self.device_manager.kinesisXY.move_absolute, x, y
-            )
+            lambda x, y: DeviceManager.instance().stage_xy.move_absolute(x, y)
         )
 
     def result_z_calibration(self, data):
@@ -117,7 +113,6 @@ class AcquisitionManager(QtCore.QObject):
 
             self.scan_worker = QThreadWorker(
                 scanAcquisition,
-                self.device_manager,
                 [params[0], params[1]],
                 [params[2], params[3]],
                 params[4],
@@ -136,7 +131,6 @@ class AcquisitionManager(QtCore.QObject):
 
             self.scan_worker = QThreadWorker(
                 z_stack_acquisition,
-                self.device_manager,
                 self,
                 params[0],
                 params[1],
@@ -157,7 +151,6 @@ class AcquisitionManager(QtCore.QObject):
 
             self.scan_worker = QThreadWorker(
                 z_calibration,
-                self.device_manager,
                 self,
                 params[0],
                 params[1],
@@ -188,15 +181,11 @@ class AcquisitionManager(QtCore.QObject):
             self.lastTile.show()
 
 
-def scanAcquisition(
-    device_manager: DeviceManager, steps, step_size, delay, average=1, **kwargs
-):
+def scanAcquisition(steps, step_size, delay, average=1, **kwargs):
     '''Scan Acquisition (works with Allied Vision Cams only)
 
     Parameters
     ----------
-    miEye : miEye_module
-        the miEye module
     steps : (int, int)
         number of grid steps (x ,y)
     step_size : (float, float)
@@ -205,6 +194,10 @@ def scanAcquisition(
         delay in ms after moving before acquiring images
     average : int
         number of frames to average, default 1 (no averaging)
+    **kwargs : dict
+        additional arguments
+        - event : `threading.Event`
+            event to stop the acquisition
 
     Returns
     -------
@@ -216,19 +209,23 @@ def scanAcquisition(
         if event and event.is_set():
             return
 
+        device_manager = DeviceManager.instance()
+
         data = []
         vimba_cams = [cam for cam in CameraList.CAMERAS['Vimba'] if not cam['IR']]
-        if device_manager.kinesisXY.isOpen() and len(vimba_cams) > 0:
+        if device_manager.stage_xy.isOpen() and len(vimba_cams) > 0:
             cam: vimba_cam = vimba_cams[0]['Camera']
             for x in range(steps[0]):
-                device_manager.kinesisXY.move_relative(round(step_size[0] / 1000, 4), 0)
+                device_manager.stage_xy.move_relative(
+                    round(step_size[0] / 1000, 4), 0, False
+                )
                 for y in range(steps[1]):
                     if event and event.is_set():
                         return
 
                     if y > 0:
-                        device_manager.kinesisXY.move_relative(
-                            0, ((-1) ** x) * round(step_size[1] / 1000, 4)
+                        device_manager.stage_xy.move_relative(
+                            0, ((-1) ** x) * round(step_size[1] / 1000, 4), False
                         )
                     frame = None
                     with cam.cam:
@@ -256,12 +253,12 @@ def scanAcquisition(
                     )
                     Y = (x % 2) * (steps[1] - 1) + ((-1) ** x) * y
                     data.append(
-                        TileImage(frame, [Y, x], device_manager.kinesisXY.position)
+                        TileImage(frame, [Y, x], device_manager.stage_xy.position)
                     )
                     cv2.imshow(cam.name, frame._view)
                     cv2.waitKey(1)
 
-            device_manager.kinesisXY.update()
+            # device_manager.stage_xy.update()
         else:
             return
     except Exception:
@@ -276,7 +273,6 @@ def scanAcquisition(
 
 
 def z_stack_acquisition(
-    device_manager: DeviceManager,
     acquisition_manager: AcquisitionManager,
     n,
     step_size,
@@ -289,8 +285,8 @@ def z_stack_acquisition(
 
     Parameters
     ----------
-    miEye : miEye_module
-        the miEye module
+    acq_manager : AcquisitionManager
+        acquisition manager instance
     n : int
         number of z-stacks
     step_size : int
@@ -299,11 +295,19 @@ def z_stack_acquisition(
         delay in ms after moving before acquiring images
     nFrames : int
         number of frames for each stack
+    reverse : bool
+        reverse the direction of the movement
+    **kwargs : dict
+        additional arguments
+        - event : `threading.Event`
+            event to stop the acquisition
     '''
     try:
         event: threading.Event = kwargs.get('event')
         if event and event.is_set():
             return
+
+        device_manager = DeviceManager.instance()
 
         data = []
         peak = None
@@ -368,7 +372,6 @@ def z_stack_acquisition(
 
 
 def z_calibration(
-    device_manager: DeviceManager,
     acquisition_manager: AcquisitionManager,
     n,
     step_size,
@@ -381,8 +384,8 @@ def z_calibration(
 
     Parameters
     ----------
-    miEye : miEye_module
-        the miEye module
+    acq_manager : AcquisitionManager
+        acquisition manager instance
     n : int
         number of z-stacks
     step_size : int
@@ -391,12 +394,20 @@ def z_calibration(
         delay in ms per measurement
     nFrames : int
         number of frames used for each measurement
+    reverse : bool
+        reverse the direction of the movement
+    **kwargs : dict
+        additional arguments
+        - event : `threading.Event`
+            event to stop the acquisition
     '''
     positions = np.zeros((n, 2))
     try:
         event: threading.Event = kwargs.get('event')
         if event and event.is_set():
             return
+
+        device_manager = DeviceManager.instance()
 
         data = []
         if device_manager.stage.isOpen():

@@ -54,7 +54,7 @@ class PropertyType(Enum):
 
     @classmethod
     def from_java(cls, prop_jv):
-        value = prop_jv.swig_value()
+        value = prop_jv.swig_value() if hasattr(prop_jv, 'swig_value') else int(prop_jv)
         members = cls.to_dict()
         if value in members:
             return members[value]
@@ -92,3 +92,16 @@ class DeviceInitializationState(Enum):
     Uninitialized = 0
     InitializedSuccessfully = 1
     InitializationFailed = 2
+
+
+# MetadataProfiles
+class MetadataProfile(Enum):
+    Essential = 0
+    CameraLabel = 1
+    BitDepth = 2
+    ROIAndBinning = 3
+    Timing = 4
+    CameraSpecificTags = 5
+    PixelSize = 6
+    LegacyAcqEngMetadata = 7
+    SystemStateCache = 8
