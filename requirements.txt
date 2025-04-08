@@ -3,7 +3,7 @@ dask==2024.5.2
 h5py==3.11.0
 hidapi==0.14.0
 matplotlib==3.9.2
-mmpycore==0.3.16
+mmpycorex==0.3.16
 numba==0.60.0
 numpy==1.26.4
 ome_types==0.5.2
