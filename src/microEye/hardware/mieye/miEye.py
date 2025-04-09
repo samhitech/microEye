@@ -309,10 +309,10 @@ class miEye_module(QMainWindow):
         auto_load_config.triggered.connect(lambda: loadConfig(self, True))
         disconnect_devices = QAction('Disconnect Devices', self)
         disconnect_devices.triggered.connect(
-            lambda: self.device_manager.shutdown(self, False)
+            lambda: self.device_manager.shutdown(False)
         )
         shutdown_and_exit = QAction('Exit & Disconnect Devices', self)
-        shutdown_and_exit.triggered.connect(lambda: self.device_manager.shutdown(self))
+        shutdown_and_exit.triggered.connect(lambda: self.device_manager.shutdown())
 
         github = QAction('microEye Github', self)
         github.triggered.connect(

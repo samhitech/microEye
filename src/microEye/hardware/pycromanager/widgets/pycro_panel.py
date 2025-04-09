@@ -80,6 +80,9 @@ class PycroPanel(Camera_Panel):
         self.camera_options.set_param_value(CamParams.FRAMES, 10000)
 
         for property in self._cam.property_tree():
+            if '.' in property['name']:
+                continue
+
             self.camera_options.add_param_child(
                 CamParams.ACQ_SETTINGS,
                 property,
@@ -149,6 +152,9 @@ class PycroPanel(Camera_Panel):
 
     def update_params(self):
         for property in self._cam.get_prop_names():
+            if '.' in property:
+                continue
+
             param = self.camera_options.get_param(
                 '.'.join([CamParams.ACQ_SETTINGS.value, property])
             )

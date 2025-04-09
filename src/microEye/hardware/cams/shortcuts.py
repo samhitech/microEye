@@ -1,5 +1,9 @@
+from typing import Union
+
+from microEye.hardware.cams.camera_options import CamParams
 from microEye.hardware.cams.micam import miCamera
 from microEye.qt import QDateTime, Qt, QtCore, QtGui, QtWidgets, Signal, Slot
+from microEye.utils.gui_helper import debounceSlot
 
 DEFAULT_EXPOSURE_SHORTCUTS = [
     1,
@@ -17,7 +21,6 @@ DEFAULT_EXPOSURE_SHORTCUTS = [
     200,
     300,
     500,
-    1000,
 ]
 
 
@@ -30,15 +33,20 @@ class DiscreteSlider(QtWidgets.QSlider):
         super().__init__(Qt.Orientation.Horizontal, parent)
         self._values = values
 
+        self.__font_size = 9
+
         # The slider's range is 0..(len(values)-1).
         self.setMinimum(0)
         self.setMaximum(len(values) - 1)
 
         # Dynamically calculate the minimum width
         # based on the largest value and number of values
-        fm = QtGui.QFontMetrics(self.font())
+        font = self.font()
+        font.setPointSize(self.__font_size)
+        fm = QtGui.QFontMetrics(font)
+
         max_label_width = max(fm.horizontalAdvance(str(val)) for val in self._values)
-        spacing = 10  # Add some spacing between ticks
+        spacing = 5  # Add some spacing between ticks
         self.setMinimumWidth(len(self._values) * (max_label_width + spacing))
 
         self.setMinimumHeight(60)
@@ -72,6 +80,10 @@ class DiscreteSlider(QtWidgets.QSlider):
         # Create a QPainter for custom drawing.
         painter = QtGui.QPainter(self)
         painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        # change painter font size to smaller than the default
+        font = painter.font()
+        font.setPointSize(self.__font_size)
+        painter.setFont(font)
 
         # Prepare a style option so we can get accurate geometry.
         option = QtWidgets.QStyleOptionSlider()
@@ -137,6 +149,8 @@ class CameraShortcutsWidget(QtWidgets.QWidget):
     exposureChanged = Signal(float)
     autostretchChanged = Signal()
     previewChanged = Signal()
+    displayStatsChanged = Signal()
+    displayModeChanged = Signal(str)
     saveDataChanged = Signal()
     zoomChanged = Signal(float)
     acquisitionStart = Signal()
@@ -190,9 +204,14 @@ class CameraShortcutsWidget(QtWidgets.QWidget):
         self.exposure_slider = DiscreteSlider(
             [self.min_exposure, *self._exposure_shortcuts]
         )
-        self.exposure_slider.valueChanged.connect(
-            lambda: self.exposureChanged.emit(self.exposure_slider.valueFromIndex())
+
+        self._debounce_timer = debounceSlot(
+            self,
+            self.exposure_slider.valueChanged,
+            lambda: self.exposureChanged.emit(self.exposure_slider.valueFromIndex()),
+            200,
         )
+
         self.exposure_slider.setIndexFromValue(50.0)
 
         self.__layout.addRow('Exposure [ms]: ', self.exposure_slider)
@@ -221,6 +240,15 @@ class CameraShortcutsWidget(QtWidgets.QWidget):
 
         experiment_name_btns.addWidget(self.increment_index_button)
 
+        # unique index
+        self.unique_index_button = QtWidgets.QPushButton('Unique Index')
+        self.unique_index_button.setToolTip('Set a unique index')
+        self.unique_index_button.clicked.connect(
+            lambda: self.adjustName.emit('unique_index')
+        )
+
+        experiment_name_btns.addWidget(self.unique_index_button)
+
         # Add exposure to name
         self.add_exposure_button = QtWidgets.QPushButton('+ Exposure')
         self.add_exposure_button.setToolTip('Add the current exposure to the name')
@@ -231,25 +259,29 @@ class CameraShortcutsWidget(QtWidgets.QWidget):
         experiment_name_btns.addWidget(self.add_exposure_button)
 
         # buttons
-        button_layout = QtWidgets.QHBoxLayout()
-        self.__layout.addRow(button_layout)
+        acq_layout = QtWidgets.QHBoxLayout()
+        self.__layout.addRow('Acquisition Options:', acq_layout)
 
         # Start/Stop acquisition
         self.acquisition_button = QtWidgets.QPushButton('Start Acquisition')
         self.acquisition_button.clicked.connect(self.acquisitionStart.emit)
 
-        button_layout.addWidget(self.acquisition_button)
+        acq_layout.addWidget(self.acquisition_button)
 
         self.stop_button = QtWidgets.QPushButton('Stop Acquisition')
         self.stop_button.clicked.connect(self.acquisitionStop.emit)
 
-        button_layout.addWidget(self.stop_button)
+        acq_layout.addWidget(self.stop_button)
 
         # Toggle save data
         self.save_data_button = QtWidgets.QCheckBox('Save Data')
         self.save_data_button.clicked.connect(self.saveDataChanged.emit)
 
-        button_layout.addWidget(self.save_data_button)
+        acq_layout.addWidget(self.save_data_button)
+
+        # buttons
+        button_layout = QtWidgets.QHBoxLayout()
+        self.__layout.addRow('Display Options:', button_layout)
 
         # Toggle autostretch
         self.autostretch_button = QtWidgets.QCheckBox('Autostretching')
@@ -262,6 +294,46 @@ class CameraShortcutsWidget(QtWidgets.QWidget):
         self.preview_button.clicked.connect(self.previewChanged.emit)
 
         button_layout.addWidget(self.preview_button)
+
+        # Stats preview
+        self.stats_button = QtWidgets.QCheckBox('Display Stats')
+        self.stats_button.clicked.connect(self.displayStatsChanged.emit)
+
+        button_layout.addWidget(self.stats_button)
+
+        # Display mode 4 radios
+        modes_layout = QtWidgets.QHBoxLayout()
+        self.__layout.addRow('Display Mode:', modes_layout)
+
+        self.display_mode = QtWidgets.QButtonGroup(self)
+        self.display_mode.setExclusive(True)
+        self.display_mode.setObjectName('Display Mode')
+
+        self.display_modes = [
+            str(CamParams.SINGLE_VIEW),
+            str(CamParams.DUAL_SIDE),
+            str(CamParams.DUAL_OVERLAID),
+            str(CamParams.ROIS_VIEW),
+        ]
+        for idx, mode in enumerate(self.display_modes):
+            radio_button = QtWidgets.QRadioButton(mode)
+            radio_button.setObjectName(str(mode))
+            self.display_mode.addButton(radio_button, idx)
+            modes_layout.addWidget(radio_button)
+
+        self.display_mode.idClicked.connect(self._display_mode_changed)
+
+    def _display_mode_changed(self, index):
+        '''
+        Handle display mode changes
+
+        Parameters
+        ----------
+        index : int
+            The ID of the selected radio button
+        '''
+        mode = self.display_modes[index]
+        self.displayModeChanged.emit(mode)
 
     def set_exposure(self, value):
         '''Set the exposure slider to the given value'''
@@ -286,6 +358,20 @@ class CameraShortcutsWidget(QtWidgets.QWidget):
     def set_preview(self, value):
         '''Set the preview checkbox to the given value'''
         self.preview_button.setChecked(value)
+
+    def set_display_stats(self, value):
+        '''Set the display stats checkbox to the given value'''
+        self.stats_button.setChecked(value)
+
+    def set_display_mode(self, mode: Union[CamParams, str]):
+        '''Set the display mode radio button to the given value'''
+        if isinstance(mode, CamParams):
+            mode = str(mode)
+
+        if mode in self.display_modes:
+            button = self.display_mode.button(self.display_modes.index(mode))
+            if button:
+                button.setChecked(True)
 
     def set_save_data(self, value):
         '''Set the save data checkbox to the given value'''

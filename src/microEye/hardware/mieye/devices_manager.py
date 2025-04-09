@@ -35,6 +35,8 @@ class DeviceManager(QtCore.QObject):
     WIDGETS = weakref.WeakValueDictionary()
     CONTROLLERS = weakref.WeakValueDictionary()
 
+    _initialized = False
+
     def __new__(cls, *args, **kwargs):
         # If the single instance doesn't exist, create a new one
         if not hasattr(cls, '_singleton') or cls._singleton is None:
@@ -50,13 +52,13 @@ class DeviceManager(QtCore.QObject):
         return cls._singleton
 
     def __init__(self):
-        if not hasattr(self, '_initialized'):
+        if not DeviceManager._initialized:
             super().__init__()
             self.cameras = []
             self.stages = []
             self.lasers: list[Union[SingleMatchBox, CombinerLaserWidget]] = []
 
-            self._initialized = True
+            DeviceManager._initialized = True
 
     def init_devices(self):
         self._init_cameras_list()

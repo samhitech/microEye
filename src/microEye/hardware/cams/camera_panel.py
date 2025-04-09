@@ -6,6 +6,7 @@ import time
 import traceback
 from functools import lru_cache
 from queue import Queue
+from typing import Union
 
 import cv2
 import numpy as np
@@ -98,7 +99,7 @@ class Camera_Panel(QtWidgets.QGroupBox):
 
         self._directory = os.path.join(home, 'Desktop')  # save directory
         self._save_path = ''  # save path
-        self._save_prefix = ''  # save prefix
+        self._save_prefix = ''
 
         # acquisition job info class
         self.acq_job = None
@@ -119,7 +120,7 @@ class Camera_Panel(QtWidgets.QGroupBox):
         self.main_layout.addWidget(self.main_tab_view)
 
         # tab widgets
-        self.first_tab = QtWidgets.QWidget()
+        self.first_tab = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
 
         self.OME_tab = MetadataEditorTree()
 
@@ -127,11 +128,6 @@ class Camera_Panel(QtWidgets.QGroupBox):
         self.main_tab_view.addTab(self.first_tab, 'Main')
         if not self.mini:
             self.main_tab_view.addTab(self.OME_tab, 'OME-XML metadata')
-
-        # first tab vertical layout
-        self.first_tab_Layout = QtWidgets.QFormLayout()
-        # set as first tab layout
-        self.first_tab.setLayout(self.first_tab_Layout)
 
         self.camera_options = CameraOptions()
 
@@ -148,7 +144,14 @@ class Camera_Panel(QtWidgets.QGroupBox):
                     r'(\d+)(?:_ms|ms)', name
                 )  # find any number of format '000_ms' or '00ms'
                 if match:
+                    unit = self.camera_options.get_param(CamParams.EXPOSURE).opts[
+                        'suffix'
+                    ]
                     exposure = self._cam.getExposure()
+                    if unit == 's':
+                        exposure *= 1000
+                    elif unit == 'us':
+                        exposure /= 1000
                     # update the exposure time in the name
                     name = name.replace(match.group(0), f'{exposure:03.0f}ms')
                 else:
@@ -163,16 +166,44 @@ class Camera_Panel(QtWidgets.QGroupBox):
                     name = re.sub(r'^\d+', f'{index:03d}', name)
                 else:
                     name = f'001_{name}'
-
+            elif mode == 'unique_index':
+                # Check if folder exists within the chosen directory
+                directory = self.camera_options.get_param_value(
+                    CamParams.SAVE_DIRECTORY
+                )
+                match = re.search(r'^\d+', name)
+                if match:
+                    index = 1
+                    while any(
+                        folder.startswith(f'{index:03d}_')
+                        for folder in os.listdir(directory)
+                        if os.path.isdir(os.path.join(directory, folder))
+                    ):
+                        index += 1
+                    name = re.sub(r'^\d+', f'{index:03d}', name)
+                else:
+                    index = 1
+                    while os.path.exists(
+                        os.path.join(directory, f'{index:03d}_{name}')
+                    ):
+                        index += 1
+                    name = f'{index:03d}_{name}'
 
             self.camera_options.set_param_value(CamParams.EXPERIMENT_NAME, name)
-
 
         self.cam_shortcuts.exposureChanged.connect(self.setExposure)
         self.cam_shortcuts.autostretchChanged.connect(
             self.camera_options.toggleAutostretch
         )
         self.cam_shortcuts.previewChanged.connect(self.camera_options.togglePreview)
+        self.cam_shortcuts.displayStatsChanged.connect(
+            self.camera_options.toggleDisplayStats
+        )
+        self.cam_shortcuts.displayModeChanged.connect(
+            lambda mode: self.camera_options.set_param_value(
+                CamParams.VIEW_OPTIONS, mode
+            )
+        )
         self.cam_shortcuts.saveDataChanged.connect(self.camera_options.toggleSaveData)
         self.cam_shortcuts.zoomChanged.connect(self.camera_options.setZoom)
         self.cam_shortcuts.acquisitionStart.connect(self.start_free_run)
@@ -196,6 +227,12 @@ class Camera_Panel(QtWidgets.QGroupBox):
             self.cam_shortcuts.set_preview(
                 self.camera_options.get_param_value(CamParams.PREVIEW)
             )
+            self.cam_shortcuts.set_display_stats(
+                self.camera_options.get_param_value(CamParams.DISPLAY_STATS_OPTION)
+            )
+            self.cam_shortcuts.set_display_mode(
+                self.camera_options.get_param_value(CamParams.VIEW_OPTIONS)
+            )
             self.cam_shortcuts.set_save_data(
                 self.camera_options.get_param_value(CamParams.SAVE_DATA)
             )
@@ -204,14 +241,20 @@ class Camera_Panel(QtWidgets.QGroupBox):
             # display menu but centered horizontally
             menu.exec(
                 self.main_tab_view.mapToGlobal(
-                    QtCore.QPoint(self.main_tab_view.rect().left(), pos.y())
+                    QtCore.QPoint(
+                        self.main_tab_view.rect().left()
+                        + (self.main_tab_view.rect().width() - menu.rect().width())
+                        // 2,
+                        pos.y(),
+                    )
                 )
             )
 
         self.camera_options.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.camera_options.customContextMenuRequested.connect(show_shortcuts)
 
-        self.first_tab_Layout.addRow(self.camera_options)
+        self.first_tab.addWidget(self.camera_options)
+        self.first_tab.setStretchFactor(0, 1)
 
         self.camera_options.get_param(
             CamParams.EXPERIMENT_NAME
@@ -262,20 +305,50 @@ class Camera_Panel(QtWidgets.QGroupBox):
         self.camera_options.viewOptionChanged.connect(lambda: self.view_toggled())
 
         # controls for histogram and cdf
-        self.histogram_group = ExpandableGroupBox('Histogram')
-        self.first_tab_Layout.addRow(self.histogram_group)
-        # Hist plotWidget
+
+        # Create a single plot with shared X-axis and
+        # separate Y-axes for histogram and CDF
         self.histogram = pg.PlotWidget()
-        self.hist_cdf = pg.PlotWidget()
+        self.hist_cdf = pg.ViewBox()
+
+        # Add the CDF ViewBox to the histogram plot
+        self.histogram.getPlotItem().scene().addItem(self.hist_cdf)
+        self.histogram.getPlotItem().getAxis('left').setLabel('HIST')
+        self.histogram.getPlotItem().getAxis('right').setLabel('CDF')
+        self.histogram.getPlotItem().showAxis('right')
+        self.histogram.getPlotItem().getAxis('right').linkToView(self.hist_cdf)
+
+        # Link the X-axis of the CDF ViewBox to the main plot
+        self.hist_cdf.setXLink(self.histogram.getPlotItem().getViewBox())
+
+        # Adjust the CDF ViewBox to match the main plot
+        def update_views():
+            self.hist_cdf.setGeometry(
+                self.histogram.getPlotItem().getViewBox().sceneBoundingRect()
+            )
+            self.hist_cdf.linkedViewChanged(
+                self.histogram.getPlotItem().getViewBox(), self.hist_cdf.XAxis
+            )
+
+        self.histogram.getPlotItem().getViewBox().sigResized.connect(update_views)
+
+        # Set up pens and brushes for histogram and CDF
         greenP = pg.mkPen(color='g')
         blueP = pg.mkPen(color='b')
+        cyanP = pg.mkPen(color='c')
+        yellowP = pg.mkPen(color='y')
         greenB = pg.mkBrush(0, 255, 0, 32)
         blueB = pg.mkBrush(0, 0, 255, 32)
-        self._plot_ref = self.histogram.plot(self._bins, self._hist, pen=greenP)
-        self._cdf_plot_ref = self.hist_cdf.plot(self._bins, self._hist, pen=greenP)
-        self._plot_ref_2 = self.histogram.plot(self._bins, self._hist, pen=blueP)
-        self._cdf_plot_ref_2 = self.hist_cdf.plot(self._bins, self._hist, pen=blueP)
 
+        # Add histogram and CDF plots
+        self._plot_ref = self.histogram.plot(self._bins, self._hist, pen=greenP)
+        self._plot_ref_2 = self.histogram.plot(self._bins, self._hist, pen=blueP)
+        self._cdf_plot_ref = pg.PlotDataItem(self._bins, self._hist, pen=cyanP)
+        self._cdf_plot_ref_2 = pg.PlotDataItem(self._bins, self._hist, pen=yellowP)
+        self.hist_cdf.addItem(self._cdf_plot_ref)
+        self.hist_cdf.addItem(self._cdf_plot_ref_2)
+
+        # Add linear regions for histogram and CDF
         self.lr_0 = pg.LinearRegionItem(
             (0, self._nBins),
             bounds=(0, self._nBins),
@@ -297,8 +370,9 @@ class Camera_Panel(QtWidgets.QGroupBox):
         self.histogram.addItem(self.lr_0)
         self.histogram.addItem(self.lr_1)
 
-        self.histogram_group.layout().addWidget(self.histogram)
-        self.histogram_group.layout().addWidget(self.hist_cdf)
+        # Add the histogram plot to the layout
+        self.first_tab.addWidget(self.histogram)
+        self.first_tab.setStretchFactor(1, 1)
 
         CameraOptions.combine_params(self.PARAMS)
 
@@ -491,7 +565,7 @@ class Camera_Panel(QtWidgets.QGroupBox):
         )
 
     def view_toggled(self):
-        if self.camera_options.isSingleView:
+        if self.camera_options.isSingleView or self.camera_options.isROIsView:
             self.lr_0.setSpan(0, 1)
             self.lr_1.setMovable(False)
             self.lr_1.setRegion((0, self._nBins))
@@ -734,17 +808,29 @@ def drawStats(frame: uImage):
     ]
 
     # Font settings
-    font, font_scale, font_thickness, font_color = get_font_settings()
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.5  # Reduced font size
+    font_thickness = 1
+    font_color = (255, 255, 255)  # White text
 
     # Position to start adding text
-    x, y = 50, 50
+    x, y = 10, 20
 
-    # Add each line of text to the image
+    # Add each line of text to the image with a background
     for line in lines:
+        text_size = cv2.getTextSize(line, font, font_scale, font_thickness)[0]
+        text_x, text_y = x, y - text_size[1]
+        cv2.rectangle(
+            frame._view,
+            (text_x - 2, text_y - 2),
+            (text_x + text_size[0] + 2, text_y + text_size[1] + 2),
+            (0, 0, 0),  # Black background
+            -1,
+        )
         cv2.putText(
             frame._view, line, (x, y), font, font_scale, font_color, font_thickness
         )
-        y += int(2 * font_scale * 20)  # Adjust vertical spacing
+        y += int(1.5 * text_size[1])  # Adjust vertical spacing
 
 
 def update_histogram_and_display(params: AcquisitionJob, camp: Camera_Panel):
@@ -758,113 +844,91 @@ def update_histogram_and_display(params: AcquisitionJob, camp: Camera_Panel):
     camp : Camera_Panel
         The camera panel to display data.
     '''
-    # Common logic for updating histogram and display
+
+    def process_frame(frame: uImage, region=None, zoom=None):
+        '''Helper to process a single frame.'''
+        frame.equalizeLUT(region, camp.camera_options.isNumpyLUT)
+        if zoom is None:
+            zoom = camp.camera_options.get_param_value(CamParams.RESIZE_DISPLAY)
+        frame._view = cv2.resize(
+            frame._view, (0, 0), fx=zoom, fy=zoom, interpolation=cv2.INTER_NEAREST
+        )
+
+        if camp.camera_options.isDisplayStats:
+            drawStats(frame)
+        return frame
+
+    def display_frame(name, frame: Union[uImage, np.ndarray]):
+        '''Helper to display a single frame.'''
+        if isinstance(frame, uImage):
+            frame = frame._view
+
+        cv2.imshow(name, frame)
+
     if camp.camera_options.isSingleView or (
         camp.camera_options.isROIsView and len(params.rois) == 0
     ):
-        _range = (
+        region = (
             None
             if camp.camera_options.isAutostretch
             else tuple(map(math.ceil, camp.lr_0.getRegion()))
         )
-
-        params.frame.equalizeLUT(_range, camp.camera_options.isNumpyLUT)
-
+        params.frame = process_frame(params.frame, region)
         camp.updateRangeSignal.emit(params.frame._min, params.frame._max)
-
         camp.updateStatsSignal.emit((params.frame, None))
+        display_frame(params.name, params.frame)
 
-        # resizing the image
-        zoom = camp.camera_options.get_param_value(CamParams.RESIZE_DISPLAY)
-
-        if camp.camera_options.isDisplayStats:
-            drawStats(params.frame)
-
-        params.frame._view = cv2.resize(
-            params.frame._view,
-            (0, 0),
-            fx=zoom,
-            fy=zoom,
-            interpolation=cv2.INTER_NEAREST,
-        )
-
-        # display it
-        cv2.imshow(params.name, params.frame._view)
     elif camp.camera_options.isROIsView:
-        if len(params.rois) == 1:
-            camp._plot_ref_2.setData(camp._hist)
-            camp._cdf_plot_ref_2.setData(camp._hist)
         images, mins, maxs = [], [], []
         for idx, roi in enumerate(params.rois):
             uimage = uImage(
                 params.frame.image[roi[1] : roi[1] + roi[3], roi[0] : roi[0] + roi[2]]
             )
-
             if idx > 0 and params.flip_rois:
                 uimage.image = np.fliplr(uimage.image)
-
-            _range = None
-            # image stretching
-            if not camp.camera_options.isAutostretch and idx < 2:
-                linear_region = camp.lr_0 if idx == 0 else camp.lr_1
-                _range = tuple(map(math.ceil, linear_region.getRegion()))
-
-            uimage.equalizeLUT(_range, camp.camera_options.isNumpyLUT)
-
+            region = (
+                None
+                if camp.camera_options.isAutostretch
+                else tuple(map(math.ceil, camp.lr_0.getRegion()))
+            )
+            uimage = process_frame(uimage, region)
             mins.append(uimage._min)
             maxs.append(uimage._max)
             images.append(uimage)
-
-            # resizing the image
-            zoom = camp.camera_options.get_param_value(CamParams.RESIZE_DISPLAY)
-            uimage._view = cv2.resize(
-                uimage._view, (0, 0), fx=zoom, fy=zoom, interpolation=cv2.INTER_NEAREST
-            )
-
-            # display it
-            cv2.imshow(params.name + f' ROI {idx + 1}', uimage._view)
-
+            display_frame(f'ROI {idx + 1}', uimage)
         camp.updateRangeSignal.emit(min(mins), max(maxs))
         camp.updateStatsSignal.emit(tuple(images))
+
     else:
-        _rang_left = None
-        _rang_right = None
-
-        # image stretching
-        if not camp.camera_options.isAutostretch:
-            _rang_left = tuple(map(math.ceil, camp.lr_0.getRegion()))
-            _rang_right = tuple(map(math.ceil, camp.lr_1.getRegion()))
-
         left, right = params.frame.hsplitView()
-
-        left.equalizeLUT(_rang_left, camp.camera_options.isNumpyLUT)
-        right.equalizeLUT(_rang_right, camp.camera_options.isNumpyLUT)
-
+        zoom = camp.camera_options.get_param_value(CamParams.RESIZE_DISPLAY)
+        left = process_frame(
+            left,
+            None
+            if camp.camera_options.isAutostretch
+            else tuple(map(math.ceil, camp.lr_0.getRegion())),
+            zoom=zoom,
+        )
+        right = process_frame(
+            right,
+            None
+            if camp.camera_options.isAutostretch
+            else tuple(map(math.ceil, camp.lr_1.getRegion())),
+            zoom=zoom,
+        )
         camp.updateRangeSignal.emit(
             min(left._min, right._min), max(left._max, right._max)
         )
         camp.updateStatsSignal.emit((left, right))
 
-        zoom = camp.camera_options.get_param_value(CamParams.RESIZE_DISPLAY)
         if camp.camera_options.isOverlaidView:
-            _img = np.zeros(left._view.shape[:2] + (3,), dtype=np.uint8)
-            _img[..., 1] = left._view
-            _img[..., 0] = right._view
-            _img = cv2.resize(
-                _img, (0, 0), fx=zoom, fy=zoom, interpolation=cv2.INTER_NEAREST
-            )
-
-            cv2.imshow(params.name, _img)
+            overlaid_img = np.zeros(left._view.shape[:2] + (3,), dtype=np.uint8)
+            overlaid_img[..., 1] = left._view
+            overlaid_img[..., 0] = right._view
+            display_frame(params.name, overlaid_img)
         else:
-            _img = cv2.resize(
-                np.concatenate([left._view, right._view], axis=1),
-                (0, 0),
-                fx=zoom,
-                fy=zoom,
-                interpolation=cv2.INTER_NEAREST,
-            )
-
-            cv2.imshow(params.name, _img)
+            concatenated_img = np.concatenate([left._view, right._view], axis=1)
+            display_frame(params.name, concatenated_img)
 
 
 def cam_display(params: AcquisitionJob, camp: Camera_Panel, **kwargs):

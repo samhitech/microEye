@@ -311,7 +311,7 @@ class KinesisView(Tree):
         self.__stage.asyncStarted.connect(
             lambda: self.set_param_value(XYStageParams.STATUS, 'busy')
         )
-        self.__stage.asyncFinished.connect(self.updateControls)
+        self.__stage.asyncFinished.connect(self.updatePositions)
 
     def initializeSignals(self):
         self._connect_movement_signals()

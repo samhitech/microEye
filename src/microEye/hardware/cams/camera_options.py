@@ -662,6 +662,11 @@ class CameraOptions(Tree):
         '''
         return self.get_param_value(CamParams.DISPLAY_STATS_OPTION)
 
+    def toggleDisplayStats(self):
+        param = self.get_param(CamParams.DISPLAY_STATS_OPTION)
+        if param:
+            param.setValue(not param.value())
+
     @property
     def isLineProfiler(self):
         '''

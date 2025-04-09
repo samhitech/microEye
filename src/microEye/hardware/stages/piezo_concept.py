@@ -417,7 +417,7 @@ class PzFocController:
         )
 
         self.stage.signals.positionChanged.connect(
-            lambda value: self.set_param_value(StageParams.Z_POSITION, value)
+            lambda value: self.view.set_param_value(StageParams.Z_POSITION, value)
         )
 
     def set_config(self):

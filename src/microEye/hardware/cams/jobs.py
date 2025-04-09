@@ -11,6 +11,7 @@ import tifffile as tf
 import zarr
 
 from microEye.hardware.cams.camera_calibration import dark_calibration
+from microEye.utils.uImage import uImage
 
 
 class AcquisitionJob:
@@ -205,7 +206,7 @@ class AcquisitionJob:
         '''cross-thread attribute (use lock)'''
         self.display_time = 0.0
         '''cross-thread attribute (use lock)'''
-        self.frame = None
+        self.frame : uImage = None
         '''cross-thread attribute (use lock)'''
         self.frames_captured = 0
         '''cross-thread attribute (use lock)'''

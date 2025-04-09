@@ -20,7 +20,7 @@ This toolkit is compatible with the [hardware](#hardware) used in our microscope
 
 ![Contributors](https://img.shields.io/github/contributors/samhitech/microEye.svg)
 ![GitHub Last Commit](https://img.shields.io/github/last-commit/samhitech/microEye.svg)
-![Maintenance](https://img.shields.io/maintenance/yes/2024.svg)
+![Maintenance](https://img.shields.io/maintenance/yes/2025.svg)
 
 ![GitHub Issues](https://img.shields.io/github/issues/samhitech/microEye.svg)
 ![GitHub Bugs](https://img.shields.io/github/issues/samhitech/microEye/bug.svg)
@@ -31,9 +31,9 @@ This toolkit is compatible with the [hardware](#hardware) used in our microscope
 ![GitHub Stars](https://img.shields.io/github/stars/samhitech/microEye.svg)
 
 ```bash
-   __  ____              ____                ___    ____   ___
-  /  |/  (_)__________  / __/_ _____   _  __|_  |  |_  /  |_  |
- / /|_/ / / __/ __/ _ \/ _// // / -_) | |/ / __/_ _/_ <_ / __/
+   __  ____              ____                ___    ____   ____
+  /  |/  (_)__________  / __/_ _____   _  __|_  |  |_  /  |_  /
+ / /|_/ / / __/ __/ _ \/ _// // / -_) | |/ / __/_ _/_ <_ _/_ <
 /_/  /_/_/\__/_/  \___/___/\_, /\__/  |___/____(_)____(_)____/
                           /___/
 ```
@@ -55,7 +55,9 @@ This toolkit is compatible with the [hardware](#hardware) used in our microscope
   - [Hardware](#hardware)
     - [Supported Cameras](#supported-cameras)
     - [Additional Hardware](#additional-hardware)
-    - [Pycro-Manager Hardware](#pycro-manager-hardware)
+  - [Pycro-Manager Integration](#pycro-manager-integration)
+    - [Features](#features)
+    - [How to Use](#how-to-use)
   - [Authors](#authors)
   - [People Involved](#people-involved)
   - [Acknowledgement](#acknowledgement)
@@ -149,7 +151,6 @@ Upon running the launcher, you will be presented with the following interface:
 - **Theme (dropdown)**: Select the theme for the application. Options are None (default), qdarktheme, or qdarkstyle.
 
 To launch a module, simply click on the respective button (`miEye Module` or `Viewer Module`). If you wish to change the Qt API or theme, select the desired option from the dropdown menus before launching.
-Sounds good, here's the updated section with the simplified commands:
 
 ## Modules
 
@@ -269,9 +270,34 @@ Schematic overview of the miEye instrument:
 | RelayBox Arduino                  | For laser control using camera GPIO signals                                                                                                                           | [RelayBox](https://github.com/samhitech/RelayBox)                                                                                                                                                      |
 | miEye OSF Project Parts List      | Parts list of miEye OSF Project                                                                                                                                       | [Link](https://osf.io/j2fqy/)                                                                                                                                                                          |
 
-### Pycro-Manager Hardware
+## Pycro-Manager Integration
 
-Integration under development. **[To Be Added]**
+Integration with Pycro-Manager is now implemented, providing support for managing headless instances and `Core` instances. This allows for seamless control and configuration of hardware devices through the Pycro-Manager framework.
+
+### Features
+
+- **Headless Manager**: Manage multiple headless Micro-Manager instances (JavaBackend), including starting, stopping, and saving configurations.
+- **Core Instances Manager**: Handle multiple PycroCore instances for device communication and control.
+
+### How to Use
+
+1. **Headless Manager**:
+
+   - Open the `miEye_module` and navigate to `Tools -> Micro-Manager Headless Manager` in the main menu.
+   - Start a new headless instance using a specific configuration file.
+   - Stop individual running instances or terminate all instances simultaneously.
+   - Save configurations for future use or load previously saved configurations for headless instances.
+
+2. **Core Instances**:
+
+   - Open the `miEye_module` and navigate to `Tools -> Micro-Manager Core Bridges` in the main menu.
+   - Click on `Add Core Bridge` and provide the port address in the dialog box.
+   - A list of connected devices will be displayed, allowing you to view each device's properties.
+   - Close the window and refresh the camera list to access Pycro-Manager cameras.
+
+     _Accessing other types of devices is under development!_
+
+_Note: Currently, only acquisition has been tested with the developed `PycroPanel`. Full implementation of focus stabilization is planned for future updates by implementing further stage-related widgets._
 
 ![pycromanager integration](https://github.com/user-attachments/assets/73893f9f-c1ef-438f-a884-ec3f60f00118)
 

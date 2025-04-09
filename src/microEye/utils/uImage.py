@@ -542,8 +542,10 @@ class uImage:
         np.ndarray
             Horizontally split view overlay.
         '''
-        mid = self._view.shape[1] // 2
-        left_view, right_view = self._view[:, :mid], self._view[:, mid:]
+        left = (self.image.shape[1] + 1) // 2
+        right = self.image.shape[1] // 2
+
+        left_view, right_view = self._view[:, :left], self._view[:, right:]
 
         _img = np.zeros(left_view.shape[:2] + (3,), dtype=np.uint8)
         if RGB:
@@ -556,16 +558,21 @@ class uImage:
 
     def hsplitView(self):
         '''
-        Split the image horizontally and create new uImage objects.
+        Split the image horizontally into two halves,
+        ensuring identical sizes for odd or even cases.
 
         Returns
         -------
         Tuple[uImage, uImage]
             Two uImage objects containing the horizontally split image data.
         '''
-        mid = self.image.shape[1] // 2
+        left = (self.image.shape[1] + 1) // 2
+        right = self.image.shape[1] // 2
 
-        return uImage(self.image[:, :mid]), uImage(np.fliplr(self.image[:, mid:]))
+        left_half = self.image[:, :left]
+        right_half = np.fliplr(self.image[:, right:])
+
+        return uImage(left_half), uImage(right_half)
 
     @staticmethod
     def fromUINT8(buffer, height, width):

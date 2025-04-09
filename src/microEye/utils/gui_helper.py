@@ -1,8 +1,8 @@
-from typing import Union
+from typing import Callable, Union
 
 import numpy as np
 
-from microEye.qt import QApplication, QtWidgets
+from microEye.qt import QApplication, QtCore, QtWidgets, Signal
 
 
 def create_line_edit(
@@ -455,3 +455,30 @@ def GaussianOffSet(x, a, x0, sigma, offset):
         Gaussian function f(x).
     '''
     return a * np.exp(-((x - x0) ** 2) / (2 * sigma**2)) + offset
+
+
+def debounceSlot(parent: QtCore.QObject, signal: Signal, callback: Callable, wait=200):
+    '''
+    Debounce a slot to limit the frequency of signal emissions.
+
+    Parameters
+    ----------
+    signal : Signal
+        The signal to debounce.
+    callback : Callable
+        The function to call when the signal is emitted.
+    wait : int, optional
+        Wait time in milliseconds before calling the callback.
+
+    Returns
+    -------
+    QTimer
+        The timer used for debouncing.
+    '''
+    timer = QtCore.QTimer(parent)
+    timer.setSingleShot(True)
+    timer.timeout.connect(lambda: callback())
+
+    signal.connect(lambda: timer.start(wait))
+
+    return timer
