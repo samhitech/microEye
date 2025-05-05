@@ -9,7 +9,7 @@ from microEye.utils.gui_helper import GaussianOffSet
 
 
 class Controller(QtWidgets.QDockWidget):
-    stage_move_requested = Signal(str, int, float)
+    stage_move_requested = Signal(str, int, float, bool)
     stage_stop_requested = Signal(str)
     stage_home_requested = Signal(str)
     stage_toggle_lock = Signal(str)
@@ -120,7 +120,6 @@ class Controller(QtWidgets.QDockWidget):
                 }
             ''')
 
-
         # Layout XY controls
         xy_layout.addWidget(self.btn_y_up_fine, 1, 2)
         xy_layout.addWidget(self.btn_y_up, 0, 2)
@@ -181,9 +180,22 @@ class Controller(QtWidgets.QDockWidget):
         controls_layout.addWidget(xy_group)
         controls_layout.addWidget(z_group)
 
+        # Options group
+        options_group = QtWidgets.QGroupBox('Options')
+        options_layout = QtWidgets.QVBoxLayout()
+        options_group.setLayout(options_layout)
+
+        # snap_image after movement checkbox
+        self.snap_image_after_movement = QtWidgets.QCheckBox(
+            'Snap Image After Movement'
+        )
+        self.snap_image_after_movement.setChecked(False)
+        options_layout.addWidget(self.snap_image_after_movement)
+
         # Add all groups to main layout
         main_layout.addWidget(settings_group)
         main_layout.addLayout(controls_layout)
+        main_layout.addWidget(options_group)
         main_layout.addStretch()
 
     def connect_signals(self):
@@ -199,9 +211,7 @@ class Controller(QtWidgets.QDockWidget):
         self.btn_y_up_fine.clicked.connect(lambda: self.move_stage('y', 1, 'fine'))
         self.btn_y_down_fine.clicked.connect(lambda: self.move_stage('y', -1, 'fine'))
 
-        self.btn_xy_stop.clicked.connect(
-            lambda: self.stage_stop_requested.emit('xy')
-        )
+        self.btn_xy_stop.clicked.connect(lambda: self.stage_stop_requested.emit('xy'))
 
         # Z movements
         self.btn_z_up.clicked.connect(lambda: self.move_stage('z', 1, 'coarse'))
@@ -209,9 +219,7 @@ class Controller(QtWidgets.QDockWidget):
         self.btn_z_up_fine.clicked.connect(lambda: self.move_stage('z', 1, 'fine'))
         self.btn_z_down_fine.clicked.connect(lambda: self.move_stage('z', -1, 'fine'))
 
-        self.btn_z_home.clicked.connect(
-            lambda: self.stage_home_requested.emit('z')
-        )
+        self.btn_z_home.clicked.connect(lambda: self.stage_home_requested.emit('z'))
         self.btn_z_toggle_stabilizer.clicked.connect(
             lambda: self.stage_toggle_lock.emit('z')
         )
@@ -233,7 +241,9 @@ class Controller(QtWidgets.QDockWidget):
                 step = self.z_fine_step.value()
                 # print(f'Moving {axis} axis by {distance} nm')
 
-        self.stage_move_requested.emit(axis, direction, step)
+        self.stage_move_requested.emit(
+            axis, direction, step, self.snap_image_after_movement.isChecked()
+        )
 
     def __str__(self):
         return 'Controller Unit Widget'

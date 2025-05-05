@@ -13,6 +13,7 @@ from pycromanager import (
 from microEye.hardware.cams.micam import miCamera
 from microEye.hardware.pycromanager.core import DEFAULT_BRIDGE_PORT, PycroCore
 from microEye.hardware.pycromanager.enums import DeviceType, PropertyType
+from microEye.hardware.stages.stage import AbstractStage, Axis, Units
 
 
 class PycroDevice:
@@ -326,35 +327,61 @@ class PycroCamera(PycroDevice, miCamera):
         }
 
 
-class PycroStage(PycroDevice):
+class PycroStage(PycroDevice, AbstractStage):
     def __init__(self, label: str = None, port: int = DEFAULT_BRIDGE_PORT) -> None:
-        super().__init__(label, DeviceType.StageDevice, port=port)
+        PycroDevice.__init__(self, label, DeviceType.StageDevice, port=port)
+
+        AbstractStage.__init__(
+            self, f'PycroStage {label}', max_range=100, units=Units.MICROMETERS
+        )
+
+    def is_open(self) -> bool:
+        return True
+
+    def connect(self):
+        pass
+
+    def disconnect(self):
+        pass
 
     @property
-    def position(self) -> float:
-        return self._core.get_position(self.label)
+    def position(self) -> int:
+        pos = self.convert_to_nm(self._core.get_position(self.label), axis=Axis.Z)
+        self.set_position(axis=Axis.Z, position=pos)
+        return pos
 
     @position.setter
-    def position(self, value: float):
-        self._core.set_position(value, self.label)
+    def position(self, value: int):
+        self._core.set_position(self.convert_from_nm(value, axis=Axis.Z), self.label)
+        self.set_position(axis=Axis.Z, position=value)
 
-    def move_rel(self, step: float):
-        self._core.set_relative_position(step, self.label)
+    def move_relative(self, step: float):
+        self._core.set_relative_position(
+            self.convert_from_nm(step, axis=Axis.Z), self.label
+        )
 
-    def move_abs(self, position: float):
-        self._core.set_position(position, self.label)
+        self.set_position(axis=Axis.Z, position=step, incremental=True)
+
+    def move_absolute(self, position: float):
+        self._core.set_position(self.convert_from_nm(position, axis=Axis.Z), self.label)
+        self.set_position(axis=Axis.Z, position=position)
 
     def home(self):
-        return self._core.home(self.label)
+        self._core.home(self.label)
+        return self.position
 
     def stop(self):
-        return self._core.stop(self.label)
+        self._core.stop(self.label)
+        return self.position
 
     def set_adapter_origin_z(self, new_z_um: float):
         self._core.set_adapter_origin(new_z_um, self.label)
 
     def set_origin(self):
         self._core.set_origin(self.label)
+
+    def refresh_position(self):
+        self.move_absolute(self.position)
 
 
 class PycroXYStage(PycroDevice):
@@ -407,19 +434,24 @@ if __name__ == '__main__':
 
     mm_path = 'C:/Program Files/Micro-Manager-2.0'
     config = 'MMConfig_demo.cfg'
-    port = 1234
+    port = DEFAULT_BRIDGE_PORT
 
     try:
-        start_headless(
-            mm_path,
-            config,
-            port=port,
-            # python_backend=True,
-        )
+        # start_headless(
+        #     mm_path,
+        #     config,
+        #     port=port,
+        #     # python_backend=True,
+        # )
+
+        # stage = PycroStage(port=port)
+        # print(stage)
+        # print(stage.position)
+        # stage.move_absolute(50)
+        # print(stage.position)
 
         cam = PycroCamera('Camera', port=port)
         cam.exposure_current = 50
-
 
         cam.start_sequence_acquisition(0, 500)  # 0 ms interval for fastest acquisition
 
@@ -456,6 +488,7 @@ if __name__ == '__main__':
         cv2.destroyAllWindows()
     except Exception as e:
         import traceback
+
         traceback.print_exc()
     finally:
         PycroCore._instances[port].close()

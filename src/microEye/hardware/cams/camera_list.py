@@ -526,3 +526,12 @@ class CameraList(QtWidgets.QWidget):
 
         # Update the cached_autofocusCam value
         self.cached_autofocusCam = None
+
+    def snap_image(self):
+        '''
+        Snap an image on all non IR cameras.
+        '''
+        for _, cam_list in CameraList.CAMERAS.items():
+            for cam in cam_list:
+                if not cam['IR']:
+                    cam['Panel'].capture_image()

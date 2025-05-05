@@ -200,7 +200,7 @@ class CameraOptions(Tree):
                     {
                         'name': str(CamParams.DISPLAY_STATS_OPTION),
                         'type': 'bool',
-                        'value': False,
+                        'value': True,
                     },
                     {
                         'name': str(CamParams.AUTO_STRETCH),

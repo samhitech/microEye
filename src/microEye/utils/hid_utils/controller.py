@@ -6,9 +6,13 @@ import numpy as np
 from pyqtgraph.parametertree import Parameter
 
 from microEye.qt import QApplication, QtCore, QtWidgets, Signal
-from microEye.utils.hid.device import hidDevice
-from microEye.utils.hid.enums import Buttons, hidParams
-from microEye.utils.hid.utils import dz_hybrid, dz_scaled_radial, dz_sloped_scaled_axial
+from microEye.utils.hid_utils.device import hidDevice
+from microEye.utils.hid_utils.enums import Buttons, hidParams
+from microEye.utils.hid_utils.utils import (
+    dz_hybrid,
+    dz_scaled_radial,
+    dz_sloped_scaled_axial,
+)
 from microEye.utils.parameter_tree import Tree
 
 

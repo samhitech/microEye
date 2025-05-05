@@ -342,7 +342,7 @@ def pre_process_frame(
 
 def detect_points(
     filtered_image: np.ndarray,
-    filter_obj: 'AbstractFilter',
+    filter_obj: 'SpatialFilter',
     detector: 'AbstractDetector',
     options: dict[str, Any],
 ) -> np.ndarray:
@@ -353,7 +353,7 @@ def detect_points(
     ----------
     filtered_image : np.ndarray
         Filtered image.
-    filter_obj : AbstractFilter
+    filter_obj : SpatialFilter
         Image filter object.
     detector : AbstractDetector
         Point detection algorithm.
@@ -372,7 +372,7 @@ def detect_points(
     uImg = uImage(filtered_image)
     uImg.equalizeLUT(irange, True)
 
-    if isinstance(filter_obj, BandpassFilter):
+    if isinstance(filter_obj, FourierFilter):
         filter_obj._show_filter = False
         filter_obj._refresh = False
 
@@ -440,7 +440,7 @@ def fit_points(
 def localize_frame(
     index: int,
     stack_handler: Union['TiffSeqHandler', 'ZarrImageSequence'],
-    filter_obj: 'AbstractFilter',
+    filter_obj: 'SpatialFilter',
     detector: 'AbstractDetector',
     options: dict[str, Any],
 ) -> tuple[list[int], np.ndarray, Optional[np.ndarray], Optional[np.ndarray]]:
@@ -453,7 +453,7 @@ def localize_frame(
         Frame index.
     stack_handler : Union[TiffSeqHandler, ZarrImageSequence]
         Image stack handler.
-    filter_obj : AbstractFilter
+    filter_obj : SpatialFilter
         Image filter object.
     detector : AbstractDetector
         Point detection algorithm.
@@ -524,7 +524,7 @@ def time_string_ms(ms):
 
 def localizeStackCPU(
     stack_handler: Union[TiffSeqHandler, ZarrImageSequence],
-    filter_obj: AbstractFilter,
+    filter_obj: SpatialFilter,
     detector: AbstractDetector,
     options: dict[str, Any],
 ) -> tuple[list, list, list, list]:
@@ -535,7 +535,7 @@ def localizeStackCPU(
     ----------
     stack_handler : Union[TiffSeqHandler, ZarrImageSequence]
         Handler for the image stack.
-    filter_obj : AbstractFilter
+    filter_obj : SpatialFilter
         Image filter object.
     detector : AbstractDetector
         Point detection algorithm.
@@ -598,7 +598,7 @@ def localizeStackCPU(
 
 def get_rois_lists_GPU(
     stack_handler: Union[TiffSeqHandler, ZarrImageSequence],
-    filter: AbstractFilter,
+    filter: SpatialFilter,
     detector: AbstractDetector,
     **kwargs,
 ):
@@ -637,7 +637,7 @@ def get_rois_lists_GPU(
         uImg = uImage(filtered)
         uImg.equalizeLUT(irange, True)
 
-        if isinstance(filter, BandpassFilter):
+        if isinstance(filter, FourierFilter):
             filter._show_filter = False
             filter._refresh = False
 

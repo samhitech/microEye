@@ -534,7 +534,7 @@ class FocusStabilizerView(Tree):
         Create the parameter tree structure.
 
         This method creates and sets up the parameter tree structure for the
-        `PzFocView` class.
+        `FocusStabilizerView` class.
         '''
         params = [
             {

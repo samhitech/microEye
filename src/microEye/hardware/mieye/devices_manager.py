@@ -1,3 +1,4 @@
+import re
 import traceback
 import weakref
 from enum import Enum, auto
@@ -6,12 +7,12 @@ from typing import Any, Union
 from microEye.hardware.cams import *
 from microEye.hardware.lasers import *
 from microEye.hardware.protocols import WeakObjects
-from microEye.hardware.pycromanager.devices import PycroCore
+from microEye.hardware.pycromanager.devices import PycroCore, PycroStage
 from microEye.hardware.pycromanager.headless import HeadlessInstance, HeadlessManager
 from microEye.hardware.stages import *
 from microEye.hardware.widgets import focusWidget
 from microEye.qt import QtCore, QtWidgets, Signal
-from microEye.utils.hid import Buttons, dz_hybrid, hidController
+from microEye.utils.hid_utils import Buttons, dz_hybrid, hidController
 from microEye.utils.retry_exec import retry_exec
 
 
@@ -75,6 +76,12 @@ class DeviceManager(QtCore.QObject):
         self.camList.cameraAdded.connect(self._add_camera)
         self.camList.cameraRemoved.connect(self._remove_camera)
 
+        # debounce timer one shot timer
+        self.timer = QtCore.QTimer()
+        self.timer.setInterval(500)
+        self.timer.setSingleShot(True)
+        self.timer.timeout.connect(self.camList.snap_image)
+
         self.widgetAdded.emit(DEVICES.CAM_LIST, self.camList)
 
     def _init_ir_cam(self):
@@ -100,7 +107,7 @@ class DeviceManager(QtCore.QObject):
         self.widgetAdded.emit(DEVICES.ELLIPTEC, self.elliptecView)
 
     def _init_z_stage(self):
-        self.stage: PzFocController = None
+        self.stage: ZStageController = None
 
         self._set_z_stage('FOC100')
 
@@ -131,7 +138,7 @@ class DeviceManager(QtCore.QObject):
         self.widgetAdded.emit(DEVICES.FocusStabilizer, self.focus)
 
     def moveStage(self, dir: bool, steps: int):
-        if isinstance(self.stage, PzFocController):
+        if isinstance(self.stage, ZStageController):
             self.stage.moveStage(dir, steps)
 
     def moveStageXY(self, x: float, y: float):
@@ -144,7 +151,7 @@ class DeviceManager(QtCore.QObject):
 
     def homeRequest(self, axis):
         if axis == 'z':
-            self.stage.stage.HOME()
+            self.stage.stage.home()
 
     def toggleLock(self, axis):
         if axis == 'z':
@@ -152,7 +159,7 @@ class DeviceManager(QtCore.QObject):
             if widget:
                 widget.focusStabilizerView.toggleFocusStabilization()
 
-    def moveRequest(self, axis, direction, step, relative=True):
+    def moveRequest(self, axis, direction, step, snap_image=False, relative=True):
         """
         Move the stage in the specified direction and step size.
 
@@ -182,12 +189,17 @@ class DeviceManager(QtCore.QObject):
             else:
                 self.stage.moveAbsolute(step)
 
+        # debounced snap image
+        if snap_image:
+            self.timer.start()
+
+
     def hid_report(self, reportedEvent: Buttons):
         self._handle_z_stage_events(reportedEvent)
         self._handle_xy_stage_events(reportedEvent)
 
     def _handle_z_stage_events(self, reportedEvent: Buttons):
-        if isinstance(self.stage, PzFocController):
+        if isinstance(self.stage, ZStageController):
             if reportedEvent == Buttons.X:
                 self.stage.moveStage(True, True, True)
             elif reportedEvent == Buttons.B:
@@ -197,7 +209,7 @@ class DeviceManager(QtCore.QObject):
             elif reportedEvent == Buttons.A:
                 self.stage.moveStage(False, False, True)
             elif reportedEvent == Buttons.Options:
-                self.stage.stage.HOME()
+                self.stage.stage.home()
             elif reportedEvent == Buttons.R3:
                 self.hid_controller_toggle = not self.hid_controller_toggle
 
@@ -388,7 +400,7 @@ class DeviceManager(QtCore.QObject):
         self.ir_array_detector = None
 
     def _set_z_stage(self, value: str):
-        if self.stage and self.stage.isOpen():
+        if self.stage and self.stage.isOpen() and self.stage.isSerial():
             QtWidgets.QMessageBox.warning(
                 None,
                 'Warning',
@@ -399,16 +411,25 @@ class DeviceManager(QtCore.QObject):
 
         if self.stage:
             self.stage.view.remove_widget()
+            self.stage = None
 
-        if 'FOC100' in value:
-            self.stage = PzFocController()
-            self.stage.view.removed.connect(self._remove_z_stage)
-            DeviceManager.WIDGETS[DEVICES.Z_STAGE] = self.stage.view
-            WeakObjects.addObject(self.stage.view)
-            self.widgetAdded.emit(DEVICES.Z_STAGE, self.stage.view)
+        match = re.match(r'FOC(\d{3})', value)
+        if match:
+            max_um = int(match.group(1))
+            stage = PzFoc(max_um=max_um)
+        elif 'Pycromanager' in value and PycroCore._instances.keys().__len__() > 0:
+            stage = PycroStage(port=list(PycroCore._instances.keys())[0])
+        else:
+            return
+
+        self.stage = ZStageController(stage=stage)
+        self.stage.view.removed.connect(self._remove_z_stage)
+        DeviceManager.WIDGETS[DEVICES.Z_STAGE] = self.stage.view
+        WeakObjects.addObject(self.stage.view)
+        self.widgetAdded.emit(DEVICES.Z_STAGE, self.stage.view)
 
     def _remove_z_stage(self, panel: QtWidgets.QWidget):
-        DeviceManager.WIDGETS[DEVICES.Z_STAGE] = None
+        # DeviceManager.WIDGETS[DEVICES.Z_STAGE] = None
         WeakObjects.removeObject(panel)
         self.widgetRemoved.emit(DEVICES.Z_STAGE, panel)
 

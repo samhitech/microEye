@@ -1,9 +1,8 @@
-from microEye.analysis.filters.base import AbstractFilter
+from microEye.analysis.filters.base import AbstractFilter, SpatialFilter, TemporalFilter
 from microEye.analysis.filters.spatial import (
-    BANDPASS_TYPES,
-    BandpassFilter,
+    BackgroundReduction,
     DoG_Filter,
-    GaussFilter,
+    FourierFilter,
     PassFilter,
 )
 from microEye.analysis.filters.temporal import TemporalMedianFilter

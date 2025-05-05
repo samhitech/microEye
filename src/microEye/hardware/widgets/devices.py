@@ -57,7 +57,14 @@ class DevicesView(Tree):
         return ['IO MatchBox Single Laser', 'IO MatchBox Laser Combiner']
 
     def getStages(self):
-        return ['PiezoConcept FOC100']
+        return [
+            'PiezoConcept FOC100',
+            'PiezoConcept FOC200',
+            'PiezoConcept FOC300',
+            'PiezoConcept FOC500',
+            'PiezoConcept FOC800',
+            'Pycromanager ZStage',
+            ]
 
     def create_parameters(self):
         '''

@@ -1,3 +1,4 @@
+import inspect
 import json
 from enum import Enum
 from typing import Optional
@@ -6,11 +7,10 @@ from pyqtgraph.parametertree import Parameter, ParameterTree
 from pyqtgraph.parametertree.parameterTypes import GroupParameter
 
 from microEye.analysis.filters import (
-    BANDPASS_TYPES,
-    AbstractFilter,
-    BandpassFilter,
     DoG_Filter,
+    FourierFilter,
     PassFilter,
+    SpatialFilter,
 )
 from microEye.analysis.fitting.fit import AbstractDetector, CV_BlobDetector
 from microEye.analysis.fitting.results import FittingMethod
@@ -19,11 +19,13 @@ from microEye.utils import Tree
 
 DETECTORS = {'OpenCV Blob Detector': CV_BlobDetector}
 
-FILTERS = {
-    'None': PassFilter,
-    'Difference of Gaussians': DoG_Filter,
-    'Fourier Bandpass Filter': BandpassFilter,
-}
+FILTERS = {cls().name: cls for cls in SpatialFilter.__subclasses__()}
+'''
+Dictionary of available filters.
+
+Keys are the names of the filters, and values are the filter classes.
+
+_Do not change the order of the keys in this dictionary._'''
 
 
 class Parameters(Enum):
@@ -41,10 +43,10 @@ class Parameters(Enum):
     FILTER = 'Filters.Filter'
     SIGMA = 'Filters.Difference of Gaussians.Sigma'
     FACTOR = 'Filters.Difference of Gaussians.Factor'
-    FILTER_TYPE = 'Filters.Fourier Bandpass Filter.Type'
-    CENTER = 'Filters.Fourier Bandpass Filter.Center'
-    WIDTH = 'Filters.Fourier Bandpass Filter.Width'
-    SHOW_FILTER = 'Filters.Fourier Bandpass Filter.Show Filter'
+    FILTER_TYPE = 'Filters.Fourier Filter.Type'
+    CENTER = 'Filters.Fourier Filter.Center'
+    WIDTH = 'Filters.Fourier Filter.Width'
+    SHOW_FILTER = 'Filters.Fourier Filter.Show Filter'
     PREFIT_DETECTOR = 'Prefit.Prefit Detector'
     MIN_AREA = 'Prefit.OpenCV Blob Detector.Min Area'
     MAX_AREA = 'Prefit.OpenCV Blob Detector.Max Area'
@@ -80,7 +82,6 @@ class FittingOptions(Tree):
     DETECTORS = list(DETECTORS.keys())
     FILTERS = list(FILTERS.keys())
     FITTING_METHODS = FittingMethod.get_strings()
-    BANDPASS_TYPES = BANDPASS_TYPES.values()
 
     def __init__(
         self,
@@ -201,67 +202,11 @@ class FittingOptions(Tree):
                         'value': self.FILTERS[0],
                         'tip': 'Select the type of filter to apply',
                     },
-                    {
-                        'name': self.FILTERS[0],
-                        'type': 'group',
-                        'children': [
-                            {
-                                'name': 'Sigma',
-                                'type': 'float',
-                                'value': 1.0,
-                                'limits': [0.0, 100.0],
-                                'step': 0.1,
-                                'decimals': 2,
-                                'tip': 'Standard deviation (\u03c3) min for the filter',
-                            },
-                            {
-                                'name': 'Factor',
-                                'type': 'float',
-                                'value': 2.5,
-                                'limits': [0.0, 100.0],
-                                'step': 0.1,
-                                'decimals': 2,
-                                'tip': 'Ratio of max \u03c3 to min \u03c3.',
-                            },
-                        ],
-                    },
-                    {
-                        'name': self.FILTERS[1],
-                        'type': 'group',
-                        'children': [
-                            {
-                                'name': 'Type',
-                                'type': 'list',
-                                'limits': self.BANDPASS_TYPES,
-                                'value': self.BANDPASS_TYPES[0],
-                                'tip': 'Select the type of bandpass filter',
-                            },
-                            {
-                                'name': 'Center',
-                                'type': 'float',
-                                'value': 40.0,
-                                'limits': [0.0, 2096.0],
-                                'step': 0.5,
-                                'decimals': 2,
-                                'tip': 'Center frequency in pixels.',
-                            },
-                            {
-                                'name': 'Width',
-                                'type': 'float',
-                                'value': 90.0,
-                                'limits': [0.0, 2096.0],
-                                'step': 0.5,
-                                'decimals': 2,
-                                'tip': 'The width of the band in pixels',
-                            },
-                            {
-                                'name': 'Show Filter',
-                                'type': 'bool',
-                                'value': False,
-                                'tip': 'Toggle to show or hide the filter',
-                            },
-                        ],
-                    },
+                    *[
+                        cls().get_tree_parameters()
+                        for cls in SpatialFilter.__subclasses__()
+                        if cls().get_tree_parameters()
+                    ],
                 ],
             },
             {
@@ -498,6 +443,12 @@ class FittingOptions(Tree):
         if any('Enable ROI' in param.name() for param, _, _ in changes):
             self.roiEnabled.emit()
 
+        if any('Filter' in param.name() for param, _, _ in changes):
+            filter_ = self.get_param_value(Parameters.FILTER)
+            for name in self.FILTERS:
+                if self.get_param(f'Filters.{name}'):
+                    self.get_param(f'Filters.{name}').setOpts(visible=name == filter_)
+
         if any(
             param.name() in ['x', 'y', 'width', 'height'] for param, _, _ in changes
         ):
@@ -543,46 +494,45 @@ class FittingOptions(Tree):
         finally:
             self.param_tree.sigTreeStateChanged.connect(self.change)
 
-    def get_image_filter(self) -> AbstractFilter:
+    def get_image_filter(self) -> SpatialFilter:
         value = self.get_param_value(Parameters.FILTER)
         filter_class = FILTERS.get(value)
-        if filter_class is DoG_Filter:
-            filter: DoG_Filter = self._filters.get(value, None)
-            if filter is None:
-                self._filters[value] = DoG_Filter(
-                    self.get_param_value(Parameters.SIGMA),
-                    self.get_param_value(Parameters.FACTOR),
-                )
-            else:
-                filter.set_params(
-                    self.get_param_value(Parameters.SIGMA),
-                    self.get_param_value(Parameters.FACTOR),
-                )
-            return self._filters[value]
-        elif filter_class is BandpassFilter:
-            filter: BandpassFilter = self._filters.get(value, None)
-            if filter is None:
-                self._filters[value] = BandpassFilter(
-                    self.get_param_value(Parameters.CENTER),
-                    self.get_param_value(Parameters.WIDTH),
-                    self.get_param_value(Parameters.FILTER_TYPE),
-                    self.get_param_value(Parameters.SHOW_FILTER),
-                )
-            else:
-                filter.set_params(
-                    self.get_param_value(Parameters.CENTER),
-                    self.get_param_value(Parameters.WIDTH),
-                    self.get_param_value(Parameters.FILTER_TYPE),
-                    self.get_param_value(Parameters.SHOW_FILTER),
-                )
-            return self._filters[value]
-        elif filter_class is PassFilter:
-            filter: PassFilter = self._filters.get(value, None)
-            if filter is None:
-                self._filters[value] = PassFilter()
-            return filter
-        else:
-            return AbstractFilter()
+
+        path_str = f'Filters.{value}'
+
+        def get_arg_names(method):
+            '''Get the names of arguments for the method.'''
+            init_signature = inspect.signature(method)
+            return [
+                param.name
+                for param in init_signature.parameters.values()
+                if param.name != 'self'  # Exclude 'self'
+            ]
+
+        filter_: SpatialFilter = self._filters.get(value, None)
+
+        if filter_ is None:
+            # Create a new filter instance if it doesn't exist
+            self._filters[value] = filter_class(
+                **{
+                    param: self.get_param_value(
+                        f"{path_str}.{param.replace('_', ' ').title()}"
+                    )
+                    for param in get_arg_names(filter_class.__init__)
+                }
+            )
+        elif hasattr(filter_class, 'set_params'):
+            # If the filter class has a set_params method, use it to update parameters
+            filter_.set_params(
+                **{
+                    param: self.get_param_value(
+                        f"{path_str}.{param.replace('_', ' ').title()}"
+                    )
+                    for param in get_arg_names(filter_.set_params)
+                }
+            )
+
+        return self._filters.get(value, None)
 
     def get_detector(self) -> AbstractDetector:
         value = self.get_param_value(Parameters.PREFIT_DETECTOR)

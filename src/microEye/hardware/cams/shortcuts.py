@@ -153,6 +153,7 @@ class CameraShortcutsWidget(QtWidgets.QWidget):
     displayModeChanged = Signal(str)
     saveDataChanged = Signal()
     zoomChanged = Signal(float)
+    snapImage = Signal()
     acquisitionStart = Signal()
     acquisitionStop = Signal()
     adjustName = Signal(str)
@@ -225,7 +226,7 @@ class CameraShortcutsWidget(QtWidgets.QWidget):
             lambda: self.zoomChanged.emit(self.display_size_slider.value() / 100)
         )
 
-        self.__layout.addRow('Zoom [%]: ', self.display_size_slider)
+        # self.__layout.addRow('Zoom [%]: ', self.display_size_slider)
 
         # Add a layout for experiment name buttons
         experiment_name_btns = QtWidgets.QHBoxLayout()
@@ -272,6 +273,12 @@ class CameraShortcutsWidget(QtWidgets.QWidget):
         self.stop_button.clicked.connect(self.acquisitionStop.emit)
 
         acq_layout.addWidget(self.stop_button)
+
+        # Snap image
+        self.snap_button = QtWidgets.QPushButton('Snap Image')
+        self.snap_button.clicked.connect(self.snapImage.emit)
+
+        acq_layout.addWidget(self.snap_button)
 
         # Toggle save data
         self.save_data_button = QtWidgets.QCheckBox('Save Data')

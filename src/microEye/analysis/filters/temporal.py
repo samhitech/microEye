@@ -1,11 +1,11 @@
 import dask.array
 import numpy as np
 
-from microEye.analysis.filters.base import AbstractFilter
+from microEye.analysis.filters.base import TemporalFilter
 from microEye.utils.uImage import ZarrImageSequence
 
 
-class TemporalMedianFilter(AbstractFilter):
+class TemporalMedianFilter(TemporalFilter):
 
     def __init__(self, window=3) -> None:
         super().__init__()

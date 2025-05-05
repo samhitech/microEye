@@ -12,6 +12,11 @@ import cv2
 import numpy as np
 import pyqtgraph as pg
 
+from microEye.analysis.tools.roi_selectors import (
+    MultiRectangularROISelector,
+    convert_pos_size_to_rois,
+    convert_rois_to_pos_size,
+)
 from microEye.hardware.cams.camera_options import CameraOptions, CamParams
 from microEye.hardware.cams.jobs import AcquisitionJob
 from microEye.hardware.cams.line_profiler import LineProfiler
@@ -20,7 +25,9 @@ from microEye.hardware.cams.shortcuts import (
     CameraShortcutsWidget,
 )
 from microEye.qt import QDateTime, Qt, QtCore, QtWidgets, Signal, Slot
+from microEye.utils.display import DisplayManager
 from microEye.utils.expandable_groupbox import ExpandableGroupBox
+from microEye.utils.gui_helper import get_scaling_factor
 from microEye.utils.metadata_tree import MetadataEditorTree, MetaParams
 from microEye.utils.thread_worker import QThreadWorker
 from microEye.utils.uImage import uImage
@@ -59,6 +66,8 @@ class Camera_Panel(QtWidgets.QGroupBox):
             Keyword arguments to pass to the QGroupBox constructor.
         '''
         super().__init__(*args, **kwargs)
+
+        DisplayManager.instance()
 
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowCloseButtonHint)
 
@@ -206,6 +215,7 @@ class Camera_Panel(QtWidgets.QGroupBox):
         )
         self.cam_shortcuts.saveDataChanged.connect(self.camera_options.toggleSaveData)
         self.cam_shortcuts.zoomChanged.connect(self.camera_options.setZoom)
+        self.cam_shortcuts.snapImage.connect(self.capture_image)
         self.cam_shortcuts.acquisitionStart.connect(self.start_free_run)
         self.cam_shortcuts.acquisitionStop.connect(self.stop)
         self.cam_shortcuts.adjustName.connect(convinient_naming)
@@ -521,8 +531,71 @@ class Camera_Panel(QtWidgets.QGroupBox):
         raise NotImplementedError('The select_ROI function is not implemented yet.')
 
     def select_ROIs(self):
-        '''Selects the ROI for the camera'''
-        raise NotImplementedError('The select_ROIs function is not implemented yet.')
+        '''
+        Opens a dialog to select multiple ROIs from the last image.
+        '''
+        if self.cam.acquisition:
+            QtWidgets.QMessageBox.warning(
+                self, 'Warning', 'Cannot set ROI while acquiring images!'
+            )
+            return  # if acquisition is already going on
+
+        if self.acq_job is not None:
+            try:
+
+                def work_func(**kwargs):
+                    try:
+                        image = uImage(self.acq_job.frame.image)
+
+                        image.equalizeLUT(nLUT=True)
+
+                        scale_factor = get_scaling_factor(image.height, image.width)
+
+                        selector = MultiRectangularROISelector.get_selector(
+                            image._view, scale_factor, max_rois=4, one_size=True
+                        )
+
+                        old_rois = self.camera_options.get_export_rois()
+
+                        if len(old_rois) > 0:
+                            old_rois = convert_pos_size_to_rois(old_rois)
+                            selector.rois = old_rois
+
+                        rois = selector.select_rectangular_rois()
+
+                        rois = convert_rois_to_pos_size(rois)
+
+                        if len(rois) > 0:
+                            return rois
+                        else:
+                            return None
+                    except Exception:
+                        traceback.print_exc()
+                        return None
+
+                def done(results: list[list]):
+                    rois_param = self.camera_options.get_param(CamParams.EXPORTED_ROIS)
+                    rois_param.clearChildren()
+
+                    if results is not None:
+                        for x, y, w, h in results:
+                            self.camera_options.add_param_child(
+                                CamParams.EXPORTED_ROIS,
+                                {
+                                    'name': 'ROI 1',
+                                    'type': 'str',
+                                    'readonly': True,
+                                    'removable': True,
+                                    'value': f'{x}, {y}, {w}, {h}',
+                                },
+                            )
+
+                self.worker = QThreadWorker(work_func)
+                self.worker.signals.result.connect(done)
+                # Execute
+                self._threadpool.start(self.worker)
+            except Exception:
+                traceback.print_exc()
 
     def get_meta(self):
         return self.camera_options.get_json()
@@ -597,6 +670,19 @@ class Camera_Panel(QtWidgets.QGroupBox):
 
         self._save_prefix = Prefix
         self.acq_job = self.getAcquisitionJob(Event)
+
+        self._cam.acquisition = True  # set acquisition flag to true
+
+        # start both capture and display workers
+        self.start_all_workers()
+
+    def capture_image(self):
+        if self._cam.acquisition:
+            return  # if acquisition is already going on
+
+        self.acq_job = self.getAcquisitionJob()
+        self.acq_job.frames = 1  # set frames to 1 for snap
+        self.acq_job.save = False  # set save to false for snap
 
         self._cam.acquisition = True  # set acquisition flag to true
 
@@ -850,12 +936,12 @@ def update_histogram_and_display(params: AcquisitionJob, camp: Camera_Panel):
         frame.equalizeLUT(region, camp.camera_options.isNumpyLUT)
         if zoom is None:
             zoom = camp.camera_options.get_param_value(CamParams.RESIZE_DISPLAY)
-        frame._view = cv2.resize(
-            frame._view, (0, 0), fx=zoom, fy=zoom, interpolation=cv2.INTER_NEAREST
-        )
+        # frame._view = cv2.resize(
+        #     frame._view, (0, 0), fx=zoom, fy=zoom, interpolation=cv2.INTER_NEAREST
+        # )
 
-        if camp.camera_options.isDisplayStats:
-            drawStats(frame)
+        # if camp.camera_options.isDisplayStats:
+        #     drawStats(frame)
         return frame
 
     def display_frame(name, frame: Union[uImage, np.ndarray]):
@@ -863,7 +949,17 @@ def update_histogram_and_display(params: AcquisitionJob, camp: Camera_Panel):
         if isinstance(frame, uImage):
             frame = frame._view
 
-        cv2.imshow(name, frame)
+        # cv2.imshow(name, frame)
+        DisplayManager.instance().image_update_signal.emit(
+            name,
+            frame,
+            {
+                'aspect_ratio': 1.0,
+                'width': frame.shape[1],
+                'height': frame.shape[0],
+                'show_stats': camp.camera_options.isDisplayStats,
+            },
+        )
 
     if camp.camera_options.isSingleView or (
         camp.camera_options.isROIsView and len(params.rois) == 0

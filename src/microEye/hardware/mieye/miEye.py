@@ -28,6 +28,7 @@ from microEye.qt import (
     QtCore,
     QtWidgets,
 )
+from microEye.tools.microscopy import ObjectiveCalculator
 from microEye.utils.pyscripting import pyEditor
 from microEye.utils.retry_exec import retry_exec
 from microEye.utils.start_gui import StartGUI
@@ -352,9 +353,12 @@ class miEye_module(QMainWindow):
         # Tools menu
         pycro_headless = HeadlessManagerWidget.get_menu_action(self)
         core_instances = BridgesWidget.get_menu_action(self)
+        objective_tool = ObjectiveCalculator.get_menu_action(self)
 
         tools_menu.addAction(pycro_headless)
         tools_menu.addAction(core_instances)
+        tools_menu.addSeparator()
+        tools_menu.addAction(objective_tool)
 
         help_menu.addAction(github)
         help_menu.addAction(pypi)

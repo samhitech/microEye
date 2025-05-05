@@ -1,25 +1,28 @@
 import math
 from enum import Enum
+from typing import Optional
 
 import cv2
 import numpy as np
 from scipy import signal
 from scipy.fftpack import fft2, fftshift, ifft2, ifftshift
+from skimage import filters
+from skimage.morphology import disk, white_tophat
+from skimage.restoration import rolling_ball
 
-from microEye.analysis.filters.base import AbstractFilter
+from microEye.analysis.filters.base import SpatialFilter
 
 
-class PassFilter(AbstractFilter):
+class PassFilter(SpatialFilter):
+    def __init__(self) -> None:
+        '''Pass filter initialization.'''
+        super().__init__(name='No Filter (Pass)')
+
     def run(self, image: np.ndarray) -> np.ndarray:
         return image
 
-    def get_metadata(self):
-        '''Return metadata about the Pass filter.'''
-        return {
-            'name': 'Pass Filter'
-        }
 
-class DoG_Filter(AbstractFilter):
+class DoG_Filter(SpatialFilter):
     def __init__(self, sigma: float = 1, factor: float = 2.5) -> None:
         '''Difference of Gauss init
 
@@ -30,6 +33,11 @@ class DoG_Filter(AbstractFilter):
         factor : float, optional
             factor = sigma_max/sigma_min, by default 2.5
         '''
+        params = {
+            'sigma': sigma,
+            'factor': factor,
+        }
+        super().__init__(name='Difference of Gaussians', parameters=params)
         self.set_params(sigma, factor)
 
     def set_params(self, sigma: float, factor: float):
@@ -43,12 +51,12 @@ class DoG_Filter(AbstractFilter):
             factor = sigma_max/sigma_min
         '''
         self._show_filter = False
-        self.sigma = sigma
-        self.factor = factor
-        self.rsize = max(math.ceil(6 * self.sigma + 1), 3)
+        self.parameters['sigma'] = sigma
+        self.parameters['factor'] = factor
+        self.rsize = max(math.ceil(6 * sigma + 1), 3)
         self.dog = DoG_Filter.gaussian_kernel(
-            self.rsize, self.sigma
-        ) - DoG_Filter.gaussian_kernel(self.rsize, max(1, self.factor * self.sigma))
+            self.rsize, sigma
+        ) - DoG_Filter.gaussian_kernel(self.rsize, max(1, factor * sigma))
 
     def gaussian_kernel(dim, sigma):
         x = cv2.getGaussianKernel(dim, sigma)
@@ -80,64 +88,143 @@ class DoG_Filter(AbstractFilter):
         )
         return res
 
-    def get_metadata(self):
-        '''Return metadata about the Difference of Gaussians filter.'''
+    def get_tree_parameters(self):
+        '''Return the parameters for the pyqtgraph tree view.'''
         return {
-            'name': 'Difference of Gaussains Filter',
-            'sigma': self.sigma,
-            'factor': self.factor,
+            'name': self.name,
+            'type': 'group',
+            'visible': False,
+            'children': [
+                {
+                    'name': 'Sigma',
+                    'type': 'float',
+                    'value': self.parameters['sigma'],
+                    'limits': [0.0, 100.0],
+                    'step': 0.1,
+                    'decimals': 2,
+                    'tip': 'Standard deviation (\u03c3) min for the filter',
+                },
+                {
+                    'name': 'Factor',
+                    'type': 'float',
+                    'value': self.parameters['factor'],
+                    'limits': [0.0, 100.0],
+                    'step': 0.1,
+                    'decimals': 2,
+                    'tip': 'Ratio of max \u03c3 to min \u03c3.',
+                },
+            ],
         }
 
 
-class GaussFilter(AbstractFilter):
-    def __init__(self, sigma=1) -> None:
-        '''Gaussian filter initialization.'''
-        self.set_sigma(sigma)
+# class GaussFilter(SpatialFilter):
+#     def __init__(self, sigma=1) -> None:
+#         '''Gaussian filter initialization.'''
+#         params = {'sigma': sigma}
+#         super().__init__(name='Gaussian Filter', parameters=params)
+#         self.set_params(sigma)
 
-    def set_sigma(self, sigma):
-        '''Set the sigma parameter for the Gaussian filter.'''
-        self.sigma = 1
-        self.gauss = GaussFilter.gaussian_kernel(
-            max(3, math.ceil(3 * sigma + 1)), sigma
-        )
+#     def set_params(self, sigma):
+#         '''Set the sigma parameter for the Gaussian filter.'''
+#         self._show_filter = False
+#         self.parameters['sigma'] = sigma
+#         self.gauss = GaussFilter.gaussian_kernel(
+#             max(3, math.ceil(3 * sigma + 1)), sigma
+#         )
 
-    def gaussian_kernel(dim, sigma):
-        x = cv2.getGaussianKernel(dim, sigma)
-        kernel = x.dot(x.T)
-        return kernel
+#     def gaussian_kernel(dim, sigma):
+#         x = cv2.getGaussianKernel(dim, sigma)
+#         kernel = x.dot(x.T)
+#         return kernel
 
-    def run(self, image: np.ndarray) -> np.ndarray:
-        return signal.convolve2d(image, np.rot90(self.gauss), mode='same')
+#     def run(self, image: np.ndarray) -> np.ndarray:
+#         return cv2.normalize(
+#             signal.convolve2d(image, np.rot90(self.gauss), mode='same'),
+#             None,
+#             0,
+#             255,
+#             cv2.NORM_MINMAX,
+#             cv2.CV_8U,
+#         )
+
+#     def get_tree_parameters(self):
+#         '''Return the parameters for the pyqtgraph tree view.'''
+#         return {
+#             'name': self.name,
+#             'type': 'group',
+#             'visible': False,
+#             'children': [
+#                 {
+#                     'name': 'Sigma',
+#                     'type': 'float',
+#                     'value': self.parameters['sigma'],
+#                     'limits': [0.0, 100.0],
+#                     'step': 0.1,
+#                     'decimals': 2,
+#                     'tip': 'Standard deviation (\u03c3) for the filter',
+#                 },
+#             ],
+#         }
 
 
-class BANDPASS_TYPES(Enum):
-    Gaussian = 1
-    Butterworth = 2
-    Ideal = 3
+class FourierFilter(SpatialFilter):
+    class PROFILES(Enum):
+        Gaussian = 1
+        Butterworth = 2
+        Ideal = 3
 
-    @classmethod
-    def from_string(cls, s: str):
-        for column in cls:
-            if column.name.lower() == s.lower() or s.lower() in column.name.lower():
-                return column
-        raise ValueError(f'{cls.__name__} has no value matching "{s}"')
+        @classmethod
+        def from_string(cls, s: str):
+            for column in cls:
+                if column.name.lower() == s.lower() or s.lower() in column.name.lower():
+                    return column
+            raise ValueError(f'{cls.__name__} has no value matching "{s}"')
 
-    @classmethod
-    def values(cls):
-        return [column.name for column in cls]
+        @classmethod
+        def values(cls):
+            return [column.name for column in cls]
 
+    class PASS_TYPES(Enum):
+        Band = 0
+        Low = 1
+        High = 2
 
-class BandpassFilter(AbstractFilter):
+        @classmethod
+        def from_string(cls, s: str):
+            for column in cls:
+                if column.name.lower() == s.lower() or s.lower() in column.name.lower():
+                    return column
+            raise ValueError(f'{cls.__name__} has no value matching "{s}"')
+
+        @classmethod
+        def values(cls):
+            return [column.name for column in cls]
+
     def __init__(
-        self, center=40.0, width=90.0, filter_type=BANDPASS_TYPES.Gaussian, show=False
+        self,
+        center=40.0,
+        width=90.0,
+        filter_type=PROFILES.Gaussian,
+        pass_type=PASS_TYPES.Band,
+        order=5,
+        show_filter=False,
     ) -> None:
-        '''Bandpass filter initialization.'''
+        '''Fourier filter initialization.'''
+        params = {
+            'center': center,
+            'width': width,
+            'type': filter_type.name
+            if isinstance(filter_type, FourierFilter.PROFILES)
+            else filter_type,
+            'pass_type': pass_type.name
+            if isinstance(pass_type, FourierFilter.PASS_TYPES)
+            else pass_type,
+            'order': order,
+        }
+        super().__init__(name='Fourier Filter', parameters=params)
         self._radial_coordinates = None
-        self._filter = None
-        self._center = center
-        self._width = width
-        self._type = filter_type
-        self._show_filter = show
+        self._filter: Optional[np.ndarray] = None
+        self._show_filter = show_filter
         self._refresh = True
 
     def radial_coordinates(self, shape):
@@ -161,8 +248,8 @@ class BandpassFilter(AbstractFilter):
 
         return self._radial_coordinates
 
-    def ideal_bandpass_filter(self, shape, cutoff, cuton):
-        '''Generates an ideal bandpass filter of shape
+    def ideal_filter(self, shape, cutoff, cuton):
+        '''Generates an ideal pass filter of shape
 
         Params
         -------
@@ -181,12 +268,19 @@ class BandpassFilter(AbstractFilter):
 
         cir_filter = np.zeros((shape[0], shape[1]), dtype=np.float32)
         cir_center = (shape[1] // 2, shape[0] // 2)
-        cir_filter = cv2.circle(cir_filter, cir_center, cuton, 1, -1)
-        cir_filter = cv2.circle(cir_filter, cir_center, cutoff, 0, -1)
+
+        if self.parameters['pass_type'] == FourierFilter.PASS_TYPES.Low.name:
+            cir_filter = cv2.circle(cir_filter, cir_center, cutoff, 1, -1)
+        elif self.parameters['pass_type'] == FourierFilter.PASS_TYPES.High.name:
+            cir_filter = cv2.circle(1 + cir_filter, cir_center, cutoff, 0, -1)
+        else:
+            cir_filter = cv2.circle(cir_filter, cir_center, cuton, 1, -1)
+            cir_filter = cv2.circle(cir_filter, cir_center, cutoff, 0, -1)
+
         return cir_filter
 
-    def gauss_bandpass_filter(self, shape, center, width):
-        '''Generates a Gaussian bandpass filter of shape
+    def gaussian_filter(self, shape, center, width):
+        '''Generates a Gaussian pass filter of shape
 
         Params
         -------
@@ -210,7 +304,13 @@ class BandpassFilter(AbstractFilter):
             R, Rsq = self._radial_coordinates
 
         with np.errstate(divide='ignore', invalid='ignore'):
-            filter = np.exp(-(((Rsq - center**2) / (R * width)) ** 2))
+            if self.parameters['pass_type'] == FourierFilter.PASS_TYPES.Low.name:
+                filter = np.exp(-(Rsq) / (2 * (center**2)))
+            elif self.parameters['pass_type'] == FourierFilter.PASS_TYPES.High.name:
+                filter = 1 - np.exp(-(Rsq) / (2 * (center**2)))
+            else:
+                filter = np.exp(-(((Rsq - center**2) / (R * width)) ** 2))
+
             filter[filter == np.inf] = 0
 
         a, b = np.unravel_index(R.argmin(), R.shape)
@@ -219,8 +319,8 @@ class BandpassFilter(AbstractFilter):
 
         return filter
 
-    def butterworth_bandpass_filter(self, shape, center, width):
-        '''Generates a Gaussian bandpass filter of shape
+    def butterworth_filter(self, shape, center, width, order=5):
+        '''Generates a Gaussian pass filter of shape
 
         Params
         -------
@@ -244,7 +344,15 @@ class BandpassFilter(AbstractFilter):
             R, Rsq = self._radial_coordinates
 
         with np.errstate(divide='ignore', invalid='ignore'):
-            filter = 1 - (1 / (1 + ((R * width) / (Rsq - center**2)) ** 10))
+            if self.parameters['pass_type'] == FourierFilter.PASS_TYPES.Low.name:
+                filter = 1 / (1 + (R / center) ** (2 * order))
+            elif self.parameters['pass_type'] == FourierFilter.PASS_TYPES.High.name:
+                filter = 1 / (1 + (center / np.where(R == 0, 1e-10, R)) ** (2 * order))
+            else:
+                filter = 1 - (
+                    1 / (1 + ((R * width) / (Rsq - center**2)) ** (2 * order))
+                )
+
             filter[filter == np.inf] = 0
 
         a, b = np.unravel_index(R.argmin(), R.shape)
@@ -254,7 +362,7 @@ class BandpassFilter(AbstractFilter):
         return filter
 
     def run(self, image: np.ndarray):
-        '''Applies an FFT bandpass filter to the 2D image.
+        '''Applies an FFT pass filter to the 2D image.
 
         Params
         -------
@@ -290,24 +398,31 @@ class BandpassFilter(AbstractFilter):
             refresh = True
 
         if refresh:
-            if self._type == BANDPASS_TYPES.Gaussian.name:
-                filter = self.gauss_bandpass_filter(ft.shape, self._center, self._width)
-            elif self._type == BANDPASS_TYPES.Butterworth.name:
-                filter = self.butterworth_bandpass_filter(
-                    ft.shape, self._center, self._width
+            if self.parameters['type'] == FourierFilter.PROFILES.Gaussian.name:
+                filter = self.gaussian_filter(
+                    ft.shape, self.parameters['center'], self.parameters['width']
+                )
+            elif self.parameters['type'] == FourierFilter.PROFILES.Butterworth.name:
+                filter = self.butterworth_filter(
+                    ft.shape,
+                    self.parameters['center'],
+                    self.parameters['width'],
+                    self.parameters['order'],
                 )
             else:
-                cutoff = int(max(0, self._center - self._width // 2))
-                cuton = int(self._center + self._width // 2)
-                filter = self.ideal_bandpass_filter(ft.shape, cutoff, cuton)
+                cutoff = int(
+                    max(0, self.parameters['center'] - self.parameters['width'] // 2)
+                )
+                cuton = int(self.parameters['center'] + self.parameters['width'] // 2)
+                filter = self.ideal_filter(ft.shape, cutoff, cuton)
 
             self._filter = filter
         else:
             filter = self._filter
 
         if self._show_filter:
-            cv2.namedWindow('BandpassFilter', cv2.WINDOW_NORMAL)
-            cv2.imshow('BandpassFilter', (filter * 255).astype(np.uint8))
+            cv2.namedWindow(self.name, cv2.WINDOW_NORMAL)
+            cv2.imshow(self.name, (filter * 255).astype(np.uint8))
 
         img = np.zeros(nimg.shape, dtype=np.uint8)
         ft[:, :, 0] *= filter
@@ -320,19 +435,142 @@ class BandpassFilter(AbstractFilter):
         return img[pad_rows[0] : -pad_rows[1], pad_cols[0] : -pad_cols[1]]
 
     def set_params(
-        self, center: float, width: float, filter_type: BANDPASS_TYPES, show: bool
+        self,
+        center: float,
+        width: float,
+        filter_type: PROFILES,
+        pass_type: PASS_TYPES,
+        show_filter: bool,
+        order: int = 5,
     ):
-        self._center = center
-        self._width = width
-        self._type = filter_type
-        self._show_filter = show
+        '''
+        Set the parameters for the filter.
+        '''
+        self.parameters['center'] = center
+        self.parameters['width'] = width
+        self.parameters['order'] = order
+        self.parameters['type'] = (
+            filter_type.name
+            if isinstance(filter_type, FourierFilter.PROFILES)
+            else filter_type
+        )
+        self.parameters['pass_type'] = (
+            pass_type.name
+            if isinstance(pass_type, FourierFilter.PASS_TYPES)
+            else pass_type
+        )
+        self._show_filter = show_filter
 
-    def get_metadata(self):
-        '''Return metadata about the Bandpass Fourier Filter.'''
+    def get_tree_parameters(self):
         return {
-            'name': 'Fourier Bandpass Filter',
-            'type': self._type,
-            'band center': self._center,
-            'band width': self._width,
-            'show filter': self._show_filter,
+            'name': self.name,
+            'type': 'group',
+            'visible': False,
+            'children': [
+                {
+                    'name': 'Filter Type',
+                    'type': 'list',
+                    'limits': FourierFilter.PROFILES.values(),
+                    'value': FourierFilter.PROFILES.Gaussian.name,
+                    'tip': 'Select the type of fourier filter',
+                },
+                {
+                    'name': 'Pass Type',
+                    'type': 'list',
+                    'limits': FourierFilter.PASS_TYPES.values(),
+                    'value': FourierFilter.PASS_TYPES.Band.name,
+                    'tip': 'Select the type of pass filter',
+                },
+                {
+                    'name': 'Center',
+                    'type': 'float',
+                    'value': self.parameters['center'],
+                    'limits': [0.0, 2096.0],
+                    'step': 0.5,
+                    'decimals': 2,
+                    'tip': 'Center frequency in pixels.',
+                },
+                {
+                    'name': 'Width',
+                    'type': 'float',
+                    'value': 90,
+                    'limits': [0.0, 2096.0],
+                    'step': 0.5,
+                    'decimals': 2,
+                    'tip': 'The width of the band in pixels',
+                },
+                {
+                    'name': 'Order',
+                    'type': 'int',
+                    'value': 5,
+                    'limits': [1, 10],
+                    'step': 1,
+                    'tip': 'The order of the Butterworth filter',
+                },
+                {
+                    'name': 'Show Filter',
+                    'type': 'bool',
+                    'value': self._show_filter,
+                    'tip': 'Toggle to show or hide the filter',
+                },
+            ],
+        }
+
+
+class BackgroundReduction(SpatialFilter):
+    METHODS = [
+        'Rolling Ball',
+        'White Top Hat',
+    ]
+
+    def __init__(self, radius: float = 30.0) -> None:
+        '''Rolling ball filter initialization.'''
+        params = {
+            'radius': radius,
+            'method': 'Rolling Ball',
+        }
+        super().__init__(name='Background Reduction', parameters=params)
+        self.set_params(radius)
+
+    def set_params(self, radius: float, method='Rolling Ball'):
+        '''Set the radius parameter fand the method.'''
+        self.parameters['radius'] = radius
+
+        if method not in self.METHODS:
+            raise ValueError(f'Method {method} not supported.')
+
+        self.parameters['method'] = method
+
+    def run(self, image: np.ndarray) -> np.ndarray:
+        if self.parameters['method'] == self.METHODS[0]:
+            return image - rolling_ball(image, radius=self.parameters['radius'])
+        elif self.parameters['method'] == self.METHODS[1]:
+            return white_tophat(image, disk(self.parameters['radius']))
+
+        return image
+
+    def get_tree_parameters(self):
+        '''Return the parameters for the pyqtgraph tree view.'''
+        return {
+            'name': self.name,
+            'type': 'group',
+            'visible': False,
+            'children': [
+                {
+                    'name': 'Radius',
+                    'type': 'float',
+                    'value': self.parameters['radius'],
+                    'limits': [0.0, 250.0],
+                    'step': 0.1,
+                    'decimals': 2,
+                    'tip': 'Radius of the rolling ball in pixels',
+                },
+                {
+                    'name': 'Method',
+                    'type': 'list',
+                    'limits': self.METHODS,
+                    'value': self.parameters['method'],
+                    'tip': 'Select the method for background reduction',
+                },
+            ],
         }

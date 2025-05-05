@@ -252,7 +252,7 @@ class focusWidget(QtWidgets.QDockWidget):
             'UseCal': FocusStabilizer.instance().useCal(),
             'Inverted': FocusStabilizer.instance().isInverted(),
         }
-    
+
     def load_config(self, config: dict) -> None:
         if not isinstance(config, dict):
             raise TypeError('Configuration must be a dictionary.')

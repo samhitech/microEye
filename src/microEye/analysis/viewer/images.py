@@ -22,7 +22,7 @@ else:
 
 from microEye.analysis.checklist_dialog import ChecklistDialog
 from microEye.analysis.cmosMaps import cmosMaps
-from microEye.analysis.filters import BandpassFilter, TemporalMedianFilter
+from microEye.analysis.filters import TemporalMedianFilter
 from microEye.analysis.fitting import psf, pyfit3Dcspline
 from microEye.analysis.fitting.fit import *
 from microEye.analysis.fitting.phasor_fit import phasor_fit

@@ -408,6 +408,9 @@ class Dummy_Panel(Camera_Panel):
         '''Update the camera parameters.'''
         path = self.camera_options.param_tree.childPath(param)
 
+        if path is None:
+            return
+
         try:
             param_name = DummyParams('.'.join(path))
         except ValueError:
@@ -562,74 +565,6 @@ class Dummy_Panel(Camera_Panel):
                     if result is not None:
                         # x, y, w, h = result
                         self.camera_options.set_roi_info(*result)
-
-                self.worker = QThreadWorker(work_func)
-                self.worker.signals.result.connect(done)
-                # Execute
-                self._threadpool.start(self.worker)
-            except Exception:
-                traceback.print_exc()
-
-    def select_ROIs(self):
-        '''
-        Opens a dialog to select multiple ROIs from the last image.
-        '''
-        if self.cam.acquisition:
-            QtWidgets.QMessageBox.warning(
-                self, 'Warning', 'Cannot set ROI while acquiring images!'
-            )
-            return  # if acquisition is already going on
-
-        if self.acq_job is not None:
-            try:
-
-                def work_func(**kwargs):
-                    try:
-                        image = uImage(self.acq_job.frame.image)
-
-                        image.equalizeLUT(nLUT=True)
-
-                        scale_factor = get_scaling_factor(image.height, image.width)
-
-                        selector = MultiRectangularROISelector.get_selector(
-                            image._view, scale_factor, max_rois=4, one_size=True
-                        )
-
-                        old_rois = self.camera_options.get_export_rois()
-
-                        if len(old_rois) > 0:
-                            old_rois = convert_pos_size_to_rois(old_rois)
-                            selector.rois = old_rois
-
-                        rois = selector.select_rectangular_rois()
-
-                        rois = convert_rois_to_pos_size(rois)
-
-                        if len(rois) > 0:
-                            return rois
-                        else:
-                            return None
-                    except Exception:
-                        traceback.print_exc()
-                        return None
-
-                def done(results: list[list]):
-                    if results is not None:
-                        rois_param = self.camera_options.get_param(
-                            CamParams.EXPORTED_ROIS
-                        )
-                        rois_param.clearChildren()
-                        for x, y, w, h in results:
-                            self.camera_options.add_param_child(
-                                CamParams.EXPORTED_ROIS,
-                                {
-                                    'name': 'ROI 1',
-                                    'type': 'str',
-                                    'readonly': True,
-                                    'removable': True,
-                                    'value': f'{x}, {y}, {w}, {h}',
-                                },
-                            )
 
                 self.worker = QThreadWorker(work_func)
                 self.worker.signals.result.connect(done)
