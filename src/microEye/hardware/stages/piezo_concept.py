@@ -30,9 +30,9 @@ class PzFoc(AbstractStage):
         '''
         super().__init__(
             name='PiezoConcept FOC 1-axis',
-            max_range=(0, 0, max_um),
+            max_range=(0, 0, max_um * 1000),
             units=Units.NANOMETERS,
-            readyRead=self.read_serial_data
+            readyRead=self.read_serial_data,
         )
 
         self.position = self.z_max_nm // 2
@@ -96,7 +96,7 @@ class PzFoc(AbstractStage):
     def move_absolute(self, pos: int):
         if self.is_open():
             self.position = min(max(pos, 0), self.z_max_nm)
-            self.send_command(f'MOVEZ {pos}u\n'.encode())
+            self.send_command(f'MOVEZ {pos}n\n'.encode())
             self.last_command = 'MOVEZ'
 
     def home(self):
@@ -108,7 +108,7 @@ class PzFoc(AbstractStage):
     def move_relative(self, pos: int):
         if self.is_open():
             self.position = min(max(self.position + pos, 0), self.z_max_nm)
-            self.send_command(f'MOVEZ {self.position}u\n'.encode())
+            self.send_command(f'MOVEZ {self.position}n\n'.encode())
             self.last_command = 'MOVEZ'
 
     def refresh_position(self):

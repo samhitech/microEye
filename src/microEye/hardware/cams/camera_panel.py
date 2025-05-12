@@ -6,7 +6,7 @@ import time
 import traceback
 from functools import lru_cache
 from queue import Queue
-from typing import Union
+from typing import Optional, Union
 
 import cv2
 import numpy as np
@@ -82,15 +82,6 @@ class Camera_Panel(QtWidgets.QGroupBox):
         self.asyncFreerun.connect(
             lambda prefix, event: self.start_free_run(Prefix=prefix, Event=event)
         )
-
-        # number of bins for the histogram (4096 is set for 12bit mono-camera)
-        self._nBins = 2**12
-        self._hist = np.arange(0, self._nBins) * 0  # arrays for the Hist plot
-        self._bins = np.arange(0, self._nBins)  # arrays for the Hist plot
-
-        self.__update_timer = time.time()
-        self.updateStatsSignal.connect(self.updateStats)
-        self.updateRangeSignal.connect(self.updateRange)
 
         self._threadpool = (
             QtCore.QThreadPool.globalInstance()
@@ -219,6 +210,13 @@ class Camera_Panel(QtWidgets.QGroupBox):
         self.cam_shortcuts.acquisitionStart.connect(self.start_free_run)
         self.cam_shortcuts.acquisitionStop.connect(self.stop)
         self.cam_shortcuts.adjustName.connect(convinient_naming)
+        self.cam_shortcuts.adjustROI.connect(self.roi_shortcuts)
+        self.cam_shortcuts.tileWindows.connect(
+            lambda idx: DisplayManager.instance().tile_displays(idx)
+        )
+        self.cam_shortcuts.closeAllWindows.connect(
+            lambda: DisplayManager.instance().close_all_displays()
+        )
 
         # Create the context menu
         menu = self.cam_shortcuts.create_context_menu(self.camera_options)
@@ -312,77 +310,6 @@ class Camera_Panel(QtWidgets.QGroupBox):
         self.camera_options.centerROI.connect(lambda: self.center_ROI())
         self.camera_options.selectROI.connect(lambda: self.select_ROI())
         self.camera_options.selectROIs.connect(lambda: self.select_ROIs())
-        self.camera_options.viewOptionChanged.connect(lambda: self.view_toggled())
-
-        # controls for histogram and cdf
-
-        # Create a single plot with shared X-axis and
-        # separate Y-axes for histogram and CDF
-        self.histogram = pg.PlotWidget()
-        self.hist_cdf = pg.ViewBox()
-
-        # Add the CDF ViewBox to the histogram plot
-        self.histogram.getPlotItem().scene().addItem(self.hist_cdf)
-        self.histogram.getPlotItem().getAxis('left').setLabel('HIST')
-        self.histogram.getPlotItem().getAxis('right').setLabel('CDF')
-        self.histogram.getPlotItem().showAxis('right')
-        self.histogram.getPlotItem().getAxis('right').linkToView(self.hist_cdf)
-
-        # Link the X-axis of the CDF ViewBox to the main plot
-        self.hist_cdf.setXLink(self.histogram.getPlotItem().getViewBox())
-
-        # Adjust the CDF ViewBox to match the main plot
-        def update_views():
-            self.hist_cdf.setGeometry(
-                self.histogram.getPlotItem().getViewBox().sceneBoundingRect()
-            )
-            self.hist_cdf.linkedViewChanged(
-                self.histogram.getPlotItem().getViewBox(), self.hist_cdf.XAxis
-            )
-
-        self.histogram.getPlotItem().getViewBox().sigResized.connect(update_views)
-
-        # Set up pens and brushes for histogram and CDF
-        greenP = pg.mkPen(color='g')
-        blueP = pg.mkPen(color='b')
-        cyanP = pg.mkPen(color='c')
-        yellowP = pg.mkPen(color='y')
-        greenB = pg.mkBrush(0, 255, 0, 32)
-        blueB = pg.mkBrush(0, 0, 255, 32)
-
-        # Add histogram and CDF plots
-        self._plot_ref = self.histogram.plot(self._bins, self._hist, pen=greenP)
-        self._plot_ref_2 = self.histogram.plot(self._bins, self._hist, pen=blueP)
-        self._cdf_plot_ref = pg.PlotDataItem(self._bins, self._hist, pen=cyanP)
-        self._cdf_plot_ref_2 = pg.PlotDataItem(self._bins, self._hist, pen=yellowP)
-        self.hist_cdf.addItem(self._cdf_plot_ref)
-        self.hist_cdf.addItem(self._cdf_plot_ref_2)
-
-        # Add linear regions for histogram and CDF
-        self.lr_0 = pg.LinearRegionItem(
-            (0, self._nBins),
-            bounds=(0, self._nBins),
-            pen=greenP,
-            brush=greenB,
-            movable=True,
-            swapMode='push',
-            span=(0.0, 1),
-        )
-        self.lr_1 = pg.LinearRegionItem(
-            (0, self._nBins),
-            bounds=(0, self._nBins),
-            pen=blueP,
-            brush=blueB,
-            movable=True,
-            swapMode='push',
-            span=(1, 1),
-        )
-        self.histogram.addItem(self.lr_0)
-        self.histogram.addItem(self.lr_1)
-
-        # Add the histogram plot to the layout
-        self.first_tab.addWidget(self.histogram)
-        self.first_tab.setStretchFactor(1, 1)
 
         CameraOptions.combine_params(self.PARAMS)
 
@@ -597,15 +524,90 @@ class Camera_Panel(QtWidgets.QGroupBox):
             except Exception:
                 traceback.print_exc()
 
+    def roi_shortcuts(self, fov: float, single: bool, software: bool):
+        '''
+        Sets the ROI for the camera using the selected FOV and mode.
+
+        Parameters
+        ----------
+        fov : float
+            The field of view to set in microns.
+        single : bool
+            True if single view, False if dual view.
+        software : bool
+            True if software ROI, False if hardware ROI.
+        '''
+        if self.cam.acquisition:
+            QtWidgets.QMessageBox.warning(
+                self, 'Warning', 'Cannot set ROI while acquiring images!'
+            )
+            return
+
+        rois_param = self.camera_options.get_param(CamParams.EXPORTED_ROIS)
+        rois_param.clearChildren()
+
+        pixel_size = self.OME_tab.get_param_value(MetaParams.PX_SIZE) / 1000
+        width = self._cam.getWidth()
+        height = self._cam.getHeight()
+
+        if single:
+            x = int((width - fov // pixel_size) / 2)
+            y = int((height - fov // pixel_size) / 2)
+            w = h = int(fov // pixel_size)
+        else:  # dual view cnetered in each half of the camera
+            x = int((width - 2 * fov / pixel_size) / 4)
+            w = width - 2 * x
+            y = int((height - fov // pixel_size) / 2)
+            h = int(fov // pixel_size)
+
+            rois = [
+                (x if software else 0, y if software else 0, h, h),
+                (h + 3 * x if software else h + 2 * x, y if software else 0, h, h),
+            ]
+
+            for roi in rois:
+                self.camera_options.add_param_child(
+                    CamParams.EXPORTED_ROIS,
+                    {
+                        'name': 'ROI 1',
+                        'type': 'str',
+                        'readonly': True,
+                        'removable': True,
+                        'value': f'{roi[0]}, {roi[1]}, {roi[2]}, {roi[3]}',
+                    },
+                )
+
+        if not software:
+            self.reset_ROI()
+            QtCore.QThread.msleep(250)  # wait for the camera to update the ROI
+
+            self.camera_options.set_param_value(CamParams.ROI_X, x)
+            self.camera_options.set_param_value(CamParams.ROI_Y, y)
+            self.camera_options.set_param_value(CamParams.ROI_WIDTH, w)
+            self.camera_options.set_param_value(CamParams.ROI_HEIGHT, h)
+
+            self.set_ROI()
+        elif single:
+            self.camera_options.add_param_child(
+                CamParams.EXPORTED_ROIS,
+                {
+                    'name': 'ROI 1',
+                    'type': 'str',
+                    'readonly': True,
+                    'removable': True,
+                    'value': f'{x}, {y}, {w}, {h}',
+                },
+            )
+
     def get_meta(self):
         return self.camera_options.get_json()
 
-    def getAcquisitionJob(self, event=None) -> AcquisitionJob:
+    def getAcquisitionJob(self, **kwargs) -> AcquisitionJob:
         self._save_path = os.path.join(
             self._directory,
             self.camera_options.get_param_value(CamParams.EXPERIMENT_NAME) + '\\',
         )
-        self.Event = event
+        self.Event = kwargs.get('event')
         return AcquisitionJob(
             self._temps,
             self._buffer,
@@ -616,7 +618,9 @@ class Camera_Panel(QtWidgets.QGroupBox):
             biggTiff=self.camera_options.isBiggTiff,
             bytes_per_pixel=self._cam.bytes_per_pixel,
             exposure=self._cam.getExposure(),
-            frames=self.camera_options.get_param_value(CamParams.FRAMES),
+            frames=kwargs.get(
+                'frames', self.camera_options.get_param_value(CamParams.FRAMES)
+            ),
             full_tif_meta=self.camera_options.isFullMetadata,
             is_dark_cal=self.camera_options.isDarkCalibration,
             meta_file=self.get_meta(),
@@ -625,7 +629,7 @@ class Camera_Panel(QtWidgets.QGroupBox):
             else self.OME_tab.gen_OME_XML_short,
             name=self._cam.name,
             prefix=self._save_prefix,
-            save=self.camera_options.isSaveData,
+            save=kwargs.get('save', self.camera_options.isSaveData),
             Zarr=not self.camera_options.isTiff,
             rois=self.camera_options.get_export_rois(),
             seperate_rois=self.camera_options.get_param_value(
@@ -636,17 +640,6 @@ class Camera_Panel(QtWidgets.QGroupBox):
             ),
             s_event=self.Event,
         )
-
-    def view_toggled(self):
-        if self.camera_options.isSingleView or self.camera_options.isROIsView:
-            self.lr_0.setSpan(0, 1)
-            self.lr_1.setMovable(False)
-            self.lr_1.setRegion((0, self._nBins))
-            self.lr_1.setSpan(1.0, 1.0)
-        else:
-            self.lr_0.setSpan(0, 0.5)
-            self.lr_1.setMovable(True)
-            self.lr_1.setSpan(0.5, 1.0)
 
     @Slot()
     def directory_changed(self, value: str):
@@ -669,7 +662,7 @@ class Camera_Panel(QtWidgets.QGroupBox):
             return  # if acquisition is already going on
 
         self._save_prefix = Prefix
-        self.acq_job = self.getAcquisitionJob(Event)
+        self.acq_job = self.getAcquisitionJob(event=Event)
 
         self._cam.acquisition = True  # set acquisition flag to true
 
@@ -680,9 +673,7 @@ class Camera_Panel(QtWidgets.QGroupBox):
         if self._cam.acquisition:
             return  # if acquisition is already going on
 
-        self.acq_job = self.getAcquisitionJob()
-        self.acq_job.frames = 1  # set frames to 1 for snap
-        self.acq_job.save = False  # set save to false for snap
+        self.acq_job = self.getAcquisitionJob(frames=1, event=None, save=False)
 
         self._cam.acquisition = True  # set acquisition flag to true
 
@@ -795,38 +786,6 @@ class Camera_Panel(QtWidgets.QGroupBox):
         '''
         raise NotImplementedError('The cam_capture function is not implemented yet.')
 
-    def updateStats(self, frames: tuple[uImage]):
-        now = time.time()
-        if now - self.__update_timer < 0.1:
-            return
-
-        self.__update_timer = now
-        for idx, frame in enumerate(frames):
-            if idx < 2:
-                _lr = self.lr_0 if idx == 0 else self.lr_1
-                _plot_ref = self._plot_ref if idx == 0 else self._plot_ref_2
-                _cdf_plot_ref = self._cdf_plot_ref if idx == 0 else self._cdf_plot_ref_2
-
-                if frame is not None:
-                    if self.camera_options.isAutostretch:
-                        _lr.setRegion((frame._min, frame._max))
-
-                    _plot_ref.setData(frame._hist)
-                    _cdf_plot_ref.setData(frame._cdf)
-                else:
-                    _plot_ref.setData(self._hist)
-                    _cdf_plot_ref.setData(self._hist)
-            else:
-                break
-
-    def updateRange(self, rmin: int, rmax: int):
-        if time.time() - self.__update_timer < 0.1:
-            return
-
-        if self.camera_options.isAutostretch:
-            self.histogram.setXRange(rmin, rmax)
-            self.hist_cdf.setXRange(rmin, rmax)
-
 
 def cam_save(params: AcquisitionJob, **kwargs):
     '''Save function executed by the save worker thread.
@@ -880,43 +839,31 @@ def cam_save(params: AcquisitionJob, **kwargs):
         print('Save thread finally finished.')
 
 
-@lru_cache(maxsize=128)
-def get_font_settings():
-    return cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2, 255
+def display_frame(
+    camp: Camera_Panel,
+    name,
+    frame: Union[uImage, np.ndarray],
+):
+    '''Helper to display a single frame.'''
+    if isinstance(frame, uImage):
+        frame = frame._image
 
-
-def drawStats(frame: uImage):
-    lines = [
-        f'min/max: {np.min(frame.image)}/{np.max(frame.image)}',
-        f'mean: {np.mean(frame.image):.3f}',
-        f'median: {np.median(frame.image):.3f}',
-        f'std: {np.std(frame.image):.4f}',
-    ]
-
-    # Font settings
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    font_scale = 0.5  # Reduced font size
-    font_thickness = 1
-    font_color = (255, 255, 255)  # White text
-
-    # Position to start adding text
-    x, y = 10, 20
-
-    # Add each line of text to the image with a background
-    for line in lines:
-        text_size = cv2.getTextSize(line, font, font_scale, font_thickness)[0]
-        text_x, text_y = x, y - text_size[1]
-        cv2.rectangle(
-            frame._view,
-            (text_x - 2, text_y - 2),
-            (text_x + text_size[0] + 2, text_y + text_size[1] + 2),
-            (0, 0, 0),  # Black background
-            -1,
-        )
-        cv2.putText(
-            frame._view, line, (x, y), font, font_scale, font_color, font_thickness
-        )
-        y += int(1.5 * text_size[1])  # Adjust vertical spacing
+    # cv2.imshow(name, frame)
+    DisplayManager.instance().image_update_signal.emit(
+        name,
+        frame,
+        {
+            'aspect_ratio': 1.0,
+            'width': frame.shape[1],
+            'height': frame.shape[0],
+            'show_stats': camp.camera_options.isDisplayStats,
+            'autoLevels': camp.camera_options.isAutostretch,
+            'isSingleView': camp.camera_options.isSingleView,
+            'isROIsView': camp.camera_options.isROIsView,
+            'isOverlaidView': camp.camera_options.isOverlaidView,
+            'plot_type': camp.camera_options.isHistogramPlot,
+        },
+    )
 
 
 def update_histogram_and_display(params: AcquisitionJob, camp: Camera_Panel):
@@ -931,100 +878,56 @@ def update_histogram_and_display(params: AcquisitionJob, camp: Camera_Panel):
         The camera panel to display data.
     '''
 
-    def process_frame(frame: uImage, region=None, zoom=None):
-        '''Helper to process a single frame.'''
-        frame.equalizeLUT(region, camp.camera_options.isNumpyLUT)
-        if zoom is None:
-            zoom = camp.camera_options.get_param_value(CamParams.RESIZE_DISPLAY)
-        # frame._view = cv2.resize(
-        #     frame._view, (0, 0), fx=zoom, fy=zoom, interpolation=cv2.INTER_NEAREST
-        # )
+    # def process_frame(frame: uImage, region=None, zoom=None):
+    #     '''Helper to process a single frame.'''
+    #     frame.equalizeLUT(region, camp.camera_options.isNumpyLUT)
 
-        # if camp.camera_options.isDisplayStats:
-        #     drawStats(frame)
-        return frame
-
-    def display_frame(name, frame: Union[uImage, np.ndarray]):
-        '''Helper to display a single frame.'''
-        if isinstance(frame, uImage):
-            frame = frame._view
-
-        # cv2.imshow(name, frame)
-        DisplayManager.instance().image_update_signal.emit(
-            name,
-            frame,
-            {
-                'aspect_ratio': 1.0,
-                'width': frame.shape[1],
-                'height': frame.shape[0],
-                'show_stats': camp.camera_options.isDisplayStats,
-            },
-        )
+    #     return frame
 
     if camp.camera_options.isSingleView or (
         camp.camera_options.isROIsView and len(params.rois) == 0
     ):
-        region = (
-            None
-            if camp.camera_options.isAutostretch
-            else tuple(map(math.ceil, camp.lr_0.getRegion()))
-        )
-        params.frame = process_frame(params.frame, region)
-        camp.updateRangeSignal.emit(params.frame._min, params.frame._max)
-        camp.updateStatsSignal.emit((params.frame, None))
-        display_frame(params.name, params.frame)
+        display_frame(camp, params.name, params.frame)
 
     elif camp.camera_options.isROIsView:
-        images, mins, maxs = [], [], []
+
+        overlaid = len(params.rois) == 2 and camp.camera_options.isOverlaidView
+        flipped = camp.camera_options.isFlippedROIsView
+
+        images: list[uImage] = []
         for idx, roi in enumerate(params.rois):
             uimage = uImage(
                 params.frame.image[roi[1] : roi[1] + roi[3], roi[0] : roi[0] + roi[2]]
             )
-            if idx > 0 and params.flip_rois:
+            if idx > 0 and flipped:
                 uimage.image = np.fliplr(uimage.image)
-            region = (
-                None
-                if camp.camera_options.isAutostretch
-                else tuple(map(math.ceil, camp.lr_0.getRegion()))
-            )
-            uimage = process_frame(uimage, region)
-            mins.append(uimage._min)
-            maxs.append(uimage._max)
             images.append(uimage)
-            display_frame(f'ROI {idx + 1}', uimage)
-        camp.updateRangeSignal.emit(min(mins), max(maxs))
-        camp.updateStatsSignal.emit(tuple(images))
+            if not overlaid:
+                display_frame(camp, f'ROI {idx + 1}', uimage)
 
+        if overlaid:
+            # Create a blank image with the same shape as the original frame
+            overlaid_img = np.zeros(
+                images[0]._image.shape[:2] + (3,), dtype=params.frame.image.dtype
+            )
+            colors = camp.camera_options.dualViewColors
+            overlaid_img[..., colors[0]] = images[0]._image
+            overlaid_img[..., colors[1]] = images[1]._image
+            display_frame(camp, params.name + ' (ROIs Overlaid)', overlaid_img)
     else:
         left, right = params.frame.hsplitView()
-        zoom = camp.camera_options.get_param_value(CamParams.RESIZE_DISPLAY)
-        left = process_frame(
-            left,
-            None
-            if camp.camera_options.isAutostretch
-            else tuple(map(math.ceil, camp.lr_0.getRegion())),
-            zoom=zoom,
-        )
-        right = process_frame(
-            right,
-            None
-            if camp.camera_options.isAutostretch
-            else tuple(map(math.ceil, camp.lr_1.getRegion())),
-            zoom=zoom,
-        )
-        camp.updateRangeSignal.emit(
-            min(left._min, right._min), max(left._max, right._max)
-        )
-        camp.updateStatsSignal.emit((left, right))
 
         if camp.camera_options.isOverlaidView:
-            overlaid_img = np.zeros(left._view.shape[:2] + (3,), dtype=np.uint8)
-            overlaid_img[..., 1] = left._view
-            overlaid_img[..., 0] = right._view
-            display_frame(params.name, overlaid_img)
+            overlaid_img = np.zeros(
+                left._image.shape[:2] + (3,), dtype=left._image.dtype
+            )
+            colors = camp.camera_options.dualViewColors
+            overlaid_img[..., colors[0]] = left._image
+            overlaid_img[..., colors[1]] = right._image
+            display_frame(camp, params.name + ' (Overlaid)', overlaid_img)
         else:
-            concatenated_img = np.concatenate([left._view, right._view], axis=1)
-            display_frame(params.name, concatenated_img)
+            display_frame(camp, params.name + ' (Left)', left)
+            display_frame(camp, params.name + ' (Right)', right)
 
 
 def cam_display(params: AcquisitionJob, camp: Camera_Panel, **kwargs):
@@ -1075,11 +978,6 @@ def cam_display(params: AcquisitionJob, camp: Camera_Panel, **kwargs):
                             camp.lineProfiler.imageUpdate.emit(params.frame._image)
 
                         update_histogram_and_display(params, camp)
-                        cv2.waitKey(1)
-                    else:
-                        cv2.waitKey(1)
-            else:
-                cv2.waitKey(1)
 
             QtCore.QThread.usleep(100)
             # Flag that ends the loop
@@ -1093,9 +991,4 @@ def cam_display(params: AcquisitionJob, camp: Camera_Panel, **kwargs):
     except Exception:
         traceback.print_exc()
     finally:
-        try:
-            if not camp.mini:
-                cv2.destroyAllWindows()
-        except Exception:
-            traceback.print_exc()
         print('Display thread finally finished.')

@@ -31,11 +31,11 @@ This toolkit is compatible with the [hardware](#hardware) used in our microscope
 ![GitHub Stars](https://img.shields.io/github/stars/samhitech/microEye.svg)
 
 ```bash
-   __  ____              ____                ___    ____ ____
-  /  |/  (_)__________  / __/_ _____   _  __|_  |  |_  // / /
- / /|_/ / / __/ __/ _ \/ _// // / -_) | |/ / __/_ _/_ </_  _/
-/_/  /_/_/\__/_/  \___/___/\_, /\__/  |___/____(_)____(_)_/
-                          /___/
+ __  __ _            ___               ___   ____  ___ 
+|  \/  (_)__ _ _ ___| __|  _ ___  __ _|_  ) |__ / | __|
+| |\/| | / _| '_/ _ \ _| || / -_) \ V // / _ |_ \_|__ \
+|_|  |_|_\__|_| \___/___\_, \___|  \_//___(_)___(_)___/
+                        |__/
 ```
 
 ## Table of Contents
@@ -216,18 +216,21 @@ microEye --module viewer
 
 The `microEye` uses the following Python packages:
 
-| Data Analysis and Visualization | GUI and UI Development | Code Quality and Formatting | Image and Video Processing | File and Data Storage | Other Utilities |
-| ------------------------------- | ---------------------- | --------------------------- | -------------------------- | --------------------- | --------------- |
-| dask                            | PySide6                | autopep8                    | opencv-python              | ome-types             | hidapi          |
-| matplotlib                      | pyqtdarktheme          | pyflakes                    |                            | tables                | pyfiglet        |
-| numba                           | pyqtgraph              |                             |                            | zarr                  | pyserial        |
-| numpy                           | QDarkStyle             |                             |                            |                       | pyjokes         |
-| pandas                          | QScintilla             |                             |                            |                       | setuptools      |
-| scikit-image                    | PyQt5 (optional)       |                             |                            |                       | tabulate        |
-| scikit_learn                    | PyQt6 (optional)       |                             |                            |                       | pyueye          |
-| scipy                           |                        |                             |                            |                       |                 |
-| tifffile                        |                        |                             |                            |                       |                 |
-| vispy                           |                        |                             |                            |                       |                 |
+| Data Analysis and Visualization | GUI and UI Development | Code Quality and Formatting | Image and Video Processing | File and Data Storage | Other Utilities |  Microscopy  |
+| :-----------------------------: | :--------------------: | :-------------------------: | :------------------------: | :-------------------: | :-------------: | :----------: |
+|              dask               |        PySide6         |          autopep8           |       opencv-python        |       ome-types       |     hidapi      | pycromanager |
+|           matplotlib            |     pyqtdarktheme      |          pyflakes           |                            |        tables         |    pyfiglet     |              |
+|              numba              |       pyqtgraph        |                             |                            |         zarr          |    pyserial     |              |
+|              numpy              |       QDarkStyle       |                             |                            |                       |     pyjokes     |              |
+|             pandas              |       QScintilla       |                             |                            |                       |   setuptools    |              |
+|          scikit-image           |    PyQt5 (optional)    |                             |                            |                       |    tabulate     |              |
+|          scikit_learn           |    PyQt6 (optional)    |                             |                            |                       |     pyueye      |              |
+|              scipy              |                        |                             |                            |                       |      tqdm       |              |
+|            tifffile             |                        |                             |                            |                       |                 |              |
+|              h5py               |                        |                             |                            |                       |                 |              |
+|               pco               |                        |                             |                            |                       |                 |              |
+|                                 |                        |                             |                            |                       |                 |              |
+|            PyOpenGL             |                        |                             |                            |                       |                 |              |
 
 Note: VimbaPython is included in Vimba SDK and needs to be installed manually.
 

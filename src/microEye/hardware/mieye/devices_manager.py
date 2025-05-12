@@ -78,9 +78,9 @@ class DeviceManager(QtCore.QObject):
 
         # debounce timer one shot timer
         self.timer = QtCore.QTimer()
-        self.timer.setInterval(500)
+        self.timer.setInterval(1000)
         self.timer.setSingleShot(True)
-        self.timer.timeout.connect(self.camList.snap_image)
+        self.timer.timeout.connect(self.wait_then_snap)
 
         self.widgetAdded.emit(DEVICES.CAM_LIST, self.camList)
 
@@ -193,6 +193,11 @@ class DeviceManager(QtCore.QObject):
         if snap_image:
             self.timer.start()
 
+    def wait_then_snap(self):
+        if self.stage_xy.busy:
+            self.timer.start()
+        else:
+            self.camList.snap_image()
 
     def hid_report(self, reportedEvent: Buttons):
         self._handle_z_stage_events(reportedEvent)
@@ -413,7 +418,7 @@ class DeviceManager(QtCore.QObject):
             self.stage.view.remove_widget()
             self.stage = None
 
-        match = re.match(r'FOC(\d{3})', value)
+        match = re.search(r'FOC(\d{3})', value)
         if match:
             max_um = int(match.group(1))
             stage = PzFoc(max_um=max_um)

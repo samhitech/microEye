@@ -81,6 +81,7 @@ class FocusStabilizer(QtCore.QObject):
     moveStage = Signal(bool, int)
     peakPositionChanged = Signal(float)
     pixelCalChanged = Signal(float)
+    focusStabilizationToggled = Signal(bool)
 
     def __new__(cls, *args, **kwargs):
         # If the single instance doesn't exist, create a new one
@@ -390,6 +391,8 @@ class FocusStabilizer(QtCore.QObject):
             self.__stabilization = not self.__stabilization
         else:
             self.__stabilization = value
+
+        self.focusStabilizationToggled.emit(self.__stabilization)
 
         return self.__stabilization
 

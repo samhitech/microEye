@@ -336,7 +336,7 @@ class PycroStage(PycroDevice, AbstractStage):
         )
 
     def is_open(self) -> bool:
-        return True
+        return False
 
     def connect(self):
         pass

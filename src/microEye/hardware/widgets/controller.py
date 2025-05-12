@@ -145,7 +145,7 @@ class Controller(QtWidgets.QDockWidget):
         self.btn_z_down_fine = QtWidgets.QPushButton('-')
         self.btn_z_home = QtWidgets.QPushButton('🏠︎')
         self.btn_z_home.setToolTip('Move to home position')
-        self.btn_z_toggle_stabilizer = QtWidgets.QPushButton('🔒')
+        self.btn_z_toggle_stabilizer = QtWidgets.QPushButton('🔓')
         self.btn_z_toggle_stabilizer.setToolTip('Toggle Z-axis stabilizer')
 
         for btn in [
@@ -220,9 +220,32 @@ class Controller(QtWidgets.QDockWidget):
         self.btn_z_down_fine.clicked.connect(lambda: self.move_stage('z', -1, 'fine'))
 
         self.btn_z_home.clicked.connect(lambda: self.stage_home_requested.emit('z'))
-        self.btn_z_toggle_stabilizer.clicked.connect(
-            lambda: self.stage_toggle_lock.emit('z')
-        )
+        self.btn_z_toggle_stabilizer.clicked.connect(self.toggle_stabilizer)
+
+    def toggle_stabilizer(self):
+        '''Toggle the stabilizer lock on the Z-axis. This method emits a signal to
+        request the toggling of the stabilizer lock.
+
+        Returns
+        -------
+        None
+        '''
+        self.stage_toggle_lock.emit('z')
+
+    def set_stabilizer_lock(self, lock: bool):
+        '''Set the stabilizer lock state on the Z-axis. This method updates the
+        button icon and tooltip based on the lock state.
+
+        Parameters
+        ----------
+        lock : bool
+            True to lock the stabilizer, False to unlock it.
+
+        Returns
+        -------
+        None
+        '''
+        self.btn_z_toggle_stabilizer.setText('🔒' if lock else '🔓')
 
     def move_stage(self, axis, direction, mode):
         if axis in ['x', 'y']:

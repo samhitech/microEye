@@ -176,6 +176,9 @@ class miEye_module(QMainWindow):
             DeviceManager.instance().homeRequest
         )
         self.controller.stage_toggle_lock.connect(DeviceManager.instance().toggleLock)
+        FocusStabilizer.instance().focusStabilizationToggled.connect(
+            self.controller.set_stabilizer_lock
+        )
 
         self.addDockWidget(
             Qt.DockWidgetArea.LeftDockWidgetArea, self.controller, DOCKS.CONTROLLER

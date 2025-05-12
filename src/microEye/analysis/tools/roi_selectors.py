@@ -403,19 +403,19 @@ class MultiRectangularROISelector:
             elif key == 3014656:  # Delete
                 if self.active_roi_idx != -1:
                     self.delete_active()
-            elif key == ord('a'):
+            elif key in [ord('a'), ord('A')]:
                 while self.current_mode != 'Add':
                     self.cycle_mode()
-            elif key == ord('e'):
+            elif key in [ord('e'), ord('E')]:
                 while self.current_mode != 'Edit':
                     self.cycle_mode()
-            elif key == ord('i'):
+            elif key in [ord('i'), ord('I')]:
                 while self.current_mode != 'Insert':
                     self.cycle_mode()
-            elif key == ord('m'):
+            elif key in [ord('m'), ord('M')]:
                 while self.current_mode != 'Move':
                     self.cycle_mode()
-            elif key == ord('r'):
+            elif key in [ord('r'), ord('R')]:
                 while self.current_mode != 'Remove':
                     self.cycle_mode()
 

@@ -228,7 +228,9 @@ class AcquisitionJob:
             if not os.path.exists(self.path):
                 os.makedirs(self.path)
 
-            while os.path.exists(self.getFilename()):
+            while os.path.exists(self.getFilename()) or any(
+                    [os.path.exists(self.getFilename(idx))
+                     for idx in range(len(self.rois))]):
                 self.major += 1
 
             self.writeMetaFile()
@@ -256,7 +258,7 @@ class AcquisitionJob:
         str
             Generated filename.
         '''
-        roi_suffix = '' if roi_index is None else f'_ROI_{roi_index:02d}'
+        roi_suffix = '' if roi_index is None else f'_roi_{roi_index:02d}'
         return self.path + \
             f'{self.major:02d}_{self.prefix}_image_{self.index:05d}{roi_suffix}.{self.getExt()}'
 

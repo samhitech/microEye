@@ -50,11 +50,15 @@ class CamParams(Enum):
     PREVIEW = 'Display.Preview'
     DISPLAY_STATS_OPTION = 'Display.Display Stats'
     AUTO_STRETCH = 'Display.Auto Stretch'
+    PLOT_TYPE = 'Display.Plot Type'
     VIEW_OPTIONS = 'Display.View Options'
     SINGLE_VIEW = 'Display.View Options.Single View'
-    DUAL_SIDE = 'Display.View Options.Dual Channel (Side by Side)'
-    DUAL_OVERLAID = 'Display.View Options.Dual Channel (Overlapped)'
+    DUAL_VIEW = 'Display.View Options.Dual Channel'
+    DUAL_OVERLAID = 'Display.View Options.Dual Channel (Overlaid)'
     ROIS_VIEW = 'Display.View Options.Export ROIs'
+    ROIS_VIEW_OVERLAID = 'Display.View Options.Export ROIs (Overlaid)'
+    # add colors for dual view RG, GB, GR, BR, BG, etc.
+    DUAL_VIEW_COLORS = 'Display.Dual View Colors'
     LINE_PROFILER = 'Display.Line Profiler'
     LUT = 'Display.LUT'
     LUT_NUMPY = 'Display.LUT Numpy (12bit)'
@@ -208,19 +212,35 @@ class CameraOptions(Tree):
                         'value': True,
                     },
                     {
-                        'name': str(CamParams.LUT),
+                        'name': str(CamParams.PLOT_TYPE),
                         'type': 'list',
-                        'limits': [str(CamParams.LUT_NUMPY), str(CamParams.LUT_OPENCV)],
+                        'limits': ['Histogram', 'Cumulative'],
                     },
                     {
                         'name': str(CamParams.VIEW_OPTIONS),
                         'type': 'list',
                         'limits': [
                             str(CamParams.SINGLE_VIEW),
-                            str(CamParams.DUAL_SIDE),
+                            str(CamParams.DUAL_VIEW),
                             str(CamParams.DUAL_OVERLAID),
                             str(CamParams.ROIS_VIEW),
+                            str(CamParams.ROIS_VIEW_OVERLAID),
                         ],
+                    },
+                    {
+                        'name': str(CamParams.DUAL_VIEW_COLORS),
+                        'type': 'list',
+                        'limits': [
+                            'RG',
+                            'GB',
+                            'GR',
+                            'BR',
+                            'BG',
+                            'RB',
+                            'GB',
+                            'RG',
+                        ],
+                        'value': 'GB',
                     },
                     {
                         'name': str(CamParams.LINE_PROFILER),
@@ -501,8 +521,7 @@ class CameraOptions(Tree):
         for p, _, data in changes:
             path = self.param_tree.childPath(p)
 
-            self.paramsChanged.emit(
-                p, data)
+            self.paramsChanged.emit(p, data)
 
     @property
     def isTiff(self):
@@ -558,8 +577,16 @@ class CameraOptions(Tree):
             True if the view option is set to export ROIs view, False otherwise.
         '''
         return self.get_param_value(CamParams.VIEW_OPTIONS) in [
-            str(CamParams.ROIS_VIEW)
+            str(CamParams.ROIS_VIEW),
+            str(CamParams.ROIS_VIEW_OVERLAID),
         ]
+
+    @property
+    def isFlippedROIsView(self) -> bool:
+        '''
+        Check if the view option is set to export ROIs view with flipped ROIs.
+        '''
+        return self.get_param_value(CamParams.EXPORT_ROIS_FLIPPED)
 
     @property
     def isOverlaidView(self):
@@ -572,7 +599,8 @@ class CameraOptions(Tree):
             True if the view option is set to overlaid view, False otherwise.
         '''
         return self.get_param_value(CamParams.VIEW_OPTIONS) in [
-            str(CamParams.DUAL_OVERLAID)
+            str(CamParams.DUAL_OVERLAID),
+            str(CamParams.ROIS_VIEW_OVERLAID),
         ]
 
     @property
@@ -680,7 +708,7 @@ class CameraOptions(Tree):
         return self.get_param_value(CamParams.LINE_PROFILER)
 
     @property
-    def isNumpyLUT(self):
+    def isHistogramPlot(self):
         '''
         Check if the LUT option is set to numpy lut.
 
@@ -689,7 +717,24 @@ class CameraOptions(Tree):
         bool
             True if the LUT option is set to numpy lut, False otherwise.
         '''
-        return self.get_param_value(CamParams.LUT) in [str(CamParams.LUT_NUMPY)]
+        return self.get_param_value(CamParams.PLOT_TYPE) == 'Histogram'
+
+    @property
+    def dualViewColors(self):
+        '''
+        Get the dual view colors as channel indices.
+
+        Returns
+        -------
+        str
+            The selected dual view colors.
+        '''
+        # get the selected dual view colors from the parameter tree e.g. 'RG', 'GB', etc.
+        scheme = self.get_param_value(CamParams.DUAL_VIEW_COLORS)
+
+        indices = {'R': 0, 'G': 1, 'B': 2}
+
+        return [indices[c] for c in scheme]
 
 
 if __name__ == '__main__':

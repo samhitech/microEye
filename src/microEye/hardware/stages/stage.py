@@ -101,7 +101,9 @@ class AbstractStage(ABC):
 
         self.signals = ZStageSignals()
 
-        self.serial = QtSerialPort.QSerialPort(None, readyRead=readyRead)
+        self.serial = QtSerialPort.QSerialPort(None)
+        if callable(readyRead):
+            self.serial.readyRead.connect(readyRead)
         self.serial.setBaudRate(115200)
         self.serial.setPortName('COM5')
 
@@ -836,14 +838,14 @@ class ZStageController:
         return {
             'port': self.stage.serial.portName(),
             'baudrate': self.stage.serial.baudRate(),
-            'max_um': self.stage.z_max_um,
+            'max_nm': self.stage.z_max_nm,
         }
 
     def load_config(self, config: dict) -> None:
         '''Load the configuration of the stage from a dictionary.'''
         self.stage.setPortName(config.get('port', 'COM5'))
         self.stage.setBaudRate(config.get('baudrate', 115200))
-        self.stage.z_max_um = config.get('max_um', 100)
+        self.stage.set_max_range(Axis.Z, config.get('max_nm', 100000))
 
     def __str__(self):
         return f'{self.stage} Stage Controller'

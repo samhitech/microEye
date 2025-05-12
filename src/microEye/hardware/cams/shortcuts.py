@@ -157,6 +157,9 @@ class CameraShortcutsWidget(QtWidgets.QWidget):
     acquisitionStart = Signal()
     acquisitionStop = Signal()
     adjustName = Signal(str)
+    adjustROI = Signal(float, bool, bool)
+    tileWindows = Signal(int)
+    closeAllWindows = Signal()
 
     def __init__(
         self,
@@ -308,27 +311,98 @@ class CameraShortcutsWidget(QtWidgets.QWidget):
 
         button_layout.addWidget(self.stats_button)
 
-        # Display mode 4 radios
-        modes_layout = QtWidgets.QHBoxLayout()
-        self.__layout.addRow('Display Mode:', modes_layout)
+        # Display mode QComboBox
+        self.display_mode_combo = QtWidgets.QComboBox()
+        self.display_mode_combo.setObjectName('Display Mode ComboBox')
 
-        self.display_mode = QtWidgets.QButtonGroup(self)
-        self.display_mode.setExclusive(True)
-        self.display_mode.setObjectName('Display Mode')
-
+        # Add display modes to the combo box
         self.display_modes = [
             str(CamParams.SINGLE_VIEW),
-            str(CamParams.DUAL_SIDE),
+            str(CamParams.DUAL_VIEW),
             str(CamParams.DUAL_OVERLAID),
             str(CamParams.ROIS_VIEW),
+            str(CamParams.ROIS_VIEW_OVERLAID),
         ]
-        for idx, mode in enumerate(self.display_modes):
-            radio_button = QtWidgets.QRadioButton(mode)
-            radio_button.setObjectName(str(mode))
-            self.display_mode.addButton(radio_button, idx)
-            modes_layout.addWidget(radio_button)
+        self.display_mode_combo.addItems(self.display_modes)
 
-        self.display_mode.idClicked.connect(self._display_mode_changed)
+        # Connect the combo box's signal to the display mode change handler
+        self.display_mode_combo.currentIndexChanged.connect(self._display_mode_changed)
+
+        # Add the combo box to the layout
+        self.__layout.addRow('Display Mode:', self.display_mode_combo)
+
+        # ROIs Options
+        roi_layout = QtWidgets.QHBoxLayout()
+        self.__layout.addRow('ROI Controls:', roi_layout)
+
+        # field of view double spin box
+        self.fov_spinbox = QtWidgets.QDoubleSpinBox()
+        self.fov_spinbox.setRange(0.1, 1000000.0)
+        self.fov_spinbox.setSingleStep(0.1)
+        self.fov_spinbox.setDecimals(2)
+        self.fov_spinbox.setValue(100)
+        self.fov_spinbox.setSuffix(' um')
+        self.fov_spinbox.setToolTip('Field of view in micrometers')
+        roi_layout.addWidget(self.fov_spinbox)
+
+        export_rois_checkbox = QtWidgets.QCheckBox('Only Export ROIs')
+        export_rois_checkbox.setToolTip(
+            'Only specify the export ROIs, not the hardware ROIs'
+        )
+        export_rois_checkbox.setChecked(False)
+        roi_layout.addWidget(export_rois_checkbox)
+
+        single_roi_button = QtWidgets.QPushButton('Single View')
+        # for single ROI in center of camera
+        single_roi_button.setToolTip('Set a single ROI in the center of the camera')
+        single_roi_button.clicked.connect(
+            lambda: self.adjustROI.emit(
+                self.fov_spinbox.value(), True, export_rois_checkbox.isChecked()
+            )
+        )
+        roi_layout.addWidget(single_roi_button)
+
+        dual_main_button = QtWidgets.QPushButton('Dual View')
+        # Set the main ROI for dual view
+        dual_main_button.setToolTip('Set the ROIs for dual view')
+        dual_main_button.clicked.connect(
+            lambda: self.adjustROI.emit(
+                self.fov_spinbox.value(), False, export_rois_checkbox.isChecked()
+            )
+        )
+        roi_layout.addWidget(dual_main_button)
+
+        # Display Windows btns shortcuts like tile windows etcs
+        self.display_windows_btns = QtWidgets.QHBoxLayout()
+        self.__layout.addRow('Display Windows:', self.display_windows_btns)
+
+        # Screens combo box
+        self.screen_combo = QtWidgets.QComboBox()
+        self.screen_combo.setObjectName('Displays ComboBox')
+        self.screen_combo.setToolTip('Select the display to tile')
+
+        # Get screens
+        screens = QtWidgets.QApplication.screens()
+        screen_names = [screen.name() for screen in screens]
+        self.screen_combo.addItems(screen_names)
+        self.screen_combo.setCurrentIndex(0)
+        self.display_windows_btns.addWidget(self.screen_combo)
+
+        # Tile windows
+        self.tile_windows_button = QtWidgets.QPushButton('Tile Windows')
+        self.tile_windows_button.setToolTip('Tile all windows')
+        self.tile_windows_button.clicked.connect(
+            lambda: self.tileWindows.emit(self.screen_combo.currentIndex())
+        )
+        self.display_windows_btns.addWidget(self.tile_windows_button)
+
+        # Close all windows
+        self.close_windows_button = QtWidgets.QPushButton('Close All Windows')
+        self.close_windows_button.setToolTip('Close all windows')
+        self.close_windows_button.clicked.connect(
+            lambda: self.closeAllWindows.emit()
+        )
+        self.display_windows_btns.addWidget(self.close_windows_button)
 
     def _display_mode_changed(self, index):
         '''
@@ -376,9 +450,8 @@ class CameraShortcutsWidget(QtWidgets.QWidget):
             mode = str(mode)
 
         if mode in self.display_modes:
-            button = self.display_mode.button(self.display_modes.index(mode))
-            if button:
-                button.setChecked(True)
+            index = self.display_modes.index(mode)
+            self.display_mode_combo.setCurrentIndex(index)
 
     def set_save_data(self, value):
         '''Set the save data checkbox to the given value'''
