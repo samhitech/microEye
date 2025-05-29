@@ -1,5 +1,7 @@
+import time
 from typing import Optional
 
+import serial
 from pyqtgraph.parametertree import Parameter
 
 from microEye.hardware.lasers.io_params import LaserState, MB_Params
@@ -7,9 +9,9 @@ from microEye.qt import QtCore, QtSerialPort, QtWidgets, Signal
 from microEye.utils import StartGUI, Tree
 
 
-class io_combiner(QtSerialPort.QSerialPort):
+class io_combiner(QtCore.QObject):
     '''
-    Class representing a laser combiner MatchBox device | Inherits QSerialPort
+    Class representing a laser combiner MatchBox device | Inherits QObject
     '''
 
     INFO = b'r i'
@@ -115,6 +117,82 @@ class io_combiner(QtSerialPort.QSerialPort):
     Max = [0, 0, 0, 0]
     Wavelengths = [0, 0, 0, 0]
 
+    def __init__(self, parent: Optional[QtWidgets.QWidget] = None, **kwargs):
+        '''
+        Initializes a new io_single_laser instance.
+
+        Parameters
+        ----------
+        parent : Optional[QWidget]
+            The parent widget for this io_single_laser instance.
+        '''
+        super().__init__(parent=parent)
+
+        self.ser = serial.Serial(
+            baudrate=kwargs.get('baudrate', 115200),  # Default baudrate
+            port=kwargs.get('port', 'COM1'),  # Default port
+            timeout=kwargs.get('timeout', 0.5),  # Default timeout
+            write_timeout=kwargs.get('write_timeout', 0.5),  # Default write timeout
+            open=False,  # Start with the port closed
+        )
+
+    def isOpen(self) -> bool:
+        '''
+        Checks if the serial port is open.
+
+        Returns
+        -------
+        bool
+            True if the serial port is open, False otherwise.
+        '''
+        return self.ser.is_open
+
+    def setPortName(self, port: str):
+        '''
+        Sets the port name for the serial connection.
+
+        Parameters
+        ----------
+        port : str
+            The name of the serial port to be used.
+        '''
+        if not self.ser.is_open:
+            self.ser.port = port
+
+    def portName(self) -> str:
+        '''
+        Returns the current port name of the serial connection.
+
+        Returns
+        -------
+        str
+            The current port name.
+        '''
+        return self.ser.port
+
+    def setBaudRate(self, baudrate: int):
+        '''
+        Sets the baud rate for the serial connection.
+
+        Parameters
+        ----------
+        baudrate : int
+            The baud rate to be used for the serial connection.
+        '''
+        if not self.ser.is_open:
+            self.ser.baudrate = baudrate
+
+    def baudRate(self) -> int:
+        '''
+        Returns the current baud rate of the serial connection.
+
+        Returns
+        -------
+        int
+            The current baud rate.
+        '''
+        return self.ser.baudrate
+
     def SendCommand(self, command, log_print: bool = True, delay: int = 1):
         '''Sends a specific command to the device and waits for
         the response then emits the DataReady signal.
@@ -127,54 +205,72 @@ class io_combiner(QtSerialPort.QSerialPort):
             implemented in the MatchBox class.
         '''
         if self.isOpen():
-            self.readAll()
-            self.write(command)
-            self.waitForBytesWritten(500)
-            QtCore.QThread.msleep(delay)
-            while self.bytesAvailable() < 5:
-                self.waitForReadyRead(500)
+            try:
+                self.ser.reset_input_buffer()
 
-            response = (
-                str(
-                    self.readAll().replace(b'\xff', b''),
-                    encoding='utf-8',
-                    errors='replace',
+                start_time = time.time()
+                self.ser.write(command)
+
+                response = (
+                    self.ser.read_until(b'\r\n')
+                    .decode(errors='replace')
+                    .replace(b'\xff', b'')
+                    .strip()
                 )
-                .strip('\r\n')
-                .strip()
-            )
-            if log_print:
-                print(response, command)
+                elapsed_time = (
+                    time.time() - start_time
+                ) * 1000  # Convert to milliseconds
+                if log_print:
+                    print(
+                        f'Command: {command} | '
+                        f'Response: {response} | '
+                        f'Time: {elapsed_time:.1f} ms'
+                    )
 
-            self.DataReady.emit(response, command)
+                self.DataReady.emit(response, command)
 
-            return response
+                return response
+            except serial.SerialException as e:
+                print(f'Serial communication error: {e}')
+                return '<ERR>'
+            except Exception as e:
+                print(f'Unexpected error: {e}')
+                return '<ERR>'
 
     def OpenCOM(self):
         '''Opens the serial port and initializes the combiner.'''
         if not self.isOpen():
-            self.open(QtCore.QIODevice.OpenModeFlag.ReadWrite)
-            self.flush()
+            try:
+                self.ser.open()
+            except serial.SerialException as e:
+                print(f'Error opening serial port: {e}')
 
             if self.isOpen():
-                self.SendCommand(io_combiner.ON)
-                self.SendCommand(io_combiner.START)
-                # self.SendCommand(io_single_laser.STATUS)
-                self.GetInfo()
-                self.GetWavelengths()
-                self.SetCurrent(1, 0)
-                self.SetCurrent(2, 0)
-                self.SetCurrent(3, 0)
-                self.SetCurrent(4, 0)
-                self.GetMaxCurrent()
+                try:
+                    self.SendCommand(io_combiner.ON)
+                    self.SendCommand(io_combiner.START)
+                    # self.SendCommand(io_single_laser.STATUS)
+                    self.GetInfo()
+                    self.GetWavelengths()
+                    self.SetCurrent(1, 0)
+                    self.SetCurrent(2, 0)
+                    self.SetCurrent(3, 0)
+                    self.SetCurrent(4, 0)
+                    self.GetMaxCurrent()
+                except serial.SerialException as e:
+                    print(f'Error during initialization: {e}')
+
+        return self.isOpen()
 
     def CloseCOM(self):
         '''Closes the serial port.'''
         if self.isOpen():
-            self.SendCommand(io_combiner.OFF)
-            self.waitForBytesWritten(500)
-
-            self.close()
+            try:
+                self.SendCommand(io_combiner.OFF)
+            except serial.SerialException as e:
+                print(f'Error closing serial port: {e}')
+            finally:
+                self.ser.close()
 
     def GetMaxCurrent(self):
         if self.isOpen():
@@ -287,7 +383,7 @@ class io_combiner(QtSerialPort.QSerialPort):
             if not isinstance(value, int):
                 raise TypeError('Current must be an int!')
             if value < 0 or value > self.Max[index - 1]:
-                raise ValueError(f'Current must be between 0 and {self.Max[index-1]}')
+                raise ValueError(f'Current must be between 0 and {self.Max[index - 1]}')
 
             res = self.SendCommand(f'Lc{index:.0f} {value:.0f}'.encode())
 
@@ -423,7 +519,7 @@ class CombinerLaserWidget(Tree):
             {
                 'name': str(MB_Params.SERIAL_PORT),
                 'type': 'group',
-                'expanded' : False,
+                'expanded': False,
                 'children': [
                     {
                         'name': str(MB_Params.PORT),
@@ -439,8 +535,8 @@ class CombinerLaserWidget(Tree):
                         'value': 115200,
                         'limits': [
                             baudrate
-                            for baudrate in \
-                                QtSerialPort.QSerialPortInfo.standardBaudRates()
+                            for baudrate in
+                            QtSerialPort.QSerialPortInfo.standardBaudRates()
                         ],
                     },
                     {'name': str(MB_Params.SET_PORT), 'type': 'action'},
@@ -610,7 +706,9 @@ class CombinerLaserWidget(Tree):
 
         self.param_tree = Parameter.create(name='', type='group', children=params)
         self.param_tree.sigTreeStateChanged.connect(self.change)
-        self.header().setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        self.header().setSectionResizeMode(
+            QtWidgets.QHeaderView.ResizeMode.ResizeToContents
+        )
 
         self.get_param(MB_Params.SET_PORT).sigActivated.connect(self.set_config)
         self.get_param(MB_Params.OPEN).sigActivated.connect(self.laser_connect)

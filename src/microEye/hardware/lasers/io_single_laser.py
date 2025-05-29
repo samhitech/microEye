@@ -1,5 +1,7 @@
+import time
 from typing import Optional
 
+import serial
 from pyqtgraph.parametertree import Parameter
 
 from microEye.hardware.lasers.io_params import LaserState, MB_Params
@@ -7,9 +9,9 @@ from microEye.qt import QtCore, QtSerialPort, QtWidgets, Signal
 from microEye.utils import StartGUI, Tree
 
 
-class io_single_laser(QtSerialPort.QSerialPort):
+class io_single_laser(QtCore.QObject):
     '''
-    Class representing a single laser MatchBox device | Inherits QSerialPort
+    Class representing a single laser MatchBox device | Inherits QObject
     '''
 
     INFO = b'r i'
@@ -85,6 +87,82 @@ class io_single_laser(QtSerialPort.QSerialPort):
     Operation_Time = ''
     ON_Times = ''
 
+    def __init__(self, parent: Optional[QtWidgets.QWidget] = None, **kwargs):
+        '''
+        Initializes a new io_single_laser instance.
+
+        Parameters
+        ----------
+        parent : Optional[QWidget]
+            The parent widget for this io_single_laser instance.
+        '''
+        super().__init__(parent=parent)
+
+        self.ser = serial.Serial(
+            baudrate=kwargs.get('baudrate', 115200),  # Default baudrate
+            port=kwargs.get('port', 'COM1'),  # Default port
+            timeout=kwargs.get('timeout', 0.5),  # Default timeout
+            write_timeout=kwargs.get('write_timeout', 0.5),  # Default write timeout
+            open=False,  # Start with the port closed
+        )
+
+    def isOpen(self) -> bool:
+        '''
+        Checks if the serial port is open.
+
+        Returns
+        -------
+        bool
+            True if the serial port is open, False otherwise.
+        '''
+        return self.ser.is_open
+
+    def setPortName(self, port: str):
+        '''
+        Sets the port name for the serial connection.
+
+        Parameters
+        ----------
+        port : str
+            The name of the serial port to be used.
+        '''
+        if not self.ser.is_open:
+            self.ser.port = port
+
+    def portName(self) -> str:
+        '''
+        Returns the current port name of the serial connection.
+
+        Returns
+        -------
+        str
+            The current port name.
+        '''
+        return self.ser.port
+
+    def setBaudRate(self, baudrate: int):
+        '''
+        Sets the baud rate for the serial connection.
+
+        Parameters
+        ----------
+        baudrate : int
+            The baud rate to be used for the serial connection.
+        '''
+        if not self.ser.is_open:
+            self.ser.baudrate = baudrate
+
+    def baudRate(self) -> int:
+        '''
+        Returns the current baud rate of the serial connection.
+
+        Returns
+        -------
+        int
+            The current baud rate.
+        '''
+        return self.ser.baudrate
+
     def SendCommand(self, command, log_print: bool = True, delay: int = 1):
         '''
         Sends a specific command to the device and waits for the response.
@@ -100,41 +178,63 @@ class io_single_laser(QtSerialPort.QSerialPort):
             Delay in milliseconds before reading the response.
         '''
         if self.isOpen():
-            self.write(command)
-            self.waitForBytesWritten(500)
-            QtCore.QThread.msleep(delay)
-            while self.bytesAvailable() < 5:
-                self.waitForReadyRead(500)
+            try:
+                self.ser.reset_input_buffer()
 
-            response = str(self.readAll(), encoding='utf8').strip('\r\n').strip()
-            if log_print:
-                print(response, command)
+                start_time = time.time()
+                self.ser.write(command)
 
-            self.DataReady.emit(response, command)
+                response = self.ser.read_until(b'\r\n').decode().strip()
+                elapsed_time = (
+                    time.time() - start_time
+                ) * 1000  # Convert to milliseconds
+                if log_print:
+                    print(
+                        f'Command: {command} | '
+                        f'Response: {response} | '
+                        f'Time: {elapsed_time:.1f} ms'
+                    )
 
-            return response
+                self.DataReady.emit(response, command)
+
+                return response
+            except serial.SerialException as e:
+                print(f'Serial communication error: {e}')
+                return '<ERR>'
+            except Exception as e:
+                print(f'Unexpected error: {e}')
+                return '<ERR>'
 
     def OpenCOM(self):
         '''Opens the serial port and initializes the combiner.'''
         if not self.isOpen():
-            self.open(QtCore.QIODevice.OpenModeFlag.ReadWrite)
-            self.flush()
+            try:
+                self.ser.open()
+            except serial.SerialException as e:
+                print(f'Error opening serial port: {e}')
 
             if self.isOpen():
-                self.SendCommand(io_single_laser.ON_DIS)
-                self.SendCommand(io_single_laser.START)
-                # self.SendCommand(io_single_laser.STATUS)
-                self.GetInfo()
-                self.GetMaxPower()
-                # self.SetPower(1)
+                try:
+                    self.SendCommand(io_single_laser.ON_DIS)
+                    self.SendCommand(io_single_laser.START)
+                    # self.SendCommand(io_single_laser.STATUS)
+                    self.GetInfo()
+                    self.GetMaxPower()
+                    # self.SetPower(1)
+                except serial.SerialException as e:
+                    print(f'Initialization Error: {e}')
+
+        return self.isOpen()
 
     def CloseCOM(self):
         '''Closes the serial port.'''
         if self.isOpen():
-            self.SendCommand(io_single_laser.OFF)
-            self.waitForBytesWritten(500)
-
-            self.close()
+            try:
+                self.SendCommand(io_single_laser.OFF)
+            except serial.SerialException as e:
+                print(f'Error turning laser OFF: {e}')
+            finally:
+                self.ser.close()
 
     def GetMaxPower(self):
         '''
@@ -381,7 +481,8 @@ class SingleMatchBox(Tree):
                         'value': 115200,
                         'limits': [
                             baudrate
-                            for baudrate in QtSerialPort.QSerialPortInfo.standardBaudRates()
+                            for baudrate in
+                            QtSerialPort.QSerialPortInfo.standardBaudRates()
                         ],
                     },
                     {'name': str(MB_Params.SET_PORT), 'type': 'action'},

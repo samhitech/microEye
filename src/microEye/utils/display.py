@@ -234,25 +234,28 @@ class PyQtGraphDisplay(QtWidgets.QWidget):
         '''Update the FPS display.'''
         # set html text for better formatting
         # includes time info + image size + image min/max/mean/std
-        self.text_item.setHtml(
-            '<div style="color: white; font-size: 14px;'
-            'background-color: rgba(0, 0, 0, 0.5);">'
-            f'<span style="font-weight: bold;">'
-            f'FPS: {fps:.2f} ({1000 / fps if fps > 0 else np.nan:.2f} ms)</span><br>'
-            f'<span style="font-size: 11px;">'
-            f'Image Stats: {self.image_item.image.shape[1]} x '
-            f'{self.image_item.image.shape[0]} | '
-            f'Min: {np.min(self.image_item.image):.2f} | '
-            f'Max: {np.max(self.image_item.image):.2f} | '
-            f'Mean: {np.mean(self.image_item.image):.2f} | '
-            f'Std: {np.std(self.image_item.image):.2f}</span></div>'
-        )
+        if self.text_item.isVisible():
+            self.text_item.setHtml(
+                '<div style="color: white; font-size: 14px;'
+                'background-color: rgba(0, 0, 0, 0.5);">'
+                '<span style="font-weight: bold;">'
+                f'FPS: {fps:.2f} ({1000 / fps if fps > 0 else np.nan:.2f} ms)'
+                '</span><br>'
+                '<span style="font-size: 11px;">'
+                f'Image Stats: {self.image_item.image.shape[1]} x '
+                f'{self.image_item.image.shape[0]} | '
+                f'Min: {np.min(self.image_item.image):.2f} | '
+                f'Max: {np.max(self.image_item.image):.2f} | '
+                f'Mean: {np.mean(self.image_item.image):.2f} | '
+                f'Std: {np.std(self.image_item.image):.2f}</span></div>'
+            )
 
     def get_regions(self):
         '''Get the regions of interest from the histogram region items.'''
-        return [
+        regions = [
             item.getRegion() for item in self.histogram_region_items if item.isVisible()
         ]
+        return regions[0] if len(regions) == 1 else regions
 
     def set_regions(self, thresholds: list[list[float]]):
         '''Set the regions of interest for the histogram region items.'''
@@ -268,21 +271,15 @@ class PyQtGraphDisplay(QtWidgets.QWidget):
 
     def update_image(self, image: np.ndarray, kwargs: dict):
         '''Update the main image view.'''
-        # Check if the image is empty or not
-        thresholds, hist, cdf = fast_autolevels_opencv(
-            image,
-            # nbins=2 ** (image.dtype.itemsize * 8),
-            levels=kwargs.get('autoLevels', True),
-        )
+
+        thresholds = kwargs.get('threshold', [0, 255])
+        plot_data: np.ndarray = kwargs.get('plot')
 
         # Update histogram and CDF plots each second
         if self.frame_counter.count % 1000 == 0:
-            # Update histogram and CDF plots
-            for idx in range(hist.shape[1]):
-                self._plot_refs[idx].setData(
-                    hist[:, idx] if kwargs.get('plot_type', False) else cdf[:, idx]
-                )
-            # self._cdf_plot_ref.setData(self.BINS[image.dtype.itemsize * 8], cdf)
+            # Update plots
+            for idx in range(plot_data.shape[1]):
+                self._plot_refs[idx].setData(plot_data[:, idx])
 
         if kwargs.get('autoLevels', True):
             # autoLevels = True, set levels to min/max of the image

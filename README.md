@@ -31,11 +31,11 @@ This toolkit is compatible with the [hardware](#hardware) used in our microscope
 ![GitHub Stars](https://img.shields.io/github/stars/samhitech/microEye.svg)
 
 ```bash
- __  __ _            ___               ___   ____  ___ 
-|  \/  (_)__ _ _ ___| __|  _ ___  __ _|_  ) |__ / | __|
-| |\/| | / _| '_/ _ \ _| || / -_) \ V // / _ |_ \_|__ \
-|_|  |_|_\__|_| \___/___\_, \___|  \_//___(_)___(_)___/
-                        |__/
+   __  ____              ____                ___    ____  ____
+  /  |/  (_)__________  / __/_ _____   _  __|_  |  |_  / / __/
+ / /|_/ / / __/ __/ _ \/ _// // / -_) | |/ / __/_ _/_ <_/ _ \
+/_/  /_/_/\__/_/  \___/___/\_, /\__/  |___/____(_)____(_)___/
+                          /___/
 ```
 
 ## Table of Contents
@@ -57,6 +57,7 @@ This toolkit is compatible with the [hardware](#hardware) used in our microscope
     - [Additional Hardware](#additional-hardware)
   - [Pycro-Manager Integration](#pycro-manager-integration)
     - [Features](#features)
+    - [Integrated Hardware](#integrated-hardware)
     - [How to Use](#how-to-use)
   - [Authors](#authors)
   - [People Involved](#people-involved)
@@ -253,25 +254,27 @@ Schematic overview of the miEye instrument:
 
 ### Supported Cameras
 
-| Camera                    | Description                                                  | Link                                                                                                  |
-| ------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
-| IDS uEye UI-3060CP Rev. 2 | IDS industrial-grade CMOS cameras                            | [Link](https://en.ids-imaging.com/store/products/cameras/ui-3060cp-rev-2.html)                        |
-| Thorlabs DCC1545M         | DCx camera using UC480 driver                                | [Link](https://www.thorlabs.com/thorProduct.cfm?partNumber=DCC1545M)                                  |
-| Allied Vision Alvium 1800 | Allied Vision industrial-grade CMOS cameras (U-158m, U-511m) | [Link](https://www.alliedvision.com/en/products/alvium-configurator/alvium-1800-u/158/#_configurator) |
+|          Camera           | Description                                                              |                                                     Link                                                      |
+| :-----------------------: | ------------------------------------------------------------------------ | :-----------------------------------------------------------------------------------------------------------: |
+| IDS uEye UI-3060CP Rev. 2 | IDS industrial-grade CMOS cameras                                        |            [Product Link](https://en.ids-imaging.com/store/products/cameras/ui-3060cp-rev-2.html)             |
+|     Thorlabs DCC1545M     | DCx camera using UC480 driver                                            |                 [Product Link](https://www.thorlabs.com/thorProduct.cfm?partNumber=DCC1545M)                  |
+| Allied Vision Alvium 1800 | Allied Vision industrial-grade CMOS cameras (U-158m, U-511m)             | [Product Link](https://www.alliedvision.com/en/products/alvium-configurator/alvium-1800-u/158/#_configurator) |
+|    Excelitas PCO sCMOS    | Excelitas pco.edge 4.2 LT USB sCMOS Camera                               |               [Product Link](https://www.excelitas.com/product/pcoedge-42-lt-usb-scmos-camera)                |
+|       Pycro-camera        | Access to cameras via Micro-Manager drivers/adapters using Pycro-Manager |                                                       -                                                       |
 
 ### Additional Hardware
 
 | Hardware                          | Description                                                                                                                                                           | Link                                                                                                                                                                                                   |
 | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Integrated Optics MatchBox        | Multi-wavelength Laser Combiner, Single Laser MatchBox                                                                                                                | [Link](https://integratedoptics.com/products/wavelength-combiners)                                                                                                                                     |
-| Piezo Concept FOC                 | Nanopositioner for microscope objectives                                                                                                                              | [Link](https://piezoconcept-store.squarespace.com/1-axis/p/foc)                                                                                                                                        |
+| Integrated Optics MatchBox        | Multi-wavelength Laser Combiner, Single Laser MatchBox                                                                                                                | [Products Link](https://integratedoptics.com/products/wavelength-combiners)                                                                                                                            |
+| Piezo Concept FOC                 | Nanopositioner for microscope objectives                                                                                                                              | [Piezo Concept FOC](https://piezoconcept-store.squarespace.com/1-axis/p/foc)                                                                                                                           |
 | Thorlabs Elliptec ELL6/ELL9/ELL12 | Dual/Four/Six-Position Slider                                                                                                                                         | [ELL6](https://www.thorlabs.com/thorproduct.cfm?partnumber=ELL6), [ELL9](https://www.thorlabs.com/thorproduct.cfm?partnumber=ELL9), [ELL12](https://www.thorlabs.com/thorproduct.cfm?partnumber=ELL12) |
 | Thorlabs Elliptec ELL14           | Rotation Mount: SM1 Threaded                                                                                                                                          | [ELL14](https://www.thorlabs.com/thorproduct.cfm?partnumber=ELL14)                                                                                                                                     |
 | Thorlabs Elliptec ELL20           | Linear Stage: 60 mm Travel                                                                                                                                            | [ELL20](https://www.thorlabs.com/thorproduct.cfm?partnumber=ELL20)                                                                                                                                     |
-| Thorlabs KDC101                   | Kinesis Controller for Z825B/[Z925B](https://www.thorlabs.com/thorproduct.cfm?partnumber=Z925B) actuators (Activate USB VCP to access the COM port in device manager) | [Link](https://www.thorlabs.com/thorproduct.cfm?partnumber=KDC101)                                                                                                                                     |
-| Parallax TSL1401-DB (#28317)      | Linescan Camera Module                                                                                                                                                | [Link](https://eu.mouser.com/ProductDetail/Parallax/28317?qs=%2Fha2pyFaduiCRhuOAXMuCmQIeG1Q3R01m6Y1EH%252BmN80%3D)                                                                                     |
+| Thorlabs KDC101                   | Kinesis Controller for Z825B/[Z925B](https://www.thorlabs.com/thorproduct.cfm?partnumber=Z925B) actuators (Activate USB VCP to access the COM port in device manager) | [KDC101](https://www.thorlabs.com/thorproduct.cfm?partnumber=KDC101)                                                                                                                                   |
+| Parallax TSL1401-DB (#28317)      | Linescan Camera Module                                                                                                                                                | [Parallax TSL1401-DB](https://eu.mouser.com/ProductDetail/Parallax/28317?qs=%2Fha2pyFaduiCRhuOAXMuCmQIeG1Q3R01m6Y1EH%252BmN80%3D)                                                                      |
 | RelayBox Arduino                  | For laser control using camera GPIO signals                                                                                                                           | [RelayBox](https://github.com/samhitech/RelayBox)                                                                                                                                                      |
-| miEye OSF Project Parts List      | Parts list of miEye OSF Project                                                                                                                                       | [Link](https://osf.io/j2fqy/)                                                                                                                                                                          |
+| miEye OSF Project Parts List      | Parts list of miEye OSF Project                                                                                                                                       | [Repo Link](https://osf.io/j2fqy/)                                                                                                                                                                     |
 
 ## Pycro-Manager Integration
 
@@ -281,6 +284,15 @@ Integration with Pycro-Manager is now implemented, providing support for managin
 
 - **Headless Manager**: Manage multiple headless Micro-Manager instances (JavaBackend), including starting, stopping, and saving configurations.
 - **Core Instances Manager**: Handle multiple PycroCore instances for device communication and control.
+
+### Integrated Hardware
+
+The following table lists the hardware devices that are integrated and supported by the `miEye module`:
+
+| Device | Description                                                                                 |
+| :----: | ------------------------------------------------------------------------------------------- |
+| Camera | Access Micro-Manager cameras (mainly done for focus stabilization).                         |
+| ZStage | Access Micro-Manager Z-stage devices for focus stabilization and axial positioning control. |
 
 ### How to Use
 
@@ -346,7 +358,7 @@ Special thanks to the following projects and libraries that make this work possi
   > Raw data to results: a hands-on introduction and overview of computational analysis for single-molecule localization microscopy", Martens et al., (2022), Frontiers in Bioinformatics. [Paper](https://www.frontiersin.org/articles/10.3389/fbinf.2021.817254)
 
 - **TARDIS (Temporal Analysis of Relative Distances)**: We have developed a partial Python implementation of TARDIS without fitting for now. For more information, refer to the [TARDIS software releases](https://github.com/kjamartens/TARDIS-public). The underlying algorithms and scientific details of TARDIS are detailed in the manuscript:
-  > Martens et al., “Temporal analysis of relative distances (TARDIS) is a robust, parameter-free alternative to single-particle tracking”, Nature Methods (2024). [Link](https://rdcu.be/dv1sr)
+  > Martens et al., “Temporal analysis of relative distances (TARDIS) is a robust, parameter-free alternative to single-particle tracking”, Nature Methods (2024). [Article](https://rdcu.be/dv1sr)
 
 **Note**: I'm committed to maintaining an accurate acknowledgment list for our project. However, if I inadvertently miss acknowledging your work, please don't hesitate to reach out to us. I appreciate your understanding, and I'm doing my best to manage all acknowledgments amidst my other responsibilities.
 

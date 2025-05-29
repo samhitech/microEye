@@ -25,7 +25,7 @@ from microEye.hardware.cams.shortcuts import (
     CameraShortcutsWidget,
 )
 from microEye.qt import QDateTime, Qt, QtCore, QtWidgets, Signal, Slot
-from microEye.utils.display import DisplayManager
+from microEye.utils.display import DisplayManager, fast_autolevels_opencv
 from microEye.utils.expandable_groupbox import ExpandableGroupBox
 from microEye.utils.gui_helper import get_scaling_factor
 from microEye.utils.metadata_tree import MetadataEditorTree, MetaParams
@@ -848,6 +848,9 @@ def display_frame(
     if isinstance(frame, uImage):
         frame = frame._image
 
+    thresholds, hist, cdf = fast_autolevels_opencv(
+        frame, levels=camp.camera_options.isAutostretch)
+
     # cv2.imshow(name, frame)
     DisplayManager.instance().image_update_signal.emit(
         name,
@@ -862,6 +865,8 @@ def display_frame(
             'isROIsView': camp.camera_options.isROIsView,
             'isOverlaidView': camp.camera_options.isOverlaidView,
             'plot_type': camp.camera_options.isHistogramPlot,
+            'threshold': thresholds,
+            'plot': hist if camp.camera_options.isHistogramPlot else cdf,
         },
     )
 
