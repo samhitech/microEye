@@ -4,7 +4,13 @@ from typing import Any, Optional, Union
 from pycromanager import Core
 from pycromanager.mm_java_classes import DEFAULT_BRIDGE_PORT
 
-from microEye.hardware.pycromanager.enums import *
+from microEye.hardware.pycromanager.enums import (
+    DeviceDetectionStatus,
+    DeviceType,
+    FocusDirection,
+    MetadataProfile,
+    PropertyType,
+)
 from microEye.hardware.pycromanager.utils import *
 
 DEFAULT_TIMEOUT = 30  # Default timeout in seconds

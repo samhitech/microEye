@@ -8,11 +8,20 @@ import pyqtgraph as pg
 import tabulate
 import tifffile as tf
 
-from microEye.hardware.cams import *
+# Cameras
+from microEye.hardware.cams.camera_list import CameraList
+from microEye.hardware.cams.camera_options import CamParams
+from microEye.hardware.cams.camera_panel import Camera_Panel
+from microEye.hardware.cams.micam import miCamera
+from microEye.hardware.cams.vimba import vimba_cam
+
+# devices manager
 from microEye.hardware.mieye.devices_manager import DeviceManager
-from microEye.hardware.protocols import WeakObjects
-from microEye.hardware.stages import FocusStabilizer, KinesisView
-from microEye.hardware.widgets import (
+
+# other imports
+from microEye.hardware.protocols.actions import WeakObjects
+from microEye.hardware.stages.stabilizer import FocusStabilizer
+from microEye.hardware.widgets.scan_acquisition import (
     ScanAcquisitionWidget,
     TiledImageSelector,
     TileImage,

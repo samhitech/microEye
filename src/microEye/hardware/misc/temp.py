@@ -13,7 +13,7 @@ from microEye.qt import (
     QtWidgets,
     Slot,
 )
-from microEye.utils import StartGUI
+from microEye.utils.start_gui import StartGUI
 
 
 class temperature_monitor(QMainWindow):

@@ -1,12 +1,10 @@
-import json
 from enum import Enum
 from typing import Any, Optional, Union
 
 import ome_types.model as om
 from ome_types.model import *
 from ome_types.model.simple_types import PixelType, UnitsLength, UnitsTime
-from pyqtgraph.parametertree import Parameter, ParameterTree
-from pyqtgraph.parametertree.parameterTypes import ActionParameter, GroupParameter
+from pyqtgraph.parametertree import Parameter
 
 from microEye.qt import QtWidgets, getOpenFileName, getSaveFileName
 from microEye.utils.parameter_tree import Tree
@@ -16,6 +14,7 @@ class MetaParams(Enum):
     '''
     Enum class defining metadata parameters.
     '''
+
     EXPERIMENT_NAME = 'Experiment.Name'
     EXP_DESC = 'Experiment.Description'
     EXP_EMAIL = 'Experiment.Email'
@@ -75,6 +74,7 @@ class MetaParams(Enum):
         '''
         return self.value.split('.')
 
+
 class MetadataEditorTree(Tree):
     '''
     Tree widget for editing metadata parameters.
@@ -91,6 +91,7 @@ class MetadataEditorTree(Tree):
     EXCITATION_FILTERS : list
         List of excitation filter suggestions, adjust to fit your setup.
     '''
+
     PARAMS = MetaParams
 
     DICHROIC_SUGGESTIONS = [
@@ -156,130 +157,260 @@ class MetadataEditorTree(Tree):
         Create the parameter tree structure.
         '''
         params = [
-            {'name': 'Experiment', 'type': 'group', 'children': [
-                {'name': str(MetaParams.EXPERIMENT_NAME),
-                 'type': 'str', 'value': '001_Experiment'},
-                {'name': str(MetaParams.EXP_DESC), 'type': 'text', 'value': ''},
-                {'name': str(MetaParams.EXP_EMAIL), 'type': 'str', 'value': ''},
-                {'name': str(MetaParams.EXP_FNAME), 'type': 'str', 'value': ''},
-                {'name': str(MetaParams.EXP_LNAME), 'type': 'str', 'value': ''},
-                {'name': str(MetaParams.EXP_INSTITUTE), 'type': 'str', 'value': ''},
-            ]},
-            {'name': 'Image', 'type': 'group', 'children': [
-                {'name': str(MetaParams.PIXEL_TYPE), 'type': 'list',
-                 'limits': PixelType._member_names_, 'value': PixelType.UINT16.name},
-                {'name': str(MetaParams.PX_SIZE), 'type': 'float',
-                 'value': 114.17, 'limits': [0.0, 10000.0], 'decimals': 5},
-                {'name': str(MetaParams.PY_SIZE), 'type': 'float',
-                 'value': 114.17, 'limits': [0.0, 10000.0], 'decimals': 5},
-                {'name': str(MetaParams.P_UNIT), 'type': 'list',
-                 'limits': UnitsLength._member_names_,
-                 'value': UnitsLength.NANOMETER.name},
-                {'name': str(MetaParams.CHANNEL_NAME), 'type': 'str', 'value': 'CAM_1'},
-                {'name': str(MetaParams.FLUOR_NAME), 'type': 'str', 'value': ''},
-                {'name': str(MetaParams.EXPOSURE), 'type': 'float',
-                 'value': 100.0, 'limits': [0.0, 10000.0], 'decimals': 5},
-                {'name': str(MetaParams.EXPOSURE_UNIT), 'type': 'list',
-                 'limits': UnitsTime._member_names_,
-                 'value': UnitsTime.MILLISECOND.name},
-                {'name': str(MetaParams.ACQ_MODE), 'type': 'list',
-                 'limits': Channel_AcquisitionMode._member_names_,
-                 'value': Channel_AcquisitionMode.SINGLE_MOLECULE_IMAGING.name},
-                {'name': str(MetaParams.ILL_TYPE), 'type': 'list',
-                 'limits': Channel_IlluminationType._member_names_,
-                 'value': Channel_IlluminationType.OTHER.name},
-                {'name': str(MetaParams.CONTRAST), 'type': 'list',
-                 'limits': Channel_ContrastMethod._member_names_,
-                 'value': Channel_ContrastMethod.FLUORESCENCE.name},
-                {'name': str(MetaParams.EXCITATION), 'type': 'float',
-                 'value': 638, 'limits': [0.0, 10000.0], 'decimals': 5},
-                {'name': str(MetaParams.EMISSION), 'type': 'float',
-                 'value': 670, 'limits': [0.0, 10000.0], 'decimals': 5},
-                {'name': str(MetaParams.WAVE_UNIT), 'type': 'list',
-                 'limits': UnitsLength._member_names_,
-                 'value': UnitsLength.NANOMETER.name},
-            ]},
-            {'name': 'Instruments', 'type': 'group', 'children': [
-                {'name': str(MetaParams.MICRO_MANUFACTURER),
-                 'type': 'str', 'value': 'VU/FTMC'},
-                {'name': str(MetaParams.MICRO_MODEL),
-                 'type': 'str', 'value': 'Main scope'},
-                {'name': str(MetaParams.OBJ_MANUFACTURER),
-                 'type': 'str', 'value': 'Nikon'},
-                {'name': str(MetaParams.OBJ_MODEL), 'type': 'str',
-                 'value': 'CFI Apochromat TIRF 60XC Oil'},
-                {'name': str(MetaParams.OBJ_LENS_NA), 'type': 'float',
-                 'value': 1.49, 'limits': [0.0, 2.0], 'step': 0.1, 'decimals': 5},
-                {'name': str(MetaParams.OBJ_NOM_MAG), 'type': 'float',
-                 'value': 60.0, 'limits': [0.0, 1000.0], 'decimals': 5},
-                {'name': str(MetaParams.OBJ_IMMERSION), 'type': 'list',
-                 'limits': Objective_Immersion._member_names_,
-                 'value': Objective_Immersion.OIL.name},
-                {'name': str(MetaParams.OBJ_CORR), 'type': 'list',
-                 'limits': Objective_Correction._member_names_,
-                 'value': Objective_Correction.PLAN_APO.name},
-                {'name': str(MetaParams.DET_MANUFACTURER), 'type': 'str',
-                 'value': 'Allied Vision'},
-                {'name': str(MetaParams.DET_MODEL), 'type': 'str', 'value': 'U-511m'},
-                {'name': str(MetaParams.DET_SERIAL), 'type': 'str', 'value': ''},
-                {'name': str(MetaParams.DET_TYPE), 'type': 'list',
-                 'limits': Detector_Type._member_names_,
-                 'value': Detector_Type.CMOS.name},
-                {'name': str(MetaParams.DICHROIC_MANUFACTURER),
-                 'type': 'str', 'value': ''},
-                {'name': str(MetaParams.DICHROIC_MODEL), 'type': 'list', 'value': '',
-                 'limits': self.DICHROIC_SUGGESTIONS},
-                {'name': str(MetaParams.DICHROIC_MODEL_BTN), 'type': 'action'},
-                {'name': str(MetaParams.DICHROIC_MODEL_LIST), 'type': 'group',
-                 'children': []},
-                {'name': str(MetaParams.EXFILTER_MODEL), 'type': 'list', 'value': '',
-                 'limits': self.EXCITATION_FILTERS},
-                {'name': str(MetaParams.EXFILTER_MODEL_BTN), 'type': 'action'},
-                {'name': str(MetaParams.EXFILTER_MODEL_LIST), 'type': 'group',
-                 'children': []},
-                {'name': str(MetaParams.EMFILTER_MODEL), 'type': 'list', 'value': '',
-                 'limits': self.EMISSION_FILTERS},
-                {'name': str(MetaParams.EMFILTER_MODEL_BTN), 'type': 'action'},
-                {'name': str(MetaParams.EMFILTER_MODEL_LIST), 'type': 'group',
-                 'children': []},
-            ]},
-            {'name': 'Actions', 'type': 'group', 'children': [
-                {'name': str(MetaParams.EXPORT_STATE), 'type': 'action'},
-                {'name': str(MetaParams.IMPORT_STATE), 'type': 'action'},
-                {'name': str(MetaParams.EXPORT_XML), 'type': 'action'},
-                {'name': str(MetaParams.IMPORT_XML), 'type': 'action'},
-            ]},
+            {
+                'name': 'Experiment',
+                'type': 'group',
+                'children': [
+                    {
+                        'name': str(MetaParams.EXPERIMENT_NAME),
+                        'type': 'str',
+                        'value': '001_Experiment',
+                    },
+                    {'name': str(MetaParams.EXP_DESC), 'type': 'text', 'value': ''},
+                    {'name': str(MetaParams.EXP_EMAIL), 'type': 'str', 'value': ''},
+                    {'name': str(MetaParams.EXP_FNAME), 'type': 'str', 'value': ''},
+                    {'name': str(MetaParams.EXP_LNAME), 'type': 'str', 'value': ''},
+                    {'name': str(MetaParams.EXP_INSTITUTE), 'type': 'str', 'value': ''},
+                ],
+            },
+            {
+                'name': 'Image',
+                'type': 'group',
+                'children': [
+                    {
+                        'name': str(MetaParams.PIXEL_TYPE),
+                        'type': 'list',
+                        'limits': PixelType._member_names_,
+                        'value': PixelType.UINT16.name,
+                    },
+                    {
+                        'name': str(MetaParams.PX_SIZE),
+                        'type': 'float',
+                        'value': 114.17,
+                        'limits': [0.0, 10000.0],
+                        'decimals': 5,
+                    },
+                    {
+                        'name': str(MetaParams.PY_SIZE),
+                        'type': 'float',
+                        'value': 114.17,
+                        'limits': [0.0, 10000.0],
+                        'decimals': 5,
+                    },
+                    {
+                        'name': str(MetaParams.P_UNIT),
+                        'type': 'list',
+                        'limits': UnitsLength._member_names_,
+                        'value': UnitsLength.NANOMETER.name,
+                    },
+                    {
+                        'name': str(MetaParams.CHANNEL_NAME),
+                        'type': 'str',
+                        'value': 'CAM_1',
+                    },
+                    {'name': str(MetaParams.FLUOR_NAME), 'type': 'str', 'value': ''},
+                    {
+                        'name': str(MetaParams.EXPOSURE),
+                        'type': 'float',
+                        'value': 100.0,
+                        'limits': [0.0, 10000.0],
+                        'decimals': 5,
+                    },
+                    {
+                        'name': str(MetaParams.EXPOSURE_UNIT),
+                        'type': 'list',
+                        'limits': UnitsTime._member_names_,
+                        'value': UnitsTime.MILLISECOND.name,
+                    },
+                    {
+                        'name': str(MetaParams.ACQ_MODE),
+                        'type': 'list',
+                        'limits': Channel_AcquisitionMode._member_names_,
+                        'value': Channel_AcquisitionMode.SINGLE_MOLECULE_IMAGING.name,
+                    },
+                    {
+                        'name': str(MetaParams.ILL_TYPE),
+                        'type': 'list',
+                        'limits': Channel_IlluminationType._member_names_,
+                        'value': Channel_IlluminationType.OTHER.name,
+                    },
+                    {
+                        'name': str(MetaParams.CONTRAST),
+                        'type': 'list',
+                        'limits': Channel_ContrastMethod._member_names_,
+                        'value': Channel_ContrastMethod.FLUORESCENCE.name,
+                    },
+                    {
+                        'name': str(MetaParams.EXCITATION),
+                        'type': 'float',
+                        'value': 638,
+                        'limits': [0.0, 10000.0],
+                        'decimals': 5,
+                    },
+                    {
+                        'name': str(MetaParams.EMISSION),
+                        'type': 'float',
+                        'value': 670,
+                        'limits': [0.0, 10000.0],
+                        'decimals': 5,
+                    },
+                    {
+                        'name': str(MetaParams.WAVE_UNIT),
+                        'type': 'list',
+                        'limits': UnitsLength._member_names_,
+                        'value': UnitsLength.NANOMETER.name,
+                    },
+                ],
+            },
+            {
+                'name': 'Instruments',
+                'type': 'group',
+                'children': [
+                    {
+                        'name': str(MetaParams.MICRO_MANUFACTURER),
+                        'type': 'str',
+                        'value': 'VU/FTMC',
+                    },
+                    {
+                        'name': str(MetaParams.MICRO_MODEL),
+                        'type': 'str',
+                        'value': 'Main scope',
+                    },
+                    {
+                        'name': str(MetaParams.OBJ_MANUFACTURER),
+                        'type': 'str',
+                        'value': 'Nikon',
+                    },
+                    {
+                        'name': str(MetaParams.OBJ_MODEL),
+                        'type': 'str',
+                        'value': 'CFI Apochromat TIRF 60XC Oil',
+                    },
+                    {
+                        'name': str(MetaParams.OBJ_LENS_NA),
+                        'type': 'float',
+                        'value': 1.49,
+                        'limits': [0.0, 2.0],
+                        'step': 0.1,
+                        'decimals': 5,
+                    },
+                    {
+                        'name': str(MetaParams.OBJ_NOM_MAG),
+                        'type': 'float',
+                        'value': 60.0,
+                        'limits': [0.0, 1000.0],
+                        'decimals': 5,
+                    },
+                    {
+                        'name': str(MetaParams.OBJ_IMMERSION),
+                        'type': 'list',
+                        'limits': Objective_Immersion._member_names_,
+                        'value': Objective_Immersion.OIL.name,
+                    },
+                    {
+                        'name': str(MetaParams.OBJ_CORR),
+                        'type': 'list',
+                        'limits': Objective_Correction._member_names_,
+                        'value': Objective_Correction.PLAN_APO.name,
+                    },
+                    {
+                        'name': str(MetaParams.DET_MANUFACTURER),
+                        'type': 'str',
+                        'value': 'Allied Vision',
+                    },
+                    {
+                        'name': str(MetaParams.DET_MODEL),
+                        'type': 'str',
+                        'value': 'U-511m',
+                    },
+                    {'name': str(MetaParams.DET_SERIAL), 'type': 'str', 'value': ''},
+                    {
+                        'name': str(MetaParams.DET_TYPE),
+                        'type': 'list',
+                        'limits': Detector_Type._member_names_,
+                        'value': Detector_Type.CMOS.name,
+                    },
+                    {
+                        'name': str(MetaParams.DICHROIC_MANUFACTURER),
+                        'type': 'str',
+                        'value': '',
+                    },
+                    {
+                        'name': str(MetaParams.DICHROIC_MODEL),
+                        'type': 'list',
+                        'value': '',
+                        'limits': self.DICHROIC_SUGGESTIONS,
+                    },
+                    {'name': str(MetaParams.DICHROIC_MODEL_BTN), 'type': 'action'},
+                    {
+                        'name': str(MetaParams.DICHROIC_MODEL_LIST),
+                        'type': 'group',
+                        'children': [],
+                    },
+                    {
+                        'name': str(MetaParams.EXFILTER_MODEL),
+                        'type': 'list',
+                        'value': '',
+                        'limits': self.EXCITATION_FILTERS,
+                    },
+                    {'name': str(MetaParams.EXFILTER_MODEL_BTN), 'type': 'action'},
+                    {
+                        'name': str(MetaParams.EXFILTER_MODEL_LIST),
+                        'type': 'group',
+                        'children': [],
+                    },
+                    {
+                        'name': str(MetaParams.EMFILTER_MODEL),
+                        'type': 'list',
+                        'value': '',
+                        'limits': self.EMISSION_FILTERS,
+                    },
+                    {'name': str(MetaParams.EMFILTER_MODEL_BTN), 'type': 'action'},
+                    {
+                        'name': str(MetaParams.EMFILTER_MODEL_LIST),
+                        'type': 'group',
+                        'children': [],
+                    },
+                ],
+            },
+            {
+                'name': 'Actions',
+                'type': 'group',
+                'children': [
+                    {'name': str(MetaParams.EXPORT_STATE), 'type': 'action'},
+                    {'name': str(MetaParams.IMPORT_STATE), 'type': 'action'},
+                    {'name': str(MetaParams.EXPORT_XML), 'type': 'action'},
+                    {'name': str(MetaParams.IMPORT_XML), 'type': 'action'},
+                ],
+            },
         ]
 
         self.param_tree = Parameter.create(name='', type='group', children=params)
         self.param_tree.sigTreeStateChanged.connect(self.change)
         self.header().setSectionResizeMode(
-            QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+            QtWidgets.QHeaderView.ResizeMode.ResizeToContents
+        )
 
-        self.get_param(
-            MetaParams.DICHROIC_MODEL_BTN).sigActivated.connect(
-                lambda: self.add_param_child(
-                    MetaParams.DICHROIC_MODEL_LIST,
-                    MetaParams.DICHROIC_MODEL))
-        self.get_param(
-            MetaParams.EXFILTER_MODEL_BTN).sigActivated.connect(
-                lambda: self.add_param_child(
-                    MetaParams.EXFILTER_MODEL_LIST,
-                    MetaParams.EXFILTER_MODEL))
-        self.get_param(
-            MetaParams.EMFILTER_MODEL_BTN).sigActivated.connect(
-                lambda: self.add_param_child(
-                    MetaParams.EMFILTER_MODEL_LIST,
-                    MetaParams.EMFILTER_MODEL))
+        self.get_param(MetaParams.DICHROIC_MODEL_BTN).sigActivated.connect(
+            lambda: self.add_param_child(
+                MetaParams.DICHROIC_MODEL_LIST, MetaParams.DICHROIC_MODEL
+            )
+        )
+        self.get_param(MetaParams.EXFILTER_MODEL_BTN).sigActivated.connect(
+            lambda: self.add_param_child(
+                MetaParams.EXFILTER_MODEL_LIST, MetaParams.EXFILTER_MODEL
+            )
+        )
+        self.get_param(MetaParams.EMFILTER_MODEL_BTN).sigActivated.connect(
+            lambda: self.add_param_child(
+                MetaParams.EMFILTER_MODEL_LIST, MetaParams.EMFILTER_MODEL
+            )
+        )
 
-        self.get_param(
-            MetaParams.IMPORT_STATE).sigActivated.connect(self.load_json)
-        self.get_param(
-            MetaParams.EXPORT_STATE).sigActivated.connect(self.export_json)
-        self.get_param(
-            MetaParams.IMPORT_XML).sigActivated.connect(self.load_xml)
-        self.get_param(
-            MetaParams.EXPORT_XML).sigActivated.connect(self.save)
+        self.get_param(MetaParams.IMPORT_STATE).sigActivated.connect(self.load_json)
+        self.get_param(MetaParams.EXPORT_STATE).sigActivated.connect(self.export_json)
+        self.get_param(MetaParams.IMPORT_XML).sigActivated.connect(self.load_xml)
+        self.get_param(MetaParams.EXPORT_XML).sigActivated.connect(self.save)
 
     def add_param_child(self, parent: MetaParams, value: Union[MetaParams, Any]):
         '''
@@ -298,10 +429,16 @@ class MetadataEditorTree(Tree):
         '''
         parent = self.get_param(parent)
         parent.addChild(
-            {'name' : 'Item 1', 'type': 'str',
-             'value': self.get_param_value(value) if \
-                isinstance(value, MetaParams) else value, 'removable': True},
-            True)
+            {
+                'name': 'Item 1',
+                'type': 'str',
+                'value': self.get_param_value(value)
+                if isinstance(value, MetaParams)
+                else value,
+                'removable': True,
+            },
+            True,
+        )
 
     def change(self, param: Parameter, changes: list):
         '''
@@ -331,7 +468,8 @@ class MetadataEditorTree(Tree):
         '''
         try:
             filename, _ = getSaveFileName(
-                self, 'Save metadata', filter='OME-XML Files (*.ome.xml);;')
+                self, 'Save metadata', filter='OME-XML Files (*.ome.xml);;'
+            )
             if filename:
                 ome_obj = self.gen_OME_XML(1, 512, 512)
                 with open(filename, 'w', encoding='utf8') as f:
@@ -349,7 +487,8 @@ class MetadataEditorTree(Tree):
         '''
         try:
             filename, _ = getOpenFileName(
-                self, 'Load metadata', filter='OME-XML Files (*.ome.xml);;')
+                self, 'Load metadata', filter='OME-XML Files (*.ome.xml);;'
+            )
             if filename:
                 xml = ''
                 with open(filename, encoding='utf8') as f:
@@ -358,11 +497,15 @@ class MetadataEditorTree(Tree):
         except Exception as e:
             print(f'Error loading file: {e}')
 
-
     def gen_OME_XML(
-            self, frames: int, width: int, height: int,
-            channels: int = 1, z_planes: int = 1,
-            dimension_order: Pixels_DimensionOrder =Pixels_DimensionOrder.XYZCT):
+        self,
+        frames: int,
+        width: int,
+        height: int,
+        channels: int = 1,
+        z_planes: int = 1,
+        dimension_order: Pixels_DimensionOrder = Pixels_DimensionOrder.XYZCT,
+    ):
         '''
         Generates OME-XML metadata.
 
@@ -405,23 +548,24 @@ class MetadataEditorTree(Tree):
         objective.lens_na = self.get_param_value(MetaParams.OBJ_LENS_NA)
         objective.nominal_magnification = self.get_param_value(MetaParams.OBJ_NOM_MAG)
         objective.immersion = Objective_Immersion._member_map_.get(
-            self.get_param_value(MetaParams.OBJ_IMMERSION), Objective_Immersion.OIL)
+            self.get_param_value(MetaParams.OBJ_IMMERSION), Objective_Immersion.OIL
+        )
         objective.correction = Objective_Correction._member_map_.get(
-            self.get_param_value(MetaParams.OBJ_CORR), Objective_Correction.PLAN_APO)
+            self.get_param_value(MetaParams.OBJ_CORR), Objective_Correction.PLAN_APO
+        )
 
         detector = Detector()
         detector.manufacturer = self.get_param_value(MetaParams.DET_MANUFACTURER)
         detector.model = self.get_param_value(MetaParams.DET_MODEL)
         detector.serial_number = self.get_param_value(MetaParams.DET_SERIAL)
         detector.type = Detector_Type._member_map_.get(
-            self.get_param_value(MetaParams.DET_TYPE), Detector_Type.CMOS)
+            self.get_param_value(MetaParams.DET_TYPE), Detector_Type.CMOS
+        )
 
         exFilters = Filter()
-        exFilters.model = ', '.join(
-            self.get_children(MetaParams.EXFILTER_MODEL_LIST))
+        exFilters.model = ', '.join(self.get_children(MetaParams.EXFILTER_MODEL_LIST))
         emFilters = Filter()
-        emFilters.model = ', '.join(
-            self.get_children(MetaParams.EMFILTER_MODEL_LIST))
+        emFilters.model = ', '.join(self.get_children(MetaParams.EMFILTER_MODEL_LIST))
 
         instrument = Instrument()
         instrument.microscope = micro
@@ -431,7 +575,8 @@ class MetadataEditorTree(Tree):
         for item in self.get_children(MetaParams.DICHROIC_MODEL_LIST):
             dichroic = Dichroic()
             dichroic.manufacturer = self.get_param_value(
-                MetaParams.DICHROIC_MANUFACTURER)
+                MetaParams.DICHROIC_MANUFACTURER
+            )
             dichroic.model = item
             instrument.dichroics.append(dichroic)
 
@@ -440,55 +585,66 @@ class MetadataEditorTree(Tree):
 
         ome_obj.instruments.append(instrument)
 
-        planes = [om.Plane(
-            the_c=0,
-            the_t=i,
-            the_z=0,
-            exposure_time=self.get_param_value(MetaParams.EXPOSURE),
-            exposure_time_unit=UnitsTime._member_map_.get(
-                self.get_param_value(MetaParams.EXPOSURE_UNIT),
-                UnitsTime.SECOND)
-        ) for i in range(frames)]
+        planes = [
+            om.Plane(
+                the_c=0,
+                the_t=i,
+                the_z=0,
+                exposure_time=self.get_param_value(MetaParams.EXPOSURE),
+                exposure_time_unit=UnitsTime._member_map_.get(
+                    self.get_param_value(MetaParams.EXPOSURE_UNIT), UnitsTime.SECOND
+                ),
+            )
+            for i in range(frames)
+        ]
 
         channel = om.Channel()
         channel.name = self.get_param_value(MetaParams.CHANNEL_NAME)
         channel.fluor = self.get_param_value(MetaParams.FLUOR_NAME)
         channel.acquisition_mode = Channel_AcquisitionMode._member_map_.get(
             self.get_param_value(MetaParams.ACQ_MODE),
-            Channel_AcquisitionMode.SINGLE_MOLECULE_IMAGING)
+            Channel_AcquisitionMode.SINGLE_MOLECULE_IMAGING,
+        )
         channel.illumination_type = Channel_IlluminationType._member_map_.get(
-            self.get_param_value(MetaParams.ILL_TYPE),
-            Channel_IlluminationType.OTHER)
+            self.get_param_value(MetaParams.ILL_TYPE), Channel_IlluminationType.OTHER
+        )
         channel.contrast_method = Channel_ContrastMethod._member_map_.get(
             self.get_param_value(MetaParams.CONTRAST),
-            Channel_ContrastMethod.FLUORESCENCE)
+            Channel_ContrastMethod.FLUORESCENCE,
+        )
         channel.excitation_wavelength = self.get_param_value(MetaParams.EXCITATION)
         channel.emission_wavelength = self.get_param_value(MetaParams.EMISSION)
         channel.excitation_wavelength_unit = UnitsLength._member_map_.get(
-            self.get_param_value(MetaParams.WAVE_UNIT), UnitsLength.NANOMETER)
+            self.get_param_value(MetaParams.WAVE_UNIT), UnitsLength.NANOMETER
+        )
         channel.emission_wavelength_unit = UnitsLength._member_map_.get(
-            self.get_param_value(MetaParams.WAVE_UNIT), UnitsLength.NANOMETER)
+            self.get_param_value(MetaParams.WAVE_UNIT), UnitsLength.NANOMETER
+        )
         channel.samples_per_pixel = 1
 
         pixels = om.Pixels(
-            size_c=channels, size_t=frames,
+            size_c=channels,
+            size_t=frames,
             size_x=width,
             size_y=height,
             size_z=z_planes,
             type=PixelType._member_map_.get(
-                self.get_param_value(MetaParams.PIXEL_TYPE),
-                PixelType.UINT16),
+                self.get_param_value(MetaParams.PIXEL_TYPE), PixelType.UINT16
+            ),
             dimension_order=dimension_order,
             # metadata_only=True,
             physical_size_x=self.get_param_value(MetaParams.PX_SIZE),
             physical_size_x_unit=UnitsLength._member_map_.get(
-                self.get_param_value(MetaParams.P_UNIT), UnitsLength.MICROMETER),
+                self.get_param_value(MetaParams.P_UNIT), UnitsLength.MICROMETER
+            ),
             physical_size_y=self.get_param_value(MetaParams.PY_SIZE),
             physical_size_y_unit=UnitsLength._member_map_.get(
-                self.get_param_value(MetaParams.P_UNIT), UnitsLength.MICROMETER),
+                self.get_param_value(MetaParams.P_UNIT), UnitsLength.MICROMETER
+            ),
             time_increment=self.get_param_value(MetaParams.EXPOSURE),
             time_increment_unit=UnitsTime._member_map_.get(
-                self.get_param_value(MetaParams.EXPOSURE_UNIT), UnitsTime.SECOND),
+                self.get_param_value(MetaParams.EXPOSURE_UNIT), UnitsTime.SECOND
+            ),
         )
         pixels.tiff_data_blocks.append(om.TiffData())
         pixels.channels.append(channel)
@@ -497,7 +653,7 @@ class MetadataEditorTree(Tree):
             id='Image:1',
             name=self.get_param_value(MetaParams.EXPERIMENT_NAME),
             pixels=pixels,
-            description=self.get_param_value(MetaParams.EXP_DESC)
+            description=self.get_param_value(MetaParams.EXP_DESC),
         )
         ome_obj.images.append(img)
         ome_obj = OME.model_validate(ome_obj)
@@ -508,9 +664,14 @@ class MetadataEditorTree(Tree):
         return ome_obj
 
     def gen_OME_XML_short(
-            self, frames: int, width: int, height: int,
-            channels: int = 1, z_planes: int = 1,
-            dimension_order: Pixels_DimensionOrder =Pixels_DimensionOrder.XYZCT):
+        self,
+        frames: int,
+        width: int,
+        height: int,
+        channels: int = 1,
+        z_planes: int = 1,
+        dimension_order: Pixels_DimensionOrder = Pixels_DimensionOrder.XYZCT,
+    ):
         '''
         Generates short version of OME-XML metadata.
 
@@ -548,43 +709,50 @@ class MetadataEditorTree(Tree):
         detector.model = self.get_param_value(MetaParams.DET_MODEL)
         detector.serial_number = self.get_param_value(MetaParams.DET_SERIAL)
         detector.type = Detector_Type._member_map_[
-            self.get_param_value(MetaParams.DET_TYPE)]
+            self.get_param_value(MetaParams.DET_TYPE)
+        ]
 
         instrument = Instrument()
         instrument.detectors.append(detector)
 
         ome_obj.instruments.append(instrument)
 
-        planes = [om.Plane(
-            the_c=0,
-            the_t=i,
-            the_z=0,
-            exposure_time=self.get_param_value(MetaParams.EXPOSURE),
-            exposure_time_unit=UnitsTime._member_map_[
-                self.get_param_value(MetaParams.EXPOSURE_UNIT)
-            ]
-        ) for i in range(frames)]
+        planes = [
+            om.Plane(
+                the_c=0,
+                the_t=i,
+                the_z=0,
+                exposure_time=self.get_param_value(MetaParams.EXPOSURE),
+                exposure_time_unit=UnitsTime._member_map_[
+                    self.get_param_value(MetaParams.EXPOSURE_UNIT)
+                ],
+            )
+            for i in range(frames)
+        ]
 
         channel = om.Channel()
 
         pixels = om.Pixels(
-            size_c=channels, size_t=frames,
+            size_c=channels,
+            size_t=frames,
             size_x=width,
             size_y=height,
             size_z=z_planes,
-            type=PixelType._member_map_[
-                self.get_param_value(MetaParams.PIXEL_TYPE)],
+            type=PixelType._member_map_[self.get_param_value(MetaParams.PIXEL_TYPE)],
             dimension_order=dimension_order,
             # metadata_only=True,
             physical_size_x=self.get_param_value(MetaParams.PX_SIZE),
             physical_size_x_unit=UnitsLength._member_map_[
-                self.get_param_value(MetaParams.P_UNIT)],
+                self.get_param_value(MetaParams.P_UNIT)
+            ],
             physical_size_y=self.get_param_value(MetaParams.PY_SIZE),
             physical_size_y_unit=UnitsLength._member_map_[
-                self.get_param_value(MetaParams.P_UNIT)],
+                self.get_param_value(MetaParams.P_UNIT)
+            ],
             time_increment=self.get_param_value(MetaParams.EXPOSURE),
             time_increment_unit=UnitsTime._member_map_[
-                self.get_param_value(MetaParams.EXPOSURE_UNIT)],
+                self.get_param_value(MetaParams.EXPOSURE_UNIT)
+            ],
         )
         pixels.tiff_data_blocks.append(om.TiffData())
         pixels.channels.append(channel)
@@ -593,7 +761,7 @@ class MetadataEditorTree(Tree):
             id='Image:1',
             name=self.get_param_value(MetaParams.EXPERIMENT_NAME),
             pixels=pixels,
-            description=self.get_param_value(MetaParams.EXP_DESC)
+            description=self.get_param_value(MetaParams.EXP_DESC),
         )
         ome_obj.images.append(img)
         ome_obj = OME.model_validate(ome_obj)
@@ -612,59 +780,59 @@ class MetadataEditorTree(Tree):
         if ome_obj.images.__len__() > 0:
             img = ome_obj.images[0]
             self.set_param_value(MetaParams.EXPERIMENT_NAME, img.name)
-            self.set_param_value(MetaParams.EXP_DESC,img.description)
+            self.set_param_value(MetaParams.EXP_DESC, img.description)
             if img.pixels is not None:
                 pixels = img.pixels
                 if pixels.physical_size_x is not None:
                     self.set_param_value(
-                        MetaParams.PX_SIZE,
-                        float(pixels.physical_size_x))
+                        MetaParams.PX_SIZE, float(pixels.physical_size_x)
+                    )
                     self.set_param_value(
-                        MetaParams.P_UNIT,
-                        pixels.physical_size_x_unit.name)
+                        MetaParams.P_UNIT, pixels.physical_size_x_unit.name
+                    )
                 if pixels.physical_size_y is not None:
                     self.set_param_value(
-                        MetaParams.PY_SIZE,
-                        float(pixels.physical_size_y))
+                        MetaParams.PY_SIZE, float(pixels.physical_size_y)
+                    )
                 if pixels.time_increment is not None:
                     self.set_param_value(
-                        MetaParams.EXPOSURE,
-                        float(pixels.time_increment))
+                        MetaParams.EXPOSURE, float(pixels.time_increment)
+                    )
                     self.set_param_value(
-                        MetaParams.EXPOSURE_UNIT,
-                        pixels.time_increment_unit.name)
-                self.set_param_value(
-                    MetaParams.PIXEL_TYPE, pixels.type.name)
+                        MetaParams.EXPOSURE_UNIT, pixels.time_increment_unit.name
+                    )
+                self.set_param_value(MetaParams.PIXEL_TYPE, pixels.type.name)
                 if pixels.channels.__len__() > 0:
                     channel = pixels.channels[0]
                     self.set_param_value(MetaParams.CHANNEL_NAME, channel.name)
                     self.set_param_value(MetaParams.FLUOR_NAME, channel.fluor)
                     if channel.acquisition_mode:
                         self.set_param_value(
-                            MetaParams.ACQ_MODE,
-                            channel.acquisition_mode.name)
+                            MetaParams.ACQ_MODE, channel.acquisition_mode.name
+                        )
                     if channel.illumination_type:
                         self.set_param_value(
-                            MetaParams.ILL_TYPE,
-                            channel.illumination_type.name)
+                            MetaParams.ILL_TYPE, channel.illumination_type.name
+                        )
                     if channel.contrast_method:
                         self.set_param_value(
-                            MetaParams.CONTRAST,
-                            channel.contrast_method.name)
+                            MetaParams.CONTRAST, channel.contrast_method.name
+                        )
                     if channel.excitation_wavelength:
                         self.set_param_value(
-                            MetaParams.EXCITATION,
-                            float(channel.excitation_wavelength))
+                            MetaParams.EXCITATION, float(channel.excitation_wavelength)
+                        )
                         self.set_param_value(
                             MetaParams.WAVE_UNIT,
-                            channel.excitation_wavelength_unit.name)
+                            channel.excitation_wavelength_unit.name,
+                        )
                     if channel.emission_wavelength:
                         self.set_param_value(
-                            MetaParams.EMISSION,
-                            float(channel.emission_wavelength))
+                            MetaParams.EMISSION, float(channel.emission_wavelength)
+                        )
                         self.set_param_value(
-                            MetaParams.WAVE_UNIT,
-                            channel.emission_wavelength_unit.name)
+                            MetaParams.WAVE_UNIT, channel.emission_wavelength_unit.name
+                        )
             if ome_obj.experimenters.__len__() > 0:
                 exper = ome_obj.experimenters[0]
                 self.set_param_value(MetaParams.EXP_FNAME, exper.first_name)
@@ -676,27 +844,30 @@ class MetadataEditorTree(Tree):
                 if inst.microscope is not None:
                     micro = inst.microscope
                     self.set_param_value(
-                        MetaParams.MICRO_MANUFACTURER, micro.manufacturer)
+                        MetaParams.MICRO_MANUFACTURER, micro.manufacturer
+                    )
                     self.set_param_value(MetaParams.MICRO_MODEL, micro.model)
                 if inst.objectives.__len__() > 0:
                     objective = inst.objectives[0]
                     self.set_param_value(
-                        MetaParams.OBJ_MANUFACTURER, objective.manufacturer)
+                        MetaParams.OBJ_MANUFACTURER, objective.manufacturer
+                    )
                     self.set_param_value(MetaParams.OBJ_MODEL, objective.model)
                     self.set_param_value(
-                        MetaParams.OBJ_LENS_NA,
-                        float(objective.lens_na))
+                        MetaParams.OBJ_LENS_NA, float(objective.lens_na)
+                    )
                     self.set_param_value(
-                        MetaParams.OBJ_NOM_MAG,
-                        float(objective.nominal_magnification))
+                        MetaParams.OBJ_NOM_MAG, float(objective.nominal_magnification)
+                    )
                     self.set_param_value(
-                        MetaParams.OBJ_IMMERSION, objective.immersion.name)
-                    self.set_param_value(
-                        MetaParams.OBJ_CORR, objective.correction.name)
+                        MetaParams.OBJ_IMMERSION, objective.immersion.name
+                    )
+                    self.set_param_value(MetaParams.OBJ_CORR, objective.correction.name)
                 if inst.detectors.__len__() > 0:
                     detector = inst.detectors[0]
                     self.set_param_value(
-                        MetaParams.DET_MANUFACTURER, detector.manufacturer)
+                        MetaParams.DET_MANUFACTURER, detector.manufacturer
+                    )
                     self.set_param_value(MetaParams.DET_MODEL, detector.model)
                     self.set_param_value(MetaParams.DET_SERIAL, detector.serial_number)
                     self.set_param_value(MetaParams.DET_TYPE, detector.type.name)
@@ -704,9 +875,11 @@ class MetadataEditorTree(Tree):
                     self.get_param(MetaParams.DICHROIC_MODEL_LIST).clearChildren()
                     for dichroic in inst.dichroics:
                         self.set_param_value(
-                            MetaParams.DICHROIC_MANUFACTURER, dichroic.manufacturer)
+                            MetaParams.DICHROIC_MANUFACTURER, dichroic.manufacturer
+                        )
                         self.add_param_child(
-                            MetaParams.DICHROIC_MODEL_LIST, dichroic.model)
+                            MetaParams.DICHROIC_MODEL_LIST, dichroic.model
+                        )
                 if inst.filters.__len__() > 1:
                     self.get_param(MetaParams.EXFILTER_MODEL_LIST).clearChildren()
                     self.get_param(MetaParams.EMFILTER_MODEL_LIST).clearChildren()

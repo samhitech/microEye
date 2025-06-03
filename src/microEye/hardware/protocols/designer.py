@@ -4,7 +4,6 @@ import sys
 from microEye import __version__
 from microEye.hardware.protocols.actions import (
     ForLoop,
-    FunctionCall,
     ParameterAdjustmentAction,
 )
 from microEye.hardware.protocols.scene_manager import SceneManager

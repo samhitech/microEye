@@ -9,7 +9,7 @@ from microEye.hardware.stages.elliptec.deviceStatus import DeviceStatusValues
 from microEye.hardware.stages.elliptec.ellDevices import *
 from microEye.hardware.stages.elliptec.motorInfo import MotorInfo
 from microEye.qt import QtCore, QtSerialPort, QtWidgets, Signal
-from microEye.utils import Tree
+from microEye.utils.parameter_tree import Tree
 
 
 class ElliptecStageParams(Enum):

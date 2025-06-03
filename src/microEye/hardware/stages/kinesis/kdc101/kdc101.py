@@ -1,9 +1,8 @@
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from microEye.hardware.stages.kinesis.kdc101.factory import *
 from microEye.qt import QtCore, QtSerialPort, Signal
-from microEye.utils.thread_worker import *
 
 
 @dataclass

@@ -1,3 +1,5 @@
+import struct
+
 from microEye.hardware.stages.kinesis.kdc101.enums import *
 
 

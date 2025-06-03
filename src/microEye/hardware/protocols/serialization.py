@@ -1,13 +1,11 @@
 from typing import Any
 
-from microEye.hardware.protocols.actions import (
+from microEye.hardware.protocols.actions_items import (
+    ActionGroupItem,
     BaseAction,
     ForLoop,
     FunctionCall,
     ParameterAdjustmentAction,
-)
-from microEye.hardware.protocols.actions_items import (
-    ActionGroupItem,
     get_action_item,
 )
 

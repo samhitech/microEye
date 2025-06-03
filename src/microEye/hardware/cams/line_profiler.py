@@ -1,10 +1,9 @@
 import numpy as np
 import pyqtgraph as pg
 import qdarkstyle
-from pyqtgraph.multiprocess import proxy
 
 from microEye.analysis.tools.kymograms import get_kymogram_row
-from microEye.qt import QApplication, QtWidgets, Signal, Slot
+from microEye.qt import QApplication, QtWidgets, Signal
 
 
 class LineProfiler(QtWidgets.QWidget):

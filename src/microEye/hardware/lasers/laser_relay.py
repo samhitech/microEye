@@ -1,12 +1,11 @@
-import os
-import sys
 from enum import Enum
 from typing import Optional
 
 from pyqtgraph.parametertree import Parameter
 
 from microEye.qt import QtCore, QtSerialPort, QtWidgets, Signal
-from microEye.utils import StartGUI, Tree
+from microEye.utils.parameter_tree import Tree
+from microEye.utils.start_gui import StartGUI
 
 
 class LaserRelay:
@@ -250,8 +249,7 @@ class LaserRelayView(Tree):
                         'value': 115200,
                         'limits': [
                             baudrate
-                            for baudrate in \
-                                QtSerialPort.QSerialPortInfo.standardBaudRates()
+                            for baudrate in QtSerialPort.QSerialPortInfo.standardBaudRates()  # noqa: E501
                         ],
                     },
                     {'name': str(RelayParams.SET_PORT), 'type': 'action'},
@@ -566,7 +564,7 @@ class LaserRelayController:
             'baudrate': self.__relay.baudRate(),
             'alex': self.isALEX(),
         }
-    
+
     def load_config(self, config: dict):
         '''
         Load the configuration from a dictionary.
@@ -577,8 +575,8 @@ class LaserRelayController:
             The configuration dictionary to load.
         '''
         if not isinstance(config, dict):
-            raise TypeError("Config must be a dictionary.")
-        
+            raise TypeError('Config must be a dictionary.')
+
         port = config.get('port')
         baudrate = config.get('baudrate')
         alex = config.get('alex')

@@ -1,4 +1,4 @@
-import struct
+
 from dataclasses import dataclass
 from enum import Enum, IntFlag, auto
 from typing import Any, Optional, Union

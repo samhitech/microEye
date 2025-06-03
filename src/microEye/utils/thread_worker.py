@@ -2,8 +2,6 @@ import sys
 import threading
 import traceback
 
-import numpy as np
-
 from microEye.qt import QtCore, Signal, Slot
 
 

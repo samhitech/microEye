@@ -1,19 +1,18 @@
 import json
 import os
-import warnings
 import weakref
-import webbrowser
 from enum import Enum
 
-from scipy.optimize import OptimizeWarning
-
-from microEye.hardware.cams import *
-from microEye.hardware.lasers import *
 from microEye.hardware.mieye.acquisition_manager import AcquisitionManager
-from microEye.hardware.mieye.devices_manager import DEVICES, DeviceManager
-from microEye.hardware.protocols import ExperimentDesigner
+from microEye.hardware.mieye.devices_manager import (
+    DEVICES,
+    Camera_Panel,
+    CameraList,
+    DeviceManager,
+    FocusStabilizer,
+)
+from microEye.hardware.protocols.designer import ExperimentDesigner
 from microEye.hardware.pycromanager.widgets import BridgesWidget, HeadlessManagerWidget
-from microEye.hardware.stages import FocusStabilizer
 from microEye.hardware.widgets import (
     Controller,
     DevicesView,
@@ -30,10 +29,7 @@ from microEye.qt import (
 )
 from microEye.tools.microscopy import ObjectiveCalculator
 from microEye.utils.pyscripting import pyEditor
-from microEye.utils.retry_exec import retry_exec
 from microEye.utils.start_gui import StartGUI
-
-warnings.filterwarnings('ignore', category=OptimizeWarning)
 
 
 class DOCKS(Enum):
@@ -294,6 +290,16 @@ class miEye_module(QMainWindow):
             Qt.DockWidgetArea.RightDockWidgetArea, self.camDock, DOCKS.CAMERAS
         )
 
+    def open_link(self, url: str):
+        '''Open a URL in the default web browser.'''
+        import webbrowser
+
+        if not webbrowser.open(url):
+            print(f'Failed to open URL: {url}')
+            QtWidgets.QMessageBox.warning(
+                self, 'Error', f'Could not open URL: {url}'
+            )
+
     def init_menubar(self):
         # Create menu bar
         menu_bar = self.menuBar()
@@ -320,11 +326,11 @@ class miEye_module(QMainWindow):
 
         github = QAction('microEye Github', self)
         github.triggered.connect(
-            lambda: webbrowser.open('https://github.com/samhitech/microEye')
+            lambda: self.open_link('https://github.com/samhitech/microEye')
         )
         pypi = QAction('microEye PYPI', self)
         pypi.triggered.connect(
-            lambda: webbrowser.open('https://pypi.org/project/microEye/')
+            lambda: self.open_link('https://pypi.org/project/microEye/')
         )
 
         # Add exit action to file menu

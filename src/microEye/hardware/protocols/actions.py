@@ -1,5 +1,4 @@
 import ast
-import re
 import threading
 import time
 import weakref
@@ -8,7 +7,7 @@ from typing import Any, Callable
 from pyqtgraph.parametertree import Parameter
 from pyqtgraph.parametertree.parameterTypes import ActionParameter
 
-from microEye.hardware.cams import Camera_Panel
+from microEye.hardware.cams.camera_panel import Camera_Panel
 from microEye.utils.parameter_tree import Tree
 
 
@@ -63,7 +62,7 @@ class BaseAction:
         self.name = self.__class__.__name__
 
     def output(self, text: str, **kwargs):
-        output = kwargs.get('output', None)
+        output = kwargs.get('output')
         if output is not None:
             output.emit(text, kwargs.get('level', 0))
 
@@ -218,7 +217,7 @@ class ForLoop(ActionGroup):
         for i in range(self.repeat_count):
             if event and event.is_set():
                 break
-            self.output(f'{str(self)} ({i+1})', **kwargs)
+            self.output(f'{str(self)} ({i + 1})', **kwargs)
             new_kwargs[f'i{self.id}'] = i
             for child_action in self.child_actions:
                 if event and event.is_set():
@@ -382,7 +381,7 @@ class ParameterAdjustmentAction(BaseAction):
             )
             value_label = (
                 '= <span style="color: #0f0">'
-                + f'{"expr: " if self.is_expression else ""}'
+                + f"{'expr: ' if self.is_expression else ''}"
                 + value
                 + f'</span> {param_suffix}'
                 if self.parameter_value is not None

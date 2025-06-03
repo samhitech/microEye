@@ -1,10 +1,9 @@
 import logging
-import struct
 from collections import deque
 from datetime import datetime
 from typing import Optional, Union
 
-from microEye.qt import QDateTime, QtCore, QtSerialPort, Signal
+from microEye.qt import QtCore, QtSerialPort, Signal
 
 
 class ELLException(Exception):

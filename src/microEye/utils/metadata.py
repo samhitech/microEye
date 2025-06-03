@@ -5,7 +5,12 @@ from ome_types.model import *
 from ome_types.model.simple_types import PixelType, UnitsLength, UnitsTime
 
 from microEye.qt import QApplication, QtWidgets, getOpenFileName, getSaveFileName
-from microEye.utils.gui_helper import *
+from microEye.utils.gui_helper import (
+    create_combo_box,
+    create_labelled_double_spin_box,
+    create_line_edit,
+    create_text_edit,
+)
 
 
 class MetadataEditor(QtWidgets.QWidget):

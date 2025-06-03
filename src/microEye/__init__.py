@@ -40,8 +40,3 @@ def getArgs():
 
 
 ARGS = getArgs()
-
-import microEye.analysis.fitting.pyfit3Dcspline as pyfit3Dcspline  # noqa: E402
-from microEye.analysis import multi_viewer  # noqa: E402
-from microEye.hardware import miEye_module  # noqa: E402
-from microEye.qt import *  # noqa: I001, E402

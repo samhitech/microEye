@@ -426,7 +426,7 @@ You can import localization files from other channels to overlay and analyze the
 
 7. Nearest-Neighbor Analysis (NeNA) Precision Estimate:
 
-   ![NeNA](images/images/image-26.png)
+   ![NeNA](images/image-26.png)
 
    NeNA is used to estimate the localization precision by analyzing the distances between neighboring localizations. This method provides a robust measure of the precision of the localization process.
 

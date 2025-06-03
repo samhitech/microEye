@@ -1,10 +1,5 @@
 import re
-from enum import Enum
-from typing import Optional, Union, overload
 
-from pyqtgraph.parametertree import Parameter
-
-from microEye.hardware.stages.stabilizer import FocusStabilizer
 from microEye.hardware.stages.stage import (
     AbstractStage,
     Axis,
@@ -12,8 +7,7 @@ from microEye.hardware.stages.stage import (
     ZStageParams,
     ZStageView,
 )
-from microEye.qt import QtCore, QtSerialPort, QtWidgets, Signal
-from microEye.utils import Tree
+from microEye.qt import QtCore
 
 
 class PzFoc(AbstractStage):

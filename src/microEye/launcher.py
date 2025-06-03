@@ -1,6 +1,3 @@
-import argparse
-import os
-
 from microEye import ARGS
 
 
@@ -9,7 +6,7 @@ def main():
     module_name = ARGS.module
 
     if module_name == 'mieye':
-        from microEye.hardware import miEye_module
+        from microEye.hardware.mieye import miEye_module
 
         try:
             import vimba as vb

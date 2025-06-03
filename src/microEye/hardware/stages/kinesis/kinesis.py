@@ -1,18 +1,13 @@
-from collections import deque
-from dataclasses import dataclass
-from enum import Enum, auto
-from typing import Callable, Optional, Union
+import traceback
+from typing import Optional
 
-import serial
 from pyqtgraph.parametertree import Parameter
-from pyqtgraph.parametertree.parameterTypes import ActionParameter
 
-from microEye.hardware.port_config import port_config
 from microEye.hardware.stages.kinesis.kdc101 import KDC101Controller
 from microEye.hardware.stages.stage import XYStageParams
 from microEye.qt import QtCore, QtSerialPort, QtWidgets, Signal
 from microEye.utils.parameter_tree import Tree
-from microEye.utils.thread_worker import *
+from microEye.utils.thread_worker import QThreadWorker
 
 
 class KinesisXY(QtCore.QObject):

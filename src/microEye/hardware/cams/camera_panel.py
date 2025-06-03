@@ -1,16 +1,11 @@
-import math
 import os
 import re
 import threading
-import time
 import traceback
-from functools import lru_cache
 from queue import Queue
-from typing import Optional, Union
+from typing import Union
 
-import cv2
 import numpy as np
-import pyqtgraph as pg
 
 from microEye.analysis.tools.roi_selectors import (
     MultiRectangularROISelector,
@@ -26,7 +21,6 @@ from microEye.hardware.cams.shortcuts import (
 )
 from microEye.qt import QDateTime, Qt, QtCore, QtWidgets, Signal, Slot
 from microEye.utils.display import DisplayManager, fast_autolevels_opencv
-from microEye.utils.expandable_groupbox import ExpandableGroupBox
 from microEye.utils.gui_helper import get_scaling_factor
 from microEye.utils.metadata_tree import MetadataEditorTree, MetaParams
 from microEye.utils.thread_worker import QThreadWorker
@@ -524,6 +518,21 @@ class Camera_Panel(QtWidgets.QGroupBox):
             except Exception:
                 traceback.print_exc()
 
+    def get_ROI(self) -> tuple[int, int, int, int]:
+        '''Gets the ROI for the selected camera.
+
+        Returns
+        -------
+        tuple[int, int, int, int]
+            The ROI as (x, y, width, height).
+        '''
+        x = self.camera_options.get_param_value(CamParams.ROI_X)
+        y = self.camera_options.get_param_value(CamParams.ROI_Y)
+        w = self.camera_options.get_param_value(CamParams.ROI_WIDTH)
+        h = self.camera_options.get_param_value(CamParams.ROI_HEIGHT)
+
+        return x, y, w, h
+
     def roi_shortcuts(self, fov: float, single: bool, software: bool):
         '''
         Sets the ROI for the camera using the selected FOV and mode.
@@ -560,6 +569,19 @@ class Camera_Panel(QtWidgets.QGroupBox):
             y = int((height - fov // pixel_size) / 2)
             h = int(fov // pixel_size)
 
+        if not software:
+            self.reset_ROI()
+            QtCore.QThread.msleep(250)  # wait for the camera to update the ROI
+
+            self.camera_options.set_param_value(CamParams.ROI_X, x)
+            self.camera_options.set_param_value(CamParams.ROI_Y, y)
+            self.camera_options.set_param_value(CamParams.ROI_WIDTH, w)
+            self.camera_options.set_param_value(CamParams.ROI_HEIGHT, h)
+
+            self.set_ROI()
+
+            x, y, w, h = self.get_ROI()
+
             rois = [
                 (x if software else 0, y if software else 0, h, h),
                 (h + 3 * x if software else h + 2 * x, y if software else 0, h, h),
@@ -576,18 +598,7 @@ class Camera_Panel(QtWidgets.QGroupBox):
                         'value': f'{roi[0]}, {roi[1]}, {roi[2]}, {roi[3]}',
                     },
                 )
-
-        if not software:
-            self.reset_ROI()
-            QtCore.QThread.msleep(250)  # wait for the camera to update the ROI
-
-            self.camera_options.set_param_value(CamParams.ROI_X, x)
-            self.camera_options.set_param_value(CamParams.ROI_Y, y)
-            self.camera_options.set_param_value(CamParams.ROI_WIDTH, w)
-            self.camera_options.set_param_value(CamParams.ROI_HEIGHT, h)
-
-            self.set_ROI()
-        elif single:
+        elif single and software:
             self.camera_options.add_param_child(
                 CamParams.EXPORTED_ROIS,
                 {
@@ -849,7 +860,8 @@ def display_frame(
         frame = frame._image
 
     thresholds, hist, cdf = fast_autolevels_opencv(
-        frame, levels=camp.camera_options.isAutostretch)
+        frame, levels=camp.camera_options.isAutostretch
+    )
 
     # cv2.imshow(name, frame)
     DisplayManager.instance().image_update_signal.emit(
@@ -895,7 +907,6 @@ def update_histogram_and_display(params: AcquisitionJob, camp: Camera_Panel):
         display_frame(camp, params.name, params.frame)
 
     elif camp.camera_options.isROIsView:
-
         overlaid = len(params.rois) == 2 and camp.camera_options.isOverlaidView
         flipped = camp.camera_options.isFlippedROIsView
 

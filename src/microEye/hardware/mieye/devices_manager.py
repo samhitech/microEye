@@ -2,17 +2,32 @@ import re
 import traceback
 import weakref
 from enum import Enum, auto
-from typing import Any, Union
+from typing import Union
 
-from microEye.hardware.cams import *
-from microEye.hardware.lasers import *
-from microEye.hardware.protocols import WeakObjects
+from microEye.hardware.cams.camera_list import CameraList
+from microEye.hardware.cams.camera_panel import Camera_Panel
+from microEye.hardware.cams.linescan.IR_Cam import DemoLineScanner, ParallaxLineScanner
+
+# lasers
+from microEye.hardware.lasers.io_matchbox import CombinerLaserWidget
+from microEye.hardware.lasers.io_single_laser import SingleMatchBox
+from microEye.hardware.lasers.laser_relay import LaserRelayController
+from microEye.hardware.protocols.actions import WeakObjects
 from microEye.hardware.pycromanager.devices import PycroCore, PycroStage
 from microEye.hardware.pycromanager.headless import HeadlessInstance, HeadlessManager
-from microEye.hardware.stages import *
-from microEye.hardware.widgets import focusWidget
+
+#stages
+from microEye.hardware.stages.elliptec.devicesView import ElliptecView
+from microEye.hardware.stages.elliptec.ellDevices import ELLDevices
+from microEye.hardware.stages.kinesis.kinesis import KinesisView, KinesisXY
+from microEye.hardware.stages.piezo_concept import PzFoc
+from microEye.hardware.stages.stabilizer import FocusStabilizer
+from microEye.hardware.stages.stage import ZStageController
+
+#widgets
+from microEye.hardware.widgets.focusWidget import focusWidget
 from microEye.qt import QtCore, QtWidgets, Signal
-from microEye.utils.hid_utils import Buttons, dz_hybrid, hidController
+from microEye.utils.hid_utils.controller import Buttons, dz_hybrid, hidController
 from microEye.utils.retry_exec import retry_exec
 
 

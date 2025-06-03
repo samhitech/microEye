@@ -1,10 +1,9 @@
 import os
 import sys
 from enum import Enum
-from typing import Any, Optional
+from typing import Optional
 
 from pyqtgraph.parametertree import Parameter
-from pyqtgraph.parametertree.parameterTypes import GroupParameter
 
 from microEye.qt import QApplication, QtWidgets, Signal
 from microEye.utils.parameter_tree import Tree
@@ -729,7 +728,7 @@ class CameraOptions(Tree):
         str
             The selected dual view colors.
         '''
-        # get the selected dual view colors from the parameter tree e.g. 'RG', 'GB', etc.
+        # get the selected dual view colors from the parameter tree e.g. 'RG', 'GB', etc
         scheme = self.get_param_value(CamParams.DUAL_VIEW_COLORS)
 
         indices = {'R': 0, 'G': 1, 'B': 2}

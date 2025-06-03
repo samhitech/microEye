@@ -2,7 +2,7 @@ from typing import Union
 
 from microEye.hardware.cams.camera_options import CamParams
 from microEye.hardware.cams.micam import miCamera
-from microEye.qt import QDateTime, Qt, QtCore, QtGui, QtWidgets, Signal, Slot
+from microEye.qt import Qt, QtCore, QtGui, QtWidgets, Signal
 from microEye.utils.gui_helper import debounceSlot
 
 DEFAULT_EXPOSURE_SHORTCUTS = [
@@ -399,9 +399,7 @@ class CameraShortcutsWidget(QtWidgets.QWidget):
         # Close all windows
         self.close_windows_button = QtWidgets.QPushButton('Close All Windows')
         self.close_windows_button.setToolTip('Close all windows')
-        self.close_windows_button.clicked.connect(
-            lambda: self.closeAllWindows.emit()
-        )
+        self.close_windows_button.clicked.connect(lambda: self.closeAllWindows.emit())
         self.display_windows_btns.addWidget(self.close_windows_button)
 
     def _display_mode_changed(self, index):

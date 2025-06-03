@@ -1,3 +1,4 @@
+import threading
 import time
 from typing import Optional
 
@@ -6,7 +7,9 @@ from pyqtgraph.parametertree import Parameter
 
 from microEye.hardware.lasers.io_params import LaserState, MB_Params
 from microEye.qt import QtCore, QtSerialPort, QtWidgets, Signal
-from microEye.utils import StartGUI, Tree
+from microEye.utils.parameter_tree import Tree
+from microEye.utils.start_gui import StartGUI
+from microEye.utils.thread_worker import QThreadWorker
 
 
 class io_single_laser(QtCore.QObject):
@@ -46,7 +49,7 @@ class io_single_laser(QtCore.QObject):
     '''TBA
     '''
 
-    DataReady = Signal(str, bytes)
+    DataReady = Signal(object, bytes)
 
     Max_Power = 0.0
 
@@ -105,6 +108,8 @@ class io_single_laser(QtCore.QObject):
             write_timeout=kwargs.get('write_timeout', 0.5),  # Default write timeout
             open=False,  # Start with the port closed
         )
+
+        self._lock = threading.Lock()  # Add this line
 
     def isOpen(self) -> bool:
         '''
@@ -177,33 +182,38 @@ class io_single_laser(QtCore.QObject):
         delay : int, optional
             Delay in milliseconds before reading the response.
         '''
-        if self.isOpen():
-            try:
-                self.ser.reset_input_buffer()
+        with self._lock:
+            if self.isOpen():
+                try:
+                    self.ser.reset_input_buffer()
 
-                start_time = time.time()
-                self.ser.write(command)
+                    start_time = time.time()
+                    self.ser.write(command)
 
-                response = self.ser.read_until(b'\r\n').decode().strip()
-                elapsed_time = (
-                    time.time() - start_time
-                ) * 1000  # Convert to milliseconds
-                if log_print:
-                    print(
-                        f'Command: {command} | '
-                        f'Response: {response} | '
-                        f'Time: {elapsed_time:.1f} ms'
-                    )
+                    response = []
+                    for _ in range(5 if command == io_single_laser.INFO else 1):
+                        response.append(self.ser.read_until(b'\r\n').decode().strip())
 
-                self.DataReady.emit(response, command)
+                    elapsed_time = (
+                        time.time() - start_time
+                    ) * 1000  # Convert to milliseconds
+                    if log_print:
+                        rx = response[0] if len(response) == 1 else '...'
+                        print(
+                            f'Command: {command} | '
+                            f'Response: {rx} | '
+                            f'Time: {elapsed_time:.1f} ms'
+                        )
 
-                return response
-            except serial.SerialException as e:
-                print(f'Serial communication error: {e}')
-                return '<ERR>'
-            except Exception as e:
-                print(f'Unexpected error: {e}')
-                return '<ERR>'
+                    self.DataReady.emit(response, command)
+
+                    return response[0] if len(response) == 1 else response
+                except serial.SerialException as e:
+                    print(f'Serial communication error: {e}')
+                    return '<ERR>'
+                except Exception as e:
+                    print(f'Unexpected error: {e}')
+                    return '<ERR>'
 
     def OpenCOM(self):
         '''Opens the serial port and initializes the combiner.'''
@@ -371,7 +381,7 @@ class io_single_laser(QtCore.QObject):
             res = self.SendCommand(io_single_laser.INFO, delay=50)
 
             if not ('<ERR>' in res or '<ACK>' in res):
-                info = res.split('\r\n')
+                info = res
 
                 self.Firmware = info[0]
                 self.Serial = info[1].split(':')[1]
@@ -440,6 +450,7 @@ class SingleMatchBox(Tree):
 
         # Statues Bar Timer
         self.timer = QtCore.QTimer()
+        self.timer.setSingleShot(True)
         self.timer.setInterval(500)
         self.timer.timeout.connect(self.update_stats)
         self.timer.start()
@@ -481,8 +492,7 @@ class SingleMatchBox(Tree):
                         'value': 115200,
                         'limits': [
                             baudrate
-                            for baudrate in
-                            QtSerialPort.QSerialPortInfo.standardBaudRates()
+                            for baudrate in QtSerialPort.QSerialPortInfo.standardBaudRates()  # noqa: E501
                         ],
                     },
                     {'name': str(MB_Params.SET_PORT), 'type': 'action'},
@@ -709,7 +719,7 @@ class SingleMatchBox(Tree):
         self.set_param_value(MB_Params.SERIAL, self.Laser.Serial)
 
     def update_stats(self):
-        """
+        '''
         Updates the statistics displayed in the MatchBox GUI.
 
         This method retrieves the current readings and settings from the device, and
@@ -717,24 +727,50 @@ class SingleMatchBox(Tree):
         sets the limits of the power parameter based on the maximum power that can be
         set for the laser diode.
 
-        If the laser is not connected, the method sets the 'Port State' parameter to
-        'closed'.
-        """
+        If the laser is not connected, the method sets the "Port State" parameter to
+        "closed".
+        '''
         if self.Laser.isOpen():
-            readings = self.Laser.GetReadings(False)
-            settings = self.Laser.GetSettings(False)
 
-            for key, value in readings.items():
-                if isinstance(value, (int, float)):
-                    self.set_param_value(key, f'{value:.2f}')
-                elif isinstance(value, str):
-                    self.set_param_value(key, value)
+            def fetch_stats():
+                '''
+                Fetches the current readings and settings from the laser device.
+                '''
+                try:
+                    if self.Laser.isOpen():
+                        readings = self.Laser.GetReadings(False)
+                        settings = self.Laser.GetSettings(False)
+                        return readings, settings
+                except Exception as e:
+                    print(f'Error fetching stats: {e}')
 
-            for key, value in settings.items():
-                if isinstance(value, (int, float)):
-                    self.set_param_value(key, f'{value:.2f}')
-                elif isinstance(value, str):
-                    self.set_param_value(key, value)
+                return {}, {}
+
+            def done(readings: dict, settings: dict):
+                '''
+                Updates the parameter tree with the fetched readings and settings.
+                '''
+                if readings:
+                    for key, value in readings.items():
+                        if isinstance(value, (int, float)):
+                            self.set_param_value(key, f'{value:.2f}')
+                        elif isinstance(value, str):
+                            self.set_param_value(key, value)
+
+                if settings:
+                    for key, value in settings.items():
+                        if isinstance(value, (int, float)):
+                            self.set_param_value(key, f'{value:.2f}')
+                        elif isinstance(value, str):
+                            self.set_param_value(key, value)
+
+            worker = QThreadWorker(fetch_stats)
+            worker.signals.result.connect(done)
+            worker.signals.finished.connect(
+                self.timer.start
+            )  # Restart the timer after fetching stats
+
+            QtCore.QThreadPool.globalInstance().start(worker)
 
             self.set_param_value(MB_Params.OPERATION_TIME, self.Laser.Operation_Time)
             self.set_param_value(MB_Params.ON_TIMES, self.Laser.ON_Times)
@@ -746,13 +782,13 @@ class SingleMatchBox(Tree):
         self.RefreshPorts()
 
     def RefreshPorts(self):
-        """
+        '''
         Refreshes the available serial ports list in the GUI.
 
         This method updates the list of available serial ports in the GUI by fetching
         the current list of available ports and setting it as the options for the
-        'Serial Port' parameter in the parameter tree.
-        """
+        `Serial Port` parameter in the parameter tree.
+        '''
         if not self.Laser.isOpen():
             self.get_param(MB_Params.PORT).setLimits(
                 [

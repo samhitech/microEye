@@ -10,7 +10,7 @@ from microEye.qt import (
     QtSerialPort,
     QtWidgets,
 )
-from microEye.utils import StartGUI
+from microEye.utils.start_gui import StartGUI
 
 
 class RegloDigital(QtSerialPort.QSerialPort):

@@ -3,7 +3,7 @@ from typing import Union
 from pyqtgraph.parametertree import Parameter
 from pyqtgraph.parametertree.parameterTypes import ActionParameter, GroupParameter
 
-from microEye.hardware.cams import Camera_Panel
+from microEye.hardware.cams.camera_panel import Camera_Panel
 from microEye.hardware.protocols.actions import (
     ActionGroup,
     BaseAction,

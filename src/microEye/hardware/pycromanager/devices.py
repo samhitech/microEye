@@ -1,14 +1,6 @@
 import time
-from queue import Queue
-from typing import Union
 
 import numpy as np
-from pycromanager import (
-    Acquisition,
-    multi_d_acquisition_events,
-    start_headless,
-    stop_headless,
-)
 
 from microEye.hardware.cams.micam import miCamera
 from microEye.hardware.pycromanager.core import DEFAULT_BRIDGE_PORT, PycroCore
