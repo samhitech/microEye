@@ -74,7 +74,7 @@ class io_combiner(QtCore.QObject):
     '''TBA
     '''
 
-    DataReady = Signal(str, bytes)
+    DataReady = Signal(object, bytes)
 
     Max_Power = 0.0
 
@@ -133,10 +133,8 @@ class io_combiner(QtCore.QObject):
 
         self.ser = serial.Serial(
             baudrate=kwargs.get('baudrate', 115200),  # Default baudrate
-            port=kwargs.get('port', 'COM1'),  # Default port
             timeout=kwargs.get('timeout', 0.5),  # Default timeout
             write_timeout=kwargs.get('write_timeout', 0.5),  # Default write timeout
-            open=False,  # Start with the port closed
         )
 
         self._lock = threading.Lock()  # Add this line
@@ -740,6 +738,8 @@ class CombinerLaserWidget(Tree):
         self.set_param_value(MB_Params.FIRMWARE, self.Laser.Firmware)
         self.set_param_value(MB_Params.SERIAL, self.Laser.Serial)
 
+        self.timer.start()  # Start the timer to update stats
+
         if not self._laserSwitches:
             for idx in range(len(self.Laser.Wavelengths)):
                 if self.Laser.Wavelengths[idx] > 0:
@@ -778,7 +778,7 @@ class CombinerLaserWidget(Tree):
         '''
         if self.Laser.isOpen():
 
-            def fetch_stats():
+            def fetch_stats(event):
                 '''
                 Fetches the current readings and settings from the laser device.
                 '''
@@ -793,10 +793,11 @@ class CombinerLaserWidget(Tree):
 
                 return {}, {}
 
-            def done(readings: dict, settings: dict):
+            def done(result: tuple[dict, dict]):
                 '''
                 Updates the parameter tree with the fetched readings and settings.
                 '''
+                readings, settings = result
                 if readings:
                     for key, value in readings.items():
                         if isinstance(value, (int, float)):

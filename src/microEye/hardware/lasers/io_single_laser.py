@@ -103,10 +103,8 @@ class io_single_laser(QtCore.QObject):
 
         self.ser = serial.Serial(
             baudrate=kwargs.get('baudrate', 115200),  # Default baudrate
-            port=kwargs.get('port', 'COM1'),  # Default port
             timeout=kwargs.get('timeout', 0.5),  # Default timeout
             write_timeout=kwargs.get('write_timeout', 0.5),  # Default write timeout
-            open=False,  # Start with the port closed
         )
 
         self._lock = threading.Lock()  # Add this line
@@ -718,6 +716,8 @@ class SingleMatchBox(Tree):
         self.set_param_value(MB_Params.FIRMWARE, self.Laser.Firmware)
         self.set_param_value(MB_Params.SERIAL, self.Laser.Serial)
 
+        self.timer.start()
+
     def update_stats(self):
         '''
         Updates the statistics displayed in the MatchBox GUI.
@@ -732,7 +732,7 @@ class SingleMatchBox(Tree):
         '''
         if self.Laser.isOpen():
 
-            def fetch_stats():
+            def fetch_stats(event):
                 '''
                 Fetches the current readings and settings from the laser device.
                 '''
@@ -746,10 +746,11 @@ class SingleMatchBox(Tree):
 
                 return {}, {}
 
-            def done(readings: dict, settings: dict):
+            def done(result: tuple[dict, dict]):
                 '''
                 Updates the parameter tree with the fetched readings and settings.
                 '''
+                readings, settings = result
                 if readings:
                     for key, value in readings.items():
                         if isinstance(value, (int, float)):

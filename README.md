@@ -6,6 +6,14 @@ The **`microEye`** is a Python toolkit for fluorescence microscopy that supports
 
 This toolkit is compatible with the [hardware](#hardware) used in our microscope. For further details, refer to the [miEye microscope paper](https://doi.org/10.1016/j.ohx.2022.e00368) and [OSF project](http://doi.org/10.17605/osf.io/j2fqy).
 
+```bash
+   __  ____              ____                ___    ____  ___ 
+  /  |/  (_)__________  / __/_ _____   _  __|_  |  |_  / ( _ )
+ / /|_/ / / __/ __/ _ \/ _// // / -_) | |/ / __/_ _/_ <_/ _  |
+/_/  /_/_/\__/_/  \___/___/\_, /\__/  |___/____(_)____(_)___/ 
+                          /___/
+```
+
 ![Package Health](https://snyk.io/advisor/python/microEye/badge.svg)
 ![Python Version](https://img.shields.io/badge/Python->=3.9_|_<3.12-blue)
 ![Package Version](https://img.shields.io/pypi/v/microEye.svg)
@@ -29,14 +37,6 @@ This toolkit is compatible with the [hardware](#hardware) used in our microscope
 
 ![GitHub Forks](https://img.shields.io/github/forks/samhitech/microEye.svg)
 ![GitHub Stars](https://img.shields.io/github/stars/samhitech/microEye.svg)
-
-```bash
-   __  ____              ____                ___    ____ ____
-  /  |/  (_)__________  / __/_ _____   _  __|_  |  |_  //_  /
- / /|_/ / / __/ __/ _ \/ _// // / -_) | |/ / __/_ _/_ <_ / / 
-/_/  /_/_/\__/_/  \___/___/\_, /\__/  |___/____(_)____(_)_/  
-                          /___/
-```
 
 ## Table of Contents
 
