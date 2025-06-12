@@ -119,7 +119,10 @@ class PycroPanel(Camera_Panel):
         )
 
         # start a timer to update the camera params
-        self.timer = QtCore.QTimer(self, timeout=self.update_params, interval=1000)
+        self.timer = QtCore.QTimer(self)
+        self.timer.setSingleShot(True)
+        self.timer.setInterval(1000)
+        self.timer.timeout.connect(self.update_params)
         self.timer.start()
 
     @property
@@ -157,20 +160,31 @@ class PycroPanel(Camera_Panel):
             self.timer = None
             return
 
-        for property in self._cam.get_prop_names():
-            if '.' in property:
-                continue
+        def update(event):
+            '''
+            Fetches the current readings and settings from the laser device.
+            '''
+            for property in self._cam.get_prop_names():
+                if '.' in property:
+                    continue
 
-            param = self.camera_options.get_param(
-                '.'.join([CamParams.ACQ_SETTINGS.value, property])
-            )
+                param = self.camera_options.get_param(
+                    '.'.join([CamParams.ACQ_SETTINGS.value, property])
+                )
 
-            new_value = type(param.value())(self._cam.get_property(property))
-            if param and new_value != param.value():
-                param.setValue(new_value, self.update_cam)
+                new_value = type(param.value())(self._cam.get_property(property))
+                if param and new_value != param.value():
+                    param.setValue(new_value, self.update_cam)
 
-        self.refresh_exposure()
-        self.updateInfo()
+            self.refresh_exposure()
+            self.updateInfo()
+
+        worker = QThreadWorker(update)
+        worker.signals.finished.connect(
+            self.timer.start
+        )  # Restart the timer after fetching stats
+
+        QtCore.QThreadPool.globalInstance().start(worker)
 
     def set_ROI(self):
         '''Sets the ROI for the slected PycroCamera'''
@@ -311,7 +325,6 @@ class PycroPanel(Camera_Panel):
                         time.perf_counter_ns() - start_time
                     ) / 1e6
                     start_time = time.perf_counter_ns()
-
                     # Get the next image from the camera
                     self._buffer.put(self._cam.pop_image().tobytes())
                     # add sensor temperature to the stack
@@ -322,7 +335,7 @@ class PycroPanel(Camera_Panel):
                     self._cam.stop_sequence_acquisition()
                     break  # in case stop threads is initiated
 
-                QtCore.QThread.usleep(100)
+                QtCore.QThread.usleep(500)
 
             while self._cam.image_count > 0:
                 self._buffer.put(self._cam.pop_image().tobytes())

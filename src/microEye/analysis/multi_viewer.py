@@ -203,12 +203,76 @@ class multi_viewer(QMainWindow):
         # Connect double-click signal to a method that uses QTimer
         self.tree.doubleClicked.connect(self._open_file)
 
+        # Create Tree view context menu
+        self.tree.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.tree.customContextMenuRequested.connect(self._show_tree_context_menu)
+
         # Add the File system tab contents
         self.imsq_pattern = QtWidgets.QLineEdit('/image_0*.ome.tif')
 
         self.file_tree_layout.addWidget(QtWidgets.QLabel('Image Sequence pattern:'))
         self.file_tree_layout.addWidget(self.imsq_pattern)
         self.file_tree_layout.addWidget(self.tree)
+
+    def _show_tree_context_menu(self, position):
+        index = self.tree.indexAt(position)
+        if not index.isValid():
+            return
+
+        menu = QtWidgets.QMenu()
+        reveal_action = menu.addAction('Reveal in Explorer')
+        new_folder_action = menu.addAction('New Folder')
+        menu.addSeparator()
+
+        # Root path shortcuts
+        root_action = menu.addAction('This PC (Root Path)')
+        home_action = menu.addAction('Home (User Directory)')
+        desktop_action = menu.addAction('Desktop')
+        initial_action = menu.addAction('Initial Path')
+        working_dir_action = menu.addAction('Working Directory')
+
+        action = menu.exec(self.tree.viewport().mapToGlobal(position))
+        if action == reveal_action:
+            path = self.model.filePath(index)
+            folder = path if os.path.isdir(path) else os.path.dirname(path)
+            os.startfile(folder)
+        elif action == new_folder_action:
+            self._create_new_folder()
+        elif action == home_action:
+            home = os.path.expanduser('~')
+            self.tree.setRootIndex(self.model.index(home))
+        elif action == desktop_action:
+            desktop = os.path.join(os.path.expanduser('~'), 'Desktop')
+            self.tree.setRootIndex(self.model.index(desktop))
+        elif action == root_action:
+            self.tree.setRootIndex(self.model.index(''))
+        elif action == initial_action:
+            self.tree.setRootIndex(self.model.index(self.path))
+        elif action == working_dir_action:
+            self.tree.setRootIndex(
+                self.model.index(os.path.dirname(os.path.abspath(__package__)))
+            )
+
+    def _create_new_folder(self):
+        index = self.tree.currentIndex()
+        if not index.isValid():
+            return
+
+        path = self.model.filePath(index)
+        if not os.path.isdir(path):
+            path = os.path.dirname(path)
+
+        new_folder_name, ok = QtWidgets.QInputDialog.getText(
+            self, 'New Folder', 'Enter folder name:'
+        )
+        if ok and new_folder_name:
+            new_folder_path = os.path.join(path, new_folder_name)
+            try:
+                os.makedirs(new_folder_path)
+            except OSError as e:
+                QtWidgets.QMessageBox.critical(
+                    self, 'Error', f'Could not create folder: {e}'
+                )
 
     def tabifyDocks(self):
         # Tabify docks

@@ -359,7 +359,8 @@ class PycroStage(PycroDevice, AbstractStage):
         self.set_position(axis=Axis.Z, position=position)
 
     def home(self):
-        self._core.home(self.label)
+        # self._core.home(self.label)
+        self.move_absolute(0)
         return self.position
 
     def stop(self):

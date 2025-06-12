@@ -285,23 +285,25 @@ class LocalizationsView(QtWidgets.QWidget):
         ndarray or None
             Rendered super-res image or None.
         '''
+        if not self.fittingResults:
+            return
+
+        images = [None] * len(self.fittingResults)
+
+        render_idx = self.render_cbox.currentData()
+        projection = self.projection_cbox.currentData()
+        xy_bin = self.xy_binsize.value()
+        z_bin = self.z_binsize.value()
+        auto_levels = self.auto_level.isChecked()
+
+        renderer = BaseRenderer(xy_bin, z_bin, RenderModes(render_idx))
+
         for idx, localizations in enumerate(self.fittingResults):
-            if localizations is None:
+            if not localizations or len(localizations) <= 0:
                 continue
 
-            if len(localizations) <= 0:
-                continue
-
-            render_idx = self.render_cbox.currentData()
-            projection = self.projection_cbox.currentData()
-
-            renderClass = BaseRenderer(
-                self.xy_binsize.value(),
-                self.z_binsize.value(),
-                RenderModes(render_idx),
-            )
             if 0 <= projection < 3:
-                img = renderClass.render(
+                rendered_img = renderer.render(
                     Projection(projection),
                     localizations.data[DataColumns.X],
                     localizations.data[DataColumns.Y],
@@ -309,29 +311,15 @@ class LocalizationsView(QtWidgets.QWidget):
                     localizations.data[DataColumns.INTENSITY],
                 )
 
-                self.setImage(
-                    img, index=idx, autoLevels=self.auto_level.isChecked()
-                )
-
-                if projection == 0:
-                    self.view_box.setAspectLocked(True, 1)
-                else:
-                    self.view_box.setAspectLocked(
-                        True, self.xy_binsize.value() / self.z_binsize.value()
-                    )
+                aspect = 1 if projection == 0 else xy_bin / z_bin
+                self.view_box.setAspectLocked(True, aspect)
             elif 3 <= projection < 6:
-                projection -= 3
+                slice_proj = projection - 3
+                aspect = 1 if slice_proj == 0 else xy_bin / z_bin
+                self.view_box.setAspectLocked(True, aspect)
+                width = z_bin if slice_proj == 0 else xy_bin
 
-                if projection == 0:
-                    self.view_box.setAspectLocked(True, 1)
-                    width = self.z_binsize.value()
-                else:
-                    self.view_box.setAspectLocked(
-                        True, self.xy_binsize.value() / self.z_binsize.value()
-                    )
-                    width = self.xy_binsize.value()
-
-                img = renderClass.render_slice(
+                rendered_img = renderer.render_slice(
                     Projection(projection),
                     localizations.data[DataColumns.X],
                     localizations.data[DataColumns.Y],
@@ -340,10 +328,13 @@ class LocalizationsView(QtWidgets.QWidget):
                     self.position.value(),
                     width,
                 )
+            else:
+                continue
 
-                self.setImage(
-                    img, index=idx, autoLevels=self.auto_level.isChecked()
-                )
+            self.setImage(rendered_img, index=idx, autoLevels=auto_levels)
+            images[idx] = rendered_img
+
+        return images
 
     def extract_z(self):
         '''Extract Z values from the fitting results.'''
@@ -1276,7 +1267,7 @@ class LocalizationsView(QtWidgets.QWidget):
                     )
 
             if 'Super-res image' in options:
-                sres_img = self.render_loc()
+                sres_img = self.render_loc()[self.image_layers.currentIndex]
                 tf.imwrite(
                     re.sub(r'(\.h5|\.tsv)$', '_super_res.tif', filename),
                     sres_img,
