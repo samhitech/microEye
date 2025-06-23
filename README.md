@@ -7,10 +7,10 @@ The **`microEye`** is a Python toolkit for fluorescence microscopy that supports
 This toolkit is compatible with the [hardware](#hardware) used in our microscope. For further details, refer to the [miEye microscope paper](https://doi.org/10.1016/j.ohx.2022.e00368) and [OSF project](http://doi.org/10.17605/osf.io/j2fqy).
 
 ```bash
- __  __ _            ___               ___   ____ ___ 
-|  \/  (_)__ _ _ ___| __|  _ ___  __ _|_  ) |__ // _ \
-| |\/| | / _| '_/ _ \ _| || / -_) \ V // / _ |_ \\_, /
-|_|  |_|_\__|_| \___/___\_, \___|  \_//___(_)___(_)_/ 
+ __  __ _            ___               ___   ____  _  __  
+|  \/  (_)__ _ _ ___| __|  _ ___  __ _|_  ) |__ / / |/  \
+| |\/| | / _| '_/ _ \ _| || / -_) \ V // / _ |_ \_| | () |
+|_|  |_|_\__|_| \___/___\_, \___|  \_//___(_)___(_)_|\__/
                         |__/
 ```
 

@@ -438,7 +438,21 @@ class DeviceManager(QtCore.QObject):
             max_um = int(match.group(1))
             stage = PzFoc(max_um=max_um)
         elif 'Pycromanager' in value and PycroCore._instances.keys().__len__() > 0:
-            stage = PycroStage(port=list(PycroCore._instances.keys())[0])
+            if len(PycroCore._instances) == 1:
+                # If there is only one instance, use it
+                stage = PycroStage(port=list(PycroCore._instances.keys())[0])
+            else:
+                # If there are multiple instances, prompt the user to select one
+                port, ok = QtWidgets.QInputDialog.getItem(
+                    None,
+                    'Select PycroManager Instance',
+                    'Select the PycroManager instance to use:',
+                    list(map(str, PycroCore._instances.keys())),
+                )
+                if ok and port:
+                    stage = PycroStage(port=int(port))
+                else:
+                    return
         else:
             return
 

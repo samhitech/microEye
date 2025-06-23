@@ -109,7 +109,7 @@ class CoreWorker(threading.Thread):
             time.sleep(0.1)
         return True
 
-    def send_command(self, cmd: str, *args, **kwargs) -> Any:
+    def send_command(self, cmd: str, wait_res: bool, *args, **kwargs) -> Any:
         '''
         Send a command to the core worker thread and wait for the result.
 
@@ -139,7 +139,7 @@ class CoreWorker(threading.Thread):
 
         self.cmd_queue.put((cmd, args, kwargs, result_queue))
 
-        result = result_queue.get()
+        result = result_queue.get() if wait_res else None
 
         if isinstance(result, Exception):
             raise result
@@ -151,7 +151,8 @@ class CoreWorker(threading.Thread):
         '''
 
         def method(*args, **kwargs):
-            return self.send_command(name, *args, **kwargs)
+            wait_res = kwargs.pop('wait_res', True)
+            return self.send_command(name, wait_res, *args, **kwargs)
 
         return method
 
@@ -1240,11 +1241,13 @@ class PycroCore:
     def set_pixel_size_um(self, resolution_id: str, pix_size: float) -> None:
         self._core_worker.set_pixel_size_um(resolution_id, pix_size)
 
-    def set_position(self, position: float, stage_label: Optional[str] = None) -> None:
+    def set_position(
+        self, position: float, stage_label: Optional[str] = None, wait_res=False
+    ) -> None:
         if stage_label is None:
-            self._core_worker.set_position(position)
+            self._core_worker.set_position(position, wait_res=False)
         else:
-            self._core_worker.set_position(stage_label, position)
+            self._core_worker.set_position(stage_label, position, wait_res=False)
 
     def set_primary_log_file(self, filename: str, truncate: bool = False) -> None:
         '''TODO: test'''
@@ -1275,12 +1278,12 @@ class PycroCore:
             raise ValueError(f'Property {prop_name} must be of type {type}')
 
     def set_relative_position(
-        self, d: float, stage_label: Optional[str] = None
+        self, d: float, stage_label: Optional[str] = None, wait_res=False
     ) -> None:
         if stage_label is None:
-            self._core_worker.set_relative_position(d)
+            self._core_worker.set_relative_position(d, wait_res=False)
         else:
-            self._core_worker.set_relative_position(stage_label, d)
+            self._core_worker.set_relative_position(stage_label, d, wait_res=False)
 
     def set_relative_xy_position(
         self, dx: float, dy: float, xy_stage_label: Optional[str] = None
