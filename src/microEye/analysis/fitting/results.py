@@ -6,6 +6,12 @@ from numpy.core._exceptions import _ArrayMemoryError
 from scipy.interpolate import interp1d
 
 from microEye.analysis.fitting.processing import *
+from microEye.analysis.fitting.rcc import (
+    dcc_shift_estimation,
+    mcc_shift_estimation,
+    rcc_shift_estimation,
+    rcc_solve,
+)
 from microEye.analysis.rendering import BaseRenderer, Projection, RenderModes
 
 UNIQUE_COLUMNS = [
@@ -584,10 +590,16 @@ class FittingResults:
             sub_images.append(image)
             print(f'Bins: {f + 1:d}/{n_bins:d}', end='\r')
 
-        return np.array(sub_images), np.array(frames), np.array(locs_per_bin),
+        return (
+            np.array(sub_images),
+            np.array(frames),
+            np.array(locs_per_bin),
+        )
 
-    def drift_cross_correlation(self, n_bins=10, pixelSize=10, upsampling=100):
-        '''Corrects the XY drift using cross-correlation measurments
+    def drift_cross_correlation(
+        self, n_bins=10, pixelSize=10, upsampling=100, rmax=20, method='phase'
+    ):
+        """Corrects the XY drift using cross-correlation measurments
 
         Parameters
         ----------
@@ -598,12 +610,31 @@ class FittingResults:
         upsampling : int, optional
             phase_cross_correlation upsampling (check skimage.registration),
             by default 100
+        rmax : int, optional
+            Maximum error for redundant cross-correlation, by default 20, should be
+            0.2 of projected pixel size.
+        method : str, optional
+            Drift estimation method, by default 'phase'
+            Options: 'rcc', 'mcc', 'dcc', 'phase'
+
+            - 'rcc' - redundant cross-correlation [1]
+            - 'mcc' - mean cross-correlation [1]
+            - 'dcc' - drift cross-correlation [1]
+            - 'phase' - phase cross-correlation
 
         Returns
         -------
         tuple(FittingResults, np.ndarray)
             returns the drift corrected fittingResults and recontructed image
-        '''
+
+
+        References
+        ----------
+        [1] Yina Wang, Joerg Schnitzbauer, Zhe Hu, Xueming Li, Yifan Cheng,
+            Zhen-Li Huang, and Bo Huang, "Localization events-based sample
+            drift correction for localization microscopy with redundant
+            cross-correlation algorithm," Opt. Express 22, 15982-15991 (2014)
+        """
         unique_frames = np.unique(self.data[DataColumns.FRAME])
         if len(unique_frames) < 2:
             print('Drift cross-correlation failed: no frame info.')
@@ -625,9 +656,7 @@ class FittingResults:
         )
         max_frame = np.max(self.data[DataColumns.FRAME])
 
-        # grouped_data = []
         sub_images = []
-        shifts = []
         frames = []
 
         for f in range(0, n_bins):
@@ -647,23 +676,46 @@ class FittingResults:
             sub_images.append(image)
             print(f'Bins: {f + 1:d}/{n_bins:d}', end='\r')
 
+        sub_images = np.array(sub_images)
+
         print('Shift Estimation ...', end='\r')
         try:
-            shifts = shift_estimation(np.array(sub_images), pixelSize, upsampling)
+            if method == 'rcc':
+                imshift, A = rcc_shift_estimation(sub_images, pixelSize)
+
+                print('Shift Optimization ...', end='\r')
+                drift = rcc_solve(imshift, A, n_bins, rmax=rmax)
+            elif method == 'mcc':
+                drift = mcc_shift_estimation(sub_images, pixelSize)
+            elif method == 'dcc':
+                drift = dcc_shift_estimation(sub_images, pixelSize)
+            elif method == 'phase':
+                drift = shift_estimation(np.array(sub_images), pixelSize, upsampling)
+            else:
+                raise ValueError(f'Unknown drift estimation method: {method}')
         except _ArrayMemoryError as e:
             print(f'Drift cross-correlation failed: {e}')
             return
 
-        shifts = np.c_[shifts, np.array(frames)]
         print('Shift Correction ...', end='\r')
+
+        frames_interp = np.concatenate(([0], np.array(frames), [max_frame - 1]))
+
+        # Prepare drift arrays with padding zeros at start and last value at end
+        base = [
+            0,
+        ] * (1 if method in ['mcc', 'phase'] else 2)
+
+        drift_x = np.concatenate((base, drift[:, 0], [drift[-1, 0]]))
+        drift_y = np.concatenate((base, drift[:, 1], [drift[-1, 1]]))
 
         # An one-dimensional interpolation is applied
         # to drift traces in X and Y dimensions separately.
         interpy = interp1d(
-            shifts[:, -1], shifts[:, 0], kind='quadratic', fill_value='extrapolate'
+            frames_interp, drift_x, kind='cubic', fill_value='extrapolate'
         )
         interpx = interp1d(
-            shifts[:, -1], shifts[:, 1], kind='quadratic', fill_value='extrapolate'
+            frames_interp, drift_y, kind='cubic', fill_value='extrapolate'
         )
         # And this interpolation is used to get the shift at every frame-point
         frames_new = np.arange(0, max_frame, 1)
@@ -848,6 +900,9 @@ class FittingResults:
         drift_x = np.mean(fiducial_markers[:, :, 0], axis=0)
         drift_y = np.mean(fiducial_markers[:, :, 1], axis=0)
 
+        error_bar_x = np.std(fiducial_markers[:, :, 0], axis=0)
+        error_bar_y = np.std(fiducial_markers[:, :, 1], axis=0)
+
         print('Drift correction ...                 ', end='\r')
         ids = np.cumsum(np.bincount(self.data[DataColumns.FRAME].astype(np.int64)))
 
@@ -863,7 +918,7 @@ class FittingResults:
 
         # drift_corrected = FittingResults.fromDataFrame(df, self.pixelSize)
 
-        return self, (unique_frames, drift_x, drift_y)
+        return self, (unique_frames, drift_x, drift_y, error_bar_x, error_bar_y)
 
     def zero_coordinates(self):
         # Use vectorized operations with optional masking

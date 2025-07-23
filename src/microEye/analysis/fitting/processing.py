@@ -249,7 +249,14 @@ def shift_correction(interpx, interpy, frame_bins, datax, datay):
         datay[mask] -= shift_y
 
 
-def plot_drift(frames_new, interpx, interpy, title='Drift Cross-Correlation'):
+def plot_drift(
+    frames_new,
+    interpx,
+    interpy,
+    error_x=None,
+    error_y=None,
+    title='Drift Cross-Correlation',
+):
     print('Shift Plot ...', end='\r')
 
     # plot results
@@ -272,8 +279,29 @@ def plot_drift(frames_new, interpx, interpy, title='Drift Cross-Correlation'):
     # setting vertical range
     # plt.setYRange(0, 1)
 
-    plt.plot(frames_new, interpx, pen='r', symbol=None, symbolBrush=0.2, name='x-drift')
-    plt.plot(frames_new, interpy, pen='y', symbol=None, symbolBrush=0.2, name='y-drift')
+    # Plot x-drift with error bars
+    if error_x is not None:
+        err_x = pg.ErrorBarItem(
+            x=frames_new, y=interpx, top=error_x, bottom=error_x, beam=0.5,
+            pen=pg.mkPen(color=(255, 0, 0, 24)) # red color with transparency
+        )
+        plt.addItem(err_x)
+
+    # Plot y-drift with error bars
+    if error_y is not None:
+        err_y = pg.ErrorBarItem(
+            x=frames_new, y=interpy, top=error_y, bottom=error_y, beam=0.5,
+            pen=pg.mkPen(color=(255, 255, 0, 24)) # yellow color with transparency
+        )
+        plt.addItem(err_y)
+
+    # Plot x and y drift curves
+    x_curve = plt.plot(
+        frames_new, interpx, pen='r', symbol=None, symbolBrush=0.2, name='x-drift'
+    )
+    y_curve = plt.plot(
+        frames_new, interpy, pen='y', symbol=None, symbolBrush=0.2, name='y-drift'
+    )
 
     print('Done ...', end='\r')
 
@@ -285,10 +313,9 @@ def plot_animation_stats(
 
     # Calculate bin edges from centers
     bin_width = frame_bin_centers[1] - frame_bin_centers[0]
-    bin_edges = np.concatenate([
-        frame_bin_centers - bin_width/2,
-        [frame_bin_centers[-1] + bin_width/2]
-    ])
+    bin_edges = np.concatenate(
+        [frame_bin_centers - bin_width / 2, [frame_bin_centers[-1] + bin_width / 2]]
+    )
 
     # plot results
     plt = pg.plot()

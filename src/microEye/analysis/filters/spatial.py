@@ -117,54 +117,58 @@ class DoG_Filter(SpatialFilter):
         }
 
 
-# class GaussFilter(SpatialFilter):
-#     def __init__(self, sigma=1) -> None:
-#         '''Gaussian filter initialization.'''
-#         params = {'sigma': sigma}
-#         super().__init__(name='Gaussian Filter', parameters=params)
-#         self.set_params(sigma)
+class PointGaussFilter(SpatialFilter):
+    def __init__(self, sigma=1) -> None:
+        '''Gaussian filter initialization.'''
+        params = {'sigma': sigma}
+        super().__init__(name='Point Gaussian Filter', parameters=params)
+        self.set_params(sigma)
 
-#     def set_params(self, sigma):
-#         '''Set the sigma parameter for the Gaussian filter.'''
-#         self._show_filter = False
-#         self.parameters['sigma'] = sigma
-#         self.gauss = GaussFilter.gaussian_kernel(
-#             max(3, math.ceil(3 * sigma + 1)), sigma
-#         )
+        self.point_kernel = np.array([[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]])
 
-#     def gaussian_kernel(dim, sigma):
-#         x = cv2.getGaussianKernel(dim, sigma)
-#         kernel = x.dot(x.T)
-#         return kernel
+    def set_params(self, sigma):
+        '''Set the sigma parameter for the Gaussian filter.'''
+        self._show_filter = False
+        self.parameters['sigma'] = sigma
+        self.gauss = PointGaussFilter.gaussian_kernel(
+            max(3, math.ceil(3 * sigma + 1)), sigma
+        )
 
-#     def run(self, image: np.ndarray) -> np.ndarray:
-#         return cv2.normalize(
-#             signal.convolve2d(image, np.rot90(self.gauss), mode='same'),
-#             None,
-#             0,
-#             255,
-#             cv2.NORM_MINMAX,
-#             cv2.CV_8U,
-#         )
+    def gaussian_kernel(dim, sigma):
+        x = cv2.getGaussianKernel(dim, sigma)
+        kernel = x.dot(x.T)
+        return kernel
 
-#     def get_tree_parameters(self):
-#         '''Return the parameters for the pyqtgraph tree view.'''
-#         return {
-#             'name': self.name,
-#             'type': 'group',
-#             'visible': False,
-#             'children': [
-#                 {
-#                     'name': 'Sigma',
-#                     'type': 'float',
-#                     'value': self.parameters['sigma'],
-#                     'limits': [0.0, 100.0],
-#                     'step': 0.1,
-#                     'decimals': 2,
-#                     'tip': 'Standard deviation (\u03c3) for the filter',
-#                 },
-#             ],
-#         }
+    def run(self, image: np.ndarray) -> np.ndarray:
+        point = signal.fftconvolve(image, np.rot90(self.point_kernel), mode='same')
+
+        return cv2.normalize(
+            signal.fftconvolve(point, np.rot90(self.gauss), mode='same'),
+            None,
+            0,
+            255,
+            cv2.NORM_MINMAX,
+            cv2.CV_8U,
+        )
+
+    def get_tree_parameters(self):
+        '''Return the parameters for the pyqtgraph tree view.'''
+        return {
+            'name': self.name,
+            'type': 'group',
+            'visible': False,
+            'children': [
+                {
+                    'name': 'Sigma',
+                    'type': 'float',
+                    'value': self.parameters['sigma'],
+                    'limits': [0.0, 100.0],
+                    'step': 0.1,
+                    'decimals': 2,
+                    'tip': 'Standard deviation (\u03c3) for the filter',
+                },
+            ],
+        }
 
 
 class FourierFilter(SpatialFilter):

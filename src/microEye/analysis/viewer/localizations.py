@@ -488,10 +488,11 @@ class LocalizationsView(QtWidgets.QWidget):
         def work_func(**kwargs):
             try:
                 return self.currentResults.toAnimation(
-                    self.frame_bins.value(), self.xy_binsize.value(),
+                    self.frame_bins.value(),
+                    self.xy_binsize.value(),
                     z_pixel_size=self.z_binsize.value(),
                     projection=Projection(self.projection_cbox.currentData()),
-                    renderMode=RenderModes(self.render_cbox.currentData())
+                    renderMode=RenderModes(self.render_cbox.currentData()),
                 )
             except Exception:
                 traceback.print_exc()
@@ -668,16 +669,24 @@ class LocalizationsView(QtWidgets.QWidget):
         self.drift_cross_up = create_spin_box(
             min_value=0, max_value=1000, initial_value=100
         )
+        self.drift_rmax = create_spin_box(min_value=0, max_value=1000, initial_value=23)
 
         self.drift_cross_args.addWidget(self.drift_cross_bins)
         self.drift_cross_args.addWidget(self.drift_cross_px)
         self.drift_cross_args.addWidget(self.drift_cross_up)
+        self.drift_cross_args.addWidget(self.drift_rmax)
+
+        self.cross_method_cbox = QtWidgets.QComboBox()
+        self.cross_method_cbox.addItem('Phase', 'phase')
+        self.cross_method_cbox.addItem('Direct', 'dcc')
+        self.cross_method_cbox.addItem('Mean', 'mcc')
+        self.cross_method_cbox.addItem('Redundant', 'rcc')
 
         self.drift_cross_btn = QtWidgets.QPushButton(
-            'Drift cross-correlation', clicked=lambda: self.drift_cross()
+            'Drift X-Corr', clicked=lambda: self.drift_cross()
         )
         self.drift_fdm_btn = QtWidgets.QPushButton(
-            'Fiducial marker drift correction', clicked=lambda: self.drift_fdm()
+            'Fiducial markers', clicked=lambda: self.drift_fdm()
         )
 
         # Drift GroupBox
@@ -685,9 +694,15 @@ class LocalizationsView(QtWidgets.QWidget):
         fdrift = QtWidgets.QFormLayout()
         drift.setLayout(fdrift)
 
-        fdrift.addRow(QtWidgets.QLabel('Drift X-Corr. (bins, pixelSize, upsampling):'))
+        fdrift.addRow(
+            QtWidgets.QLabel('Drift X-Corr. (bins, pixelSize, upsampling, rmax):')
+        )
         fdrift.addRow(self.drift_cross_args)
-        fdrift.addRow(create_hbox_layout(self.drift_cross_btn, self.drift_fdm_btn))
+        fdrift.addRow(
+            create_hbox_layout(
+                self.cross_method_cbox, self.drift_cross_btn, self.drift_fdm_btn
+            )
+        )
         # End Drift GroupBox
 
         self.frc_cbox = QtWidgets.QComboBox()
@@ -961,9 +976,7 @@ class LocalizationsView(QtWidgets.QWidget):
             self.currentResults.locY,
             self.currentResults.locZ,
         )
-        self.tardis.startWorker.connect(
-            lambda worker: self._threadpool.start(worker)
-        )
+        self.tardis.startWorker.connect(lambda worker: self._threadpool.start(worker))
         self.tardis.show()
 
     def drift_cross(self):
@@ -974,12 +987,17 @@ class LocalizationsView(QtWidgets.QWidget):
         if len(self.currentResults) <= 0:
             return
 
+        method = self.cross_method_cbox.currentData()
+        label = self.cross_method_cbox.currentText()
+
         def work_func(**kwargs):
             try:
                 return self.currentResults.drift_cross_correlation(
                     self.drift_cross_bins.value(),
                     self.drift_cross_px.value(),
                     self.drift_cross_up.value(),
+                    self.drift_rmax.value(),
+                    method=method,
                 )
             except Exception:
                 traceback.print_exc()
@@ -991,7 +1009,10 @@ class LocalizationsView(QtWidgets.QWidget):
                 self.render_loc()
                 self.currentResults = results[0]
                 self.results_plot.setData(self.currentResults.dataFrame())
-                plot_drift(*results[2])
+                plot_drift(
+                    *results[2],
+                    title=f'{label} Cross-Correlation',
+                )
 
         self.worker = QThreadWorker(work_func)
         self.worker.signals.result.connect(done)
@@ -1019,7 +1040,7 @@ class LocalizationsView(QtWidgets.QWidget):
             if results is not None:
                 self.currentResults = results[0]
                 self.results_plot.setData(self.currentResults.dataFrame())
-                plot_drift(*results[1])
+                plot_drift(*results[1], title='Fiducial Marker Drift Correction')
                 self.render_loc()
 
         self.worker = QThreadWorker(work_func)

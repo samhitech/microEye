@@ -316,7 +316,7 @@ class CameraOptions(Tree):
                             {
                                 'name': str(CamParams.EXPORT_ROIS_SEPERATE),
                                 'type': 'bool',
-                                'value': False,
+                                'value': True,
                                 'tip': 'Export each ROI a Tiff file. (Not for Zarr)',
                             },
                             {
