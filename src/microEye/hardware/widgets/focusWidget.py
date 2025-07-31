@@ -116,44 +116,63 @@ class focusWidget(QtWidgets.QDockWidget):
     def updateViewBox(self, data: np.ndarray):
         self.remote_img.setImage(data, _callSync='off')
 
-    def updatePlots(self, data):
+    def updatePlots(self, data: np.ndarray, method: str):
         '''Updates the graphs.'''
         xdata = np.arange(len(data))
-        # updates the IR graph with data
-        if self.__plot_ref is None:
-            # create plot reference when None
-            self.__plot_ref = self.graph_IR.plot(xdata, data)
-        else:
-            # use the plot reference to update the data for that line.
-            self.__plot_ref.setData(xdata, data)
+
+        if method == 'reflection':
+            # updates the IR graph with data
+            if self.__plot_ref is None:
+                # create plot reference when None
+                self.__plot_ref = self.graph_IR.plot(xdata, data, pen='r')
+            else:
+                # use the plot reference to update the data for that line.
+                self.__plot_ref.setData(xdata, data)
+
+            if FocusStabilizer.instance().fit_params is not None:
+                # updates the IR graph with data fit
+                if self.__plotfit_ref is None:
+                    # create plot reference when None
+                    self.__plotfit_ref = self.graph_IR.plot(
+                        xdata,
+                        GaussianOffSet(xdata, *FocusStabilizer.instance().fit_params),
+                        pen='b',
+                    )
+                else:
+                    # use the plot reference to update the data for that line.
+                    self.__plotfit_ref.setData(
+                        xdata,
+                        GaussianOffSet(xdata, *FocusStabilizer.instance().fit_params),
+                    )
+        elif method == 'beads' or method == 'beads astigmatic':
+            self.graph_IR.setLabel('bottom', 'Drift', **self.labelStyle)
+            self.graph_IR.setLabel('left', 'Pixel', **self.labelStyle)
+            # updates the IR graph with data
+            if self.__plot_ref is None:
+                # create plot reference when None
+                self.__plot_ref = self.graph_IR.plot(xdata, data[:, 0], pen='r')
+            else:
+                # use the plot reference to update the data for that line.
+                self.__plot_ref.setData(xdata, data[:, 0])
+
+            if self.__plotfit_ref is None:
+                # create plot reference when None
+                self.__plotfit_ref = self.graph_IR.plot(xdata, data[:, 1], pen='b')
+            else:
+                # use the plot reference to update the data for that line.
+                self.__plotfit_ref.setData(xdata, data[:, 1])
 
         if self.__center_ref is None:
             # create plot reference when None
             self.__center_ref = self.graph_Peak.plot(
-                FocusStabilizer.instance().peak_time,
-                FocusStabilizer.instance().peak_positions,
+                FocusStabilizer.instance().time_points,
+                FocusStabilizer.instance().parameter_buffer,
             )
         else:
             # use the plot reference to update the data for that line.
             self.__center_ref.setData(
-                FocusStabilizer.instance().peak_time,
-                FocusStabilizer.instance().peak_positions,
-            )
-
-        if FocusStabilizer.instance().fit_params is None:
-            # no fit params available, so return
-            return
-
-        # updates the IR graph with data fit
-        if self.__plotfit_ref is None:
-            # create plot reference when None
-            self.__plotfit_ref = self.graph_IR.plot(
-                xdata, GaussianOffSet(xdata, *FocusStabilizer.instance().fit_params)
-            )
-        else:
-            # use the plot reference to update the data for that line.
-            self.__plotfit_ref.setData(
-                xdata, GaussianOffSet(xdata, *FocusStabilizer.instance().fit_params)
+                FocusStabilizer.instance().time_points,
+                FocusStabilizer.instance().parameter_buffer,
             )
 
     def updateRoiParams(self, params: dict):
@@ -183,7 +202,7 @@ class focusWidget(QtWidgets.QDockWidget):
 
         if 'PixelCalCoeff' in params:
             self.focusStabilizerView.set_param_value(
-                FocusStabilizerParams.PIXEL_CAL, float(params['PixelCalCoeff'])
+                FocusStabilizerParams.CAL_COEFF, float(params['PixelCalCoeff'])
             )
         if 'UseCal' in params:
             self.focusStabilizerView.set_param_value(
@@ -248,7 +267,7 @@ class focusWidget(QtWidgets.QDockWidget):
             'ROI_angle': self.roi.state['angle'] % 360,
             'ROI_Width': FocusStabilizer.instance().line_width,
             'PID': FocusStabilizer.instance().getPID(),
-            'PixelCalCoeff': FocusStabilizer.instance().pixelCalCoeff(),
+            'PixelCalCoeff': FocusStabilizer.instance().calCoeff(),
             'UseCal': FocusStabilizer.instance().useCal(),
             'Inverted': FocusStabilizer.instance().isInverted(),
         }

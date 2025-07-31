@@ -330,7 +330,7 @@ def z_stack_acquisition(
             cam_pan.camera_options.set_param_value(CamParams.FRAMES, nFrames)
             cam_pan.camera_options.set_param_value(CamParams.SAVE_DATA, True)
 
-            peak = FocusStabilizer.instance().getPeakPosition()
+            peak = FocusStabilizer.instance().getParameter()
             for x in range(n):
                 if x > 0:
                     if event and event.is_set():
@@ -340,10 +340,10 @@ def z_stack_acquisition(
                         FocusStabilizer.instance().isFocusStabilized()
                         and FocusStabilizer.instance().useCal()
                     ):
-                        value = FocusStabilizer.instance().pixelCalCoeff() * step_size
+                        value = FocusStabilizer.instance().calCoeff() * step_size
                         if reverse:
                             value *= -1
-                        FocusStabilizer.instance().setPeakPosition(value, True)
+                        FocusStabilizer.instance().setParameter(value, True)
                         QtCore.QThread.msleep(delay)
                     else:
                         if FocusStabilizer.instance().isFocusStabilized():
@@ -376,7 +376,7 @@ def z_stack_acquisition(
         traceback.print_exc()
     finally:
         if peak:
-            FocusStabilizer.instance().setPeakPosition(peak)
+            FocusStabilizer.instance().setParameter(peak)
     return
 
 
@@ -431,7 +431,7 @@ def z_calibration(
                 QtCore.QThread.msleep(delay * nFrames)
                 positions[x, 0] = x * step_size
                 positions[x, 1] = np.mean(
-                    FocusStabilizer.instance().peak_positions[-nFrames:]
+                    FocusStabilizer.instance().parameter_buffer[-nFrames:]
                 )
     except Exception:
         traceback.print_exc()

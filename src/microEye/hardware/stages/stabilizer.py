@@ -6,11 +6,17 @@ from queue import LifoQueue
 from threading import Event
 from typing import Optional
 
+import cv2
+import numba as nb
 import numpy as np
 from pyqtgraph.parametertree import Parameter
 from scipy.optimize import OptimizeWarning, curve_fit
 from scipy.signal import find_peaks
 
+from microEye.analysis.filters import FourierFilter
+from microEye.analysis.fitting import pyfit3Dcspline
+from microEye.analysis.fitting.fit import CV_BlobDetector
+from microEye.analysis.fitting.processing import nn_trajectories
 from microEye.analysis.tools.kymograms import get_kymogram_row
 from microEye.qt import (
     QApplication,
@@ -25,6 +31,61 @@ from microEye.utils.parameter_tree import Tree
 from microEye.utils.thread_worker import QThreadWorker
 
 warnings.filterwarnings('ignore', category=OptimizeWarning)
+
+
+@nb.njit(parallel=True)
+def fast_nn_assignment(currentFrame, nextFrame, minDistance=0.0, maxDistance=30.0):
+    N = currentFrame.shape[0]
+    M = nextFrame.shape[0]
+    assigned = np.full(N, -1, dtype=np.int64)
+    distances = np.full(N, np.inf, dtype=np.float64)
+    for i in nb.prange(N):
+        min_dist = np.inf
+        min_idx = -1
+        for j in range(M):
+            dist = np.sqrt(np.sum((currentFrame[i, :2] - nextFrame[j, :2]) ** 2))
+            if minDistance <= dist <= maxDistance and dist < min_dist:
+                min_dist = dist
+                min_idx = j
+        if min_idx != -1:
+            assigned[i] = min_idx
+            distances[i] = min_dist
+    return assigned, distances
+
+
+@nb.njit
+def getXYshift(
+    previous: np.ndarray, current: np.ndarray, minDistance=0.0, maxDistance=30.0
+):
+    '''
+    Estimate X and Y shifts using fast Numba nearest neighbor assignment.
+
+    Returns
+    -------
+    tuple of float
+        The X and Y shifts.
+    '''
+    if (
+        previous is None
+        or current is None
+        or previous.shape[0] == 0
+        or current.shape[0] == 0
+    ):
+        return None
+
+    assigned, distances = fast_nn_assignment(
+        previous, current, minDistance, maxDistance
+    )
+    x_shifts = []
+    y_shifts = []
+    for i in range(previous.shape[0]):
+        idx = assigned[i]
+        if idx != -1:
+            x_shifts.append(current[idx, 0] - previous[i, 0])
+            y_shifts.append(current[idx, 1] - previous[i, 1])
+    if len(x_shifts) == 0 or len(y_shifts) == 0:
+        return None
+    return np.mean(np.array(x_shifts)), np.mean(np.array(y_shifts))
 
 
 class FocusStabilizerParams(Enum):
@@ -45,8 +106,9 @@ class FocusStabilizerParams(Enum):
     LOAD = 'Load'
 
     FOCUS_TRACKING = 'Focus Stabilization'
-    FOCUS_PEAK = 'Focus Peak [pixel]'
-    PIXEL_CAL = 'Calibration [pixel/nm]'
+    STABILIZATION_METHOD = 'Method'
+    FOCUS_PARAMETER = 'Focus Parameter [pixel]'
+    CAL_COEFF = 'Calibration [pixel/nm]'
     USE_CAL = 'Use Calibration'
     INVERTED = 'Inverted'
     TRACKING_ENABLED = 'Stabilization Enabled'
@@ -73,17 +135,40 @@ class FocusStabilizerParams(Enum):
         return self.value.split('.')
 
 
+def shift_and_append(arr: np.ndarray, new_value: float):
+    '''
+    Rolls the array and appends a new value at the end.
+
+    Parameters
+    ----------
+    arr : np.ndarray
+        The input array to roll.
+    new_value : float
+        The new value to append at the end of the rolled array.
+
+    Returns
+    -------
+    np.ndarray
+        The rolled array with the new value appended.
+    '''
+    arr = np.roll(arr, -1)
+    arr[-1] = new_value
+    return arr
+
+
 class FocusStabilizer(QtCore.QObject):
     # Class attribute to hold the single instance
     _instance = None
 
     TIME_POINTS = 500
 
+    METHODS = ['reflection', 'beads', 'beads astigmatic']
+
     updateViewBox = Signal(object)
-    updatePlots = Signal(object)
+    updatePlots = Signal(object, str)
     moveStage = Signal(bool, int)
-    peakPositionChanged = Signal(float)
-    pixelCalChanged = Signal(float)
+    parameterChanged = Signal(float)
+    calCoeffChanged = Signal(float)
     focusStabilizationToggled = Signal(bool)
 
     def __new__(cls, *args, **kwargs):
@@ -104,20 +189,27 @@ class FocusStabilizer(QtCore.QObject):
         super().__init__()
 
         self.__buffer = LifoQueue()
-        self.peak_time = np.array(list(range(self.TIME_POINTS)))
-        self.peak_positions = np.ones((self.TIME_POINTS,))
+        self.time_points = np.array(list(range(self.TIME_POINTS)))
+        self.parameter_buffer = np.ones((self.TIME_POINTS,))
+
+        self.total_shift = np.array([0.0, 0.0])
+        self.x_buffer = np.zeros((self.TIME_POINTS,))
+        self.y_buffer = np.zeros((self.TIME_POINTS,))
+
         self.error_buffer = np.zeros((20,))
         self.error_integral = 0
         self.fit_params = None
 
-        self.X = np.array([25.5, 25.5])
-        self.Y = np.array([25.5, 281.5])
+        self.X_ROI = np.array([25.5, 25.5])
+        self.Y_ROI = np.array([25.5, 281.5])
         self.line_width = 1
 
-        self.__pixel_cal_coeff = 0.01
+        self.__method = FocusStabilizer.METHODS[0]
+
+        self.__cal_coeff = 0.01
         self.__use_cal = False
         self.__inverted = False
-        self.__peak_position = 64
+        self.__parameter = 64
         self.__stabilization = False
         self.__P = 6.45
         self.__I = 0.0
@@ -142,28 +234,60 @@ class FocusStabilizer(QtCore.QObject):
     def buffer(self):
         return self.__buffer
 
-    def pixelCalCoeff(self):
+    def method(self):
         '''
-        Gets the current pixel calibration coefficient.
+        Gets the current method for focus stabilization.
+
+        Returns
+        -------
+        str
+            The current method for focus stabilization.
+        '''
+        return self.__method
+
+    def setMethod(self, method: str):
+        '''
+        Sets the method for focus stabilization.
+
+        Parameters
+        ----------
+        method : str
+            The new method for focus stabilization.
+        '''
+        if method in FocusStabilizer.METHODS:
+            self.__method = method
+            self.fit_params = None
+
+            self.total_shift = np.array([0.0, 0.0])
+            self.x_buffer = np.zeros((self.TIME_POINTS,))
+            self.y_buffer = np.zeros((self.TIME_POINTS,))
+        else:
+            raise ValueError(
+                f'Invalid method: {method}. Options: {FocusStabilizer.METHODS}'
+            )
+
+    def calCoeff(self):
+        '''
+        Gets the current calibration coefficient.
 
         Returns
         -------
         float
-            The current pixel calibration coefficient.
+            The current calibration coefficient.
         '''
-        return self.__pixel_cal_coeff
+        return self.__cal_coeff
 
-    def setPixelCalCoeff(self, value: float):
+    def setCalCoeff(self, value: float):
         '''
-        Sets the pixel calibration coefficient.
+        Sets the calibration coefficient.
 
         Parameters
         ----------
         value : float
-            The new pixel calibration coefficient.
+            The new calibration coefficient.
         '''
-        self.__pixel_cal_coeff = value
-        self.pixelCalChanged.emit(value)
+        self.__cal_coeff = value
+        self.calCoeffChanged.emit(value)
 
     def preview(self):
         '''
@@ -332,34 +456,34 @@ class FocusStabilizer(QtCore.QObject):
         '''
         return (self.__P, self.__I, self.__D, self.__tau, self.__err_th)
 
-    def getPeakPosition(self):
+    def getParameter(self):
         '''
-        Get the current focus peak position.
+        Get the current focus parameter.
 
         Returns
         -------
         float
-            The current focus peak.
+            The current focus parameter.
         '''
-        return self.__peak_position
+        return self.__parameter
 
-    def setPeakPosition(self, value: float, incerement: bool = False):
+    def setParameter(self, value: float, incerement: bool = False):
         '''
-        Set the focus peak position.
+        Set the focus parameter.
 
         Parameters
         ----------
         value : float
-            The new focus peak value.
+            The new focus parameter value.
         incerement : bool, optional
-            If True, increment the current focus peak value by the given value,
-            otherwise set the focus peak to the given value.
+            If True, increment the current focus parameter value by the given value,
+            otherwise set the focus parameter to the given value.
         '''
         if incerement:
-            self.__peak_position += value
+            self.__parameter += value
         else:
-            self.__peak_position = value
-        self.peakPositionChanged.emit(self.__peak_position)
+            self.__parameter = value
+        self.parameterChanged.emit(self.__parameter)
 
     def isFocusStabilized(self):
         '''
@@ -420,34 +544,132 @@ class FocusStabilizer(QtCore.QObject):
                     self._exec_time = now.msecsTo(QDateTime.currentDateTime())
                     now = QDateTime.currentDateTime()
 
+                    method = self.method()
+
                     image = self.getImage()
 
+                    if self.preview():
+                        self.updateViewBox.emit(image.copy())
+
                     if self.isImage(image):
-                        if self.preview():
-                            self.updateViewBox.emit(image.copy())
-                        image = get_kymogram_row(image, self.X, self.Y, self.line_width)
-                    self.peak_fit(image.copy())
-                    if self.file is not None:
-                        with open(self.file, 'ab') as file:
-                            np.savetxt(
-                                file,
-                                np.array((self._exec_time, self.fit_params[1])).reshape(
-                                    (1, 2)
-                                ),
-                                delimiter=';',
+                        if method == 'reflection':
+                            # get the kymogram row from the image
+                            image = get_kymogram_row(
+                                image, self.X_ROI, self.Y_ROI, self.line_width
                             )
-                        self.num_frames_saved = 1 + self.num_frames_saved
+                        elif method == 'beads':
+                            # crop using the ROI two corners
+                            image = image[
+                                int(self.Y_ROI[0]) : int(self.Y_ROI[1]),
+                                int(self.X_ROI[0]) : int(self.X_ROI[1]),
+                            ]
+
+                    # fit the parameter and stabilize
+                    self.fit_parameter(image.copy(), method)
+                    # stabilize the focus
+                    self.stabilize()
+                    # append parameter to the file if file is set
+                    self.saveToFile()
+
                     counter = counter + 1
-                    self.updatePlots.emit(image.copy())
+
+                    # update the plots with the current parameter
+                    self.updatePlots.emit(
+                        image.copy()
+                        if method == 'reflection'
+                        else np.c_[self.x_buffer, self.y_buffer],
+                        method,
+                    )
                 QtCore.QThread.usleep(100)  # sleep for 100us
             except Exception as e:
                 traceback.print_exc()
 
         print(f'{FocusStabilizer.__name__} worker is terminating.')
 
+    def fit_parameter(self, data: np.ndarray, method: str):
+        """
+        Fit the data to the specified method and update the parameter buffer.
+
+        Parameters
+        ----------
+        data : np.ndarray
+            The input data to fit.
+        method : str
+            The method to use for fitting. For options check `FocusStabilizer.METHODS`.
+
+            - 'reflection': Fit a linear ROI to a GaussianOffSet function.
+            - 'beads': Fit beads using a 2D Gaussian function and extract average sigma.
+        """
+        if method not in FocusStabilizer.METHODS:
+            raise ValueError(
+                f'Invalid method: {method}. Options: {FocusStabilizer.METHODS}'
+            )
+
+        if method == 'reflection':
+            self.peak_fit(data)
+
+        elif method in ['beads', 'beads astigmatic']:
+            self.beads_fit(data, astigmatic=method == 'beads astigmatic')
+
+    def stabilize(self):
+        try:
+            if self.isFocusStabilized():
+                err = np.average(self.parameter_buffer[-1] - self.getParameter())
+                tau = self.__tau if self.__tau > 0 else (max(self._exec_time, 1) / 1000)
+                self.error_integral += err * tau
+                diff = (err - self.error_buffer[-1]) / tau
+
+                self.error_buffer = shift_and_append(self.error_buffer, err)
+
+                step = int(
+                    (err * self.__P)
+                    + (self.error_integral * self.__I)
+                    + (diff * self.__D)
+                )
+                if abs(err) > self.__err_th:
+                    direction = (step <= 0) if not self.isInverted() else (step > 0)
+                    self.moveStage.emit(direction, abs(step))
+            else:
+                self.setParameter(self.parameter_buffer[-1])
+                self.error_buffer = np.zeros((20,))
+                self.error_integral = 0
+        except Exception as e:
+            pass
+
+    def saveToFile(self):
+        '''
+        Save the current execution time and fit parameters to a file.
+        '''
+        if self.file is not None:
+            with open(self.file, 'ab') as file:
+                if self.num_frames_saved == 0:
+                    header = ';'.join(
+                        [
+                            'Execution Time [ms]',
+                            'Focus Parameter [pixel]',
+                            'X Shift [pixel]',
+                            'Y Shift [pixel]',
+                        ]
+                    )
+                    # Write header if this is the first frame
+                    file.write(header.encode('utf-8') + b'\n')
+                np.savetxt(
+                    file,
+                    np.array(
+                        (
+                            self._exec_time,
+                            self.parameter_buffer[-1],
+                            self.x_buffer[-1],
+                            self.y_buffer[-1],
+                        )
+                    ).reshape((1, 4)),
+                    delimiter=';',
+                )
+            self.num_frames_saved = 1 + self.num_frames_saved
+
     def peak_fit(self, data: np.ndarray):
         '''
-        Finds the peak position through fitting and adjusts the piezostage accordingly.
+        Fit the data to a GaussianOffSet function and update the parameter buffer.
 
         Parameters
         ----------
@@ -471,32 +693,92 @@ class FocusStabilizer(QtCore.QObject):
             self.fit_params, _ = curve_fit(
                 GaussianOffSet, np.arange(data.shape[0]), data, p0=[a0, x0, 1, 0]
             )
-            self.peak_positions = np.roll(self.peak_positions, -1)
-            self.peak_positions[-1] = self.fit_params[1]
-
-            if self.isFocusStabilized():
-                err = np.average(self.peak_positions[-1] - self.getPeakPosition())
-                tau = self.__tau if self.__tau > 0 else (max(self._exec_time, 1) / 1000)
-                self.error_integral += err * tau
-                diff = (err - self.error_buffer[-1]) / tau
-                self.error_buffer = np.roll(self.error_buffer, -1)
-                self.error_buffer[-1] = err
-                step = int(
-                    (err * self.__P)
-                    + (self.error_integral * self.__I)
-                    + (diff * self.__D)
-                )
-                if abs(err) > self.__err_th:
-                    direction = (step <= 0) if not self.isInverted() else (step > 0)
-                    self.moveStage.emit(direction, abs(step))
-            else:
-                self.setPeakPosition(self.peak_positions[-1])
-                self.error_buffer = np.zeros((20,))
-                self.error_integral = 0
-
+            self.parameter_buffer = shift_and_append(
+                self.parameter_buffer, self.fit_params[1]
+            )
         except Exception as e:
             pass
             # print('Failed Gauss. fit: ' + str(e))
+
+    def beads_fit(self, data: np.ndarray, sigma: float = 1.0, astigmatic: bool = False):
+        '''
+        Fit the data to a 2D Gaussian function and update the parameter buffer.
+
+        Parameters
+        ----------
+        data : np.ndarray
+            The input data to fit.
+
+        Raises
+        ------
+        Exception
+            If an error occurs during the fitting process.
+        '''
+        try:
+            # apply Fourier filter to the data
+            filtered = FourierFilter().run(data)
+
+            # Threshold the image
+            _, th_img = cv2.threshold(
+                filtered,
+                np.quantile(filtered, 1 - 1e-4) * 0.4,
+                255,
+                cv2.THRESH_BINARY,
+            )
+
+            # Detect blobs
+            points, im_with_keypoints = CV_BlobDetector().find_peaks_preview(
+                th_img, None
+            )
+
+            if len(points) < 1:
+                self.fit_params = None
+                return
+
+            # Get the ROI list for fitting
+            roi_sz = 21
+            rois, coords = pyfit3Dcspline.get_roi_list(data, points, roi_sz)
+
+            Params, CRLBs, LogLikelihood = pyfit3Dcspline.CPUmleFit_LM(
+                rois, 4 if astigmatic else 2, np.array([sigma]), None, 0
+            )
+
+            if Params is None and len(Params) < 1:
+                self.fit_params = None
+                return
+            elif Params.ndim == 1:
+                Params = Params[np.newaxis, :]
+
+            mean_params = np.mean(Params, axis=0)
+            self.parameter_buffer = shift_and_append(
+                self.parameter_buffer,
+                (
+                    mean_params[4]
+                    if not astigmatic
+                    else (mean_params[4] ** 2 - mean_params[5] ** 2)
+                ),
+            )
+
+            Params[:, 0] += coords[:, 0]  # X coordinate
+            Params[:, 1] += coords[:, 1]  # Y coordinate
+
+            # Calculate the X and Y shifts between previous and current parameters
+            result = getXYshift(self.fit_params, Params)
+
+            self.fit_params = Params
+
+            if result is None:
+                return
+
+            x_shift, y_shift = result
+            self.total_shift += np.array([x_shift, y_shift])
+
+            self.x_buffer = shift_and_append(self.x_buffer, self.total_shift[0])
+            self.y_buffer = shift_and_append(self.y_buffer, self.total_shift[1])
+
+        except Exception as e:
+            traceback.print_exc()
+            print('Failed beads fit: ' + str(e))
 
 
 class FocusStabilizerView(Tree):
@@ -526,14 +808,16 @@ class FocusStabilizerView(Tree):
         '''
         super().__init__(parent=parent)
 
-        FocusStabilizer.instance().peakPositionChanged.connect(
-            lambda value: self.set_param_value(FocusStabilizerParams.FOCUS_PEAK, value)
+        FocusStabilizer.instance().parameterChanged.connect(
+            lambda value: self.set_param_value(
+                FocusStabilizerParams.FOCUS_PARAMETER, value
+            )
         )
-        FocusStabilizer.instance().pixelCalChanged.connect(
-            lambda value: self.set_param_value(FocusStabilizerParams.PIXEL_CAL, value)
+        FocusStabilizer.instance().calCoeffChanged.connect(
+            lambda value: self.set_param_value(FocusStabilizerParams.CAL_COEFF, value)
         )
 
-        self.setMinimumWidth(250)
+        self.setMinimumWidth(325)
 
     def create_parameters(self):
         '''
@@ -605,7 +889,13 @@ class FocusStabilizerView(Tree):
                 'children': [],
             },
             {
-                'name': str(FocusStabilizerParams.FOCUS_PEAK),
+                'name': str(FocusStabilizerParams.STABILIZATION_METHOD),
+                'type': 'list',
+                'value': FocusStabilizer.METHODS[0],
+                'limits': FocusStabilizer.METHODS,
+            },
+            {
+                'name': str(FocusStabilizerParams.FOCUS_PARAMETER),
                 'type': 'float',
                 'value': 0.0,
                 'step': 0.01,
@@ -613,7 +903,7 @@ class FocusStabilizerView(Tree):
                 'decimals': 6,
             },
             {
-                'name': str(FocusStabilizerParams.PIXEL_CAL),
+                'name': str(FocusStabilizerParams.CAL_COEFF),
                 'type': 'float',
                 'value': 0.01,
                 'step': 0.01,
@@ -740,24 +1030,31 @@ class FocusStabilizerView(Tree):
                 FocusStabilizer.instance().setErrorTh(data)
 
             if path == FocusStabilizerParams.get_path(FocusStabilizerParams.X1):
-                FocusStabilizer.instance().X[0] = data
+                FocusStabilizer.instance().X_ROI[0] = data
             if path == FocusStabilizerParams.get_path(FocusStabilizerParams.X2):
-                FocusStabilizer.instance().X[1] = data
+                FocusStabilizer.instance().X_ROI[1] = data
             if path == FocusStabilizerParams.get_path(FocusStabilizerParams.Y1):
-                FocusStabilizer.instance().Y[0] = data
+                FocusStabilizer.instance().Y_ROI[0] = data
             if path == FocusStabilizerParams.get_path(FocusStabilizerParams.Y2):
-                FocusStabilizer.instance().Y[1] = data
+                FocusStabilizer.instance().Y_ROI[1] = data
             if path == FocusStabilizerParams.get_path(FocusStabilizerParams.LINE_WIDTH):
                 FocusStabilizer.instance().line_width = data
+
+            if path == FocusStabilizerParams.get_path(
+                FocusStabilizerParams.STABILIZATION_METHOD
+            ):
+                FocusStabilizer.instance().setMethod(data)
 
             if path == FocusStabilizerParams.get_path(FocusStabilizerParams.INVERTED):
                 FocusStabilizer.instance().setInverted(data)
             if path == FocusStabilizerParams.get_path(FocusStabilizerParams.USE_CAL):
                 FocusStabilizer.instance().setUseCal(data)
-            if path == FocusStabilizerParams.get_path(FocusStabilizerParams.FOCUS_PEAK):
-                FocusStabilizer.instance().setPeakPosition(data)
-            if path == FocusStabilizerParams.get_path(FocusStabilizerParams.PIXEL_CAL):
-                FocusStabilizer.instance().setPixelCalCoeff(data)
+            if path == FocusStabilizerParams.get_path(
+                FocusStabilizerParams.FOCUS_PARAMETER
+            ):
+                FocusStabilizer.instance().setParameter(data)
+            if path == FocusStabilizerParams.get_path(FocusStabilizerParams.CAL_COEFF):
+                FocusStabilizer.instance().setCalCoeff(data)
             if path == FocusStabilizerParams.get_path(
                 FocusStabilizerParams.PREVIEW_IMAGE
             ):

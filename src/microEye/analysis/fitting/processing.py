@@ -41,8 +41,10 @@ def nn_trajectories(
             nNeighbors = NearestNeighbors(
                 n_neighbors=max(1, min(neighbors, nextFrame.shape[0]))
             )
-            nNeighbors.fit(nextFrame[:, 1:])
-            foundnn = nNeighbors.kneighbors(currentFrame[:, 1:])
+            nNeighbors.fit(nextFrame[:, 1:] if nextFrame.shape[1] > 2 else nextFrame)
+            foundnn = nNeighbors.kneighbors(
+                currentFrame[:, 1:] if currentFrame.shape[1] > 2 else currentFrame
+            )
             foundnn = np.asarray(foundnn, dtype=np.float64)
             # print(foundnn.shape)
 
@@ -282,16 +284,24 @@ def plot_drift(
     # Plot x-drift with error bars
     if error_x is not None:
         err_x = pg.ErrorBarItem(
-            x=frames_new, y=interpx, top=error_x, bottom=error_x, beam=0.5,
-            pen=pg.mkPen(color=(255, 0, 0, 24)) # red color with transparency
+            x=frames_new,
+            y=interpx,
+            top=error_x,
+            bottom=error_x,
+            beam=0.5,
+            pen=pg.mkPen(color=(255, 0, 0, 24)),  # red color with transparency
         )
         plt.addItem(err_x)
 
     # Plot y-drift with error bars
     if error_y is not None:
         err_y = pg.ErrorBarItem(
-            x=frames_new, y=interpy, top=error_y, bottom=error_y, beam=0.5,
-            pen=pg.mkPen(color=(255, 255, 0, 24)) # yellow color with transparency
+            x=frames_new,
+            y=interpy,
+            top=error_y,
+            bottom=error_y,
+            beam=0.5,
+            pen=pg.mkPen(color=(255, 255, 0, 24)),  # yellow color with transparency
         )
         plt.addItem(err_y)
 

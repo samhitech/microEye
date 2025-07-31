@@ -204,12 +204,16 @@ class CV_BlobDetector(AbstractDetector):
         '''
         keypoints = self.detector.detect(th_img)
 
-        im_with_keypoints = cv2.drawKeypoints(
-            img,
-            keypoints,
-            np.array([]),
-            (0, 0, 255),
-            cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS,
+        im_with_keypoints = (
+            cv2.drawKeypoints(
+                img,
+                keypoints,
+                np.array([]),
+                (0, 0, 255),
+                cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS,
+            )
+            if img is not None
+            else None
         )
 
         return cv2.KeyPoint_convert(keypoints), im_with_keypoints
@@ -415,7 +419,7 @@ def fit_points(
     tuple[np.ndarray, Optional[np.ndarray], Optional[np.ndarray]]
         Fitted parameters, CRLBs, and log-likelihood values.
     '''
-    method : FittingMethod = options.get('method', FittingMethod._2D_Phasor_CPU)
+    method: FittingMethod = options.get('method', FittingMethod._2D_Phasor_CPU)
     roi_size = options.get('roi_size', 13)
     PSFparam = options.get('PSFparam', np.array([1]))
 
@@ -613,7 +617,6 @@ def get_rois_lists_GPU(
     roi_size: int = kwargs.get('roi_size', 13)
     c: int = kwargs.get('channel', 0)
     z: int = kwargs.get('zSlice', 0)
-
 
     def process_image(k: int) -> tuple[list, list, list, list]:
         image = stack_handler.getSlice(k, c, z)

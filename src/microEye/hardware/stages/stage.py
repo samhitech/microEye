@@ -800,8 +800,8 @@ class ZStageController:
             and interface
         ):
             sign = 1 if dir else -1
-            focusStabilizer.setPeakPosition(
-                focusStabilizer.pixelCalCoeff() * step_arg * sign, True
+            focusStabilizer.setParameter(
+                focusStabilizer.calCoeff() * step_arg * sign, True
             )
         else:
             self.stage.move_up(step_arg) if dir else self.stage.move_down(step_arg)

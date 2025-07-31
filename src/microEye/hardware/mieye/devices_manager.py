@@ -316,7 +316,7 @@ class DeviceManager(QtCore.QObject):
     def _handle_focus_stabilization(self, diff):
         if FocusStabilizer.instance().isFocusStabilized():
             value = 1e-3 * diff
-            FocusStabilizer.instance().setPeakPosition(value, True)
+            FocusStabilizer.instance().setParameter(value, True)
 
     def _handle_z_stage_step(self, diff):
         if abs(diff) > 0 and abs(diff) < 100:

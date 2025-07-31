@@ -19,6 +19,7 @@ if cuda.is_available():
         varim: np.ndarray,
         initZ: float,
         iterations: int = 30,
+        output: bool = True,
     ):
         '''
         GPU Fit
@@ -148,10 +149,11 @@ if cuda.is_available():
             f'GPU only has {availableMemory / (1024 * 1024):.0f}MB.\n'
             + 'Please break your fitting into multiple smaller runs.\n',
         )
-        print(
-            f'Allocating {100 * requiredMemory / availableMemory:.3e}% out of',
-            f'available GPU memory {availableMemory / (1024 * 1024):.0f}MB.',
-        )
+        if output:
+            print(
+                f'Allocating {100 * requiredMemory / availableMemory:.3e}% out of',
+                f'available GPU memory {availableMemory / (1024 * 1024):.0f}MB.',
+            )
 
         # copy data to device
         d_data = cuda.to_device(data.flatten().astype(np.float32))
@@ -191,7 +193,8 @@ if cuda.is_available():
 
         stop = time.perf_counter_ns()
         togpu = stop - start
-        print(f'Data copied to GPU in {togpu/1e9:.6f}s.\n')
+        if output:
+            print(f'Data copied to GPU in {togpu/1e9:.6f}s.\n')
         start = time.perf_counter_ns()
 
         # setup kernel
@@ -310,7 +313,8 @@ if cuda.is_available():
 
         stop = time.perf_counter_ns()
         fit = stop - start
-        print(f'Fitted {Nfitraw:d} localizations in {fit/1e9:6f}s.\n')
+        if output:
+            print(f'Fitted {Nfitraw:d} localizations in {fit/1e9:6f}s.\n')
         start = time.perf_counter_ns()
 
         # copy to matlab output
@@ -331,7 +335,8 @@ if cuda.is_available():
 
         stop = time.perf_counter_ns()
         fromgpu = stop - start
-        print(f'Data copied to Host in {fromgpu/1e9:.6f}s.\n')
+        if output:
+            print(f'Data copied to Host in {fromgpu/1e9:.6f}s.\n')
         start = time.perf_counter_ns()
 
         # cleanup
@@ -421,17 +426,6 @@ def CPUmleFit_LM(
     spline_xsize = spline_ysize = spline_zsize = 0
     coeff = 0
 
-    # fun with timing
-    freq = 0
-    togpu = 0
-    fit = 0
-    fromgpu = 0
-    cleanup = 0
-    start = stop = 0
-    start = time.perf_counter_ns()
-    # QueryPerformanceFrequency(&freq)
-    # QueryPerformanceCounter(&start)
-
     # input checks
     sz = math.sqrt(data.shape[1])
     Nfitraw = data.shape[0]
@@ -466,10 +460,6 @@ def CPUmleFit_LM(
         CRLBs = np.zeros((Nfitraw, NV_PS), np.float32)
 
     LogLikelihood = np.zeros(Nfitraw, np.float32)
-
-    stop = time.perf_counter_ns()
-    togpu = stop - start
-    start = time.perf_counter_ns()
 
     # if fittype == 1:  # fit x,y,bg,I
     #     for ii in range(Nfitraw):
@@ -522,17 +512,6 @@ def CPUmleFit_LM(
             CRLBs,
             LogLikelihood,
         )
-
-    stop = time.perf_counter_ns()
-    fit = stop - start
-    start = time.perf_counter_ns()
-
-    stop = time.perf_counter_ns()
-    fromgpu = stop - start
-    start = time.perf_counter_ns()
-
-    # cleanup
-    stop = time.perf_counter_ns()
 
     return Parameters, CRLBs, LogLikelihood
 
