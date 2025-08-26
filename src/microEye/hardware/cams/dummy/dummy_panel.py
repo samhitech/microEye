@@ -198,6 +198,7 @@ class Dummy_Panel(Camera_Panel):
                 'Constant Flux',
                 'Sinusoidal',
                 'Gaussian',
+                'Astigmatic Fiducials',
                 'Single Molecule Sim',
             ],
             'value': 'Sinusoidal',

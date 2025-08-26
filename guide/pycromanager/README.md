@@ -4,13 +4,13 @@
 
 This guide provides step-by-step instructions for using the `miEye module` together with `Pycro-manager` (Micro-Manager) to achieve real-time focus stabilization.
 
-The system is composed of an objective mounted on a piezo stage and a CMOS camera positioned along an IR optical path.
+The system is composed of an objective mounted on a piezo stage and a CMOS camera positioned along an NIR optical path.
 
-- For total internal reflection (TIR) enabled microscopes, an IR beam is configured in a back-reflection setup, where the lateral displacement of the beam on the CMOS sensor is used to detect and correct z-drift for precise focus stabilization.
+- For total internal reflection (TIR) enabled microscopes, an NIR beam is configured in a back-reflection setup, where the lateral displacement of the beam on the CMOS sensor is used to detect and correct z-drift for precise focus stabilization.
 
 - While microEye natively supports a limited selection of piezo stages and CMOS cameras, integrating it with Micro-Manager via Pycro-manager expands compatibility and enables software-based focus stabilization for a broader range of hardware.
 
-> If TIR or IR back-reflection is not feasible, the `microEye` and `Pycro-manager` integration aims to support several alternative focus stabilization modalities  (e.g., IR Fiducial Markers). These can be tailored based on one's microscope configuration, sample type, or specific experimental requirements.
+> If TIR or NIR back-reflection is not feasible, the `microEye` and `Pycro-manager` integration aims to support several alternative focus stabilization modalities  (e.g., NIR Fiducial Markers). These can be tailored based on one's microscope configuration, sample type, or specific experimental requirements.
 
 <!-- add table of contents -->
 
@@ -31,12 +31,13 @@ The system is composed of an objective mounted on a piezo stage and a CMOS camer
   - [7. Starting a Bridge to Micro-Manager Core](#7-starting-a-bridge-to-micro-manager-core)
   - [8. Adding a Micro-Manager Device](#8-adding-a-micro-manager-device)
     - [Adding the Z-Stage](#adding-the-z-stage)
-    - [Adding the IR Camera](#adding-the-ir-camera)
+    - [Adding the NIR Camera](#adding-the-nir-camera)
   - [9. Focus Stabilization Control](#9-focus-stabilization-control)
-    - [IR back-reflected beam configuration](#ir-back-reflected-beam-configuration)
+    - [NIR back-reflected beam configuration](#nir-back-reflected-beam-configuration)
+    - [NIR Fiducial Markers configuration](#nir-fiducial-markers-configuration)
   - [Optical Schemes](#optical-schemes)
-    - [IR Back-Reflected Beam](#ir-back-reflected-beam)
-    - [IR Fiducial Marker Scheme](#ir-fiducial-marker-scheme)
+    - [NIR Back-Reflected Beam](#nir-back-reflected-beam)
+    - [NIR Fiducial Marker Scheme](#nir-fiducial-marker-scheme)
     - [Other Focus Stabilization Modalities](#other-focus-stabilization-modalities)
 
 ## 3. microEye Launcher
@@ -111,7 +112,7 @@ To run the application from a terminal:
 Ensure you have a Micro-Manager configuration prepared for focus stabilization. There are few possible scenarios:
 
 1. **Controlling Both Z-Piezo and CMOS via Micro-Manager:**  
-   Since a Micro-Manager instance typically manages a single acquisition camera, you will need to create an additional configuration and launch a separate instance for the IR CMOS and piezo stage.
+   Since a Micro-Manager instance typically manages a single acquisition camera, you will need to create an additional configuration and launch a separate instance for the NIR CMOS and piezo stage.
 
 2. **Controlling the Z-Piezo with one Micro-Manager instance and the CMOS camera with another:**  
    This approach is helpful if you do not have a dedicated Z-Piezo controller and require XYZ stage control in your main Micro-Manager instance. In this case, use your primary instance for stage control and create an additional Micro-Manager instance configured only with the CMOS camera.
@@ -185,7 +186,7 @@ To establish a bridge connection to a Micro-Manager Core instance using the `miE
 
    ![Z Stage](images/z_stage.png)
 
-### Adding the IR Camera
+### Adding the NIR Camera
 
 1. Once the bridge connection is established, go to the `Cameras List` in the `miEye module` and click `Refresh List` to update the available cameras.
 
@@ -201,56 +202,88 @@ To establish a bridge connection to a Micro-Manager Core instance using the `miE
 
 ## 9. Focus Stabilization Control
 
-Once the IR camera and Z-stage are configured, you can enable and control focus stabilization within the `miEye module`.
+Once the NIR camera and Z-stage are configured, you can enable and control focus stabilization within the `miEye module`.
 
 ![Focus Stabilization](images/focus_stabilization.png)
 
 1. Go to the `Focus Stabilization` tab in the `miEye module`.
 2. The interface displays three plots:
 
-   - the top shows the live IR camera feed;
+   - the top shows the live NIR camera feed;
    - the middle displays the linear ROI profile with its Gaussian fit;
    - and the bottom displays the Gaussian center position over the last 500 frames.
 
 3. Center the Z-Piezo within its range.
 
-### IR back-reflected beam configuration
+### NIR back-reflected beam configuration
 
 1. Place a sample on the microscope (e.g., TetraSpeck beads or a dye sandwich) and bring it into focus.
 
-2. Adjust the linear ROI (size, length, angle) using its handles so it follows the path of the IR beam as the stage is moved several micrometers above and below focus.
+2. Adjust the linear ROI (size, length, angle) using its handles so it follows the path of the NIR beam as the stage is moved several micrometers above and below focus.
 
    > You can export or import ROI settings as needed.
 
-3. Set the IR camera framerate to approximately 15 Hz and adjust the exposure time to avoid saturating the detector.
+3. Set the NIR camera framerate to approximately 15 Hz and adjust the exposure time to avoid saturating the detector.
 4. If the linear ROI profile appears noisy, increase the `Line Width` of the ROI to reduce noise.
 5. To lock focus, enable the `Stabilization Enabled` option in the right-hand panel.
 
    > If stabilization fails (e.g., rapid sample drift out of focus), try inverting the ROI by selecting the `Inverted` checkbox.
 
 6. Fine-tune the PID control parameters to suit your system.
-    - In most IR back-reflected beam setups, adjusting the `P` (proportional) coefficient is usually sufficient.
+    - In most NIR back-reflected beam setups, adjusting the `P` (proportional) coefficient is usually sufficient.
     - You may also need to modify the `Error Threshold` to achieve optimal stabilization performance.
 7. Continuously monitor the live feedback to optimize stabilization performance. Test the system by applying intentional 1-micrometer Z or XY steps and observe how quickly the sample returns to focus. Use the peak position history plot to identify any overshoot, oscillations, slow response, or failure to maintain focus.
 
-   > **Note:** For optimal sensitivity, adjust your magnification and TIR angle so that the IR beam peak position shifts by approximately 20–80 nm per pixel.
+   > **Note:** For optimal sensitivity, adjust your magnification and TIR angle so that the NIR beam peak position shifts by approximately 20–80 nm per pixel.
+
+### NIR Fiducial Markers configuration
+
+![Focus Stabilization](images/focus_stabilization_fid.png)
+
+1. Place a sample containing NIR fiducial markers on the microscope and bring it into focus.
+
+2. Adjust the linear ROI (size, length, and angle) using its handles so that it encompasses the desired field of view or region containing the fiducial markers.
+
+   > You can export or import ROI settings as needed.
+
+3. Set the NIR camera framerate to 20 Hz and adjust the laser power to achieve the desired signal-to-noise ratio (SNR).
+
+4. In the focus stabilization settings, change the method from the default `reflection` to `beads astigmatic`.
+
+5. To lock focus, enable the `Stabilization Enabled` option in the right-hand panel.
+
+   > If stabilization fails (e.g., rapid sample drift out of focus), try inverting the ROI by selecting the `Inverted` checkbox.
+
+6. Fine-tune the PID control parameters to suit your system.
+
+> **Notes:**
+>
+> - This method relies on introducing astigmatism to resolve axial position, thereby eliminating directional ambiguity during focus stabilization.
+> - The focus parameter is the average sigma squared difference.
+> - Lateral (XY) drift is also measured and visualized in the middle plot, providing real-time feedback on sample stability.
 
 ## Optical Schemes
 
 This section outlines the optical configurations supported or planned for microEye focus stabilization.
 
-### IR Back-Reflected Beam
+### NIR Back-Reflected Beam
 
-![IR Beam Path Schematic](images/ir_scheme.png)
+![NIR Beam Path Schematic](images/ir_scheme.png)
 
 > **Notes:**
 >
 > - The 200 mm lens can be removed to directly image the sample plane. When included, it is intentionally set slightly out of focus to enhance sensitivity as an alternative to changing the magnification.
 > - The schematic is simplified and intended for illustrative purposes only.
 
-### IR Fiducial Marker Scheme
+### NIR Fiducial Marker Scheme
 
-> *Content to be added in a future update. This modality will describe the use of IR fiducial markers for focus stabilization.*
+![NIR Fiducials Schematic](images/ir_scheme_fid.png)
+
+> **Notes:**
+>
+> - The excitation scheme is not shown; fiducials should be excited using available suitable lasers.
+> - The 300 mm lens can be swapped to adjust the image magnification and sampling, depending on your camera’s pixel size and desired projected pixel size.
+> - The schematic is simplified and intended for illustrative purposes only.
 
 ### Other Focus Stabilization Modalities
 

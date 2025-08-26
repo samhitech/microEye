@@ -84,7 +84,6 @@ class miDummy(miCamera):
         self._height = kwargs.get('height', 512)
         self._width = kwargs.get('width', 512)
 
-
         self.binning_horizontal = kwargs.get('binning_horizontal', 1)
         self.binning_vertical = kwargs.get('binning_vertical', 1)
         self.bit_depth = kwargs.get('bit_depth', 12)
@@ -113,7 +112,10 @@ class miDummy(miCamera):
 
         # Gaussian pattern Drift parameters
         self.drift_current_velocity = 0.0  # Current drift velocity
-        self.drift_center = self.width // 2
+        self.drift_center_x = self.width // 2
+        self.drift_center_y = self.height // 2
+        self.drift_center_z = 0.0
+        self.drift_fiducials = None
         self.drift_speed = 0.10
         self.drift_period = 80
         self.drift_momentum = 0.85
@@ -361,6 +363,41 @@ class miDummy(miCamera):
 
         return pattern
 
+    def get_drift(self, time: float) -> float:
+        '''
+        Generate a random drift shift accounting for various factors.
+
+        Parameters
+        ----------
+        time : float
+            The current time.
+
+        Returns
+        -------
+        float
+            The amount of drift shift.
+        '''
+
+        # 1. Slow sinusoidal drift (thermal/mechanical creep)
+        slow_drift = np.sin(2 * np.pi * time / self.drift_period)
+        # 2. Brownian motion / random walk component
+        # (use momentum to avoid jerky movement)
+        random_component = np.random.normal(0, self.drift_random_walk_factor)
+        self.drift_current_velocity = (
+            self.drift_momentum * self.drift_current_velocity
+            + (1 - self.drift_momentum) * random_component
+        )
+        # 3. Small high-frequency vibrations (building vibrations, etc)
+        vibration = (
+            self.drift_vibration_amplitude * np.sin(0.1 * time) * np.random.random()
+        )
+        # Combine all drift components
+        drift_amount = (
+            slow_drift * self.drift_speed + self.drift_current_velocity + vibration
+        )
+
+        return drift_amount
+
     def get_gaussian_beam_pattern(
         self,
         time: float,
@@ -393,37 +430,19 @@ class miDummy(miCamera):
             A 2D numpy array representing the Gaussian beam pattern.
         '''
         if center_x is None:
-            # 1. Slow sinusoidal drift (thermal/mechanical creep)
-            slow_drift = np.sin(2 * np.pi * time / self.drift_period)
-            # 2. Brownian motion / random walk component
-            # (use momentum to avoid jerky movement)
-            random_component = np.random.normal(0, self.drift_random_walk_factor)
-            self.drift_current_velocity = (
-                self.drift_momentum * self.drift_current_velocity
-                + (1 - self.drift_momentum) * random_component
-            )
-            # 3. Small high-frequency vibrations (building vibrations, etc)
-            vibration = (
-                self.drift_vibration_amplitude * np.sin(0.1 * time) * np.random.random()
-            )
-            # Combine all drift components
-            drift_amount = (
-                slow_drift * self.drift_speed
-                + self.drift_current_velocity
-                + vibration
-            )
+            drift_amount = self.get_drift(time)
 
             # Update drift center with bounds checking
-            self.drift_center += drift_amount
+            self.drift_center_x += drift_amount
             edge_margin = max(10, self.width // 10)
-            if self.drift_center < edge_margin:
-                self.drift_center = edge_margin
+            if self.drift_center_x < edge_margin:
+                self.drift_center_x = edge_margin
                 self.drift_current_velocity *= -0.5  # Bounce back with damping
-            elif self.drift_center > self.width - edge_margin:
-                self.drift_center = self.width - edge_margin
+            elif self.drift_center_x > self.width - edge_margin:
+                self.drift_center_x = self.width - edge_margin
                 self.drift_current_velocity *= -0.5  # Bounce back with damping
 
-            center_x = self.drift_center
+            center_x = self.drift_center_x
         if center_y is None:
             center_y = self.height // 2
 
@@ -435,6 +454,115 @@ class miDummy(miCamera):
             -((X - center_x) ** 2) / (2 * self.drift_sigma_x**2)
             - ((Y - center_y) ** 2) / (2 * self.drift_sigma_y**2)
         )
+
+        if pattern.min() < 0:
+            pattern += abs(pattern.min())
+
+        return pattern
+
+    def get_astigmatic_fiducials_pattern(
+        self,
+        time: float,
+        center_x: Optional[float] = None,
+        center_y: Optional[float] = None,
+        center_z: Optional[float] = None,
+    ):
+        '''
+        Generate astigmatic fiducial markers for the flux array.
+
+        It simulates axial drift by altering the sigma_x and sigma_y parameters.
+        It simulates XY drift by altering the overall drift_center.
+
+        Parameters
+        ----------
+        time : float
+            The current time.
+        center_x : float, optional
+            The x-coordinate of the center of the fiducial markers
+        center_y : float, optional
+            The y-coordinate of the center of the fiducial markers
+        center_z : float, optional
+            The z-coordinate of the center of the fiducial markers
+
+        Returns
+        -------
+        ndarray
+            A 2D numpy array representing the astigmatic fiducial markers.
+        '''
+
+        drift = [self.get_drift(time) for _ in range(3)]
+
+        if center_x is None:
+            drift_amount = drift[0]
+
+            # Update drift center with bounds checking
+            self.drift_center_x += drift_amount * 0.1
+            edge_margin = max(10, self.width // 10)
+            if self.drift_center_x < edge_margin:
+                self.drift_center_x = edge_margin
+                self.drift_current_velocity *= -0.1  # Bounce back with damping
+            elif self.drift_center_x > self.width - edge_margin:
+                self.drift_center_x = self.width - edge_margin
+                self.drift_current_velocity *= -0.1  # Bounce back with damping
+
+            center_x = self.drift_center_x
+        if center_y is None:
+            drift_amount = drift[1]
+            self.drift_center_y += drift_amount * 0.1
+            edge_margin = max(10, self.height // 10)
+            if self.drift_center_y < edge_margin:
+                self.drift_center_y = edge_margin
+                self.drift_current_velocity *= -0.1  # Bounce back with damping
+            elif self.drift_center_y > self.height - edge_margin:
+                self.drift_center_y = self.height - edge_margin
+                self.drift_current_velocity *= -0.1  # Bounce back with damping
+            center_y = self.drift_center_y
+        if center_z is None:
+            drift_amount = drift[2]
+            self.drift_center_z += drift_amount * 10  # Z drift is faster
+
+            if self.drift_center_z < -400:
+                self.drift_center_z = -400
+                self.drift_current_velocity *= -0.1  # Bounce back with damping
+            elif self.drift_center_z > 400:
+                self.drift_center_z = 400
+                self.drift_current_velocity *= -0.1  # Bounce back with damping
+
+            center_z = self.drift_center_z
+
+        # convert center Z to sigma x and y
+        sigma_0 = 3  # at Z = 0
+        sigma_ratio_min = 0.25  # at Z min
+        sigma_ratio_max = 4.0  # at Z max
+        sigma_ratio = np.interp(
+            self.drift_center_z, [-400, 0, 400], [sigma_ratio_min, 1, sigma_ratio_max]
+        )  # sigma x / y
+        sigma_x = sigma_0 if sigma_ratio >= 1 else sigma_0 * sigma_ratio
+        sigma_y = sigma_0 if sigma_ratio <= 1 else sigma_0 / sigma_ratio
+
+        x = np.arange(self.width)
+        y = np.arange(self.height)
+        X, Y = np.meshgrid(x, y)
+
+        if self.drift_fiducials is None:
+            # generate random X Y points for the fiducials
+            self.drift_fiducials = np.random.normal(
+                loc=[center_x, center_y], scale=[50, 50], size=(5, 2)
+            )
+
+        pattern = self.drift_amplitude * np.exp(
+            -((X - center_x) ** 2) / (2 * sigma_x**2)
+            - ((Y - center_y) ** 2) / (2 * sigma_y**2)
+        )
+
+        for fid in self.drift_fiducials:
+            x = fid[0]
+            y = fid[1]
+
+            pattern += self.drift_amplitude * np.exp(
+                -((X - x) ** 2) / (2 * sigma_x**2)
+                - ((Y - y) ** 2) / (2 * sigma_y**2)
+            )
 
         if pattern.min() < 0:
             pattern += abs(pattern.min())
@@ -475,6 +603,8 @@ class miDummy(miCamera):
             flux = 0
         elif self.pattern_type.lower() == 'gaussian':
             flux = self.get_gaussian_beam_pattern(time, center_x=None, center_y=None)
+        elif self.pattern_type.lower() == 'astigmatic fiducials':
+            flux = self.get_astigmatic_fiducials_pattern(time)
         else:
             flux = self.flux
 

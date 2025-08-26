@@ -81,7 +81,7 @@ class AcquisitionManager(QtCore.QObject):
 
         if data is not None:
             coeff = np.polyfit(data[:, 0], data[:, 1], 1)
-            FocusStabilizer.instance().setPixelCalCoeff(coeff[0])
+            FocusStabilizer.instance().setCalCoeff(coeff[0])
             plot_z_cal(data, coeff)
 
     def result_scan_export(self, data: list[TileImage]):
