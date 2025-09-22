@@ -4,14 +4,15 @@ from microEye.hardware.stages.stage import (
     AbstractStage,
     Axis,
     Units,
-    ZStageParams,
-    ZStageView,
+    emit_after_signal,
 )
 from microEye.qt import QtCore
 
 
-class PzFoc(AbstractStage):
+class PiezoConceptFOC(AbstractStage):
     '''PiezoConcept FOC 1-axis stage adapter.'''
+
+    NAME = 'PiezoConcept FOC 1-axis'
 
     def __init__(self, max_um: int = 100):
         '''
@@ -23,32 +24,23 @@ class PzFoc(AbstractStage):
             Maximum stage position in micrometers (default is 100 um).
         '''
         super().__init__(
-            name='PiezoConcept FOC 1-axis',
-            max_range=(0, 0, max_um * 1000),
+            name=PiezoConceptFOC.NAME,
+            max_range=(max_um * 1000,),
             units=Units.NANOMETERS,
+            axes=(Axis.Z,),
             readyRead=self.read_serial_data,
         )
 
-        self.position = self.z_max_nm // 2
-
-    @property
-    def position(self) -> int:
-        '''Current stage position in nanometers.'''
-        return self.get_position(Axis.Z)
-
-    @position.setter
-    def position(self, value: int):
-        '''Set the current stage position in nanometers.'''
-        self.set_position(Axis.Z, value)
+        self.z = self.z_max // 2
 
     def is_open(self):
         return self.serial.isOpen()
 
-    def connect(self):
+    def open(self):
         if not self.is_open():
             self.serial.open(QtCore.QIODevice.OpenModeFlag.ReadWrite)
 
-    def disconnect(self):
+    def close(self):
         if self.is_open():
             self.serial.close()
 
@@ -87,26 +79,28 @@ class PzFoc(AbstractStage):
             self.send_command(b'GET_Z\n')
             self.last_command = 'GETZ'
 
-    def move_absolute(self, pos: int):
+    @emit_after_signal('moveFinished')
+    def move_absolute(self, x, y, z, **kwargs):
         if self.is_open():
-            self.position = min(max(pos, 0), self.z_max_nm)
-            self.send_command(f'MOVEZ {pos}n\n'.encode())
+            self.z = min(max(z, 0), self.z_max)
+            self.send_command(f'MOVEZ {z}n\n'.encode())
             self.last_command = 'MOVEZ'
 
     def home(self):
-        self.move_absolute(self.z_max_nm // 2)
+        self.move_absolute(0, 0, self.z_max // 2)
 
     def stop(self):
-        return super().stop()
+        pass
 
-    def move_relative(self, pos: int):
+    @emit_after_signal('moveFinished')
+    def move_relative(self, x, y, z, **kwargs):
         if self.is_open():
-            self.position = min(max(self.position + pos, 0), self.z_max_nm)
-            self.send_command(f'MOVEZ {self.position}n\n'.encode())
+            self.z = min(max(self.z + z, 0), self.z_max)
+            self.send_command(f'MOVEZ {self.z}n\n'.encode())
             self.last_command = 'MOVEZ'
 
     def refresh_position(self):
-        self.move_absolute(self.position)
+        self.move_absolute(0, 0, self.z)
 
     def read_serial_data(self):
         '''
@@ -128,8 +122,4 @@ class PzFoc(AbstractStage):
             match = re.search(r' *(\d+\.\d+).*um.*', self.received_data)
             if match:
                 # self.ZPosition = int(float(match.group(1)) * 1000)
-                self.signals.positionChanged.emit(float(match.group(1)))
-
-    def getQWidget(self):
-        '''Generates a ZStageView with stage controls.'''
-        return ZStageView(stage=self)
+                self.signals.positionChanged.emit(self, float(match.group(1)), Axis.Z)

@@ -1,8 +1,11 @@
 import logging
 from ctypes import *
+from enum import Enum
+from typing import Any
 
 import numpy as np
 
+from microEye.hardware.cams.camera_options import CamParams
 from microEye.hardware.cams.micam import miCamera
 
 try:
@@ -81,6 +84,33 @@ color_modes_ = {
     ueye.IS_COLORMODE_CBYCRY: 'IS_COLORMODE_CBYCRY',
     ueye.IS_COLORMODE_JPEG: 'IS_COLORMODE_JPEG',
 }
+
+
+class uEyeParams(Enum):
+    FREERUN = 'Acquisition.Start (Freerun)'
+    TRIGGERED = 'Acquisition.Start (Triggered)'
+    STOP = 'Acquisition.Stop'
+    PIXEL_CLOCK = 'Acquisition Settings.Pixel Clock (MHz)'
+    FRAMERATE = 'Acquisition Settings.Framerate Slider'
+    FRAME_AVERAGING = 'Acquisition Settings.Frame Averaging'
+    TRIGGER_MODE = 'Acquisition Settings.Trigger Mode'
+    FLASH_MODE = 'Acquisition Settings.Flash Mode'
+    FLASH_DURATION = 'Acquisition Settings.Flash Duration Slider'
+    FLASH_DELAY = 'Acquisition Settings.Flash Delay Slider'
+    LOAD = 'Acquisition Settings.Load'
+    SAVE = 'Acquisition Settings.Save'
+
+    def __str__(self):
+        '''
+        Return the last part of the enum value (Param name).
+        '''
+        return self.value.split('.')[-1]
+
+    def get_path(self):
+        '''
+        Return the full parameter path.
+        '''
+        return self.value.split('.')
 
 
 class IDS_Camera(miCamera):
@@ -185,6 +215,8 @@ class IDS_Camera(miCamera):
         self.trigger_mode = None
         self.temperature = -127
 
+        self.initialize()
+
     def initialize(self):
         '''Starts the driver and establishes the connection to the camera'''
         nRet = ueye.is_InitCamera(self.hCam, None)
@@ -265,8 +297,25 @@ class IDS_Camera(miCamera):
         self.get_exposure(output)
         self.get_flash_range(output)
 
-    @staticmethod
-    def get_camera_list(output=False):
+    def get_metadata(self):
+        '''
+        Returns the metadata for the camera.
+
+        Returns
+        -------
+        dict
+            A dictionary containing the metadata for the camera.
+        '''
+        return {
+            'CHANNEL_NAME': self.name,
+            'DET_MANUFACTURER': 'IDS uEye',
+            'DET_MODEL': self.sInfo.strSensorName.decode('utf-8'),
+            'DET_SERIAL': self.cInfo.SerNo.decode('utf-8'),
+            'DET_TYPE': 'CMOS',
+        }
+
+    @classmethod
+    def get_camera_list(cls, output=False):
         '''Gets the list of available IDS cameras
 
         Parameters
@@ -459,7 +508,12 @@ class IDS_Camera(miCamera):
 
         self.width = self.rectROI.s32Width
         self.height = self.rectROI.s32Height
-        return nRet
+        return (
+            self.rectROI.s32X.value,
+            self.rectROI.s32Y.value,
+            self.rectROI.s32Width.value,
+            self.rectROI.s32Height.value
+            )
 
     def set_roi(self, x, y, width, height):
         '''Sets the size and position of an
@@ -1021,3 +1075,94 @@ class IDS_Camera(miCamera):
     def dispose(self):
         nRet = ueye.is_ExitCamera(self.hCam)
         return nRet
+
+    def property_tree(self) -> list[dict[str, Any]]:
+        PIXEL_CLOCK = {
+            'name': str(uEyeParams.PIXEL_CLOCK),
+            'type': 'list',
+            'limits': list(map(str, self.pixel_clock_list[:])),
+        }
+        FRAMERATE = {
+            'name': str(uEyeParams.FRAMERATE),
+            'type': 'float',
+            'value': int(self.current_framerate.value),
+            'dec': False,
+            'decimals': 6,
+            'step': self.increment_framerate.value,
+            'limits': [self.min_framerate.value, self.max_framerate.value],
+            'suffix': 'Hz',
+        }
+        FRAME_AVERAGING = {
+            'name': str(uEyeParams.FRAME_AVERAGING),
+            'type': 'int',
+            'value': 1,
+            'dec': False,
+            'decimals': 6,
+            'limits': [1, 512],
+            'suffix': 'frame',
+        }
+        TRIGGER_MODE = {
+            'name': str(uEyeParams.TRIGGER_MODE),
+            'type': 'list',
+            'limits': list(IDS_Camera.TRIGGER_MODES.keys()),
+        }
+        FLASH_MODE = {
+            'name': str(uEyeParams.FLASH_MODE),
+            'type': 'list',
+            'limits': list(IDS_Camera.FLASH_MODES.keys()),
+        }
+        FLASH_DURATION = {
+            'name': str(uEyeParams.FLASH_DURATION),
+            'type': 'int',
+            'value': 0,
+            'dec': False,
+            'decimals': 6,
+            'suffix': 'us',
+            'step': self.flash_inc.u32Duration.value,
+            'limits': [0, self.flash_max.u32Duration.value],
+        }
+        FLASH_DELAY = {
+            'name': str(uEyeParams.FLASH_DELAY),
+            'type': 'int',
+            'value': 0,
+            'dec': False,
+            'decimals': 6,
+            'suffix': 'us',
+            'step': self.flash_inc.s32Delay.value,
+            'limits': [0, self.flash_max.s32Delay.value],
+        }
+        FREERUN = {
+            'name': str(uEyeParams.FREERUN),
+            'type': 'action',
+            'parent': CamParams.ACQUISITION,
+        }
+        TRIGGERED = {
+            'name': str(uEyeParams.TRIGGERED),
+            'type': 'action',
+            'parent': CamParams.ACQUISITION,
+        }
+        STOP = {
+            'name': str(uEyeParams.STOP),
+            'type': 'action',
+            'parent': CamParams.ACQUISITION,
+        }
+        LOAD = {'name': str(uEyeParams.LOAD), 'type': 'action'}
+        SAVE = {'name': str(uEyeParams.SAVE), 'type': 'action'}
+
+        return [
+            PIXEL_CLOCK,
+            FRAMERATE,
+            FRAME_AVERAGING,
+            TRIGGER_MODE,
+            FLASH_MODE,
+            FLASH_DURATION,
+            FLASH_DELAY,
+            FREERUN,
+            TRIGGERED,
+            STOP,
+            LOAD,
+            SAVE,
+        ]
+
+    def update_cam(self, param, path, param_value):
+        pass

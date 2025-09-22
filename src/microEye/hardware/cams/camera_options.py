@@ -22,6 +22,7 @@ class CamParams(Enum):
     CAMERA_GPIO = 'GPIOs'
     CAMERA_TIMERS = 'Timers'
     EXPOSURE = 'Acquisition Settings.Exposure Time'
+    EXPORTS = 'Exports'
     SAVE_DIRECTORY = 'Exports.Save Directory'
     DARK_CALIBRATION = 'Exports.Dark Calibration'
     IMAGE_FORMAT = 'Exports.Image Format'
@@ -29,10 +30,12 @@ class CamParams(Enum):
     ZARR_FORMAT = 'Exports.Zarr Format'
     BIGG_TIFF_FORMAT = 'Exports.BiggTiff Format'
     FULL_METADATA = 'Exports.Full Metadata'
+    STATS = 'Stats'
     CAPTURE_STATS = 'Stats.Capture'
     DISPLAY_STATS = 'Stats.Display'
     SAVE_STATS = 'Stats.Save'
     TEMPERATURE = 'Stats.Temperature'
+    ROI = 'Region of Interest (ROI)'
     ROI_X = 'Region of Interest (ROI).X'
     ROI_Y = 'Region of Interest (ROI).Y'
     ROI_WIDTH = 'Region of Interest (ROI).Width'
@@ -46,6 +49,7 @@ class CamParams(Enum):
     EXPORTED_ROIS = 'Region of Interest (ROI).Export ROIs.ROIs'
     EXPORT_ROIS_SEPERATE = 'Region of Interest (ROI).Export ROIs.Seperate Files'
     EXPORT_ROIS_FLIPPED = 'Region of Interest (ROI).Export ROIs.Flip Horizontally'
+    DISPLAY = 'Display'
     PREVIEW = 'Display.Preview'
     DISPLAY_STATS_OPTION = 'Display.Display Stats'
     AUTO_STRETCH = 'Display.Auto Stretch'
@@ -164,7 +168,7 @@ class CameraOptions(Tree):
                 ],
             },
             {
-                'name': 'Exports',
+                'name': str(CamParams.EXPORTS),
                 'type': 'group',
                 'children': [
                     {
@@ -195,7 +199,7 @@ class CameraOptions(Tree):
                 ],
             },
             {
-                'name': 'Display',
+                'name': str(CamParams.DISPLAY),
                 'type': 'group',
                 'expanded': False,
                 'children': [
@@ -257,7 +261,7 @@ class CameraOptions(Tree):
                 ],
             },
             {
-                'name': 'Stats',
+                'name': str(CamParams.STATS),
                 'type': 'group',
                 'expanded': False,
                 'children': [
@@ -288,7 +292,7 @@ class CameraOptions(Tree):
                 ],
             },
             {
-                'name': 'Region of Interest (ROI)',
+                'name': str(CamParams.ROI),
                 'type': 'group',
                 'expanded': False,
                 'children': [
@@ -377,39 +381,22 @@ class CameraOptions(Tree):
         self.get_param(CamParams.IMPORT_STATE).sigActivated.connect(self.load_json)
         self.get_param(CamParams.EXPORT_STATE).sigActivated.connect(self.export_json)
 
-    def get_roi_info(self, vimba=False):
+    def get_roi_info(self):
         '''
         Get the region of interest (ROI) information.
-
-        Parameters
-        ----------
-        vimba : bool, optional
-            If True, returns ROI information suitable for Vimba API.
-            If False (default), returns ROI information in the default order.
 
         Returns
         -------
         tuple
             Tuple containing ROI X, ROI Y, ROI width, and ROI height.
-            If vimba is True, the order is (width, height, x, y).
-            If vimba is False, the order is (x, y, width, height).
         '''
-        if not vimba:
-            info = [
-                self.get_param_value(CamParams.ROI_X),
-                self.get_param_value(CamParams.ROI_Y),
-                self.get_param_value(CamParams.ROI_WIDTH),
-                self.get_param_value(CamParams.ROI_HEIGHT),
-            ]
-            return info
-        else:
-            info = [
-                self.get_param_value(CamParams.ROI_WIDTH),
-                self.get_param_value(CamParams.ROI_HEIGHT),
-                self.get_param_value(CamParams.ROI_X),
-                self.get_param_value(CamParams.ROI_Y),
-            ]
-            return info
+        info = [
+            self.get_param_value(CamParams.ROI_X),
+            self.get_param_value(CamParams.ROI_Y),
+            self.get_param_value(CamParams.ROI_WIDTH),
+            self.get_param_value(CamParams.ROI_HEIGHT),
+        ]
+        return info
 
     def set_roi_info(self, x: int, y: int, w: int, h: int):
         '''

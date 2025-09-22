@@ -6,6 +6,7 @@ from queue import Queue
 from typing import Union
 
 import numpy as np
+from pyqtgraph.parametertree import Parameter
 
 from microEye.analysis.tools.roi_selectors import (
     MultiRectangularROISelector,
@@ -103,12 +104,33 @@ class Camera_Panel(QtWidgets.QGroupBox):
         # Line Profiler
         self.lineProfiler = LineProfiler()
 
+        # Initialize the layout and widgets
+        self._init_layout()
+        # Initialize tabs
+        self._init_tabs()
+        # Initialize camera options
+        self._init_camera_options()
+
+        CameraOptions.combine_params(self.PARAMS)
+
+        # Initialize camera metadata
+        self._init_camera_metadata()
+        # Initialize camera specific settings
+        self._init_camera_specific()
+
+        # Initialize shortcuts
+        self._init_shortcuts()
+        # Initialize context menu
+        self._init_context_menu()
+
+    def _init_layout(self):
         # main layout
         self.main_layout = QtWidgets.QVBoxLayout()
 
         # set main layout
         self.setLayout(self.main_layout)
 
+    def _init_tabs(self):
         # the main tab widget
         self.main_tab_view = QtWidgets.QTabWidget()
         self.main_layout.addWidget(self.main_tab_view)
@@ -123,8 +145,61 @@ class Camera_Panel(QtWidgets.QGroupBox):
         if not self.mini:
             self.main_tab_view.addTab(self.OME_tab, 'OME-XML metadata')
 
+    def _init_camera_options(self):
         self.camera_options = CameraOptions()
+        self.first_tab.addWidget(self.camera_options)
+        self.first_tab.setStretchFactor(0, 1)
 
+        self.camera_options.get_param(
+            CamParams.EXPERIMENT_NAME
+        ).sigValueChanged.connect(
+            lambda x: self.OME_tab.set_param_value(
+                MetaParams.EXPERIMENT_NAME, x.value()
+            )
+        )
+
+        self.save_dir_layout = QtWidgets.QHBoxLayout()
+
+        self.camera_options.set_param_value(CamParams.SAVE_DIRECTORY, self._directory)
+        self.camera_options.directoryChanged.connect(
+            lambda value: self.directory_changed(value)
+        )
+
+        save_param = self.camera_options.get_param(CamParams.SAVE_DATA)
+        save_param.setOpts(enabled=not self.mini)
+        save_param.setValue(self.mini)
+
+        preview_param = self.camera_options.get_param(CamParams.PREVIEW)
+        preview_param.setValue(not self.mini)
+        preview_param.setOpts(enabled=not self.mini)
+
+        self.camera_options.get_param(CamParams.DISPLAY_STATS_OPTION).setOpts(
+            enabled=not self.mini
+        )
+        self.camera_options.get_param(CamParams.VIEW_OPTIONS).setOpts(
+            visible=not self.mini
+        )
+        self.camera_options.get_param(CamParams.RESIZE_DISPLAY).setOpts(
+            enabled=not self.mini
+        )
+
+        profiler_param = self.camera_options.get_param(CamParams.LINE_PROFILER)
+        profiler_param.setOpts(enabled=not self.mini)
+        profiler_param.sigStateChanged.connect(
+            lambda: self.lineProfiler.show()
+            if self.camera_options.get_param_value(CamParams.LINE_PROFILER)
+            else self.lineProfiler.hide()
+        )
+
+        self.camera_options.setROI.connect(lambda: self.set_ROI())
+        self.camera_options.resetROI.connect(lambda: self.reset_ROI())
+        self.camera_options.centerROI.connect(lambda: self.center_ROI())
+        self.camera_options.selectROI.connect(lambda: self.select_ROI())
+        self.camera_options.selectROIs.connect(lambda: self.select_ROIs())
+        # update params
+        self.camera_options.paramsChanged.connect(self.update_cam)
+
+    def _init_shortcuts(self):
         # Create the camera shortcuts widget
         self.cam_shortcuts = CameraShortcutsWidget(
             camera=self._cam,
@@ -212,6 +287,7 @@ class Camera_Panel(QtWidgets.QGroupBox):
             lambda: DisplayManager.instance().close_all_displays()
         )
 
+    def _init_context_menu(self):
         # Create the context menu
         menu = self.cam_shortcuts.create_context_menu(self.camera_options)
 
@@ -255,57 +331,32 @@ class Camera_Panel(QtWidgets.QGroupBox):
         self.camera_options.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.camera_options.customContextMenuRequested.connect(show_shortcuts)
 
-        self.first_tab.addWidget(self.camera_options)
-        self.first_tab.setStretchFactor(0, 1)
+    def _init_camera_metadata(self):
+        '''
+        Initialize camera metadata using `self.cam.get_metadata()` dictionary.
 
-        self.camera_options.get_param(
-            CamParams.EXPERIMENT_NAME
-        ).sigValueChanged.connect(
-            lambda x: self.OME_tab.set_param_value(
-                MetaParams.EXPERIMENT_NAME, x.value()
-            )
+        Keys used
+        ----------
+        - CHANNEL_NAME
+        - DET_MANUFACTURER
+        - DET_MODEL
+        - DET_SERIAL
+        - DET_TYPE
+        '''
+        meta = self.cam.get_metadata()
+        self.OME_tab.set_param_value(MetaParams.CHANNEL_NAME, meta['CHANNEL_NAME'])
+        self.OME_tab.set_param_value(
+            MetaParams.DET_MANUFACTURER, meta['DET_MANUFACTURER']
         )
+        self.OME_tab.set_param_value(MetaParams.DET_MODEL, meta['DET_MODEL'])
+        self.OME_tab.set_param_value(MetaParams.DET_SERIAL, meta['DET_SERIAL'])
+        self.OME_tab.set_param_value(MetaParams.DET_TYPE, meta['DET_TYPE'])
 
-        self.save_dir_layout = QtWidgets.QHBoxLayout()
-
-        self.camera_options.set_param_value(CamParams.SAVE_DIRECTORY, self._directory)
-        self.camera_options.directoryChanged.connect(
-            lambda value: self.directory_changed(value)
-        )
-
-        save_param = self.camera_options.get_param(CamParams.SAVE_DATA)
-        save_param.setOpts(enabled=not self.mini)
-        save_param.setValue(self.mini)
-
-        preview_param = self.camera_options.get_param(CamParams.PREVIEW)
-        preview_param.setValue(not self.mini)
-        preview_param.setOpts(enabled=not self.mini)
-
-        self.camera_options.get_param(CamParams.DISPLAY_STATS_OPTION).setOpts(
-            enabled=not self.mini
-        )
-        self.camera_options.get_param(CamParams.VIEW_OPTIONS).setOpts(
-            visible=not self.mini
-        )
-        self.camera_options.get_param(CamParams.RESIZE_DISPLAY).setOpts(
-            enabled=not self.mini
-        )
-
-        profiler_param = self.camera_options.get_param(CamParams.LINE_PROFILER)
-        profiler_param.setOpts(enabled=not self.mini)
-        profiler_param.sigStateChanged.connect(
-            lambda: self.lineProfiler.show()
-            if self.camera_options.get_param_value(CamParams.LINE_PROFILER)
-            else self.lineProfiler.hide()
-        )
-
-        self.camera_options.setROI.connect(lambda: self.set_ROI())
-        self.camera_options.resetROI.connect(lambda: self.reset_ROI())
-        self.camera_options.centerROI.connect(lambda: self.center_ROI())
-        self.camera_options.selectROI.connect(lambda: self.select_ROI())
-        self.camera_options.selectROIs.connect(lambda: self.select_ROIs())
-
-        CameraOptions.combine_params(self.PARAMS)
+    def _init_camera_specific(self):
+        '''
+        Initialize camera specific settings.
+        '''
+        pass
 
     @property
     def cam(self):
@@ -435,21 +486,115 @@ class Camera_Panel(QtWidgets.QGroupBox):
         '''
         return self.cam.acquisition
 
+    def update_ROI(self):
+        x, y, w, h = self.cam.get_roi()
+
+        self.camera_options.set_roi_info(x, y, w, h)
+
+    def update_cam(self, param: Union[Parameter, None], param_value):
+        path = self.camera_options.param_tree.childPath(param)
+
+        if path is None:
+            return
+
+        self.cam.update_cam(param, path, param_value)
+
+    def refresh_framerate(self, value=None):
+        pass
+
     def set_ROI(self):
         '''Sets the ROI for the slected camera'''
-        pass
+        if self.cam.acquisition:
+            QtWidgets.QMessageBox.warning(
+                self, 'Warning', 'Cannot set ROI while acquiring images!'
+            )
+            return  # if acquisition is already going on
+
+        self.cam.set_roi(*self.get_ROI())
+
+        self.update_ROI()
+        self.refresh_framerate()
 
     def reset_ROI(self):
         '''Resets the ROI for the slected camera'''
-        pass
+        if self.cam.acquisition:
+            QtWidgets.QMessageBox.warning(
+                self, 'Warning', 'Cannot reset ROI while acquiring images!'
+            )
+            return  # if acquisition is already going on
+
+        self.cam.reset_roi()
+
+        self.update_ROI()
+        self.refresh_framerate()
 
     def center_ROI(self):
-        '''Sets the ROI for the slected camera'''
-        pass
+        '''Sets the x, y values for a centered ROI'''
+        if self.cam.acquisition:
+            QtWidgets.QMessageBox.warning(
+                self, 'Warning', 'Cannot center ROI while acquiring images!'
+            )
+            return  # if acquisition is already going on
+
+        _, _, roi_width, roi_height = self.get_ROI()
+
+        x = (int(self.cam.width) - roi_width) // 2
+        y = (int(self.cam.height) - roi_height) // 2
+
+        self.camera_options.set_roi_info(x, y, roi_width, roi_height)
+
+        self.set_ROI()
 
     def select_ROI(self):
-        '''Selects the ROI for the camera'''
-        raise NotImplementedError('The select_ROI function is not implemented yet.')
+        '''
+        Opens a dialog to select a ROI from the last image.
+        '''
+        if self.cam.acquisition:
+            QtWidgets.QMessageBox.warning(
+                self, 'Warning', 'Cannot set ROI while acquiring images!'
+            )
+            return  # if acquisition is already going on
+
+        if self.acq_job is not None:
+            try:
+
+                def work_func(**kwargs):
+                    try:
+                        image = uImage(self.acq_job.frame.image)
+
+                        image.equalizeLUT(nLUT=True)
+
+                        scale_factor = get_scaling_factor(image.height, image.width)
+
+                        selector = MultiRectangularROISelector.get_selector(
+                            image._view, scale_factor, max_rois=1
+                        )
+                        # if old_rois:
+                        #     selector.rois = old_rois
+
+                        rois = selector.select_rectangular_rois()
+
+                        rois = convert_rois_to_pos_size(rois)
+
+                        if len(rois) > 0:
+                            return rois[0]
+                        else:
+                            return None
+                    except Exception:
+                        traceback.print_exc()
+                        return None
+
+                def done(result: list):
+                    if result is not None:
+                        # x, y, w, h = result
+                        self.camera_options.set_roi_info(*result)
+
+                self.worker = QThreadWorker(work_func)
+                self.worker.signals.result.connect(done)
+                # Execute
+                self._threadpool.start(self.worker)
+            except Exception:
+                traceback.print_exc()
 
     def select_ROIs(self):
         '''
@@ -526,12 +671,7 @@ class Camera_Panel(QtWidgets.QGroupBox):
         tuple[int, int, int, int]
             The ROI as (x, y, width, height).
         '''
-        x = self.camera_options.get_param_value(CamParams.ROI_X)
-        y = self.camera_options.get_param_value(CamParams.ROI_Y)
-        w = self.camera_options.get_param_value(CamParams.ROI_WIDTH)
-        h = self.camera_options.get_param_value(CamParams.ROI_HEIGHT)
-
-        return x, y, w, h
+        return self.camera_options.get_roi_info()
 
     def roi_shortcuts(self, fov: float, single: bool, software: bool):
         '''
@@ -796,6 +936,10 @@ class Camera_Panel(QtWidgets.QGroupBox):
             Has to be implemented by the use in child class.
         '''
         raise NotImplementedError('The cam_capture function is not implemented yet.')
+
+    def dispose(self):
+        '''Clean up resources used by the camera panel.'''
+        pass
 
 
 def cam_save(params: AcquisitionJob, **kwargs):

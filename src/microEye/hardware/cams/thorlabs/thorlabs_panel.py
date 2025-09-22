@@ -1,12 +1,6 @@
 import json
 import traceback
-from enum import Enum
 
-from microEye.analysis.tools.roi_selectors import (
-    MultiRectangularROISelector,
-    convert_pos_size_to_rois,
-    convert_rois_to_pos_size,
-)
 from microEye.hardware.cams.camera_options import CamParams
 from microEye.hardware.cams.camera_panel import Camera_Panel
 from microEye.hardware.cams.thorlabs.thorlabs import (
@@ -14,6 +8,7 @@ from microEye.hardware.cams.thorlabs.thorlabs import (
     FLASH_MODE,
     IS_DONT_WAIT,
     TRIGGER,
+    ThorCamParams,
     thorlabs_camera,
 )
 from microEye.qt import (
@@ -24,43 +19,14 @@ from microEye.qt import (
     getOpenFileName,
     getSaveFileName,
 )
-from microEye.utils.gui_helper import get_scaling_factor
 from microEye.utils.metadata_tree import MetaParams
-from microEye.utils.thread_worker import QThreadWorker
-from microEye.utils.uImage import uImage
-
-
-class ThorCamParams(Enum):
-    FREERUN = 'Acquisition.Start (Freerun)'
-    TRIGGERED = 'Acquisition.Start (Triggered)'
-    STOP = 'Acquisition.Stop'
-    PIXEL_CLOCK = 'Acquisition Settings.Pixel Clock (MHz)'
-    FRAMERATE = 'Acquisition Settings.Framerate Slider'
-    FRAME_AVERAGING = 'Acquisition Settings.Frame Averaging'
-    TRIGGER_MODE = 'Acquisition Settings.Trigger Mode'
-    FLASH_MODE = 'Acquisition Settings.Flash Mode'
-    FLASH_DURATION = 'Acquisition Settings.Flash Duration Slider'
-    FLASH_DELAY = 'Acquisition Settings.Flash Delay Slider'
-    LOAD = 'Acquisition Settings.Load'
-    SAVE = 'Acquisition Settings.Save'
-
-    def __str__(self):
-        '''
-        Return the last part of the enum value (Param name).
-        '''
-        return self.value.split('.')[-1]
-
-    def get_path(self):
-        '''
-        Return the full parameter path.
-        '''
-        return self.value.split('.')
 
 
 class Thorlabs_Panel(Camera_Panel):
     '''
     A Qt Widget for controlling a Thorlabs Camera | Inherits Camera_Panel
     '''
+
     PARAMS = ThorCamParams
 
     def __init__(self, cam: thorlabs_camera, mini: bool = False, *args, **kwargs):
@@ -87,44 +53,23 @@ class Thorlabs_Panel(Camera_Panel):
         '''
         super().__init__(cam, mini, *args, **kwargs)
 
+    def _init_camera_specific(self):
         # flag true to close camera adapter and dispose it
         self._dispose_cam = False
 
-        self.OME_tab.set_param_value(MetaParams.CHANNEL_NAME, self._cam.name)
-        self.OME_tab.set_param_value(MetaParams.DET_MANUFACTURER, 'Thorlabs')
-        self.OME_tab.set_param_value(
-            MetaParams.DET_MODEL, self._cam.sInfo.strSensorName.decode('utf-8')
-        )
-        self.OME_tab.set_param_value(
-            MetaParams.DET_SERIAL, self._cam.cInfo.SerNo.decode('utf-8')
-        )
-        self.OME_tab.set_param_value(MetaParams.DET_TYPE, 'CMOS')
+        for prop in self.cam.property_tree():
+            self.camera_options.add_param_child(
+                prop.pop('parent', CamParams.ACQ_SETTINGS), prop
+            )
 
         # pixel clock label and combobox
-        pixel_clock = {
-            'name': str(ThorCamParams.PIXEL_CLOCK),
-            'type': 'list',
-            'limits': list(map(str, self._cam.pixel_clock_list[:])),
-        }
-        self.camera_options.add_param_child(CamParams.ACQ_SETTINGS, pixel_clock)
         self.camera_options.get_param(
             ThorCamParams.PIXEL_CLOCK
         ).sigValueChanged.connect(
-            lambda: self.cam_pixel_cbox_changed(ThorCamParams.PIXEL_CLOCK)
+            lambda: self.cam_pixel_clock_changed(ThorCamParams.PIXEL_CLOCK)
         )
 
         # framerate slider control
-        framerate = {
-            'name': str(ThorCamParams.FRAMERATE),
-            'type': 'float',
-            'value': int(self._cam.current_framerate.value),
-            'dec': False,
-            'decimals': 6,
-            'step': self._cam.increment_framerate.value,
-            'limits': [self._cam.min_framerate.value, self._cam.max_framerate.value],
-            'suffix': 'Hz',
-        }
-        self.camera_options.add_param_child(CamParams.ACQ_SETTINGS, framerate)
         self.camera_options.get_param(ThorCamParams.FRAMERATE).sigValueChanged.connect(
             self.cam_framerate_value_changed
         )
@@ -134,15 +79,9 @@ class Thorlabs_Panel(Camera_Panel):
         exposure.setLimits((self._cam.exposure_range[0], self._cam.exposure_range[1]))
         exposure.setOpts(step=self._cam.exposure_range[2], suffix='ms')
         exposure.setValue(self._cam.exposure_current.value)
-        exposure.sigValueChanged.connect(self.exposure_spin_changed)
+        exposure.sigValueChanged.connect(self.exposure_changed)
 
         # trigger mode combobox
-        trigger_mode = {
-            'name': str(ThorCamParams.TRIGGER_MODE),
-            'type': 'list',
-            'limits': list(TRIGGER.TRIGGER_MODES.keys()),
-        }
-        self.camera_options.add_param_child(CamParams.ACQ_SETTINGS, trigger_mode)
         self.camera_options.get_param(
             ThorCamParams.TRIGGER_MODE
         ).sigValueChanged.connect(
@@ -150,50 +89,21 @@ class Thorlabs_Panel(Camera_Panel):
         )
 
         # flash mode combobox
-        flash_mode = {
-            'name': str(ThorCamParams.FLASH_MODE),
-            'type': 'list',
-            'limits': list(FLASH_MODE.FLASH_MODES.keys()),
-            'enabled': not self.mini,
-        }
-        self.camera_options.add_param_child(CamParams.ACQ_SETTINGS, flash_mode)
-        self.camera_options.get_param(ThorCamParams.FLASH_MODE).sigValueChanged.connect(
+        flash_mode = self.camera_options.get_param(ThorCamParams.FLASH_MODE)
+        flash_mode.setOpts(enabled=not self.mini)
+        flash_mode.sigValueChanged.connect(
             lambda: self.cam_flash_cbox_changed(ThorCamParams.FLASH_MODE)
         )
 
         # flash duration slider
-        falsh_duration = {
-            'name': str(ThorCamParams.FLASH_DURATION),
-            'type': 'int',
-            'value': 0,
-            'dec': False,
-            'decimals': 6,
-            'suffix': 'us',
-            'enabled': not self.mini,
-            'step': self._cam.flash_inc.u32Duration,
-            'limits': [0, self._cam.flash_max.u32Duration],
-        }
-        self.camera_options.add_param_child(CamParams.ACQ_SETTINGS, falsh_duration)
-        self.camera_options.get_param(
-            ThorCamParams.FLASH_DURATION
-        ).sigValueChanged.connect(self.cam_flash_duration_value_changed)
+        falsh_duration = self.camera_options.get_param(ThorCamParams.FLASH_DURATION)
+        falsh_duration.setOpts(enabled=not self.mini)
+        falsh_duration.sigValueChanged.connect(self.cam_flash_duration_value_changed)
 
         # flash delay
-        falsh_delay = {
-            'name': str(ThorCamParams.FLASH_DELAY),
-            'type': 'int',
-            'value': 0,
-            'dec': False,
-            'decimals': 6,
-            'suffix': 'us',
-            'enabled': not self.mini,
-            'step': self._cam.flash_inc.s32Delay,
-            'limits': [0, self._cam.flash_max.s32Delay],
-        }
-        self.camera_options.add_param_child(CamParams.ACQ_SETTINGS, falsh_delay)
-        self.camera_options.get_param(
-            ThorCamParams.FLASH_DELAY
-        ).sigValueChanged.connect(self.cam_flash_delay_value_changed)
+        falsh_delay = self.camera_options.get_param(ThorCamParams.FLASH_DELAY)
+        falsh_delay.setOpts(enabled=not self.mini)
+        falsh_delay.sigValueChanged.connect(self.cam_flash_delay_value_changed)
 
         # setting the highest pixel clock as default
         self.camera_options.set_param_value(
@@ -201,35 +111,25 @@ class Thorlabs_Panel(Camera_Panel):
         )
 
         # start freerun mode
-        freerun = self.get_event_action(ThorCamParams.FREERUN)
-        self.camera_options.add_param_child(CamParams.ACQUISITION, freerun)
         self.camera_options.get_param(ThorCamParams.FREERUN).sigActivated.connect(
             self.start_free_run
         )
 
         # start trigger mode button
-        triggered = self.get_event_action(ThorCamParams.TRIGGERED)
-        self.camera_options.add_param_child(CamParams.ACQUISITION, triggered)
         self.camera_options.get_param(ThorCamParams.TRIGGERED).sigActivated.connect(
             self.start_software_triggered
         )
 
         # stop acquisition
-        stop = {'name': str(ThorCamParams.STOP), 'type': 'action'}
-        self.camera_options.add_param_child(CamParams.ACQUISITION, stop)
         self.camera_options.get_param(ThorCamParams.STOP).sigActivated.connect(
             lambda: self.stop()
         )
 
         # config buttons
-        load = {'name': str(ThorCamParams.LOAD), 'type': 'action'}
-        self.camera_options.add_param_child(CamParams.ACQ_SETTINGS, load)
         self.camera_options.get_param(ThorCamParams.LOAD).sigActivated.connect(
             lambda: self.load_config()
         )
 
-        save = {'name': str(ThorCamParams.SAVE), 'type': 'action'}
-        self.camera_options.add_param_child(CamParams.ACQ_SETTINGS, save)
         self.camera_options.get_param(ThorCamParams.SAVE).sigActivated.connect(
             lambda: self.save_config()
         )
@@ -264,117 +164,6 @@ class Thorlabs_Panel(Camera_Panel):
         '''
         self._cam = cam
 
-    def set_ROI(self):
-        '''Sets the ROI for the slected thorlabs_camera'''
-        if self.cam.acquisition:
-            QtWidgets.QMessageBox.warning(
-                self, 'Warning', 'Cannot set ROI while acquiring images!'
-            )
-            return  # if acquisition is already going on
-
-        self.cam.set_roi(*self.camera_options.get_roi_info())
-
-        # setting the highest pixel clock as default
-        self.camera_options.set_param_value(
-            ThorCamParams.PIXEL_CLOCK, str(self._cam.pixel_clock_list[0])
-        )
-        self.camera_options.set_param_value(
-            ThorCamParams.PIXEL_CLOCK, str(self._cam.pixel_clock_list[-1])
-        )
-
-        self.camera_options.set_roi_info(
-            self.cam.set_rectROI.s32X,
-            self.cam.set_rectROI.s32Y,
-            self.cam.set_rectROI.s32Width,
-            self.cam.set_rectROI.s32Height,
-        )
-
-    def reset_ROI(self):
-        '''Resets the ROI for the slected thorlabs_camera'''
-        if self.cam.acquisition:
-            QtWidgets.QMessageBox.warning(
-                self, 'Warning', 'Cannot reset ROI while acquiring images!'
-            )
-            return  # if acquisition is already going on
-
-        self.cam.reset_roi()
-        self.camera_options.set_roi_info(0, 0, self.cam.width, self.cam.height)
-
-        # setting the highest pixel clock as default
-        self.camera_options.set_param_value(
-            ThorCamParams.PIXEL_CLOCK, str(self._cam.pixel_clock_list[0])
-        )
-        self.camera_options.set_param_value(
-            ThorCamParams.PIXEL_CLOCK, str(self._cam.pixel_clock_list[-1])
-        )
-
-    def center_ROI(self):
-        '''Calculates the x, y values for a centered ROI'''
-        if self.cam.acquisition:
-            QtWidgets.QMessageBox.warning(
-                self, 'Warning', 'Cannot center ROI while acquiring images!'
-            )
-            return  # if acquisition is already going on
-
-        _, _, w, h = self.camera_options.get_roi_info()
-        x = (self.cam.rectROI.s32Width - w) // 2
-        y = (self.cam.rectROI.s32Height - h) // 2
-
-        self.camera_options.set_roi_info(x, y, w, h)
-
-        self.set_ROI()
-
-    def select_ROI(self):
-        '''
-        Opens a dialog to select a ROI from the last image.
-        '''
-        if self.cam.acquisition:
-            QtWidgets.QMessageBox.warning(
-                self, 'Warning', 'Cannot set ROI while acquiring images!'
-            )
-            return  # if acquisition is already going on
-
-        if self.acq_job.frame is not None:
-            try:
-
-                def work_func(**kwargs):
-                    try:
-                        image = uImage(self.acq_job.frame.image)
-
-                        image.equalizeLUT(nLUT=True)
-
-                        scale_factor = get_scaling_factor(image.height, image.width)
-
-                        selector = MultiRectangularROISelector.get_selector(
-                            image._view, scale_factor, max_rois=1
-                        )
-                        # if old_rois:
-                        #     selector.rois = old_rois
-
-                        rois = selector.select_rectangular_rois()
-
-                        rois = convert_rois_to_pos_size(rois)
-
-                        if len(rois) > 0:
-                            return rois[0]
-                        else:
-                            return None
-                    except Exception:
-                        traceback.print_exc()
-                        return None
-
-                def done(result: list):
-                    if result is not None:
-                        # x, y, w, h = result
-                        self.camera_options.set_roi_info(*result)
-
-                self.worker = QThreadWorker(work_func)
-                self.worker.signals.result.connect(done)
-                # Execute
-                self._threadpool.start(self.worker)
-            except Exception:
-                traceback.print_exc()
-
     @Slot(str)
     def cam_trigger_cbox_changed(self, param: ThorCamParams):
         '''
@@ -404,7 +193,7 @@ class Thorlabs_Panel(Camera_Panel):
         self._cam.get_flash_mode(output=True)
 
     @Slot(str)
-    def cam_pixel_cbox_changed(self, param: ThorCamParams):
+    def cam_pixel_clock_changed(self, param: ThorCamParams):
         '''
         Slot for changed pixel clock
 
@@ -441,7 +230,7 @@ class Thorlabs_Panel(Camera_Panel):
 
         self.refresh_exposure()
 
-    def exposure_spin_changed(self, param, value):
+    def exposure_changed(self, param, value):
         '''
         Slot for changed exposure
 
@@ -458,7 +247,7 @@ class Thorlabs_Panel(Camera_Panel):
         self.camera_options.set_param_value(
             CamParams.EXPOSURE,
             self._cam.exposure_current.value,
-            self.exposure_spin_changed,
+            self.exposure_changed,
         )
 
         self.refresh_flash()
@@ -467,7 +256,7 @@ class Thorlabs_Panel(Camera_Panel):
         if self.master:
             self.exposureChanged.emit()
 
-    def refresh_framerate(self, range=False):
+    def refresh_framerate(self, value=None):
         self._cam.get_framerate_range(False)
 
         framerate = self.camera_options.get_param(ThorCamParams.FRAMERATE)
@@ -671,6 +460,10 @@ class Thorlabs_Panel(Camera_Panel):
         '''
         args = []
         return args
+
+    def dispose(self):
+        self.cam.free_memory()
+        self.cam.dispose()
 
     def save_config(self):
         filename, _ = getSaveFileName(

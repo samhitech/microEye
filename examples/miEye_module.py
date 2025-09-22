@@ -1,17 +1,5 @@
-from microEye.hardware import miEye_module
+from microEye.hardware.mieye import miEye_module
 
-try:
-    import vimba as vb
-except Exception:
-    vb = None
+app, window = miEye_module.StartGUI()
 
-
-if vb:
-    with vb.Vimba.get_instance() as vimba:
-        app, window = miEye_module.StartGUI()
-
-        app.exec()
-else:
-    app, window = miEye_module.StartGUI()
-
-    app.exec()
+app.exec()

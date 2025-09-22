@@ -1,53 +1,17 @@
 import json
 import logging
 import traceback
-from enum import Enum
 
-from microEye.analysis.tools.roi_selectors import (
-    MultiRectangularROISelector,
-    convert_pos_size_to_rois,
-    convert_rois_to_pos_size,
-)
 from microEye.hardware.cams.camera_options import CamParams
 from microEye.hardware.cams.camera_panel import Camera_Panel
-from microEye.hardware.cams.ueye.ueye_camera import IDS_Camera
+from microEye.hardware.cams.ueye.ueye_camera import IDS_Camera, uEyeParams
 from microEye.qt import QDateTime, QtCore, QtWidgets, getOpenFileName, getSaveFileName
-from microEye.utils.gui_helper import get_scaling_factor
 from microEye.utils.metadata_tree import MetaParams
-from microEye.utils.thread_worker import QThreadWorker
-from microEye.utils.uImage import uImage
 
 try:
     from pyueye import ueye
 except Exception:
     ueye = None
-
-
-class uEyeParams(Enum):
-    FREERUN = 'Acquisition.Start (Freerun)'
-    TRIGGERED = 'Acquisition.Start (Triggered)'
-    STOP = 'Acquisition.Stop'
-    PIXEL_CLOCK = 'Acquisition Settings.Pixel Clock (MHz)'
-    FRAMERATE = 'Acquisition Settings.Framerate Slider'
-    FRAME_AVERAGING = 'Acquisition Settings.Frame Averaging'
-    TRIGGER_MODE = 'Acquisition Settings.Trigger Mode'
-    FLASH_MODE = 'Acquisition Settings.Flash Mode'
-    FLASH_DURATION = 'Acquisition Settings.Flash Duration Slider'
-    FLASH_DELAY = 'Acquisition Settings.Flash Delay Slider'
-    LOAD = 'Acquisition Settings.Load'
-    SAVE = 'Acquisition Settings.Save'
-
-    def __str__(self):
-        '''
-        Return the last part of the enum value (Param name).
-        '''
-        return self.value.split('.')[-1]
-
-    def get_path(self):
-        '''
-        Return the full parameter path.
-        '''
-        return self.value.split('.')
 
 
 class IDS_Panel(Camera_Panel):
@@ -80,42 +44,21 @@ class IDS_Panel(Camera_Panel):
         '''
         super().__init__(cam, mini, *args, **kwargs)
 
+
+    def _init_camera_specific(self):
         # flag true to close camera adapter and dispose it
         self._dispose_cam = False
 
-        self.OME_tab.set_param_value(MetaParams.CHANNEL_NAME, self._cam.name)
-        self.OME_tab.set_param_value(MetaParams.DET_MANUFACTURER, 'IDS uEye')
-        self.OME_tab.set_param_value(
-            MetaParams.DET_MODEL, cam.sInfo.strSensorName.decode('utf-8')
-        )
-        self.OME_tab.set_param_value(
-            MetaParams.DET_SERIAL, cam.cInfo.SerNo.decode('utf-8')
-        )
-        self.OME_tab.set_param_value(MetaParams.DET_TYPE, 'CMOS')
+        for prop in self.cam.property_tree():
+            self.camera_options.add_param_child(
+                prop.pop('parent', CamParams.ACQ_SETTINGS), prop)
 
         # pixel clock label and combobox
-        pixel_clock = {
-            'name': str(uEyeParams.PIXEL_CLOCK),
-            'type': 'list',
-            'limits': list(map(str, self._cam.pixel_clock_list[:])),
-        }
-        self.camera_options.add_param_child(CamParams.ACQ_SETTINGS, pixel_clock)
         self.camera_options.get_param(uEyeParams.PIXEL_CLOCK).sigValueChanged.connect(
             lambda: self.cam_pixel_cbox_changed(uEyeParams.PIXEL_CLOCK)
         )
 
         # framerate slider control
-        framerate = {
-            'name': str(uEyeParams.FRAMERATE),
-            'type': 'float',
-            'value': int(self._cam.current_framerate.value),
-            'dec': False,
-            'decimals': 6,
-            'step': self._cam.increment_framerate.value,
-            'limits': [self._cam.min_framerate.value, self._cam.max_framerate.value],
-            'suffix': 'Hz',
-        }
-        self.camera_options.add_param_child(CamParams.ACQ_SETTINGS, framerate)
         self.camera_options.get_param(uEyeParams.FRAMERATE).sigValueChanged.connect(
             self.cam_framerate_value_changed
         )
@@ -129,72 +72,29 @@ class IDS_Panel(Camera_Panel):
         exposure.setValue(self._cam.exposure_current.value)
         exposure.sigValueChanged.connect(self.exposure_spin_changed)
 
-        # Averaging choice
-        averaging = {
-            'name': str(uEyeParams.FRAME_AVERAGING),
-            'type': 'int',
-            'value': 1,
-            'dec': False,
-            'decimals': 6,
-            'limits': [1, 512],
-            'suffix': 'frame',
-        }
-        self.camera_options.add_param_child(CamParams.ACQ_SETTINGS, averaging)
-
         # trigger mode combobox
-        trigger_mode = {
-            'name': str(uEyeParams.TRIGGER_MODE),
-            'type': 'list',
-            'limits': list(IDS_Camera.TRIGGER_MODES.keys()),
-        }
-        self.camera_options.add_param_child(CamParams.ACQ_SETTINGS, trigger_mode)
         self.camera_options.get_param(uEyeParams.TRIGGER_MODE).sigValueChanged.connect(
             lambda: self.cam_trigger_cbox_changed(uEyeParams.TRIGGER_MODE)
         )
 
         # flash mode combobox
-        flash_mode = {
-            'name': str(uEyeParams.FLASH_MODE),
-            'type': 'list',
-            'limits': list(IDS_Camera.FLASH_MODES.keys()),
-            'enabled': not self.mini,
-        }
-        self.camera_options.add_param_child(CamParams.ACQ_SETTINGS, flash_mode)
-        self.camera_options.get_param(uEyeParams.FLASH_MODE).sigValueChanged.connect(
+        flash_mode = self.camera_options.get_param(uEyeParams.FLASH_MODE)
+        flash_mode.setOpts(enabled=not self.mini)
+        flash_mode.sigValueChanged.connect(
             lambda: self.cam_flash_cbox_changed(uEyeParams.FLASH_MODE)
         )
 
         # flash duration slider
-        falsh_duration = {
-            'name': str(uEyeParams.FLASH_DURATION),
-            'type': 'int',
-            'value': 0,
-            'dec': False,
-            'decimals': 6,
-            'suffix': 'us',
-            'enabled': not self.mini,
-            'step': self._cam.flash_inc.u32Duration.value,
-            'limits': [0, self._cam.flash_max.u32Duration.value],
-        }
-        self.camera_options.add_param_child(CamParams.ACQ_SETTINGS, falsh_duration)
-        self.camera_options.get_param(
+        falsh_duration = self.camera_options.get_param(
             uEyeParams.FLASH_DURATION
-        ).sigValueChanged.connect(self.cam_flash_duration_value_changed)
+        )
+        falsh_duration.setOpts(enabled=not self.mini)
+        falsh_duration.sigValueChanged.connect(self.cam_flash_duration_value_changed)
 
         # flash delay
-        falsh_delay = {
-            'name': str(uEyeParams.FLASH_DELAY),
-            'type': 'int',
-            'value': 0,
-            'dec': False,
-            'decimals': 6,
-            'suffix': 'us',
-            'enabled': not self.mini,
-            'step': self._cam.flash_inc.s32Delay.value,
-            'limits': [0, self._cam.flash_max.s32Delay.value],
-        }
-        self.camera_options.add_param_child(CamParams.ACQ_SETTINGS, falsh_delay)
-        self.camera_options.get_param(uEyeParams.FLASH_DELAY).sigValueChanged.connect(
+        flash_delay = self.camera_options.get_param(uEyeParams.FLASH_DELAY)
+        flash_delay.setOpts(enabled=not self.mini)
+        flash_delay.sigValueChanged.connect(
             self.cam_flash_delay_value_changed
         )
 
@@ -204,35 +104,25 @@ class IDS_Panel(Camera_Panel):
         )
 
         # start freerun mode
-        freerun = self.get_event_action(uEyeParams.FREERUN)
-        self.camera_options.add_param_child(CamParams.ACQUISITION, freerun)
         self.camera_options.get_param(uEyeParams.FREERUN).sigActivated.connect(
             self.start_free_run
         )
 
         # start trigger mode button
-        triggered = self.get_event_action(uEyeParams.TRIGGERED)
-        self.camera_options.add_param_child(CamParams.ACQUISITION, triggered)
         self.camera_options.get_param(uEyeParams.TRIGGERED).sigActivated.connect(
             self.start_software_triggered
         )
 
         # stop acquisition
-        stop = {'name': str(uEyeParams.STOP), 'type': 'action'}
-        self.camera_options.add_param_child(CamParams.ACQUISITION, stop)
         self.camera_options.get_param(uEyeParams.STOP).sigActivated.connect(
             lambda: self.stop()
         )
 
         # config buttons
-        load = {'name': str(uEyeParams.LOAD), 'type': 'action'}
-        self.camera_options.add_param_child(CamParams.ACQ_SETTINGS, load)
         self.camera_options.get_param(uEyeParams.LOAD).sigActivated.connect(
             lambda: self.load_config()
         )
 
-        save = {'name': str(uEyeParams.SAVE), 'type': 'action'}
-        self.camera_options.add_param_child(CamParams.ACQ_SETTINGS, save)
         self.camera_options.get_param(uEyeParams.SAVE).sigActivated.connect(
             lambda: self.save_config()
         )
@@ -269,13 +159,7 @@ class IDS_Panel(Camera_Panel):
 
     def set_ROI(self):
         '''Sets the ROI for the slected IDS_Camera'''
-        if self.cam.acquisition:
-            QtWidgets.QMessageBox.warning(
-                self, 'Warning', 'Cannot set ROI while acquiring images!'
-            )
-            return  # if acquisition is already going on
-
-        self.cam.set_roi(*self.camera_options.get_roi_info())
+        super().set_ROI()
 
         # setting the highest pixel clock as default
         self.camera_options.set_param_value(
@@ -283,27 +167,11 @@ class IDS_Panel(Camera_Panel):
         )
         self.camera_options.set_param_value(
             uEyeParams.PIXEL_CLOCK, str(self._cam.pixel_clock_list[-1].value)
-        )
-
-        self.camera_options.set_roi_info(
-            self.cam.set_rectROI.s32X.value,
-            self.cam.set_rectROI.s32Y.value,
-            self.cam.set_rectROI.s32Width.value,
-            self.cam.set_rectROI.s32Height.value,
         )
 
     def reset_ROI(self):
         '''Resets the ROI for the slected IDS_Camera'''
-        if self.cam.acquisition:
-            QtWidgets.QMessageBox.warning(
-                self, 'Warning', 'Cannot reset ROI while acquiring images!'
-            )
-            return  # if acquisition is already going on
-
-        self.cam.reset_roi()
-        self.camera_options.set_roi_info(
-            0, 0, self.cam.width.value, self.cam.height.value
-        )
+        super().reset_ROI()
 
         # setting the highest pixel clock as default
         self.camera_options.set_param_value(
@@ -312,73 +180,6 @@ class IDS_Panel(Camera_Panel):
         self.camera_options.set_param_value(
             uEyeParams.PIXEL_CLOCK, str(self._cam.pixel_clock_list[-1].value)
         )
-
-    def center_ROI(self):
-        '''Calculates the x, y values for a centered ROI'''
-        if self.cam.acquisition:
-            QtWidgets.QMessageBox.warning(
-                self, 'Warning', 'Cannot center ROI while acquiring images!'
-            )
-            return  # if acquisition is already going on
-
-        _, _, w, h = self.camera_options.get_roi_info()
-        x = (self.cam.rectROI.s32Width.value - w) // 2
-        y = (self.cam.rectROI.s32Height.value - h) // 2
-
-        self.camera_options.set_roi_info(x, y, w, h)
-
-        self.set_ROI()
-
-    def select_ROI(self):
-        '''
-        Opens a dialog to select a ROI from the last image.
-        '''
-        if self.cam.acquisition:
-            QtWidgets.QMessageBox.warning(
-                self, 'Warning', 'Cannot set ROI while acquiring images!'
-            )
-            return  # if acquisition is already going on
-
-        if self.acq_job.frame is not None:
-            try:
-
-                def work_func(**kwargs):
-                    try:
-                        image = uImage(self.acq_job.frame.image)
-
-                        image.equalizeLUT(nLUT=True)
-
-                        scale_factor = get_scaling_factor(image.height, image.width)
-
-                        selector = MultiRectangularROISelector.get_selector(
-                            image._view, scale_factor, max_rois=1
-                        )
-                        # if old_rois:
-                        #     selector.rois = old_rois
-
-                        rois = selector.select_rectangular_rois()
-
-                        rois = convert_rois_to_pos_size(rois)
-
-                        if len(rois) > 0:
-                            return rois[0]
-                        else:
-                            return None
-                    except Exception:
-                        traceback.print_exc()
-                        return None
-
-                def done(result: list):
-                    if result is not None:
-                        # x, y, w, h = result
-                        self.camera_options.set_roi_info(*result)
-
-                self.worker = QThreadWorker(work_func)
-                self.worker.signals.result.connect(done)
-                # Execute
-                self._threadpool.start(self.worker)
-            except Exception:
-                traceback.print_exc()
 
     def cam_trigger_cbox_changed(self, param: uEyeParams):
         '''
@@ -471,7 +272,7 @@ class IDS_Panel(Camera_Panel):
         if self.master:
             self.exposureChanged.emit()
 
-    def refresh_framerate(self):
+    def refresh_framerate(self, value=None):
         self._cam.get_framerate_range(False)
 
         framerate = self.camera_options.get_param(uEyeParams.FRAMERATE)
@@ -684,6 +485,10 @@ class IDS_Panel(Camera_Panel):
         '''
         args = []
         return args
+
+    def dispose(self):
+        self.cam.free_memory()
+        self.cam.dispose()
 
     def save_config(self):
         filename, _ = getSaveFileName(

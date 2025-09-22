@@ -6,20 +6,18 @@ def main():
     module_name = ARGS.module
 
     if module_name == 'mieye':
+        # import faulthandler
+        # faulthandler.enable()
+
         from microEye.hardware.mieye import miEye_module
 
         try:
-            import vimba as vb
-        except Exception:
-            vb = None
-
-        if vb:
-            with vb.Vimba.get_instance() as vimba:
-                app, window = miEye_module.StartGUI()
-                app.exec()
-        else:
             app, window = miEye_module.StartGUI()
             app.exec()
+        except Exception:
+            import traceback
+
+            traceback.print_exc()
     elif module_name == 'viewer':
         from microEye.analysis.multi_viewer import multi_viewer
 

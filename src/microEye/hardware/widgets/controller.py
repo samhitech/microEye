@@ -4,14 +4,15 @@ import numpy as np
 import pyqtgraph as pg
 
 from microEye.hardware.stages.stabilizer import *
+from microEye.hardware.stages.stage import Axis
 from microEye.qt import QtWidgets
 from microEye.utils.gui_helper import GaussianOffSet
 
 
 class Controller(QtWidgets.QDockWidget):
-    stage_move_requested = Signal(str, int, float, bool)
-    stage_stop_requested = Signal(str)
-    stage_home_requested = Signal(str)
+    stage_move_requested = Signal(Axis, bool, bool, bool)
+    stage_stop_requested = Signal(Axis)
+    stage_home_requested = Signal(Axis)
     stage_toggle_lock = Signal(str)
 
     def __init__(self):
@@ -36,49 +37,6 @@ class Controller(QtWidgets.QDockWidget):
         main_widget = QtWidgets.QWidget()
         main_widget.setLayout(main_layout)
         self.setWidget(main_widget)
-
-        # Movement settings group
-        settings_group = QtWidgets.QGroupBox('Movement Settings')
-        settings_layout = QtWidgets.QGridLayout()
-
-        # XY Step size controls
-        self.xy_coarse_step = QtWidgets.QDoubleSpinBox()
-        self.xy_coarse_step.setRange(0, 5000.0)  # 1µm to 5mm
-        self.xy_coarse_step.setValue(500.0)
-        self.xy_coarse_step.setSingleStep(100.0)
-        self.xy_coarse_step.setSuffix(' µm')
-
-        self.xy_fine_step = QtWidgets.QDoubleSpinBox()
-        self.xy_fine_step.setRange(0.0, 100.0)  # 100nm to 10µm
-        self.xy_fine_step.setValue(50.0)
-        self.xy_fine_step.setSingleStep(5.0)
-        self.xy_fine_step.setSuffix(' µm')
-        self.xy_fine_step.setDecimals(3)
-
-        # Z Step size controls
-        self.z_coarse_step = QtWidgets.QDoubleSpinBox()
-        self.z_coarse_step.setRange(0.0, 10.0)  # 100nm to 10µm
-        self.z_coarse_step.setValue(1.0)
-        self.z_coarse_step.setSingleStep(0.5)
-        self.z_coarse_step.setSuffix(' µm')
-
-        self.z_fine_step = QtWidgets.QSpinBox()
-        self.z_fine_step.setRange(0, 1000)  # 1nm to 1µm
-        self.z_fine_step.setValue(100)
-        self.z_fine_step.setSingleStep(10)
-        self.z_fine_step.setSuffix(' nm')
-
-        # Layout for step controls
-        settings_layout.addWidget(QtWidgets.QLabel('XY Fine:'), 0, 0)
-        settings_layout.addWidget(self.xy_fine_step, 0, 1)
-        settings_layout.addWidget(QtWidgets.QLabel('XY Coarse:'), 1, 0)
-        settings_layout.addWidget(self.xy_coarse_step, 1, 1)
-        settings_layout.addWidget(QtWidgets.QLabel('Z Fine:'), 2, 0)
-        settings_layout.addWidget(self.z_fine_step, 2, 1)
-        settings_layout.addWidget(QtWidgets.QLabel('Z Coarse:'), 3, 0)
-        settings_layout.addWidget(self.z_coarse_step, 3, 1)
-
-        settings_group.setLayout(settings_layout)
 
         # XY Controls group
         xy_group = QtWidgets.QGroupBox('XY Control')
@@ -193,33 +151,40 @@ class Controller(QtWidgets.QDockWidget):
         options_layout.addWidget(self.snap_image_after_movement)
 
         # Add all groups to main layout
-        main_layout.addWidget(settings_group)
         main_layout.addLayout(controls_layout)
         main_layout.addWidget(options_group)
         main_layout.addStretch()
 
     def connect_signals(self):
         # XY coarse movements
-        self.btn_x_left.clicked.connect(lambda: self.move_stage('x', -1, 'coarse'))
-        self.btn_x_right.clicked.connect(lambda: self.move_stage('x', 1, 'coarse'))
-        self.btn_y_up.clicked.connect(lambda: self.move_stage('y', 1, 'coarse'))
-        self.btn_y_down.clicked.connect(lambda: self.move_stage('y', -1, 'coarse'))
+        self.btn_x_left.clicked.connect(lambda: self.move_stage(Axis.X, False, True))
+        self.btn_x_right.clicked.connect(lambda: self.move_stage(Axis.X, True, True))
+        self.btn_y_up.clicked.connect(lambda: self.move_stage(Axis.Y, True, True))
+        self.btn_y_down.clicked.connect(lambda: self.move_stage(Axis.Y, False, True))
 
         # XY fine movements
-        self.btn_x_left_fine.clicked.connect(lambda: self.move_stage('x', -1, 'fine'))
-        self.btn_x_right_fine.clicked.connect(lambda: self.move_stage('x', 1, 'fine'))
-        self.btn_y_up_fine.clicked.connect(lambda: self.move_stage('y', 1, 'fine'))
-        self.btn_y_down_fine.clicked.connect(lambda: self.move_stage('y', -1, 'fine'))
+        self.btn_x_left_fine.clicked.connect(
+            lambda: self.move_stage(Axis.X, False, False)
+        )
+        self.btn_x_right_fine.clicked.connect(
+            lambda: self.move_stage(Axis.X, True, False)
+        )
+        self.btn_y_up_fine.clicked.connect(lambda: self.move_stage(Axis.Y, True, False))
+        self.btn_y_down_fine.clicked.connect(
+            lambda: self.move_stage(Axis.Y, False, False)
+        )
 
-        self.btn_xy_stop.clicked.connect(lambda: self.stage_stop_requested.emit('xy'))
+        self.btn_xy_stop.clicked.connect(lambda: self.stage_stop_requested.emit(Axis.X))
 
         # Z movements
-        self.btn_z_up.clicked.connect(lambda: self.move_stage('z', 1, 'coarse'))
-        self.btn_z_down.clicked.connect(lambda: self.move_stage('z', -1, 'coarse'))
-        self.btn_z_up_fine.clicked.connect(lambda: self.move_stage('z', 1, 'fine'))
-        self.btn_z_down_fine.clicked.connect(lambda: self.move_stage('z', -1, 'fine'))
+        self.btn_z_up.clicked.connect(lambda: self.move_stage(Axis.Z, True, True))
+        self.btn_z_down.clicked.connect(lambda: self.move_stage(Axis.Z, False, True))
+        self.btn_z_up_fine.clicked.connect(lambda: self.move_stage(Axis.Z, True, False))
+        self.btn_z_down_fine.clicked.connect(
+            lambda: self.move_stage(Axis.Z, False, False)
+        )
 
-        self.btn_z_home.clicked.connect(lambda: self.stage_home_requested.emit('z'))
+        self.btn_z_home.clicked.connect(lambda: self.stage_home_requested.emit(Axis.Z))
         self.btn_z_toggle_stabilizer.clicked.connect(self.toggle_stabilizer)
 
     def toggle_stabilizer(self):
@@ -230,7 +195,7 @@ class Controller(QtWidgets.QDockWidget):
         -------
         None
         '''
-        self.stage_toggle_lock.emit('z')
+        self.stage_toggle_lock.emit(Axis.Z)
 
     def set_stabilizer_lock(self, lock: bool):
         '''Set the stabilizer lock state on the Z-axis. This method updates the
@@ -247,25 +212,9 @@ class Controller(QtWidgets.QDockWidget):
         '''
         self.btn_z_toggle_stabilizer.setText('🔒' if lock else '🔓')
 
-    def move_stage(self, axis, direction, mode):
-        if axis in ['x', 'y']:
-            step = (
-                self.xy_coarse_step.value()
-                if mode == 'coarse'
-                else self.xy_fine_step.value()
-            )
-            step /= 1000  # Convert to mm
-            # print(f'Moving {axis} axis by {distance} µm')
-        else:  # z-axis
-            if mode == 'coarse':
-                step = int(self.z_coarse_step.value() * 1000)
-                # print(f'Moving {axis} axis by {distance} µm')
-            else:
-                step = self.z_fine_step.value()
-                # print(f'Moving {axis} axis by {distance} nm')
-
+    def move_stage(self, axis: Axis, direction: bool, coarse: bool):
         self.stage_move_requested.emit(
-            axis, direction, step, self.snap_image_after_movement.isChecked()
+            axis, direction, coarse, self.snap_image_after_movement.isChecked()
         )
 
     def __str__(self):

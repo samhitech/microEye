@@ -1,5 +1,6 @@
 import ctypes
-from typing import Optional, Union
+from enum import Enum
+from typing import Any, Optional, Union
 
 import numpy as np
 from tabulate import tabulate
@@ -56,6 +57,49 @@ class miCamera:
         elif isinstance(self.exposure_current, (int, float)):
             return self.exposure_current
 
+    def set_roi(self, x: int, y: int, width: int, height: int):
+        '''
+        Set the region of interest.
+
+        This function sets the region of interest (ROI) for the camera.
+        The ROI is defined by the top-left corner coordinates (x, y)
+        and the width and height of the region.
+
+        Parameters
+        ----------
+        x : int
+            The x-coordinate of the top-left corner of the ROI.
+        y : int
+            The y-coordinate of the top-left corner of the ROI.
+        width : int
+            The width of the ROI.
+        height : int
+            The height of the ROI.
+
+        Returns
+        -------
+        None
+        '''
+        pass
+
+    def get_roi(self) -> tuple[int, int, int, int]:
+        '''
+        Return the current region of interest (ROI).
+
+        Returns
+        -------
+        Tuple[int, int, int, int]
+            The top-left corner coordinates (x, y) and the width and height of the ROI.
+        '''
+        pass
+
+    def reset_roi(self):
+        '''
+        Reset the region of interest.
+        '''
+        pass
+
+
     def populate_status(self):
         pass
 
@@ -64,6 +108,126 @@ class miCamera:
         for key in self.status:
             data = [[k, i] for k, i in self.status[key].items()]
             print(tabulate(data, headers=[key], tablefmt='rounded_grid'))
+
+    def property_tree(self) -> list[dict[str, Any]]:
+        '''
+        Get the property tree for the camera.
+
+        Returns
+        -------
+        list[dict[str, Any]]
+            A dictionary containing the property tree for the camera.
+        '''
+        return []
+
+    def update_cam(self, param, path: Optional[list[str]], param_value: Any):
+        '''Update the camera parameters.
+
+        Parameters
+        ----------
+        param : pyqtgraph.parametertree.Parameter
+            The parameter to update.
+        path : Optional[list[str]]
+            The path to the parameter in tree.
+        param_value : Any
+            The new value for the parameter.
+        '''
+        pass
+
+    def get_metadata(self) -> dict[str, Any]:
+        '''
+        Get the metadata for the camera.
+
+        Returns
+        -------
+        dict[str, Any]
+            A dictionary containing the metadata for the camera.
+
+        Example
+        -------
+        >>> return {
+            'CHANNEL_NAME': 'Cam 0',
+            'DET_MANUFACTURER': 'MicroEye',
+            'DET_MODEL': 'Dummy',
+            'DET_SERIAL': '123456789',
+            'DET_TYPE': 'CMOS',
+        }
+        '''
+        return {
+            'CHANNEL_NAME': 'NA',
+            'DET_MANUFACTURER': 'NA',
+            'DET_MODEL': 'NA',
+            'DET_SERIAL': 'NA',
+            'DET_TYPE': 'NA',
+        }
+
+    @classmethod
+    def get_camera_list(cls) -> list[dict[str, Any]]:
+        '''
+        Get a list of available cameras.
+
+        Returns
+        -------
+        list[dict]
+            A list of dictionaries containing camera information.
+        '''
+        return []
+
+
+class DummyParams(Enum):
+    FREERUN = 'Acquisition.Freerun'
+    STOP = 'Acquisition.Stop'
+    LOAD = 'Acquisition Settings.Load Config'
+    SAVE = 'Acquisition Settings.Save Config'
+    GAIN = 'Acquisition Settings.Gain'
+    OFFSET = 'Acquisition Settings.Offset'
+    HEIGHT = 'Acquisition Settings.Height'
+    WIDTH = 'Acquisition Settings.Width'
+    BINNING_HORIZONTAL = 'Acquisition Settings.Binning Horizontal'
+    BINNING_VERTICAL = 'Acquisition Settings.Binning Vertical'
+    BIT_DEPTH = 'Acquisition Settings.Bit Depth'
+    FULL_WELL_CAPACITY = 'Acquisition Settings.Full Well Capacity'
+    QUANTUM_EFFICIENCY = 'Acquisition Settings.Quantum Efficiency'
+    DARK_CURRENT = 'Acquisition Settings.Dark Current'
+    READOUT_NOISE = 'Acquisition Settings.Readout Noise'
+    NOISE_BASELINE = 'Acquisition Settings.Noise Baseline'
+    FLUX = 'Acquisition Settings.Flux'
+    PATTERN_TYPE = 'Acquisition Settings.Pattern Type'
+    PATTERN_OFFSET = 'Acquisition Settings.Pattern Offset'
+    PATTERN_SINUSOIDAL = 'Acquisition Settings.Sinusoidal Pattern'
+    SINUSOIDAL_FREQUENCY = 'Acquisition Settings.Sinusoidal Pattern.Frequency'
+    SINUSOIDAL_PHASE = 'Acquisition Settings.Sinusoidal Pattern.Phase'
+    SINUSOIDAL_AMPLITUDE = 'Acquisition Settings.Sinusoidal Pattern.Amplitude'
+    SINUSOIDAL_DIRECTION = 'Acquisition Settings.Sinusoidal Pattern.Direction'
+
+    DRIFT_SIM = 'Acquisition Settings.Drift Simulation'
+    DRIFT_SPEED = DRIFT_SIM + '.Speed [pixel/frames]'
+    DRIFT_PERIOD = DRIFT_SIM + '.Period [frames]'
+    DRIFT_MOMENTUM = DRIFT_SIM + '.Momentum Coefficient'
+    DRIFT_RANDOM_WALK = DRIFT_SIM + '.Random Walk Coefficient'
+    DRIFT_VIBRATION = DRIFT_SIM + '.Vibration Amplitude'
+    DRIFT_SIGMA_X = DRIFT_SIM + r'.$\sigma_x$ [pixels]'
+    DRIFT_SIGMA_Y = DRIFT_SIM + r'.$\sigma_y$ [pixels]'
+    DRIFT_AMPLITUDE = DRIFT_SIM + '.Amplitude'
+
+    SM = 'Acquisition Settings.Single Molecule Sim'
+    SM_INTENSITY = SM + '.Intensity [photons/loc]'
+    SM_DENSITY = SM + '.Density [loc/um]'
+    SM_WAVELENGTH = SM + '.Wavelength [nm]'
+    SM_PIXEL_SIZE = SM + '.Projected Pixel Size [nm]'
+    SM_NA = SM + '.Objective NA'
+
+    def __str__(self):
+        '''
+        Return the last part of the enum value (Param name).
+        '''
+        return self.value.split('.')[-1]
+
+    def get_path(self):
+        '''
+        Return the full parameter path.
+        '''
+        return self.value.split('.')
 
 
 class miDummy(miCamera):
@@ -189,28 +353,6 @@ class miDummy(miCamera):
         }
 
     def set_roi(self, x: int, y: int, width: int, height: int):
-        '''
-        Set the region of interest.
-
-        This function sets the region of interest (ROI) for the camera.
-        The ROI is defined by the top-left corner coordinates (x, y)
-        and the width and height of the region.
-
-        Parameters
-        ----------
-        x : int
-            The x-coordinate of the top-left corner of the ROI.
-        y : int
-            The y-coordinate of the top-left corner of the ROI.
-        width : int
-            The width of the ROI.
-        height : int
-            The height of the ROI.
-
-        Returns
-        -------
-        None
-        '''
         detector_width = self.width
         detector_height = self.height
 
@@ -224,14 +366,6 @@ class miDummy(miCamera):
             self.__roi = (x, y, width, height)
 
     def get_roi(self) -> tuple[int, int, int, int]:
-        '''
-        Return the current region of interest (ROI).
-
-        Returns
-        -------
-        Tuple[int, int, int, int]
-            The top-left corner coordinates (x, y) and the width and height of the ROI.
-        '''
         if self.__roi is None:
             return 0, 0, self.width, self.height
         else:
@@ -239,9 +373,6 @@ class miDummy(miCamera):
             return x, y, width, height
 
     def reset_roi(self):
-        '''
-        Reset the region of interest.
-        '''
         self.__roi = None
 
     def get_dummy_image(self, flux: Union[float, int, np.ndarray] = 10):
@@ -560,8 +691,7 @@ class miDummy(miCamera):
             y = fid[1]
 
             pattern += self.drift_amplitude * np.exp(
-                -((X - x) ** 2) / (2 * sigma_x**2)
-                - ((Y - y) ** 2) / (2 * sigma_y**2)
+                -((X - x) ** 2) / (2 * sigma_x**2) - ((Y - y) ** 2) / (2 * sigma_y**2)
             )
 
         if pattern.min() < 0:
@@ -610,8 +740,320 @@ class miDummy(miCamera):
 
         return self.get_dummy_image(flux)
 
-    @staticmethod
-    def get_camera_list():
+    def get_metadata(self) -> dict[str, Any]:
+        return {
+            'CHANNEL_NAME': self.name,
+            'DET_MANUFACTURER': 'MicroEye',
+            'DET_MODEL': 'Dummy',
+            'DET_SERIAL': '123456789',
+            'DET_TYPE': 'CMOS',
+        }
+
+    def property_tree(self):
+        HEIGHT = {
+            'name': str(DummyParams.HEIGHT),
+            'type': 'int',
+            'value': 512,
+            'limits': [0, 4096],
+        }
+        WIDTH = {
+            'name': str(DummyParams.WIDTH),
+            'type': 'int',
+            'value': 512,
+            'limits': [0, 4096],
+        }
+        BINNING_HORIZONTAL = {
+            'name': str(DummyParams.BINNING_HORIZONTAL),
+            'type': 'int',
+            'value': 1,
+            'limits': [0, 10],
+        }
+        BINNING_VERTICAL = {
+            'name': str(DummyParams.BINNING_VERTICAL),
+            'type': 'int',
+            'value': 1,
+            'limits': [0, 10],
+        }
+        BIT_DEPTH = {
+            'name': str(DummyParams.BIT_DEPTH),
+            'type': 'list',
+            'limits': [8, 10, 12, 16],
+            'value': 12,
+        }
+        GAIN = {'name': str(DummyParams.GAIN), 'type': 'float', 'value': 2.23}
+        FULL_WELL_CAPACITY = {
+            'name': str(DummyParams.FULL_WELL_CAPACITY),
+            'type': 'int',
+            'value': 9200,
+            'suffix': 'e-',
+        }
+        QUANTUM_EFFICIENCY = {
+            'name': str(DummyParams.QUANTUM_EFFICIENCY),
+            'type': 'float',
+            'value': 0.8,
+            'limits': [0, 1],
+        }
+        DARK_CURRENT = {
+            'name': str(DummyParams.DARK_CURRENT),
+            'type': 'float',
+            'value': 0.0001,
+            'suffix': ' e-/s',
+        }
+        READOUT_NOISE = {
+            'name': str(DummyParams.READOUT_NOISE),
+            'type': 'float',
+            'value': 2.1,
+            'suffix': ' e-',
+        }
+        NOISE_BASELINE = {
+            'name': str(DummyParams.NOISE_BASELINE),
+            'type': 'float',
+            'value': 5.0,
+            'limits': [0, 2**16],
+            'suffix': ' ADU',
+        }
+        FLUX = {
+            'name': str(DummyParams.FLUX),
+            'type': 'float',
+            'value': 0,
+            'suffix': ' e-/p/s',
+        }
+        PATTERN_TYPE = {
+            'name': str(DummyParams.PATTERN_TYPE),
+            'type': 'list',
+            'limits': [
+                'Constant Flux',
+                'Sinusoidal',
+                'Gaussian',
+                'Astigmatic Fiducials',
+                'Single Molecule Sim',
+            ],
+            'value': 'Sinusoidal',
+        }
+        PATTERN_OFFSET = {
+            'name': str(DummyParams.PATTERN_OFFSET),
+            'type': 'float',
+            'value': 0.0,
+            'suffix': ' e-',
+        }
+        PATTERN_SINUSOIDAL = {
+            'name': str(DummyParams.PATTERN_SINUSOIDAL),
+            'type': 'group',
+            'expanded': False,
+            'children': [
+                {
+                    'name': str(DummyParams.SINUSOIDAL_FREQUENCY),
+                    'type': 'float',
+                    'value': 0.01,
+                    'suffix': ' Hz',
+                },
+                {
+                    'name': str(DummyParams.SINUSOIDAL_PHASE),
+                    'type': 'float',
+                    'value': 0.0,
+                    'suffix': ' deg',
+                },
+                {
+                    'name': str(DummyParams.SINUSOIDAL_AMPLITUDE),
+                    'type': 'float',
+                    'value': 0.1e5,
+                    'suffix': ' e-/p/s',
+                },
+                {
+                    'name': str(DummyParams.SINUSOIDAL_DIRECTION),
+                    'type': 'list',
+                    'limits': ['d', 'h', 'v', 'r'],
+                    'value': 'd',
+                },
+            ],
+        }
+        SM_SIM = {
+            'name': str(DummyParams.SM),
+            'type': 'group',
+            'expanded': False,
+            'children': [
+                {
+                    'name': str(DummyParams.SM_INTENSITY),
+                    'type': 'float',
+                    'value': 5000,
+                    'decimals': 6,
+                },
+                {
+                    'name': str(DummyParams.SM_DENSITY),
+                    'type': 'float',
+                    'value': 0.5,
+                    'decimals': 6,
+                },
+                {
+                    'name': str(DummyParams.SM_PIXEL_SIZE),
+                    'type': 'float',
+                    'value': 114.17,
+                    'decimals': 6,
+                },
+                {
+                    'name': str(DummyParams.SM_WAVELENGTH),
+                    'type': 'float',
+                    'value': 650,
+                    'decimals': 6,
+                },
+                {
+                    'name': str(DummyParams.SM_NA),
+                    'type': 'float',
+                    'value': 1.49,
+                    'decimals': 6,
+                },
+            ],
+        }
+
+        # drift simulation
+        DRIFT_SIM = {
+            'name': str(DummyParams.DRIFT_SIM),
+            'type': 'group',
+            'expanded': False,
+            'children': [
+                {
+                    'name': str(DummyParams.DRIFT_SPEED),
+                    'type': 'float',
+                    'value': 0.1,
+                },
+                {
+                    'name': str(DummyParams.DRIFT_PERIOD),
+                    'type': 'int',
+                    'value': 90,
+                },
+                {
+                    'name': str(DummyParams.DRIFT_MOMENTUM),
+                    'type': 'float',
+                    'value': 0.8,
+                    'limits': [0, 1],
+                },
+                {
+                    'name': str(DummyParams.DRIFT_RANDOM_WALK),
+                    'type': 'float',
+                    'value': 0.80,
+                },
+                {
+                    'name': str(DummyParams.DRIFT_VIBRATION),
+                    'type': 'float',
+                    'value': 0.1,
+                },
+                {
+                    'name': str(DummyParams.DRIFT_SIGMA_X),
+                    'type': 'float',
+                    'value': 5,
+                },
+                {
+                    'name': str(DummyParams.DRIFT_SIGMA_Y),
+                    'type': 'float',
+                    'value': 20,
+                },
+                {
+                    'name': str(DummyParams.DRIFT_AMPLITUDE),
+                    'type': 'float',
+                    'value': 5000,
+                }
+            ],
+        }
+
+        return [
+            HEIGHT,
+            WIDTH,
+            BINNING_HORIZONTAL,
+            BINNING_VERTICAL,
+            BIT_DEPTH,
+            GAIN,
+            FULL_WELL_CAPACITY,
+            QUANTUM_EFFICIENCY,
+            DARK_CURRENT,
+            READOUT_NOISE,
+            NOISE_BASELINE,
+            FLUX,
+            PATTERN_TYPE,
+            PATTERN_OFFSET,
+            PATTERN_SINUSOIDAL,
+            DRIFT_SIM,
+            SM_SIM
+        ]
+
+    def update_cam(self, param, path, param_value):
+        if path is None:
+            return
+
+        param_value = param.value()
+
+        try:
+            param_name = DummyParams('.'.join(path))
+        except ValueError:
+            return
+
+        if param_name == DummyParams.HEIGHT:
+            self.height = param_value
+        elif param_name == DummyParams.WIDTH:
+            self.width = param_value
+        elif param_name == DummyParams.BINNING_HORIZONTAL:
+            self.binning_horizontal = param_value
+        elif param_name == DummyParams.BINNING_VERTICAL:
+            self.binning_vertical = param_value
+        elif param_name == DummyParams.BIT_DEPTH:
+            self.bit_depth = param_value
+        elif param_name == DummyParams.GAIN:
+            self.gain = param_value
+        elif param_name == DummyParams.FULL_WELL_CAPACITY:
+            self.full_well_capacity = param_value
+        elif param_name == DummyParams.QUANTUM_EFFICIENCY:
+            self.quantum_efficiency = param_value
+        elif param_name == DummyParams.DARK_CURRENT:
+            self.dark_current = param_value
+        elif param_name == DummyParams.READOUT_NOISE:
+            self.readout_noise = param_value
+        elif param_name == DummyParams.NOISE_BASELINE:
+            self.noise_baseline = param_value
+        elif param_name == DummyParams.FLUX:
+            self.flux = param_value
+        elif param_name == DummyParams.PATTERN_TYPE:
+            self.pattern_type = param_value
+        elif param_name == DummyParams.PATTERN_OFFSET:
+            self.pattern_offset = param_value
+
+        elif param_name == DummyParams.SINUSOIDAL_AMPLITUDE:
+            self.sinusoidal_amplitude = param_value
+        elif param_name == DummyParams.SINUSOIDAL_FREQUENCY:
+            self.sinusoidal_frequency = param_value
+        elif param_name == DummyParams.SINUSOIDAL_PHASE:
+            self.sinusoidal_phase = param_value
+        elif param_name == DummyParams.SINUSOIDAL_DIRECTION:
+            self.sinusoidal_direction = param_value
+
+        elif param_name == DummyParams.SM_INTENSITY:
+            self.sm_intensity = param_value
+        elif param_name == DummyParams.SM_DENSITY:
+            self.sm_density = param_value
+        elif param_name == DummyParams.SM_PIXEL_SIZE:
+            self.sm_pixel_size = param_value
+        elif param_name == DummyParams.SM_WAVELENGTH:
+            self.sm_wavelength = param_value
+        elif param_name == DummyParams.SM_NA:
+            self.sm_na = param_value
+
+        elif param_name == DummyParams.DRIFT_SPEED:
+            self.drift_speed = param_value
+        elif param_name == DummyParams.DRIFT_PERIOD:
+            self.drift_period = param_value
+        elif param_name == DummyParams.DRIFT_MOMENTUM:
+            self.drift_momentum = param_value
+        elif param_name == DummyParams.DRIFT_RANDOM_WALK:
+            self.drift_random_walk_factor = param_value
+        elif param_name == DummyParams.DRIFT_VIBRATION:
+            self.drift_vibration_amplitude = param_value
+        elif param_name == DummyParams.DRIFT_SIGMA_X:
+            self.drift_sigma_x = param_value
+        elif param_name == DummyParams.DRIFT_SIGMA_Y:
+            self.drift_sigma_y = param_value
+        elif param_name == DummyParams.DRIFT_AMPLITUDE:
+            self.drift_amplitude = param_value
+
+    @classmethod
+    def get_camera_list(cls):
         return [
             {
                 'Camera ID': 'Cam 0',

@@ -1,56 +1,54 @@
 import contextlib
-from typing import Optional
+import logging
+from enum import Enum
+from typing import Any, Optional
 
 import numpy as np
 from tabulate import tabulate
 
+from microEye.hardware.cams.camera_options import CamParams
 from microEye.hardware.cams.micam import miCamera
+from microEye.hardware.cams.vimba import INSTANCE, vb
 
-try:
-    import vimba as vb
 
-    def get_camera_list():
-        cam_list = []
-        with vb.Vimba.get_instance() as vimba:
-            cams = vimba.get_all_cameras()
-            for cam in cams:
-                cam_list.append(
-                    {
-                        'Camera ID': cam.get_id(),
-                        'Device ID': cam.get_interface_id(),
-                        'Sensor ID': 'NA',
-                        'Status': 'NA',
-                        'InUse': 0,
-                        'Model': cam.get_model(),
-                        'Serial': cam.get_serial(),
-                        'Driver': 'Vimba',
-                        'Name': cam.get_name(),
-                    }
-                )
-        return cam_list
+class VimbaParams(Enum):
+    FREERUN = 'Acquisition.Freerun'
+    STOP = 'Acquisition.Stop'
+    EXPOSURE_MODE = 'Acquisition Settings.Exposure Mode'
+    EXPOSURE_AUTO = 'Acquisition Settings.Exposure Auto'
+    FRAMERATE_ENABLED = 'Acquisition Settings.Frame Rate Enabled'
+    FRAMERATE = 'Acquisition Settings.Frame Rate'
+    TRIGGER_MODE = 'Acquisition Settings.Trigger Mode'
+    TRIGGER_SOURCE = 'Acquisition Settings.Trigger Source'
+    TRIGGER_SELECTOR = 'Acquisition Settings.Trigger Selector'
+    TRIGGER_ACTIVATION = 'Acquisition Settings.Trigger Activation'
+    PIXEL_FORMAT = 'Acquisition Settings.Pixel Format'
+    LOAD = 'Acquisition Settings.Load Config'
+    SAVE = 'Acquisition Settings.Save Config'
+    LINE_SELECTOR = 'GPIOs.Line Selector'
+    LINE_MODE = 'GPIOs.Line Mode'
+    LINE_SOURCE = 'GPIOs.Line Source'
+    LINE_INVERTER = 'GPIOs.Line Inverter'
+    SET_IO_CONFIG = 'GPIOs.Set IO Config'
+    TIMER_SELECTOR = 'Timers.Timer Selector'
+    TIMER_ACTIVATION = 'Timers.Timer Activation'
+    TIMER_SOURCE = 'Timers.Timer Source'
+    TIMER_DELAY = 'Timers.Timer Delay'
+    TIMER_DURATION = 'Timers.Timer Duration'
+    TIMER_RESET = 'Timers.Timer Reset'
+    SET_TIMER_CONFIG = 'Timers.Set Timer Config'
 
-    def get_camera(camera_id: Optional[str]) -> vb.Camera:  # type: ignore
-        with vb.Vimba.get_instance() as vimba:
-            if camera_id:
-                try:
-                    return vimba.get_camera_by_id(camera_id)
-                except vb.VimbaCameraError:
-                    print(f"Failed to access Camera '{camera_id}'. Abort.")
-            else:
-                cams = vimba.get_all_cameras()
-                if not cams:
-                    print('No Cameras accessible. Abort.')
-                    return None
+    def __str__(self):
+        '''
+        Return the last part of the enum value (Param name).
+        '''
+        return self.value.split('.')[-1]
 
-                return cams[0]
-except Exception:
-    vb = None
-
-    def get_camera_list():
-        return []
-
-    def get_camera(camera_id: Optional[str]):
-        return None
+    def get_path(self):
+        '''
+        Return the full parameter path.
+        '''
+        return self.value.split('.')
 
 
 class vimba_cam(miCamera):
@@ -59,9 +57,11 @@ class vimba_cam(miCamera):
     def __init__(self, camera_id=None):
         super().__init__(camera_id)
 
-        self.vimba = vb.Vimba.get_instance()
-        self.cam = get_camera(camera_id)
-        self.Cam_ID = self.cam.get_id()
+        self._vmb_context = None
+        self._cam_context = None
+        self.cam: Optional[vb.Camera] = None
+        self.Cam_ID = camera_id
+        self.cam = vimba_cam.get_camera(camera_id)
         self.name = self.cam.get_name()
         self.name = self.name.replace(' ', '_').replace('-', '_')
 
@@ -125,8 +125,98 @@ class vimba_cam(miCamera):
 
         self.initialize()
 
+    def __enter__(self):
+        '''Enter the context - initialize Vimba system and camera'''
+        try:
+            if INSTANCE is None:
+                return None
+
+            self._vmb_context = INSTANCE.__enter__()
+
+            # Get camera
+            if self.cam:
+                # self.cam = vimba_cam.get_camera(self.Cam_ID)
+                self._cam_context = self.cam.__enter__()
+
+                return self.cam
+            else:
+                return INSTANCE
+        except Exception as e:
+            # Cleanup on error
+            self.__exit__(type(e), e, e.__traceback__)
+            raise
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        '''Exit the context - cleanup camera and Vimba system'''
+        # Exit camera context first
+        if self._cam_context is not None and self.cam is not None:
+            try:
+                self.cam.__exit__(exc_type, exc_val, exc_tb)
+            except Exception as e:
+                logging.warning(f'Error exiting camera context: {e}')
+            finally:
+                self._cam_context = None
+
+        # Exit Vimba system context
+        if self._vmb_context is not None and INSTANCE is not None:
+            try:
+                INSTANCE.__exit__(exc_type, exc_val, exc_tb)
+            except Exception as e:
+                logging.warning(f'Error exiting Vimba context: {e}')
+            finally:
+                self._vmb_context = None
+
+        # Return False to propagate any exceptions
+        return False
+
+    @classmethod
+    def get_camera_list(cls):
+        cam_list = []
+
+        if INSTANCE is None:
+            return cam_list
+
+        with INSTANCE as vimba:
+            cams = vimba.get_all_cameras()
+            for cam in cams:
+                access_modes = cam.get_permitted_access_modes()
+                in_use = 0 if vb.AccessMode.Full in access_modes else 1
+                cam_list.append(
+                    {
+                        'Camera ID': cam.get_id(),
+                        'Device ID': cam.get_interface_id(),
+                        'Sensor ID': 'NA',
+                        'Status': 'NA',
+                        'InUse': in_use,
+                        'Model': cam.get_model(),
+                        'Serial': cam.get_serial(),
+                        'Driver': 'Vimba',
+                        'Name': cam.get_name(),
+                    }
+                )
+        return cam_list
+
+    @classmethod
+    def get_camera(cls, camera_id: Optional[str]):
+        if INSTANCE is None:
+            return None
+
+        with INSTANCE as vimba:
+            if camera_id:
+                try:
+                    return vimba.get_camera_by_id(camera_id)
+                except vb.VmbCameraError:
+                    print(f"Failed to access Camera '{camera_id}'. Abort.")
+            else:
+                cams = vimba.get_all_cameras()
+                if not cams:
+                    print('No Cameras accessible. Abort.')
+                    return None
+
+                return cams[0]
+
     def initialize(self):
-        with self.cam:
+        with self:
             self.default()
             self.get_acquisition_framerate_enable(False)
             self.get_framerate(False)
@@ -152,6 +242,9 @@ class vimba_cam(miCamera):
             self.exposure_auto_entries = self.get_exposure_auto_entries()
 
             self.pixel_formats = self.get_pixel_formats()
+
+            if 'Mono12' in self.pixel_formats:
+                self.set_pixel_format('Mono12')
 
             self.print_status()
 
@@ -210,20 +303,28 @@ class vimba_cam(miCamera):
         }
 
     def default(self):
-        # with self.cam:
-        # Restore settings to initial value.
-        try:
-            self.cam.UserSetSelector.set('Default')
+        with self:
+            try:
+                self.cam.UserSetSelector.set('Default')
 
-        except (AttributeError, vb.VimbaFeatureError):
-            print("Failed to set Feature 'UserSetSelector'")
+            except (AttributeError, vb.VmbFeatureError):
+                print("Failed to set Feature 'UserSetSelector'")
 
-        try:
-            self.cam.UserSetLoad.run()
-            print('--> All feature values have been restored to default')
+            try:
+                self.cam.UserSetLoad.run()
+                print('--> All feature values have been restored to default')
 
-        except (AttributeError, vb.VimbaFeatureError):
-            print("Failed to run Feature 'UserSetLoad'")
+            except (AttributeError, vb.VmbFeatureError):
+                print("Failed to run Feature 'UserSetLoad'")
+
+    def get_metadata(self):
+        return {
+            'CHANNEL_NAME': self.name,
+            'DET_MANUFACTURER': 'Allied Vision',
+            'DET_MODEL': self.cam.get_model(),
+            'DET_SERIAL': self.cam.get_serial(),
+            'DET_TYPE': 'CMOS',
+        }
 
     def get_temperature(self):
         '''Reads out the sensor temperature value
@@ -686,6 +787,7 @@ class vimba_cam(miCamera):
             # with self.cam:
             if value in vb.PixelFormat.__members__:
                 self.cam.set_pixel_format(vb.PixelFormat[value])
+                self.get_pixel_format()
                 self.get_pixel_size()
                 return 1
             else:
@@ -942,15 +1044,24 @@ class vimba_cam(miCamera):
             self.offsetY_range = self.cam.OffsetY.get_range()
             self.offsetY_inc = self.cam.OffsetY.get_increment()
             if output:
-                print('W H X Y', self.width, self.height, self.offsetX, self.offsetY)
-            return (self.width, self.height, self.offsetX, self.offsetY)
+                print(
+                    f'X = {self.offsetX} Y = {self.offsetY}',
+                    f'W = {self.width} H = {self.height}',
+                )
+            return (
+                int(self.offsetX),
+                int(self.offsetY),
+                int(self.width),
+                int(self.height),
+            )
         except Exception:
             print('ROI Get ERROR')
             return 'NA'
 
-    def set_roi(self, width, height, x=None, y=None):
+    def set_roi(self, x, y, width, height):
         try:
-            # with self.cam:
+            self.reset_roi()
+
             self.width_range = self.cam.Width.get_range()
             self.width_inc = self.cam.Width.get_increment()
             self.width = self.get_nearest(self.width_range, self.width_inc, width)
@@ -981,9 +1092,230 @@ class vimba_cam(miCamera):
             print('ROI Set ERROR')
             return 0
 
+    def reset_roi(self):
+        self.cam.OffsetX.set(0)
+        self.cam.OffsetY.set(0)
+        self.cam.Width.set(self.width_max)
+        self.cam.Height.set(self.height_max)
+
     def get_nearest(self, vrange, step, value):
         values = np.arange(vrange[0], vrange[1] + step / 4, step)
         return values[np.abs(values - value).argmin()]
+
+    def property_tree(self) -> list[dict[str, Any]]:
+        '''Return a list of parameter dicts for Vimba camera options.'''
+        EXPOSURE_MODE = {
+            'name': str(VimbaParams.EXPOSURE_MODE),
+            'type': 'list',
+            'limits': self.exposure_modes[0] if self.exposure_modes else [],
+            'value': self.exposure_mode,
+        }
+        EXPOSURE_AUTO = {
+            'name': str(VimbaParams.EXPOSURE_AUTO),
+            'type': 'list',
+            'limits': self.exposure_auto_entries[0]
+            if self.exposure_auto_entries
+            else [],
+            'value': self.exposure_auto,
+        }
+        FRAMERATE_ENABLED = {
+            'name': str(VimbaParams.FRAMERATE_ENABLED),
+            'type': 'bool',
+            'value': False,
+        }
+        FRAMERATE = {
+            'name': str(VimbaParams.FRAMERATE),
+            'type': 'float',
+            'value': self.frameRate,
+            'dec': False,
+            'decimals': 6,
+            'step': 0.1,
+            'limits': [self.frameRate_range[0], self.frameRate_range[1]],
+            'suffix': self.frameRate_unit,
+            'enabled': False,
+        }
+        TRIGGER_MODE = {
+            'name': str(VimbaParams.TRIGGER_MODE),
+            'type': 'list',
+            'limits': self.trigger_modes[0],
+        }
+        TRIGGER_SOURCE = {
+            'name': str(VimbaParams.TRIGGER_SOURCE),
+            'type': 'list',
+            'limits': self.trigger_sources[0],
+        }
+        TRIGGER_SELECTOR = {
+            'name': str(VimbaParams.TRIGGER_SELECTOR),
+            'type': 'list',
+            'limits': self.trigger_selectors[0],
+        }
+        TRIGGER_ACTIVATION = {
+            'name': str(VimbaParams.TRIGGER_ACTIVATION),
+            'type': 'list',
+            'limits': self.trigger_activations[0],
+        }
+        PIXEL_FORMAT = {
+            'name': str(VimbaParams.PIXEL_FORMAT),
+            'type': 'list',
+            'limits': self.pixel_formats if self.pixel_formats else [],
+            'value': self.pixel_format.name if self.pixel_format else None,
+        }
+
+        FREERUN = {
+            'name': str(VimbaParams.FREERUN),
+            'type': 'action',
+            'parent': CamParams.ACQUISITION,
+        }
+        STOP = {
+            'name': str(VimbaParams.STOP),
+            'type': 'action',
+            'parent': CamParams.ACQUISITION,
+        }
+
+        LOAD = {'name': str(VimbaParams.LOAD), 'type': 'action'}
+        SAVE = {'name': str(VimbaParams.SAVE), 'type': 'action'}
+
+        # GPIOs
+        with self:
+            LINE_SELECTOR = {
+                'name': str(VimbaParams.LINE_SELECTOR),
+                'type': 'list',
+                'limits': self.get_io_lines(),
+                'parent': CamParams.CAMERA_GPIO,
+            }
+            LINE_MODE = {
+                'name': str(VimbaParams.LINE_MODE),
+                'type': 'list',
+                'limits': self.get_line_modes(),
+                'parent': CamParams.CAMERA_GPIO,
+            }
+            LINE_SOURCE = {
+                'name': str(VimbaParams.LINE_SOURCE),
+                'type': 'list',
+                'limits': self.get_line_sources(),
+                'parent': CamParams.CAMERA_GPIO,
+            }
+            LINE_INVERTER = {
+                'name': str(VimbaParams.LINE_INVERTER),
+                'type': 'bool',
+                'value': False,
+                'parent': CamParams.CAMERA_GPIO,
+            }
+
+        SET_IO_CONFIG = {
+            'name': str(VimbaParams.SET_IO_CONFIG),
+            'type': 'action',
+            'parent': CamParams.CAMERA_GPIO,
+        }
+
+        # Timers
+        TIMER_SELECTOR = {
+            'name': str(VimbaParams.TIMER_SELECTOR),
+            'type': 'list',
+            'parent': CamParams.CAMERA_TIMERS,
+        }
+        TIMER_ACTIVATION = {
+            'name': str(VimbaParams.TIMER_ACTIVATION),
+            'type': 'list',
+            'parent': CamParams.CAMERA_TIMERS,
+        }
+        TIMER_SOURCE = {
+            'name': str(VimbaParams.TIMER_SOURCE),
+            'type': 'list',
+            'parent': CamParams.CAMERA_TIMERS,
+        }
+        TIMER_DELAY = {
+            'name': str(VimbaParams.TIMER_DELAY),
+            'type': 'float',
+            'dec': False,
+            'decimals': 6,
+            'parent': CamParams.CAMERA_TIMERS,
+        }
+        TIMER_DURATION = {
+            'name': str(VimbaParams.TIMER_DURATION),
+            'type': 'float',
+            'dec': False,
+            'decimals': 6,
+            'parent': CamParams.CAMERA_TIMERS,
+        }
+        TIMER_RESET = {
+            'name': str(VimbaParams.TIMER_RESET),
+            'type': 'action',
+            'parent': CamParams.CAMERA_TIMERS,
+        }
+        SET_TIMER_CONFIG = {
+            'name': str(VimbaParams.SET_TIMER_CONFIG),
+            'type': 'action',
+            'parent': CamParams.CAMERA_TIMERS,
+        }
+
+        with self:
+            timers = self.get_timers()
+            if timers:
+                TIMER_SELECTOR['limits'] = timers
+                TIMER_ACTIVATION['limits'] = self.get_timer_trigger_activations()
+                TIMER_SOURCE['limits'] = self.get_timer_trigger_sources()
+
+        return [
+            EXPOSURE_MODE,
+            EXPOSURE_AUTO,
+            FRAMERATE_ENABLED,
+            FRAMERATE,
+            TRIGGER_MODE,
+            TRIGGER_SOURCE,
+            TRIGGER_SELECTOR,
+            TRIGGER_ACTIVATION,
+            PIXEL_FORMAT,
+            FREERUN,
+            STOP,
+            LOAD,
+            SAVE,
+            LINE_SELECTOR,
+            LINE_MODE,
+            LINE_SOURCE,
+            LINE_INVERTER,
+            SET_IO_CONFIG,
+            TIMER_SELECTOR,
+            TIMER_ACTIVATION,
+            TIMER_SOURCE,
+            TIMER_DELAY,
+            TIMER_DURATION,
+            TIMER_RESET,
+            SET_TIMER_CONFIG,
+        ]
+
+    def update_cam(self, param, path, param_value):
+        if path is None:
+            return
+
+        param_value = param.value()
+
+        try:
+            param_name = VimbaParams('.'.join(path))
+        except ValueError:
+            return
+
+        with self:
+            if param_name == VimbaParams.TRIGGER_MODE:
+                self.set_trigger_mode(param_value)
+                self.get_trigger_mode()
+            elif param_name == VimbaParams.TRIGGER_SOURCE:
+                self.set_trigger_source(param_value)
+                self.get_trigger_source()
+            elif param_name == VimbaParams.TRIGGER_SELECTOR:
+                self.set_trigger_selector(param_value)
+                self.get_trigger_selector()
+            elif param_name == VimbaParams.TRIGGER_ACTIVATION:
+                self.set_trigger_activation(param_value)
+                self.get_trigger_activation()
+            elif param_name == VimbaParams.EXPOSURE_MODE:
+                self.set_exposure_mode(param_value)
+                self.get_exposure_mode()
+            elif param_name == VimbaParams.EXPOSURE_AUTO:
+                self.set_exposure_auto(param_value)
+                self.get_exposure_auto()
+            elif param_name == VimbaParams.PIXEL_FORMAT:
+                self.set_pixel_format(param_value)
 
 
 # if __name__ == '__main__':

@@ -204,7 +204,7 @@ class multi_viewer(QMainWindow):
         self.tree.doubleClicked.connect(self._open_file)
 
         # Create Tree view context menu
-        self.tree.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self._show_tree_context_menu)
 
         # Add the File system tab contents

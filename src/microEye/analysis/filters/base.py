@@ -2,7 +2,8 @@ from abc import ABC, abstractmethod
 from typing import Optional
 
 import numpy as np
-from PyQt5 import QtWidgets
+
+from microEye.qt import QtWidgets
 
 
 class AbstractFilter(ABC):

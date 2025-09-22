@@ -1,4 +1,4 @@
-from microEye import multi_viewer
+from microEye.analysis import multi_viewer
 
 app, window = multi_viewer.StartGUI('C:/')
 

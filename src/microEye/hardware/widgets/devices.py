@@ -45,7 +45,6 @@ class DevicesView(Tree):
     setDetectorActivated = Signal(str)
     resetDetectorActivated = Signal()
     addLaserActivated = Signal(str)
-    setStageActivated = Signal(str)
 
     def __init__(self, parent: Optional['QtWidgets.QWidget'] = None):
         super().__init__(parent=parent)
@@ -55,16 +54,6 @@ class DevicesView(Tree):
 
     def getLasers(self):
         return ['IO MatchBox Single Laser', 'IO MatchBox Laser Combiner']
-
-    def getStages(self):
-        return [
-            'PiezoConcept FOC100',
-            'PiezoConcept FOC200',
-            'PiezoConcept FOC300',
-            'PiezoConcept FOC500',
-            'PiezoConcept FOC800',
-            'Pycromanager ZStage',
-            ]
 
     def create_parameters(self):
         '''
@@ -98,19 +87,6 @@ class DevicesView(Tree):
                     {'name': str(devicesParams.ADD_LASER), 'type': 'action'},
                 ],
             },
-            {
-                'name': str(devicesParams.STAGES),
-                'type': 'group',
-                'children': [
-                    {
-                        'name': str(devicesParams.STAGE),
-                        'title': '',
-                        'type': 'list',
-                        'limits': self.getStages(),
-                    },
-                    {'name': str(devicesParams.SET_STAGE), 'type': 'action'},
-                ],
-            },
         ]
 
         self.param_tree = Parameter.create(name='', type='group', children=params)
@@ -131,10 +107,5 @@ class DevicesView(Tree):
         self.get_param(devicesParams.ADD_LASER).sigActivated.connect(
             lambda: self.addLaserActivated.emit(
                 self.get_param_value(devicesParams.LASER)
-            )
-        )
-        self.get_param(devicesParams.SET_STAGE).sigActivated.connect(
-            lambda: self.setStageActivated.emit(
-                self.get_param_value(devicesParams.STAGE)
             )
         )

@@ -1,9 +1,12 @@
 import logging
 import os.path
 from ctypes import *
+from enum import Enum
+from typing import Any
 
 import numpy as np
 
+from microEye.hardware.cams.camera_options import CamParams
 from microEye.hardware.cams.micam import miCamera
 
 
@@ -573,6 +576,33 @@ IS_GET_STATUS = 0x8000
 IS_GET_COLOR_MODE = 0x8000
 
 
+class ThorCamParams(Enum):
+    FREERUN = 'Acquisition.Start (Freerun)'
+    TRIGGERED = 'Acquisition.Start (Triggered)'
+    STOP = 'Acquisition.Stop'
+    PIXEL_CLOCK = 'Acquisition Settings.Pixel Clock (MHz)'
+    FRAMERATE = 'Acquisition Settings.Framerate Slider'
+    FRAME_AVERAGING = 'Acquisition Settings.Frame Averaging'
+    TRIGGER_MODE = 'Acquisition Settings.Trigger Mode'
+    FLASH_MODE = 'Acquisition Settings.Flash Mode'
+    FLASH_DURATION = 'Acquisition Settings.Flash Duration Slider'
+    FLASH_DELAY = 'Acquisition Settings.Flash Delay Slider'
+    LOAD = 'Acquisition Settings.Load'
+    SAVE = 'Acquisition Settings.Save'
+
+    def __str__(self):
+        '''
+        Return the last part of the enum value (Param name).
+        '''
+        return self.value.split('.')[-1]
+
+    def get_path(self):
+        '''
+        Return the full parameter path.
+        '''
+        return self.value.split('.')
+
+
 class thorlabs_camera(miCamera):
     uc480_file = (
         'C:\\Program Files\\Thorlabs\\Scientific' + ' Imaging\\ThorCam\\uc480_64.dll'
@@ -630,8 +660,19 @@ class thorlabs_camera(miCamera):
         else:
             raise Exception('Please install ThorCam drivers.')
 
-    @staticmethod
-    def get_camera_list(output=False):
+        self.n_ret = self.initialize()
+
+    def get_metadata(self):
+        return {
+            'CHANNEL_NAME': self.name,
+            'DET_MANUFACTURER': 'Thorlabs',
+            'DET_MODEL': self.sInfo.strSensorName.decode('utf-8'),
+            'DET_SERIAL': self.cInfo.SerNo.decode('utf-8'),
+            'DET_TYPE': 'CMOS',
+        }
+
+    @classmethod
+    def get_camera_list(cls, output=False):
         '''Gets the list of available IDS cameras
 
         Parameters
@@ -985,7 +1026,7 @@ class thorlabs_camera(miCamera):
         if nRet != 0:
             print('is_PixelClock ERROR')
         elif output:
-            print('Pixel Clock %d MHz' % self.pixel_clock.value)
+            print(f'Pixel Clock {self.pixel_clock.value:d} MHz')
         return self.pixel_clock.value
 
     def set_pixel_clock(self, value):
@@ -1077,7 +1118,12 @@ class thorlabs_camera(miCamera):
 
         self.width = self.rectROI.s32Width
         self.height = self.rectROI.s32Height
-        return nRet
+        return (
+            self.rectROI.s32X,
+            self.rectROI.s32Y,
+            self.rectROI.s32Width,
+            self.rectROI.s32Height
+            )
 
     def get_min_roi(self):
         '''Can be used to get the size of the minimum
@@ -1506,3 +1552,94 @@ class thorlabs_camera(miCamera):
     def dispose(self):
         nRet = self.uc480.is_ExitCamera(self.hCam)
         return nRet
+
+    def property_tree(self) -> list[dict[str, Any]]:
+        PIXEL_CLOCK = {
+            'name': str(ThorCamParams.PIXEL_CLOCK),
+            'type': 'list',
+            'limits': list(map(str, self._cam.pixel_clock_list[:])),
+        }
+        FRAMERATE = {
+            'name': str(ThorCamParams.FRAMERATE),
+            'type': 'float',
+            'value': int(self.current_framerate.value),
+            'dec': False,
+            'decimals': 6,
+            'step': self.increment_framerate.value,
+            'limits': [self.min_framerate.value, self.max_framerate.value],
+            'suffix': 'Hz',
+        }
+        FRAME_AVERAGING = {
+            'name': str(ThorCamParams.FRAME_AVERAGING),
+            'type': 'int',
+            'value': 1,
+            'dec': False,
+            'decimals': 6,
+            'limits': [1, 512],
+            'suffix': 'frame',
+        }
+        TRIGGER_MODE = {
+            'name': str(ThorCamParams.TRIGGER_MODE),
+            'type': 'list',
+            'limits': list(TRIGGER.TRIGGER_MODES.keys()),
+        }
+        _FLASH_MODE = {
+            'name': str(ThorCamParams.FLASH_MODE),
+            'type': 'list',
+            'limits': list(FLASH_MODE.FLASH_MODES.keys()),
+        }
+        FLASH_DURATION = {
+            'name': str(ThorCamParams.FLASH_DURATION),
+            'type': 'int',
+            'value': 0,
+            'dec': False,
+            'decimals': 6,
+            'suffix': 'us',
+            'step': self.flash_inc.u32Duration,
+            'limits': [0, self.flash_max.u32Duration],
+        }
+        FLASH_DELAY = {
+            'name': str(ThorCamParams.FLASH_DELAY),
+            'type': 'int',
+            'value': 0,
+            'dec': False,
+            'decimals': 6,
+            'suffix': 'us',
+            'step': self.flash_inc.s32Delay,
+            'limits': [0, self.flash_max.s32Delay],
+        }
+        FREERUN = {
+            'name': str(ThorCamParams.FREERUN),
+            'type': 'action',
+            'parent': CamParams.ACQUISITION,
+        }
+        TRIGGERED = {
+            'name': str(ThorCamParams.TRIGGERED),
+            'type': 'action',
+            'parent': CamParams.ACQUISITION,
+        }
+        STOP = {
+            'name': str(ThorCamParams.STOP),
+            'type': 'action',
+            'parent': CamParams.ACQUISITION,
+        }
+        LOAD = {'name': str(ThorCamParams.LOAD), 'type': 'action'}
+        SAVE = {'name': str(ThorCamParams.SAVE), 'type': 'action'}
+
+        return [
+            PIXEL_CLOCK,
+            FRAMERATE,
+            FRAME_AVERAGING,
+            TRIGGER_MODE,
+            _FLASH_MODE,
+            FLASH_DURATION,
+            FLASH_DELAY,
+            FREERUN,
+            TRIGGERED,
+            STOP,
+            LOAD,
+            SAVE,
+        ]
+
+    def update_cam(self, param, path, param_value):
+        pass

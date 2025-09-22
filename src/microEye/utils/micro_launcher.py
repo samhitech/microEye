@@ -1,9 +1,9 @@
 import importlib
 import os
 import subprocess
+import sys
 from collections.abc import Iterable
-
-import pkg_resources
+from importlib.metadata import PackageNotFoundError, version
 
 from microEye.qt import QApplication, Qt, QtCore, QtGui, QtSvg, QtWidgets
 from microEye.utils.start_gui import StartGUI
@@ -15,10 +15,14 @@ def check_modules(modules):
         try:
             imported_module = importlib.import_module(module)
             try:
-                version = pkg_resources.get_distribution(module).version
-            except pkg_resources.DistributionNotFound:
-                version = 'Version not found'
-            availability[module] = version
+                _version = (
+                    imported_module.__version__
+                    if hasattr(imported_module, '__version__')
+                    else version(module)
+                )
+            except PackageNotFoundError:
+                _version = 'Version not found'
+            availability[module] = _version if _version != 'Version not found' else None
         except ImportError:
             availability[module] = None
     return availability

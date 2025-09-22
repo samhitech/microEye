@@ -192,6 +192,7 @@ class PycroCore:
                     'Serial': 'NA',
                     'Driver': 'PycroCore',
                     'Name': instance.get_device_name(instance.get_camera_device()),
+                    'Port': port
                 }
             )
 

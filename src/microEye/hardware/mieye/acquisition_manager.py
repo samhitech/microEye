@@ -15,11 +15,13 @@ from microEye.hardware.cams.camera_panel import Camera_Panel
 from microEye.hardware.cams.micam import miCamera
 from microEye.hardware.cams.vimba import vimba_cam
 
-# devices manager
-from microEye.hardware.mieye.devices_manager import DeviceManager
+# weak references
+from microEye.hardware.protocols.actions import WeakObjects
+
+# stages manager
+from microEye.hardware.stages.manager import Axis, StageManager, Units
 
 # other imports
-from microEye.hardware.protocols.actions import WeakObjects
 from microEye.hardware.stages.stabilizer import FocusStabilizer
 from microEye.hardware.widgets.scan_acquisition import (
     ScanAcquisitionWidget,
@@ -59,7 +61,7 @@ class AcquisitionManager(QtCore.QObject):
         self.acquisitionWidget.stopAcquisitionZ.connect(self.stop_scan_acquisition)
         self.acquisitionWidget.openLastTileXY.connect(self.show_last_tile)
         self.acquisitionWidget.directoryChanged.connect(self.update_directories)
-        self.acquisitionWidget.moveZ.connect(DeviceManager.instance().moveStage)
+        self.acquisitionWidget.moveZ.connect(StageManager.instance().move_z)
 
     def result_scan_acquisition(self, data):
         self._scanning = False
@@ -72,7 +74,7 @@ class AcquisitionManager(QtCore.QObject):
 
     def _connect_tile_position_signal(self, tile: TiledImageSelector):
         tile.positionSelected.connect(
-            lambda x, y: DeviceManager.instance().stage_xy.move_absolute(x, y)
+            lambda x, y: StageManager.instance().move_absolute(x, y)
         )
 
     def result_z_calibration(self, data):
@@ -218,26 +220,30 @@ def scanAcquisition(steps, step_size, delay, average=1, **kwargs):
         if event and event.is_set():
             return
 
-        device_manager = DeviceManager.instance()
+        stage_manager = StageManager.instance()
 
         data = []
         vimba_cams = [cam for cam in CameraList.CAMERAS['Vimba'] if not cam['IR']]
-        if device_manager.stage_xy.isOpen() and len(vimba_cams) > 0:
+        if stage_manager.is_open(Axis.X) and len(vimba_cams) > 0:
             cam: vimba_cam = vimba_cams[0]['Camera']
             for x in range(steps[0]):
-                device_manager.stage_xy.move_relative(
-                    round(step_size[0] / 1000, 4), 0, False
+                stage_manager.move_relative(
+                    step_size[0], 0, 0, unit=Units.MICROMETERS, is_async=False
                 )
                 for y in range(steps[1]):
                     if event and event.is_set():
                         return
 
                     if y > 0:
-                        device_manager.stage_xy.move_relative(
-                            0, ((-1) ** x) * round(step_size[1] / 1000, 4), False
+                        stage_manager.move_relative(
+                            0,
+                            ((-1) ** x) * step_size[1],
+                            0,
+                            unit=Units.MICROMETERS,
+                            is_async=False,
                         )
                     frame = None
-                    with cam.cam:
+                    with cam:
                         QtCore.QThread.msleep(delay)
                         if average > 1:
                             frames_avg = []
@@ -262,14 +268,26 @@ def scanAcquisition(steps, step_size, delay, average=1, **kwargs):
                     )
                     Y = (x % 2) * (steps[1] - 1) + ((-1) ** x) * y
                     data.append(
-                        TileImage(frame, [Y, x], device_manager.stage_xy.position)
+                        TileImage(
+                            frame,
+                            [Y, x],
+                            (stage_manager.xy_stage().x, stage_manager.xy_stage().y),
+                        )
                     )
                     cv2.imshow(cam.name, frame._view)
                     cv2.waitKey(1)
 
             # device_manager.stage_xy.update()
         else:
-            return
+            print('XY-scan failed!')
+            info = [
+                {
+                    'XY-Stage Open': stage_manager.is_open(Axis.X),
+                    'Camera Available': len(vimba_cams) > 0,
+                }
+            ]
+            print(tabulate.tabulate(info, headers='keys', tablefmt='rounded_grid'))
+            data = []
     except Exception:
         traceback.print_exc()
     finally:
@@ -316,12 +334,12 @@ def z_stack_acquisition(
         if event and event.is_set():
             return
 
-        device_manager = DeviceManager.instance()
+        stage_manager = StageManager.instance()
 
         data = []
         peak = None
         vimba_cams = [cam for cam in CameraList.CAMERAS['Vimba'] if not cam['IR']]
-        if device_manager.stage.isOpen() and len(vimba_cams) > 0 and nFrames > 0:
+        if stage_manager.z_stage().is_open() and len(vimba_cams) > 0 and nFrames > 0:
             cam: miCamera = vimba_cams[0]['Camera']
             cam_pan: Camera_Panel = vimba_cams[0]['Panel']
             if cam.acquisition:
@@ -366,7 +384,7 @@ def z_stack_acquisition(
             print('Z-scan failed!')
             info = [
                 {
-                    'Z-Stage Open': device_manager.stage.isOpen(),
+                    'Z-Stage Open': stage_manager.z_stage().is_open(),
                     'Camera Available': len(vimba_cams) > 0,
                     'Frames > 0': nFrames > 0,
                 }
@@ -416,10 +434,10 @@ def z_calibration(
         if event and event.is_set():
             return
 
-        device_manager = DeviceManager.instance()
+        stage_manager = StageManager.instance()
 
         data = []
-        if device_manager.stage.isOpen():
+        if stage_manager.z_stage().is_open():
             if FocusStabilizer.instance().isFocusStabilized():
                 FocusStabilizer.instance().toggleFocusStabilization(False)
             for x in range(n):
@@ -433,6 +451,11 @@ def z_calibration(
                 positions[x, 1] = np.mean(
                     FocusStabilizer.instance().parameter_buffer[-nFrames:]
                 )
+        else:
+            print('Z-calibration failed!')
+            info = [{'Z-Stage Open': stage_manager.z_stage().is_open()}]
+            print(tabulate.tabulate(info, headers='keys', tablefmt='rounded_grid'))
+            positions = None
     except Exception:
         traceback.print_exc()
         positions = None

@@ -7,11 +7,16 @@ The **`microEye`** is a Python toolkit for fluorescence microscopy that supports
 This toolkit is compatible with the [hardware](#hardware) used in our microscope. For further details, refer to the [miEye microscope paper](https://doi.org/10.1016/j.ohx.2022.e00368) and [OSF project](http://doi.org/10.17605/osf.io/j2fqy).
 
 ```bash
-   __  ____              ____                ___    ____  _______
-  /  |/  (_)__________  / __/_ _____   _  __|_  |  |_  / <  /_  /
- / /|_/ / / __/ __/ _ \/ _// // / -_) | |/ / __/_ _/_ <_ / //_ <
-/_/  /_/_/\__/_/  \___/___/\_, /\__/  |___/____(_)____(_)_/____/
+   __  ____              ____                ___  ____  ___      ___
+  /  |/  (_)__________  / __/_ _____   _  __|_  |/ / / / _ \___ <  /
+ / /|_/ / / __/ __/ _ \/ _// // / -_) | |/ / __//_  _// // / _ `/ /
+/_/  /_/_/\__/_/  \___/___/\_, /\__/  |___/____(_)_/(_)___/\_,_/_/
                           /___/
+         ___   __     __          ___      __
+        / _ | / /__  / /  ___ _  / _ \___ / /__ ___ ____ ___
+       / __ |/ / _ \/ _ \/ _ `/ / , _/ -_) / -_) _ `(_-</ -_)
+      /_/ |_/_/ .__/_//_/\_,_/ /_/|_|\__/_/\__/\_,_/___/\__/
+             /_/
 ```
 
 ![Package Health](https://snyk.io/advisor/python/microEye/badge.svg)
@@ -59,6 +64,7 @@ This toolkit is compatible with the [hardware](#hardware) used in our microscope
     - [Features](#features)
     - [Integrated Hardware](#integrated-hardware)
     - [How to Use](#how-to-use)
+    - [Step-by-step Instructions](#step-by-step-instructions)
   - [Authors](#authors)
   - [People Involved](#people-involved)
   - [Acknowledgement](#acknowledgement)
@@ -68,7 +74,7 @@ This toolkit is compatible with the [hardware](#hardware) used in our microscope
 
 1. **Install Python:**
 
-   Download and install the latest [Python](https://www.python.org/downloads/) ≥3.9 stable release.
+   Download and install the latest [`Python`](https://www.python.org/downloads/) stable release (version ≥3.9 and ≤3.11).
 
 2. **Install microEye package:**
 
@@ -84,31 +90,27 @@ This toolkit is compatible with the [hardware](#hardware) used in our microscope
    pip install microEye==version
    ```
 
-3. **Install required packages: (Optional)**
+3. **Install specific hardware drivers: (Optional)**
 
-   Download the [requirements.txt](https://github.com/samhitech/microEye/blob/main/requirements.txt) file. Navigate to the directory containing the requirements file in your terminal and run:
+   - Allied Vision CMOS cameras: Install the [`Vimba X SDK`](https://www.alliedvision.com/en/products/software/vimba-x-sdk/) (_avoid installing it inside the Program Files directory_). After installation, navigate to the `Python API` directory (e.g., `C:\Allied Vision\Vimba X\api\python`) where the `vmbpy` wheel file (`.whl`) is located, and install it using:
 
-   ```powershell
-   pip install -r requirements.txt
-   ```
-
-   Note: This step is optional as dependecies are installed with the package.
-
-4. **Install specific hardware drivers: (Optional)**
-
-   - For Integrated Optics: Download and install [Laser control software](https://integratedoptics.com/downloads).
-   - For IDS uEye CMOS cameras: Install [IDS Software Suite 4.96.1](https://en.ids-imaging.com/download-details/AB00604.html?os=windows&version=win10&bus=64&floatcalc=) for Windows 32/64-bit.
-   - For Allied Vision CMOS cameras: Install [Vimba SDK](https://www.alliedvision.com/en/products/vimba-sdk) 5.0 or 6.0 outside the Program Files. Navigate to the directory containing setup.py and run:
-
-     ```powershell
-     python -m pip install .
+     ```bash
+     python -m pip install vmbpy-1.1.1-py3-none-win_amd64.whl
      ```
 
-   - For Thorlabs CMOS cameras: Install [Thorcam](https://www.thorlabs.com/software_pages/ViewSoftwarePage.cfm?Code=ThorCam) in its default directory. Note: Some Thorlabs cameras may be identified as IDS uEye cameras by Windows and may run without Thorcam.
+   - Basler CMOS cameras: Install [`pylon`](https://www.baslerweb.com/en/downloads/software/?srsltid=AfmBOoqsMrbQT24hcWiCw-0ptD9PR7nCrPMBZSzi0YlI1CVItNQikMKW&downloadCategory.values.label.data=pylon) (_avoid installing it inside the Program Files directory_).
+   - IDS uEye CMOS cameras: Install [`IDS Software Suite 4.96.1`](https://en.ids-imaging.com/download-details/AB00604.html?os=windows&version=win10&bus=64&floatcalc=) for Windows 32/64-bit.
+   - Integrated Optics Lasers: Install [`Laser control software`](https://integratedoptics.com/downloads).
 
-   - For Thorlabs hardware, install [Kinesis® Software](https://www.thorlabs.com/newgrouppage9.cfm?objectgroup_id=10285) and [Elliptec™ Software](https://www.thorlabs.com/software_pages/ViewSoftwarePage.cfm?Code=ELL).
+   - PCO cameras: Install [`pco.sdk`, `pco.runtime`](https://www.excelitas.com/product/pco-software-development-kits).
 
-5. **Open a terminal and execute microEye:** :partying_face:
+     > **Note:** Support is under development.
+
+   - Thorlabs CMOS cameras: Install [`Thorcam`](https://www.thorlabs.com/software_pages/ViewSoftwarePage.cfm?Code=ThorCam) in its default directory. Note: Some Thorlabs cameras may be identified as IDS uEye cameras by Windows and may run without Thorcam.
+
+   - Thorlabs hardware, install [`Kinesis® Software`](https://www.thorlabs.com/newgrouppage9.cfm?objectgroup_id=10285) and [`Elliptec™ Software`](https://www.thorlabs.com/software_pages/ViewSoftwarePage.cfm?Code=ELL).
+
+4. **Open a terminal and execute microEye:** :partying_face:
 
    ```powershell
    usage: microEye.exe [-h] [--module MODULE] [--QT_API QT_API] [--theme THEME]
@@ -129,12 +131,12 @@ This toolkit is compatible with the [hardware](#hardware) used in our microscope
 
 If you encounter any issues during the installation process, please check the following:
 
-- Ensure that you have the latest version of Python installed (≥3.9).
+- Ensure that you have the latest version of Python installed (`3.9 ≤ version ≤3.11`).
 - Try installing the required packages repeating step (2) or individually using `pip install <package_name>`.
 - Check the system requirements for specific hardware drivers and follow the installation instructions provided by the manufacturers.
 - Refer to the project's issue tracker on GitHub for any known installation issues and solutions.
 
-If the issue persists, feel free to open a new issue on the project's GitHub repository, providing detailed information about the problem and any error messages you encountered.
+> If the issue persists, feel free to open a new issue on the project's GitHub repository, providing detailed information about the problem and any error messages you encountered.
 
 ## microEye Launcher
 
@@ -148,10 +150,10 @@ Upon running the launcher, you will be presented with the following interface:
 
 - **miEye Module**: Launches the miEye module for microscope control and acquisition.
 - **Viewer Module**: Launches the viewer module for image/data anlysis and visualization.
-- **QT API (dropdown)**: Select the Qt API to use. Options are PySide6, PyQt6, or PyQt5.
-- **Theme (dropdown)**: Select the theme for the application. Options are None (default), qdarktheme, or qdarkstyle.
+- **QT API (dropdown)**: Select the `Qt API` to use. Options are `PySide6`, `PyQt6`, or `PyQt5`.
+- **Theme (dropdown)**: Select the `theme` for the application. Options are `None` (default), `qdarktheme`, or `qdarkstyle`.
 
-To launch a module, simply click on the respective button (`miEye Module` or `Viewer Module`). If you wish to change the Qt API or theme, select the desired option from the dropdown menus before launching.
+To launch a module, simply click on the respective button (`miEye Module` or `Viewer Module`). If you wish to change the `Qt API` or `theme`, select the desired option from the dropdown menus before launching.
 
 ## Modules
 
@@ -193,7 +195,7 @@ Key features include:
 To access the Experiment Designer:
 
 1. Launch the `miEye module`.
-2. Look for the Experiment Designer (Protocols) view in the interface.
+2. Look for the `Protocols` view in the interface.
 
 Note: This feature is currently in beta. We value your feedback to enhance its functionality and improve the user experience.
 
@@ -217,23 +219,25 @@ microEye --module viewer
 
 The `microEye` uses the following Python packages:
 
-| Data Analysis and Visualization | GUI and UI Development | Code Quality and Formatting | Image and Video Processing | File and Data Storage | Other Utilities |  Microscopy  |
-| :-----------------------------: | :--------------------: | :-------------------------: | :------------------------: | :-------------------: | :-------------: | :----------: |
-|              dask               |        PySide6         |          autopep8           |       opencv-python        |       ome-types       |     hidapi      | pycromanager |
-|           matplotlib            |     pyqtdarktheme      |          pyflakes           |                            |        tables         |    pyfiglet     |              |
-|              numba              |       pyqtgraph        |                             |                            |         zarr          |    pyserial     |              |
-|              numpy              |       QDarkStyle       |                             |                            |                       |     pyjokes     |              |
-|             pandas              |       QScintilla       |                             |                            |                       |   setuptools    |              |
-|          scikit-image           |    PyQt5 (optional)    |                             |                            |                       |    tabulate     |              |
-|          scikit_learn           |    PyQt6 (optional)    |                             |                            |                       |     pyueye      |              |
-|              scipy              |                        |                             |                            |                       |      tqdm       |              |
-|            tifffile             |                        |                             |                            |                       |                 |              |
-|              h5py               |                        |                             |                            |                       |                 |              |
-|               pco               |                        |                             |                            |                       |                 |              |
-|                                 |                        |                             |                            |                       |                 |              |
-|            PyOpenGL             |                        |                             |                            |                       |                 |              |
+| Data Analysis and Visualization |   GUI and UI Development    | Code Quality and Formatting | Image and Video Processing | File and Data Storage | Other Utilities |  Microscopy  |
+| :-----------------------------: | :-------------------------: | :-------------------------: | :------------------------: | :-------------------: | :-------------: | :----------: |
+|              dask               |           PySide6           |          autopep8           |       opencv-python        |       ome-types       |     hidapi      | pycromanager |
+|           matplotlib            |        pyqtdarktheme        |          pyflakes           |                            |        tables         |    pyfiglet     |              |
+|              numba              |          pyqtgraph          |                             |                            |         zarr          |    pyserial     |              |
+|              numpy              |         QDarkStyle          |                             |                            |                       |     pyjokes     |              |
+|             pandas              |         QScintilla          |                             |                            |                       |   setuptools    |              |
+|          scikit-image           |      PyQt5 (optional)       |                             |                            |                       |    tabulate     |              |
+|          scikit_learn           |      PyQt6 (optional)       |                             |                            |                       |     pyueye      |              |
+|              scipy              | PyQt6-QScintilla (optional) |                             |                            |                       |      tqdm       |              |
+|            tifffile             |                             |                             |                            |                       |                 |              |
+|              h5py               |                             |                             |                            |                       |                 |              |
+|               pco               |                             |                             |                            |                       |                 |              |
+|                                 |                             |                             |                            |                       |                 |              |
+|            PyOpenGL             |                             |                             |                            |                       |                 |              |
 
-Note: VimbaPython is included in Vimba SDK and needs to be installed manually.
+> **Note:** The VimbaPython package is bundled with the Vimba SDK and must be installed manually.
+>
+> **IMPORTANT:** Starting from microEye v2.4.0, the legacy Vimba SDK is no longer supported. Please use the Vimba X SDK and its accompanying _vmbpy_ Python package instead.
 
 ## Microscope Scheme
 
@@ -254,45 +258,47 @@ Schematic overview of the miEye instrument:
 
 ### Supported Cameras
 
-|          Camera           | Description                                                              |                                                     Link                                                      |
-| :-----------------------: | ------------------------------------------------------------------------ | :-----------------------------------------------------------------------------------------------------------: |
-| IDS uEye UI-3060CP Rev. 2 | IDS industrial-grade CMOS cameras                                        |            [Product Link](https://en.ids-imaging.com/store/products/cameras/ui-3060cp-rev-2.html)             |
-|     Thorlabs DCC1545M     | DCx camera using UC480 driver                                            |                 [Product Link](https://www.thorlabs.com/thorProduct.cfm?partNumber=DCC1545M)                  |
-| Allied Vision Alvium 1800 | Allied Vision industrial-grade CMOS cameras (U-158m, U-511m)             | [Product Link](https://www.alliedvision.com/en/products/alvium-configurator/alvium-1800-u/158/#_configurator) |
-|    Excelitas PCO sCMOS    | Excelitas pco.edge 4.2 LT USB sCMOS Camera                               |               [Product Link](https://www.excelitas.com/product/pcoedge-42-lt-usb-scmos-camera)                |
-|       Pycro-camera        | Access to cameras via Micro-Manager drivers/adapters using Pycro-Manager |                                                       -                                                       |
+|          Camera           | Description                                                              |             Driver             |                                                     Link                                                      |
+| :-----------------------: | ------------------------------------------------------------------------ | :----------------------------: | :-----------------------------------------------------------------------------------------------------------: |
+| IDS uEye UI-3060CP Rev. 2 | IDS industrial-grade CMOS cameras                                        | `IDS uEye SDK 4.96.1` `pyueye` |            [Product Link](https://en.ids-imaging.com/store/products/cameras/ui-3060cp-rev-2.html)             |
+|     Thorlabs DCC1545M     | DCx camera using UC480 driver                                            |        `ThorCam 3.7.0`         |                 [Product Link](https://www.thorlabs.com/thorProduct.cfm?partNumber=DCC1545M)                  |
+| Allied Vision Alvium 1800 | Allied Vision industrial-grade CMOS cameras (U-158m, U-511m)             |     `Vimba X SDK` `vmbpy`      | [Product Link](https://www.alliedvision.com/en/products/alvium-configurator/alvium-1800-u/158/#_configurator) |
+|    Excelitas PCO sCMOS    | Excelitas pco.edge 4.2 LT USB sCMOS Camera                               |     `pco.sdk` `pco.python`     |               [Product Link](https://www.excelitas.com/product/pcoedge-42-lt-usb-scmos-camera)                |
+|       Pycro-camera        | Access to cameras via Micro-Manager drivers/adapters using Pycro-Manager |   `uManager` `Pycro-Manager`   |                                                       -                                                       |
 
 ### Additional Hardware
 
-| Hardware                          | Description                                                                                                                                                           | Link                                                                                                                                                                                                   |
-| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Integrated Optics MatchBox        | Multi-wavelength Laser Combiner, Single Laser MatchBox                                                                                                                | [Products Link](https://integratedoptics.com/products/wavelength-combiners)                                                                                                                            |
-| Piezo Concept FOC                 | Nanopositioner for microscope objectives                                                                                                                              | [Piezo Concept FOC](https://piezoconcept-store.squarespace.com/1-axis/p/foc)                                                                                                                           |
-| Thorlabs Elliptec ELL6/ELL9/ELL12 | Dual/Four/Six-Position Slider                                                                                                                                         | [ELL6](https://www.thorlabs.com/thorproduct.cfm?partnumber=ELL6), [ELL9](https://www.thorlabs.com/thorproduct.cfm?partnumber=ELL9), [ELL12](https://www.thorlabs.com/thorproduct.cfm?partnumber=ELL12) |
-| Thorlabs Elliptec ELL14           | Rotation Mount: SM1 Threaded                                                                                                                                          | [ELL14](https://www.thorlabs.com/thorproduct.cfm?partnumber=ELL14)                                                                                                                                     |
-| Thorlabs Elliptec ELL20           | Linear Stage: 60 mm Travel                                                                                                                                            | [ELL20](https://www.thorlabs.com/thorproduct.cfm?partnumber=ELL20)                                                                                                                                     |
-| Thorlabs KDC101                   | Kinesis Controller for Z825B/[Z925B](https://www.thorlabs.com/thorproduct.cfm?partnumber=Z925B) actuators (Activate USB VCP to access the COM port in device manager) | [KDC101](https://www.thorlabs.com/thorproduct.cfm?partnumber=KDC101)                                                                                                                                   |
-| Parallax TSL1401-DB (#28317)      | Linescan Camera Module                                                                                                                                                | [Parallax TSL1401-DB](https://eu.mouser.com/ProductDetail/Parallax/28317?qs=%2Fha2pyFaduiCRhuOAXMuCmQIeG1Q3R01m6Y1EH%252BmN80%3D)                                                                      |
-| RelayBox Arduino                  | For laser control using camera GPIO signals                                                                                                                           | [RelayBox](https://github.com/samhitech/RelayBox)                                                                                                                                                      |
-| miEye OSF Project Parts List      | Parts list of miEye OSF Project                                                                                                                                       | [Repo Link](https://osf.io/j2fqy/)                                                                                                                                                                     |
+| Hardware                          | Description                                                                                                                                                           |  Driver  |                                                                                                  Link                                                                                                  |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------: | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------: |
+| Integrated Optics MatchBox        | Multi-wavelength Laser Combiner, Single Laser MatchBox                                                                                                                | `Native` |                                                              [Products Link](https://integratedoptics.com/products/wavelength-combiners)                                                               |
+| Piezo Concept FOC                 | Nanopositioner for microscope objectives                                                                                                                              | `Native` |                                                              [Piezo Concept FOC](https://piezoconcept-store.squarespace.com/1-axis/p/foc)                                                              |
+| Thorlabs Elliptec ELL6/ELL9/ELL12 | Dual/Four/Six-Position Slider                                                                                                                                         | `Native` | [ELL6](https://www.thorlabs.com/thorproduct.cfm?partnumber=ELL6), [ELL9](https://www.thorlabs.com/thorproduct.cfm?partnumber=ELL9), [ELL12](https://www.thorlabs.com/thorproduct.cfm?partnumber=ELL12) |
+| Thorlabs Elliptec ELL14           | Rotation Mount: SM1 Threaded                                                                                                                                          | `Native` |                                                                   [ELL14](https://www.thorlabs.com/thorproduct.cfm?partnumber=ELL14)                                                                   |
+| Thorlabs Elliptec ELL20           | Linear Stage: 60 mm Travel                                                                                                                                            | `Native` |                                                                   [ELL20](https://www.thorlabs.com/thorproduct.cfm?partnumber=ELL20)                                                                   |
+| Thorlabs KDC101                   | Kinesis Controller for Z825B/[Z925B](https://www.thorlabs.com/thorproduct.cfm?partnumber=Z925B) actuators (Activate USB VCP to access the COM port in device manager) | `Native` |                                                                  [KDC101](https://www.thorlabs.com/thorproduct.cfm?partnumber=KDC101)                                                                  |
+| Parallax TSL1401-DB (#28317)      | Linescan Camera Module                                                                                                                                                | `Native` |                                   [Parallax TSL1401-DB](https://eu.mouser.com/ProductDetail/Parallax/28317?qs=%2Fha2pyFaduiCRhuOAXMuCmQIeG1Q3R01m6Y1EH%252BmN80%3D)                                    |
+| RelayBox Arduino                  | For laser control using camera GPIO signals                                                                                                                           | `Native` |                                                                           [RelayBox](https://github.com/samhitech/RelayBox)                                                                            |
+| miEye OSF Project Parts List      | Parts list of miEye OSF Project                                                                                                                                       |    -     |                                                                                   [Repo Link](https://osf.io/j2fqy/)                                                                                   |
 
 ## Pycro-Manager Integration
 
 Integration with Pycro-Manager is now implemented, providing support for managing headless instances and `Core` instances. This allows for seamless control and configuration of hardware devices through the Pycro-Manager framework.
 
+![pycromanager integration](https://github.com/user-attachments/assets/73893f9f-c1ef-438f-a884-ec3f60f00118)
+
 ### Features
 
 - **Headless Manager**: Manage multiple headless Micro-Manager instances (JavaBackend), including starting, stopping, and saving configurations.
-- **Core Instances Manager**: Handle multiple PycroCore instances for device communication and control.
+- **Core Instances Manager**: Handle multiple `PycroCore` instances for device communication and control.
 
 ### Integrated Hardware
 
 The following table lists the hardware devices that are integrated and supported by the `miEye module`:
 
-| Device | Description                                                                                 |
-| :----: | ------------------------------------------------------------------------------------------- |
-| Camera | Access Micro-Manager cameras (mainly done for focus stabilization).                         |
-| ZStage | Access Micro-Manager Z-stage devices for focus stabilization and axial positioning control. |
+|  Device  | Description                                                                                 |
+| :------: | ------------------------------------------------------------------------------------------- |
+| `Camera` | Access Micro-Manager cameras (mainly done for focus stabilization).                         |
+| `ZStage` | Access Micro-Manager Z-stage devices for focus stabilization and axial positioning control. |
 
 ### How to Use
 
@@ -312,26 +318,30 @@ The following table lists the hardware devices that are integrated and supported
 
      _Accessing other types of devices is under development!_
 
-_Note: Currently, only acquisition has been tested with the developed `PycroPanel`. Full implementation of focus stabilization is planned for future updates by implementing further stage-related widgets._
+     > **Note:** Currently, only acquisition and focus stabilization features are implemented. Support for additional hardware and stage-related controls is under active development.
 
-![pycromanager integration](https://github.com/user-attachments/assets/73893f9f-c1ef-438f-a884-ec3f60f00118)
+### Step-by-step Instructions
+
+For comprehensive step-by-step instructions, please refer to the [Pycro-Manager Integration Guide](https://github.com/samhitech/microEye/tree/main/guide/pycromanager).
 
 ## Authors
 
-[Mohammad Nour Alsamsam](https://tutkuslab.github.io/team/MNA/), PhD student @ Vilnius University.
+[`Mohammad Nour Alsamsam`](https://tutkuslab.github.io/team/MNA/)
 
 [![Twitter URL](https://img.shields.io/twitter/url/https/twitter.com/samhightech.svg?style=social&label=Follow%20%40samhightech)](https://twitter.com/samhightech)
 
 ## People Involved
 
-**PhD supervision:** [Dr. Marijonas Tutkus](https://tutkuslab.github.io/team/MT/)
+**PhD supervision:**
+
+[`Dr. Marijonas Tutkus`](https://tutkuslab.github.io/team/MT/)
 
 [![Twitter URL](https://img.shields.io/twitter/url/https/twitter.com/MTutkus.svg?style=social&label=Follow%20%40MTutkus)](https://twitter.com/MTutkus)
 
 **Sample preparation, experiments and testing:**
 
-- [Aurimas Kopūstas](https://tutkuslab.github.io/team/AK/)
-- [Tutkus Lab Team](https://tutkuslab.github.io/team/)
+[`Aurimas Kopūstas`](https://tutkuslab.github.io/team/AK/)
+[`Tutkus Lab Team`](https://tutkuslab.github.io/team/)
 
 ## Acknowledgement
 
@@ -343,7 +353,7 @@ Research and access to intruments and samples is credited to:
 
 Special thanks to the following projects and libraries that make this work possible:
 
-- **SMAP/fit3Dcspline**: The original code, provided as a part of the Ries group [SMAP software](https://github.com/jries/SMAP/tree/master/fit3Dcspline). The `pyfit3Dcspline` module in our project is a Python adaptation of this functionality, offering both CPU and GPU accelerated fitting of Single-Molecule Localization Microscopy (SMLM) data. For more details, refer to the pyfit3Dcspline [README](https://github.com/samhitech/microEye/tree/main/src/microEye/analysis/fitting/pyfit3Dcspline/README.md).
+- **SMAP/fit3Dcspline**: The original code, provided as a part of the Ries group [`SMAP software`](https://github.com/jries/SMAP/tree/master/fit3Dcspline). The `pyfit3Dcspline` module in our project is a Python adaptation of this functionality, offering both CPU and GPU accelerated fitting of Single-Molecule Localization Microscopy (SMLM) data. For more details, refer to the pyfit3Dcspline [`README`](https://github.com/samhitech/microEye/tree/main/src/microEye/analysis/fitting/pyfit3Dcspline/README.md).
 
 - **ACCéNT**: a partial implementation of the photon free calibration within the acquisition pipeline which generates pixel-wise mean and variance images.
 
@@ -357,7 +367,7 @@ Special thanks to the following projects and libraries that make this work possi
 
   > Raw data to results: a hands-on introduction and overview of computational analysis for single-molecule localization microscopy", Martens et al., (2022), Frontiers in Bioinformatics. [Paper](https://www.frontiersin.org/articles/10.3389/fbinf.2021.817254)
 
-- **TARDIS (Temporal Analysis of Relative Distances)**: We have developed a partial Python implementation of TARDIS without fitting for now. For more information, refer to the [TARDIS software releases](https://github.com/kjamartens/TARDIS-public). The underlying algorithms and scientific details of TARDIS are detailed in the manuscript:
+- **TARDIS (Temporal Analysis of Relative Distances)**: We have developed a partial Python implementation of TARDIS without fitting for now. For more information, refer to the [`TARDIS` software releases](https://github.com/kjamartens/TARDIS-public). The underlying algorithms and scientific details of TARDIS are detailed in the manuscript:
   > Martens et al., “Temporal analysis of relative distances (TARDIS) is a robust, parameter-free alternative to single-particle tracking”, Nature Methods (2024). [Article](https://rdcu.be/dv1sr)
 
 **Note**: I'm committed to maintaining an accurate acknowledgment list for our project. However, if I inadvertently miss acknowledging your work, please don't hesitate to reach out to us. I appreciate your understanding, and I'm doing my best to manage all acknowledgments amidst my other responsibilities.

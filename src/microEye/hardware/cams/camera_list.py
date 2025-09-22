@@ -2,13 +2,9 @@ import os
 import typing
 
 from microEye.hardware.cams.camera_panel import Camera_Panel
-from microEye.hardware.cams.dummy.dummy_panel import Dummy_Panel
-from microEye.hardware.cams.micam import miDummy
-from microEye.hardware.cams.thorlabs.thorlabs import CMD, thorlabs_camera
-from microEye.hardware.cams.thorlabs.thorlabs_panel import Thorlabs_Panel
-from microEye.hardware.pycromanager.devices import PycroCamera, PycroCore
-from microEye.hardware.pycromanager.widgets import PycroPanel
-from microEye.qt import QtGui, QtWidgets, Signal
+from microEye.hardware.cams.micam import miCamera, miDummy
+from microEye.qt import QtCore, QtGui, QtWidgets, Signal
+from microEye.utils.thread_worker import QThreadWorker
 
 try:
     from pyueye import ueye
@@ -18,18 +14,71 @@ try:
 except Exception:
     ueye = None
     IDS_Camera = None
+    IDS_Panel = None
+
+from microEye.hardware.cams.vimba import INSTANCE, vb
+
+if vb is not None:
+    from microEye.hardware.cams.vimba.vimba_cam import vimba_cam
+    from microEye.hardware.cams.vimba.vimba_panel import Vimba_Panel
+else:
+    vimba_cam = None
+    Vimba_Panel = None
+
+from microEye.hardware.cams.basler.basler_cam import basler_cam
+from microEye.hardware.cams.basler.basler_panel import Basler_Panel
+from microEye.hardware.cams.dummy.dummy_panel import Dummy_Panel
+from microEye.hardware.cams.pycromanager import PycroCamera
+from microEye.hardware.cams.pycromanager.pycro_panel import PycroPanel
+from microEye.hardware.cams.thorlabs.thorlabs import thorlabs_camera
+from microEye.hardware.cams.thorlabs.thorlabs_panel import Thorlabs_Panel
 
 try:
-    import vimba as vb
-
-    from microEye.hardware.cams.vimba.vimba_cam import get_camera_list, vimba_cam
-    from microEye.hardware.cams.vimba.vimba_panel import Vimba_Panel
+    CAMERA_CLASSES = {cls.__name__: cls for cls in miCamera.__subclasses__()}
 except Exception:
-    vb = None
+    CAMERA_CLASSES = {}
+    import traceback
 
-    def get_camera_list():
-        return []
+    traceback.print_exc()
 
+CAMERA_CONFIGS = {
+    'Basler': {
+        'driver': 'Basler',
+        'camera_class': basler_cam,
+        'camera_args': ['FullName'],
+        'panel_class': Basler_Panel,
+    },
+    'miDummy': {
+        'driver': 'miDummy',
+        'camera_class': miDummy,
+        'camera_args': None,
+        'panel_class': Dummy_Panel,
+    },
+    'PycroCore': {
+        'driver': 'PycroCore',
+        'camera_class': PycroCamera,
+        'camera_args': ['Camera ID', 'Port'],
+        'panel_class': PycroPanel,
+    },
+    'UC480': {
+        'driver': 'UC480',
+        'camera_class': thorlabs_camera,
+        'camera_args': ['Camera ID'],
+        'panel_class': Thorlabs_Panel,
+    },
+    'uEye': {
+        'driver': 'uEye',
+        'camera_class': IDS_Camera,
+        'camera_args': ['Camera ID'],
+        'panel_class': IDS_Panel,
+    },
+    'Vimba': {
+        'driver': 'Vimba',
+        'camera_class': vimba_cam,
+        'camera_args': ['Camera ID'],
+        'panel_class': Vimba_Panel,
+    },
+}
 
 class CameraList(QtWidgets.QWidget):
     '''
@@ -39,7 +88,14 @@ class CameraList(QtWidgets.QWidget):
     cameraAdded = Signal(Camera_Panel, bool)
     cameraRemoved = Signal(Camera_Panel, bool)
 
-    CAMERAS = {'uEye': [], 'Vimba': [], 'UC480': [], 'miDummy': [], 'PycroCore': []}
+    CAMERAS : dict[str, list[dict]] = {
+        'Basler': [],
+        'miDummy': [],
+        'PycroCore': [],
+        'UC480': [],
+        'uEye': [],
+        'Vimba': [],
+    }
 
     def __init__(self, parent: typing.Optional['QtWidgets.QWidget'] = None):
         '''
@@ -180,104 +236,18 @@ class CameraList(QtWidgets.QWidget):
         '''
         if cam['InUse'] == 0:
             driver = cam['Driver']
-            if driver == 'uEye':
-                return self._add_ids_camera(cam, cam['Camera ID'], mini)
-            elif driver == 'UC480':
-                return self._add_thorlabs_camera(cam, cam['Camera ID'], mini)
-            elif driver == 'Vimba':
-                return self._add_vimba_camera(cam, cam['Camera ID'], mini)
-            elif driver == 'miDummy':
-                return self._add_dummy_camera(cam, mini)
-            elif driver == 'PycroCore':
-                return self._add_pycro_camera(cam, cam['Device ID'], mini)
+            config = CAMERA_CONFIGS.get(driver)
+            if config:
+                return self._add_camera_generic(cam, mini, config)
             else:
                 self._display_warning_message(f'Unsupported camera driver: {driver}')
         else:
             self._display_warning_message('Device is in use or already added.')
 
-    def _add_ids_camera(self, cam, camera_id, mini):
+
+    def _add_camera_generic(self, cam, mini, config):
         '''
-        Add an IDS camera.
-
-        Parameters
-        ----------
-        cam : dict
-            The camera information dictionary.
-        camera_id : int
-            The camera ID.
-        mini : bool
-            True to add a mini camera panel, False to add a full camera panel.
-
-        Returns
-        -------
-        Camera_Panel | None
-            The camera panel, or None if the camera could not be added.
-        '''
-        ids_cam = IDS_Camera(camera_id)
-        ids_cam.initialize()
-        ids_panel = IDS_Panel(ids_cam, mini, self.get_cam_title(cam))
-        CameraList.CAMERAS['uEye'].append(
-            {'Camera': ids_cam, 'Panel': ids_panel, 'IR': mini}
-        )
-        return ids_panel
-
-    def _add_thorlabs_camera(self, cam, camera_id, mini):
-        '''
-        Add a Thorlabs camera.
-
-        Parameters
-        ----------
-        cam : dict
-            The camera information dictionary.
-        camera_id : int
-            The camera ID.
-        mini : bool
-            True to add a mini camera panel, False to add a full camera panel.
-
-        Returns
-        -------
-        Camera_Panel | None
-            The camera panel, or None if the camera could not be added.
-        '''
-        thor_cam = thorlabs_camera(camera_id)
-        n_ret = thor_cam.initialize()
-        if n_ret == CMD.IS_SUCCESS:
-            thor_panel = Thorlabs_Panel(thor_cam, mini, self.get_cam_title(cam))
-            CameraList.CAMERAS['UC480'].append(
-                {'Camera': thor_cam, 'Panel': thor_panel, 'IR': mini}
-            )
-            return thor_panel
-        else:
-            self._display_warning_message('Thorlabs camera initialization failed.')
-
-    def _add_vimba_camera(self, cam, camera_id, mini):
-        '''
-        Add a Vimba camera.
-
-        Parameters
-        ----------
-        cam : dict
-            The camera information dictionary.
-        camera_id : int
-            The camera ID.
-        mini : bool
-            True to add a mini camera panel, False to add a full camera panel.
-
-        Returns
-        -------
-        Camera_Panel | None
-            The camera panel, or None if the camera could not be added.
-        '''
-        v_cam = vimba_cam(camera_id)
-        v_panel = Vimba_Panel(v_cam, mini, self.get_cam_title(cam))
-        CameraList.CAMERAS['Vimba'].append(
-            {'Camera': v_cam, 'Panel': v_panel, 'IR': mini}
-        )
-        return v_panel
-
-    def _add_dummy_camera(self, cam, mini):
-        '''
-        Add a dummy camera.
+        Generic camera/panel adder.
 
         Parameters
         ----------
@@ -285,45 +255,32 @@ class CameraList(QtWidgets.QWidget):
             The camera information dictionary.
         mini : bool
             True to add a mini camera panel, False to add a full camera panel.
+        config : dict
+            Configuration for camera type (see below).
 
         Returns
         -------
         Camera_Panel | None
             The camera panel, or None if the camera could not be added.
         '''
-        dummy_panel = Dummy_Panel(mini, self.get_cam_title(cam))
-        CameraList.CAMERAS['miDummy'].append(
-            {'Camera': dummy_panel.cam, 'Panel': dummy_panel, 'IR': mini}
+        driver = config['driver']
+        camera_class = config['camera_class']
+        camera_args = config['camera_args']
+        panel_class = config['panel_class']
+
+        args = [mini, self.get_cam_title(cam)]
+
+        if camera_args:
+            camera = camera_class(*[cam[arg] for arg in camera_args])
+            args.insert(0, camera)
+
+        panel : Camera_Panel = panel_class(*args)
+
+        # Add to CAMERAS dict
+        CameraList.CAMERAS[driver].append(
+            {'Camera': panel.cam, 'Panel': panel, 'IR': mini, 'Info': cam}
         )
-        return dummy_panel
-
-    def _add_pycro_camera(self, cam, camera_id, mini):
-        '''
-        Add a PycroManager camera.
-
-        Parameters
-        ----------
-        cam : dict
-            The camera information dictionary.
-        camera_id : int
-            The camera ID / Label.
-        mini : bool
-            True to add a mini camera panel, False to add a full camera panel.
-
-        Returns
-        -------
-        Camera_Panel | None
-            The camera panel, or None if the camera could not be added.
-        '''
-        pycro_cam = PycroCamera(
-            cam['Camera ID'], port=int(cam['Device ID'].split('-')[0])
-        )
-
-        pycro_pan = PycroPanel(pycro_cam, mini, self.get_cam_title(cam))
-        CameraList.CAMERAS['PycroCore'].append(
-            {'Camera': pycro_cam, 'Panel': pycro_pan, 'IR': mini}
-        )
-        return pycro_pan
+        return panel
 
     def _display_warning_message(self, message):
         '''
@@ -397,15 +354,12 @@ class CameraList(QtWidgets.QWidget):
                             'Please stop acquisition before removing!'
                         )
                     else:
-                        if isinstance(pan.cam, (IDS_Camera, thorlabs_camera)):
-                            pan.cam.free_memory()
-                            pan.cam.dispose()
-                        if isinstance(item['Camera'], miDummy):
-                            miDummy.instances.remove(item['Camera'])
+                        pan.dispose()
 
                         pan._dispose_cam = True
                         if pan.acq_job is not None:
                             pan.acq_job.stop_threads = True
+                            pan.acq_job.c_event.set()
 
                         cams.remove(item)
                         if item['IR']:
@@ -433,17 +387,12 @@ class CameraList(QtWidgets.QWidget):
                     panel.stop()
 
                 # Clean up based on camera type
-                if isinstance(panel.cam, (IDS_Camera, thorlabs_camera)):
-                    panel.cam.free_memory()
-                    panel.cam.dispose()
-
-                # Remove dummy camera instances
-                if isinstance(camera_info['Camera'], miDummy):
-                    miDummy.instances.remove(camera_info['Camera'])
+                panel.dispose()
 
                 # Stop any acquisition jobs
                 if panel.acq_job is not None:
                     panel.acq_job.stop_threads = True
+                    panel.acq_job.c_event.set()
 
                 # Remove from parent and clean up panel
                 panel._dispose_cam = True
@@ -460,27 +409,38 @@ class CameraList(QtWidgets.QWidget):
         '''
         Refresh the camera list.
         '''
-        self.cam_list = []
+        # import faulthandler
+        # faulthandler.enable()
 
-        # Add miDummy to the list
-        self.cam_list += miDummy.get_camera_list()
+        self.refresh.setEnabled(False)
 
-        if ueye is not None:
-            self.cam_list += IDS_Camera.get_camera_list()
+        def _refresh_list(event):
+            cam_list = []
+            for key, camera_class in CAMERA_CLASSES.items():
+                if 'thorlabs' in key.lower() and not os.path.exists(
+                    thorlabs_camera.uc480_file
+                ):
+                    continue
+                try:
+                    if camera_class:
+                        cam_list += camera_class.get_camera_list()
+                except Exception as e:
+                    print(f'Error getting camera list for {key}: {e}')
 
-        if os.path.exists(thorlabs_camera.uc480_file):
-            self.cam_list += thorlabs_camera.get_camera_list()
+            return cam_list
 
-        if vb is not None:
-            self.cam_list += get_camera_list()
+        def done(result):
+            self.cam_list = result
+            self.update_list()
+            self.refresh.setEnabled(True)
 
-        if hasattr(PycroCore, 'get_camera_list'):
-            self.cam_list += PycroCore.get_camera_list()
+        # worker = QThreadWorker(_refresh_list)
+        # worker.signals.result.connect(done)
 
-        if self.cam_list is None:
-            self.cam_list = []
-            print('No cameras connected.')
+        # QtCore.QThreadPool.globalInstance().start(worker)
+        done(_refresh_list(None))
 
+    def update_list(self):
         self.item_model = QtGui.QStandardItemModel(len(self.cam_list), 8)
 
         self.item_model.setHorizontalHeaderLabels(
@@ -535,3 +495,46 @@ class CameraList(QtWidgets.QWidget):
             for cam in cam_list:
                 if not cam['IR']:
                     cam['Panel'].capture_image()
+
+    def get_config(self):
+        '''
+        Get the configuration of all added cameras.
+
+        This allows adding the same cameras again later.
+
+        Returns
+        -------
+        dict
+            A dictionary containing the configuration of all added cameras.
+        '''
+        config : list[dict] = []
+
+        for _, cam_list in CameraList.CAMERAS.items():
+            for cam in cam_list:
+                cam_config : dict = cam['Info'].copy()
+                cam_config['IR'] = cam['IR']
+                config.append(cam_config)
+        return config
+
+    def load_config(self, config: list[dict]):
+        '''
+        Adds the cameras in the given configuration.
+
+        Parameters
+        ----------
+        config : dict
+            A dictionary containing the configuration of all cameras to add.
+        '''
+        for cam in config:
+            is_IR = cam.pop('IR', False)
+            # check if camera is available in the current list
+            if cam not in self.cam_list:
+                print(f'Camera {self.get_cam_title(cam)} not available; skipping.')
+                continue
+            if self.autofocusCam is not None and is_IR:
+                print('Skipping adding autofocus IR camera; one already exists.')
+                continue
+            panel = self.add_camera(cam, is_IR)
+            if panel:
+                self.cameraAdded.emit(panel, is_IR)
+        self.refresh_list()

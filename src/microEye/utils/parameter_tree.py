@@ -79,7 +79,7 @@ class Tree(ParameterTree):
         except KeyError:
             return None
 
-    def get_param_value(self, param: Union[Enum, str]):
+    def get_param_value(self, param: Union[Enum, str], default: Any = None) -> Any:
         '''Get a parameter value by name.
 
         Parameters
@@ -98,7 +98,7 @@ class Tree(ParameterTree):
             else:
                 return self.param_tree.param(*param.split('.')).value()
         except KeyError:
-            return None
+            return default
 
     def set_param_value(
         self, param: Enum, value, blockSignals: Union[Any, None] = None

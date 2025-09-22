@@ -1,1 +1,1 @@
-from microEye.hardware.stages.kinesis.kinesis import KinesisView, KinesisXY
+from microEye.hardware.stages.kinesis.kinesis import KinesisXY

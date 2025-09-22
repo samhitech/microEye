@@ -537,7 +537,7 @@ class FocusStabilizer(QtCore.QObject):
         self._exec_time = 0
         now = QDateTime.currentDateTime()
         QtCore.QThread.msleep(100)
-        while not self.exit_event.isSet():
+        while not self.exit_event.is_set():
             try:
                 # proceed only if the buffer is not empty
                 if not self.isEmpty():

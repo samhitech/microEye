@@ -29,7 +29,7 @@ from microEye.qt import (
 )
 from microEye.tools.microscopy import ObjectiveCalculator
 from microEye.utils.pyscripting import pyEditor
-from microEye.utils.start_gui import StartGUI
+from microEye.utils.start_gui import StartGUI, __version__
 
 
 class DOCKS(Enum):
@@ -95,7 +95,7 @@ class miEye_module(QMainWindow):
         self.device_manager.widgetRemoved.connect(self._remove_widgets)
 
         # setting title
-        self.setWindowTitle('miEye module')
+        self.setWindowTitle(f'miEye module v{__version__}')
 
         # setting geometry
         self.setGeometry(0, 0, 1200, 920)
@@ -205,7 +205,6 @@ class miEye_module(QMainWindow):
             self.device_manager._remove_ir_array_detector
         )
         self.devicesView.addLaserActivated.connect(self.device_manager._add_laser)
-        self.devicesView.setStageActivated.connect(self.device_manager._set_z_stage)
 
         devicesLayout.addWidget(self.devicesView, 0, 1)
 
@@ -296,9 +295,7 @@ class miEye_module(QMainWindow):
 
         if not webbrowser.open(url):
             print(f'Failed to open URL: {url}')
-            QtWidgets.QMessageBox.warning(
-                self, 'Error', f'Could not open URL: {url}'
-            )
+            QtWidgets.QMessageBox.warning(self, 'Error', f'Could not open URL: {url}')
 
     def init_menubar(self):
         # Create menu bar
@@ -444,13 +441,13 @@ class miEye_module(QMainWindow):
                     'left', 'Signal', 'V', **self.labelStyle
                 )
 
-        elif device == DEVICES.Z_STAGE:
-            self.stagesWidget.insertTab(0, widget, 'Z-Stage')
+        elif device == DEVICES.STAGE:
+            self.stagesWidget.insertTab(0, widget, str(widget.stage.NAME))
             self.stagesWidget.setCurrentIndex(0)
 
-        elif device == DEVICES.XY_STAGE:
-            self.stagesWidget.insertTab(1, widget, 'XY-Stage')
-            self.stagesWidget.setCurrentIndex(1)
+        elif device == DEVICES.STAGE_MANAGER:
+            self.stagesWidget.insertTab(0, widget, 'Stage Manager')
+            self.stagesWidget.setCurrentIndex(0)
 
         elif device == DEVICES.ELLIPTEC:
             self.stagesWidget.insertTab(2, widget, 'Elliptec Devices')
@@ -488,30 +485,25 @@ class miEye_module(QMainWindow):
                 self.ir_array_dock.deleteLater()
                 self.ir_array_dock = None
 
-        elif device == DEVICES.Z_STAGE:
-            pass
-
     def update_gui(self):
         '''Recurring timer updates the status bar and GUI'''
 
-        RelayBox = '    |  Relay ' + (
+        RelayBox = '  |  Relay ' + (
             'connected'
             if DeviceManager.instance().laser_relay.isOpen()
             else 'disconnected'
         )
 
         Position = ''
-        Frames = '    | Frames Saved: ' + str(
+        Frames = '  |  Frames Saved: ' + str(
             FocusStabilizer.instance().num_frames_saved
         )
 
-        Worker = f'    | Execution time: {FocusStabilizer.instance()._exec_time:.0f}'
+        Worker = f'  |  Execution time: {FocusStabilizer.instance()._exec_time:.0f}'
         if DeviceManager.instance().camList.autofocusCam:
-            Worker += (
-                f'    | Frames Buffer: {FocusStabilizer.instance().bufferSize():d}'
-            )
+            Worker += f'  |  Frames Buffer: {FocusStabilizer.instance().bufferSize():d}'
         self.statusBar().showMessage(
-            f'{QT_API} | '
+            f'{QT_API}  |  '
             + 'Time: '
             + QDateTime.currentDateTime().toString('hh:mm:ss,zzz')
             + RelayBox
@@ -538,9 +530,12 @@ class miEye_module(QMainWindow):
             for cam in cam_list:
                 cam['Panel'].updateInfo()
 
-        if DeviceManager.instance().stage:
-            DeviceManager.instance().stage.updatePortState()
-            DeviceManager.instance().stage.refreshPorts()
+        for tab_index in range(self.stagesWidget.count()):
+            stage_widget = self.stagesWidget.widget(tab_index)
+            if hasattr(stage_widget, '_refresh_ports') and callable(
+                stage_widget._refresh_ports
+            ):
+                stage_widget._refresh_ports()
 
     def addDockWidget(
         self, area: Qt.DockWidgetArea, widget: QtWidgets.QDockWidget, key: DOCKS
@@ -658,15 +653,5 @@ def loadConfig(mieye: miEye_module, auto_connect=True):
 
 
 if __name__ == '__main__':
-    try:
-        import vimba as vb
-    except Exception:
-        vb = None
-
-    if vb:
-        with vb.Vimba.get_instance() as vimba:
-            app, window = miEye_module.StartGUI()
-            app.exec()
-    else:
-        app, window = miEye_module.StartGUI()
-        app.exec()
+    app, window = miEye_module.StartGUI()
+    app.exec()

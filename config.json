@@ -8,19 +8,42 @@
     "port": "COM1",
     "baudrate": 9600
   },
-  "Stage Z": {
-    "port": "COM5",
-    "baudrate": 115200,
-    "max_um": 100
-  },
-  "Stage XY": {
-    "X": {
-      "port": "COM12",
-      "baudrate": 115200
+  "Stages": {
+    "PycroStage XY-066293be": {
+      "class_name": "PycroStage XY",
+      "config": {
+        "X": {
+          "max": 10000,
+          "center": 5000.0
+        },
+        "Y": {
+          "max": 10000,
+          "center": 5000.0
+        },
+        "pycromanager": {
+          "label": "XY",
+          "port": 4827
+        }
+      },
+      "axis": [
+        "X"
+      ]
     },
-    "Y": {
-      "port": "COM11",
-      "baudrate": 115200
+    "PycroStage Z-5a23f70a": {
+      "class_name": "PycroStage Z",
+      "config": {
+        "Z": {
+          "max": 100,
+          "center": 50.0
+        },
+        "pycromanager": {
+          "label": "Z",
+          "port": 4827
+        }
+      },
+      "axis": [
+        "Z"
+      ]
     }
   },
   "FocusStabilizer": {
@@ -41,9 +64,12 @@
     "Inverted": false
   },
   "Pycromanager": {
-    "core_instances": [],
+    "core_instances": [
+      4827
+    ],
     "headless_instances": {}
   },
+  "Cameras": [],
   "Lasers": [],
   "miEye_module": {
     "position": {
@@ -57,14 +83,14 @@
     "is_maximized": false
   },
   "controller_dock": {
-    "is_floating": false,
+    "is_floating": true,
     "position": {
-      "x": -418,
-      "y": -1121
+      "x": 197,
+      "y": 289
     },
     "size": {
-      "width": 598,
-      "height": 872
+      "width": 392,
+      "height": 813
     },
     "is_visible": true
   },
@@ -84,11 +110,11 @@
     "is_floating": false,
     "position": {
       "x": 680,
-      "y": 307
+      "y": 280
     },
     "size": {
-      "width": 392,
-      "height": 843
+      "width": 350,
+      "height": 870
     },
     "is_visible": true
   },
@@ -143,11 +169,11 @@
   "focus_dock": {
     "is_floating": false,
     "position": {
-      "x": 1076,
+      "x": 1034,
       "y": 307
     },
     "size": {
-      "width": 804,
+      "width": 846,
       "height": 843
     },
     "is_visible": true

@@ -6,9 +6,31 @@ import numpy as np
 import pco
 from pco.sdk import Sdk, shared_library_loader
 
+from microEye.hardware.cams.camera_options import CamParams
 from microEye.hardware.cams.micam import miCamera
 from microEye.hardware.cams.pco.enums import *
 
+
+class pcoParams(Enum):
+    FREERUN = 'Acquisition.Freerun'
+    STOP = 'Acquisition.Stop'
+    # EXPOSURE_MODE = 'Acquisition Settings.Exposure Mode'
+    # EXPOSURE_AUTO = 'Acquisition Settings.Exposure Auto'
+    DELAY = 'Acquisition Settings.Delay'
+    # TRIGGER_MODE = 'Acquisition Settings.Trigger Mode'
+    # PIXEL_FORMAT = 'Acquisition Settings.Pixel Format'
+
+    def __str__(self):
+        '''
+        Return the last part of the enum value (Param name).
+        '''
+        return self.value.split('.')[-1]
+
+    def get_path(self):
+        '''
+        Return the full parameter path.
+        '''
+        return self.value.split('.')
 
 class pco_cam(miCamera):
     def __init__(self, Cam_ID=0, **kwargs) -> None:
@@ -33,6 +55,15 @@ class pco_cam(miCamera):
         self.interface = self.cam.interface
 
         self.print_status()
+
+    def get_metadata(self):
+        return {
+            'CHANNEL_NAME': self.name,
+            'DET_MANUFACTURER': 'Excelitas PCO',
+            'DET_MODEL': self.name,
+            'DET_SERIAL': self.serial,
+            'DET_TYPE': 'CMOS',
+        }
 
     @property
     def exposure_increment(self) -> float:
@@ -212,7 +243,10 @@ class pco_cam(miCamera):
             'Unit': 's',
         }
 
-        self.status['Temperature'] = self.cam.sdk.get_temperature()
+        self.status['Temperature'] = {
+            'Value': self.cam.sdk.get_temperature(),
+            'Unit': 'Celsius',
+        }
 
         self.status['Description'] = self.cam.description
 
@@ -496,19 +530,29 @@ class pco_cam(miCamera):
         '''
         self.setConfigByKey(ConfigKeys.TIMESTAMP, timestamp)
 
-    def setROI(self, roi: tuple[int, int, int, int]) -> None:
+    def get_roi(self):
+        return self.ROI
+
+    def set_roi(self, x: int, y: int, width: int, height: int) -> None:
         '''
         Set the region of interest (ROI) of the camera
 
+        - Note that x and y are 1-indexed.
+
         Parameters
         ----------
-        roi : tuple[int, int, int, int]
-            The region of interest (x, y, width, height),
-            Note that x and y are 1-indexed.
+        x : int
+            The x-coordinate of the top-left corner of the ROI.
+        y : int
+            The y-coordinate of the top-left corner of the ROI.
+        width : int
+            The width of the ROI.
+        height : int
+            The height of the ROI.
         '''
-        self.setConfigByKey(ConfigKeys.ROI, roi)
+        self.setConfigByKey(ConfigKeys.ROI, [x, y, width, height])
 
-    def resetROI(self) -> None:
+    def reset_roi(self) -> None:
         '''Reset the region of interest (ROI) of the camera'''
         self.setConfigByKey(ConfigKeys.ROI, (1, 1, self.max_dim[0], self.max_dim[1]))
 
@@ -754,6 +798,48 @@ class pco_cam(miCamera):
         '''
         return self.cam.image_average(roi, data_format.value)
 
+    def property_tree(self):
+        DELAY = {
+            'name': str(pcoParams.DELAY),
+            'type': 'float',
+            'value': self.delay_current,
+            'dec': False,
+            'decimals': 6,
+            'step': 0.1,
+            'limits': [self.delay_range[0], self.delay_range[1]],
+            'suffix': self.exposure_unit,
+            'enabled': True,
+        }
+        FREERUN = {
+            'name': str(pcoParams.FREERUN),
+            'type': 'action',
+            'parent': CamParams.ACQUISITION,
+        }
+        STOP = {
+            'name': str(pcoParams.STOP),
+            'type': 'action',
+            'parent': CamParams.ACQUISITION,
+        }
+
+        return [
+            DELAY,
+            FREERUN,
+            STOP,
+        ]
+
+    def update_cam(self, param, path, param_value):
+        if path is None:
+            return
+
+        param_value = param.value()
+
+        try:
+            param_name = pcoParams('.'.join(path))
+        except ValueError:
+            return
+
+        if param_name == pcoParams.DELAY:
+            self.setDelay(param_value)
 
 if __name__ == '__main__':
     cam = pco_cam()

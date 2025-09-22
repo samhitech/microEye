@@ -21,8 +21,7 @@ except Exception:
     IDS_Camera = None
     IDS_Panel = None
 try:
-    import vimba as vb
-
+    from microEye.hardware.cams.vimba import INSTANCE, vb
     from microEye.hardware.cams.vimba.vimba_cam import vimba_cam
     from microEye.hardware.cams.vimba.vimba_panel import Vimba_Panel
 except Exception:
