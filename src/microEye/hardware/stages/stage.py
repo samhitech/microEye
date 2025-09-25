@@ -53,6 +53,8 @@ class Units(Enum):
     MICROMETERS = 1000  # 1 um = 1000 nm
     MILLIMETERS = 1000000  # 1 mm = 1,000,000 nm
 
+    SLIDES_PIXELS  = 100000
+
     def suffix(self) -> str:
         '''
         Return the suffix of the unit.
@@ -160,10 +162,13 @@ class StageParams(Enum):
     Y_MAX = 'Options.Y Max'
     Z_MAX = 'Options.Z Max'
 
+    X_CENTER = 'Options.X Center'
+    Y_CENTER = 'Options.Y Center'
+    Z_CENTER = 'Options.Z Center'
+
     SERIAL_PORT = 'Serial Port'
     PORT = 'Serial Port.Port'
     BAUDRATE = 'Serial Port.Baudrate'
-    REFRESH_PORTS = 'Serial Port.Refresh Ports'
     SET_PORT = 'Serial Port.Set Config'
     SET_PORT_X = 'Serial Port.Set Config X'
     SET_PORT_Y = 'Serial Port.Set Config Y'
@@ -204,6 +209,7 @@ class StageSignals(QtCore.QObject):
     asyncFinished = Signal()
     stageRemoved = Signal()
 
+
 def emit_after_signal(signal_name):
     def decorator(func):
         def wrapper(self, *args, **kwargs):
@@ -211,10 +217,10 @@ def emit_after_signal(signal_name):
             signal = getattr(self.signals, signal_name)
             signal.emit()
             return result
+
         return wrapper
+
     return decorator
-
-
 
 
 class AbstractStage(ABC):
@@ -581,52 +587,67 @@ class AbstractStage(ABC):
 
     @property
     def position(self) -> dict[Axis, float]:
-        '''Current stage position in nanometers as a dictionary.'''
+        '''Current stage position as a dictionary.'''
         return self._position.copy()
 
     @property
     def x(self) -> float:
-        '''Current stage position in nanometers.'''
+        '''Current stage X position.'''
         return self.get_position(Axis.X)
+
+    @property
+    def dx(self) -> float:
+        '''Current stage delta X position from center.'''
+        return self.x - self.get_center(Axis.X)
 
     @x.setter
     def x(self, value: float):
-        '''Set the stage position in nanometers.'''
+        '''Set the stage X position.'''
         self.set_position(Axis.X, value)
 
     @property
     def y(self) -> float:
-        '''Current stage position in nanometers.'''
+        '''Current stage Y position.'''
         return self.get_position(Axis.Y)
+
+    @property
+    def dy(self) -> float:
+        '''Current stage delta Y position from center.'''
+        return self.y - self.get_center(Axis.Y)
 
     @y.setter
     def y(self, value: float):
-        '''Set the stage position in nanometers.'''
+        '''Set the stage Y position.'''
         self.set_position(Axis.Y, value)
 
     @property
     def z(self) -> float:
-        '''Current stage position in nanometers.'''
+        '''Current stage Z position.'''
         return self.get_position(Axis.Z)
+
+    @property
+    def dz(self) -> float:
+        '''Current stage delta Z position from center.'''
+        return self.z - self.get_center(Axis.Z)
 
     @z.setter
     def z(self, value: float):
-        '''Set the stage position in nanometers.'''
+        '''Set the stage Z position.'''
         self.set_position(Axis.Z, value)
 
     @property
     def x_max(self) -> int:
-        '''Maximum stage position in nanometers.'''
+        '''Maximum stage position.'''
         return self._metadata[Axis.X]['max']
 
     @property
     def y_max(self) -> int:
-        '''Maximum stage position in nanometers.'''
+        '''Maximum stage position.'''
         return self._metadata[Axis.Y]['max']
 
     @property
     def z_max(self) -> int:
-        '''Maximum stage position in nanometers.'''
+        '''Maximum stage position.'''
         return self._metadata[Axis.Z]['max']
 
     def get_unit(self, axis: Axis) -> Units:
@@ -647,6 +668,60 @@ class AbstractStage(ABC):
             raise ValueError(f'Axis {axis} not supported by this stage')
 
         return self._metadata[axis]['unit']
+
+    def get_center(self, axis: Axis) -> float:
+        '''
+        Get the center position of the stage along a specific axis.
+
+        Parameters
+        ----------
+        axis : Axis
+            The axis to query.
+
+        Returns
+        -------
+        float
+            The center position of the stage.
+        '''
+        if axis not in self._metadata:
+            raise ValueError(f'Axis {axis} not supported by this stage')
+
+        return self._metadata[axis]['center']
+
+    def set_center(self, axis: Axis, center: float) -> None:
+        '''
+        Set the center position of the stage along a specific axis.
+
+        Parameters
+        ----------
+        axis : Axis
+            The axis to set.
+        center : float
+            The center position.
+        '''
+        if axis not in self._metadata:
+            raise ValueError(f'Axis {axis} not supported by this stage')
+
+        self._metadata[axis]['center'] = center
+
+    def get_max(self, axis: Axis) -> float:
+        '''
+        Get the maximum position of the stage along a specific axis.
+
+        Parameters
+        ----------
+        axis : Axis
+            The axis to query.
+
+        Returns
+        -------
+        float
+            The maximum position of the stage.
+        '''
+        if axis not in self._metadata:
+            raise ValueError(f'Axis {axis} not supported by this stage')
+
+        return self._metadata[axis]['max']
 
     def convert_units(self, x, y, z, from_unit: Optional[Units]):
         '''
@@ -674,10 +749,17 @@ class AbstractStage(ABC):
         if not isinstance(from_unit, Units):
             raise ValueError('from_unit must be an instance of Units enum.')
 
+        mapping = {
+            Axis.X: x,
+            Axis.Y: y,
+            Axis.Z: z,
+        }
+
         return (
-            Units.convert(x, from_unit, self.get_unit(Axis.X)),
-            Units.convert(y, from_unit, self.get_unit(Axis.Y)),
-            Units.convert(z, from_unit, self.get_unit(Axis.Z)),
+            Units.convert(value, from_unit, self.get_unit(axis))
+            if axis in self.axes
+            else value
+            for axis, value in mapping.items()
         )
 
     def convert_to_nm(self, value: float, axis: Axis = Axis.Z) -> float:
@@ -783,6 +865,6 @@ class AbstractStage(ABC):
                     continue
 
                 if 'max' in axis_config:
-                    self._metadata[axis]['max'] = axis_config['max']
+                    self.set_max_range(axis, axis_config['max'])
                 if 'center' in axis_config:
-                    self._metadata[axis]['center'] = axis_config['center']
+                    self.set_center(axis, axis_config['center'])

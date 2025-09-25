@@ -147,11 +147,25 @@ class DeviceManager(QtCore.QObject):
 
         self.widgetAdded.emit(DEVICES.FocusStabilizer, self.focus)
 
+    def update_gui(self):
+        # update indicators
+        CameraList.update_gui()
+
+        self.elliptecView.updateHighlight()
+        self.laser_relay.updatePortState()
+        self.laser_relay.refreshPorts()
+        self.laser_relay.updateHighlight(
+            self.laser_relay_settings()
+        )
+
     def stopRequest(self, axis: Axis):
         StageManager.instance().stop(axis)
 
     def homeRequest(self, axis: Axis):
         StageManager.instance().home(axis)
+
+    def centerRequest(self, axis: Axis):
+        StageManager.instance().center(axis)
 
     def toggleLock(self, axis: Axis):
         if axis == Axis.Z:

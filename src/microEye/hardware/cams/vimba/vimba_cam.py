@@ -1108,7 +1108,7 @@ class vimba_cam(miCamera):
             'name': str(VimbaParams.EXPOSURE_MODE),
             'type': 'list',
             'limits': self.exposure_modes[0] if self.exposure_modes else [],
-            'value': self.exposure_mode,
+            # 'value': self.exposure_mode,
         }
         EXPOSURE_AUTO = {
             'name': str(VimbaParams.EXPOSURE_AUTO),
@@ -1116,7 +1116,7 @@ class vimba_cam(miCamera):
             'limits': self.exposure_auto_entries[0]
             if self.exposure_auto_entries
             else [],
-            'value': self.exposure_auto,
+            # 'value': self.exposure_auto,
         }
         FRAMERATE_ENABLED = {
             'name': str(VimbaParams.FRAMERATE_ENABLED),

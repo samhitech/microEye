@@ -9,7 +9,7 @@
     "baudrate": 9600
   },
   "Stages": {
-    "PycroStage XY-066293be": {
+    "PycroStage XY-f5d7fbaf": {
       "class_name": "PycroStage XY",
       "config": {
         "X": {
@@ -29,7 +29,7 @@
         "X"
       ]
     },
-    "PycroStage Z-5a23f70a": {
+    "PycroStage Z-6caf6b42": {
       "class_name": "PycroStage Z",
       "config": {
         "Z": {
@@ -73,8 +73,8 @@
   "Lasers": [],
   "miEye_module": {
     "position": {
-      "x": 680,
-      "y": 251
+      "x": 620,
+      "y": 396
     },
     "size": {
       "width": 1200,
@@ -82,23 +82,41 @@
     },
     "is_maximized": false
   },
+  "slides_config": {
+    "slide": "sticky-Slide VI 0.4",
+    "swap_xy": false,
+    "invert_x": false,
+    "invert_y": true
+  },
   "controller_dock": {
     "is_floating": true,
     "position": {
-      "x": 197,
-      "y": 289
+      "x": 62,
+      "y": 397
     },
     "size": {
       "width": 392,
-      "height": 813
+      "height": 445
+    },
+    "is_visible": true
+  },
+  "slides_dock": {
+    "is_floating": true,
+    "position": {
+      "x": 60,
+      "y": 64
+    },
+    "size": {
+      "width": 762,
+      "height": 282
     },
     "is_visible": true
   },
   "devices_dock": {
     "is_floating": false,
     "position": {
-      "x": 56,
-      "y": -375
+      "x": -4,
+      "y": -230
     },
     "size": {
       "width": 124,
@@ -109,32 +127,32 @@
   "stages_dock": {
     "is_floating": false,
     "position": {
-      "x": 680,
-      "y": 280
+      "x": -230,
+      "y": -284
     },
     "size": {
       "width": 350,
-      "height": 870
+      "height": 180
     },
     "is_visible": true
   },
   "pyscript_dock": {
     "is_floating": false,
     "position": {
-      "x": -418,
-      "y": -1121
+      "x": -89,
+      "y": -264
     },
     "size": {
-      "width": 598,
-      "height": 872
+      "width": 209,
+      "height": 160
     },
     "is_visible": true
   },
   "protocols_dock": {
     "is_floating": false,
     "position": {
-      "x": -12,
-      "y": -377
+      "x": -72,
+      "y": -232
     },
     "size": {
       "width": 192,
@@ -145,8 +163,8 @@
   "lasers_dock": {
     "is_floating": false,
     "position": {
-      "x": -33,
-      "y": -375
+      "x": -93,
+      "y": -230
     },
     "size": {
       "width": 213,
@@ -157,8 +175,8 @@
   "cameras_dock": {
     "is_floating": false,
     "position": {
-      "x": -91,
-      "y": -407
+      "x": -151,
+      "y": -262
     },
     "size": {
       "width": 271,
@@ -169,11 +187,11 @@
   "focus_dock": {
     "is_floating": false,
     "position": {
-      "x": 1034,
-      "y": 307
+      "x": 620,
+      "y": 452
     },
     "size": {
-      "width": 846,
+      "width": 1200,
       "height": 843
     },
     "is_visible": true

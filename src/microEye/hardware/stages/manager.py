@@ -4,7 +4,7 @@ import pkgutil
 import uuid
 import weakref
 from enum import Enum
-from typing import Union
+from typing import Optional, Union
 
 from pyqtgraph.parametertree import Parameter
 
@@ -78,15 +78,21 @@ class StageManager(QtCore.QObject):
 
         return stage
 
-    def move_absolute(self, x, y, z, **kwargs):
-        if z >= 0 and self.z_stage() is not None:
+    def move_absolute(
+        self,
+        x: Optional[float],
+        y: Optional[float],
+        z: Optional[float] = None,
+        **kwargs,
+    ):
+        if z is not None and self.z_stage() is not None:
             args = self.z_stage().convert_units(0, 0, z, kwargs.get('unit'))
             self.z_stage().move_absolute(*args, **kwargs)
-        if (x >= 0 or y >= 0) and self.xy_stage() is not None:
+        if (x is not None or y is not None) and self.xy_stage() is not None:
             args = self.xy_stage().convert_units(x, y, 0, kwargs.get('unit'))
             self.xy_stage().move_absolute(*args, **kwargs)
 
-    def move_relative(self, x, y, z, **kwargs):
+    def move_relative(self, x: float = 0, y: float = 0, z: float = 0, **kwargs):
         if z != 0 and self.z_stage() is not None:
             args = self.z_stage().convert_units(0, 0, z, kwargs.get('unit'))
             self.z_stage().move_relative(*args, **kwargs)
@@ -99,6 +105,12 @@ class StageManager(QtCore.QObject):
             self.z_stage().home()
         elif axis in (Axis.X, Axis.Y) and self.xy_stage() is not None:
             self.xy_stage().home()
+
+    def center(self, axis: Axis):
+        if axis == Axis.Z and self.z_stage() is not None:
+            self.z_stage().center()
+        elif axis in (Axis.X, Axis.Y) and self.xy_stage() is not None:
+            self.xy_stage().center()
 
     def stop(self, axis: Axis):
         if axis == Axis.Z and self.z_stage() is not None:

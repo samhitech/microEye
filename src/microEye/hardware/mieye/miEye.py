@@ -17,6 +17,7 @@ from microEye.hardware.widgets import (
     Controller,
     DevicesView,
 )
+from microEye.hardware.widgets.slides import SlideWidget
 from microEye.qt import (
     QT_API,
     QAction,
@@ -26,6 +27,7 @@ from microEye.qt import (
     Qt,
     QtCore,
     QtWidgets,
+    Signal,
 )
 from microEye.tools.microscopy import ObjectiveCalculator
 from microEye.utils.pyscripting import pyEditor
@@ -42,6 +44,7 @@ class DOCKS(Enum):
     PROTOCOLS = 6
     CONTROLLER = 7
     FOCUS_CAMERA = 8
+    SLIDES = 9
 
     def get_key(self):
         return self.name.lower() + '_dock'
@@ -85,6 +88,8 @@ class miEye_module(QMainWindow):
         - focus (`focusWidget`)
     '''
 
+    updateGUI = Signal()
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -122,9 +127,12 @@ class miEye_module(QMainWindow):
         self.device_manager.init_devices()
 
         # Statues Bar Timer
+        self.updateGUI.connect(self.device_manager.update_gui)
+        self.updateGUI.connect(self.update_gui)
+
         self.timer = QtCore.QTimer()
         self.timer.setInterval(250)
-        self.timer.timeout.connect(self.update_gui)
+        self.timer.timeout.connect(self.updateGUI.emit)
         self.timer.start()
 
         self.show()
@@ -149,6 +157,7 @@ class miEye_module(QMainWindow):
         self.labelStyle = {'color': '#FFF', 'font-size': '10pt'}
 
         self.init_controller()
+        self.init_slides()
         self.init_devices_dock()
         # self.init_ir_dock()
         self.init_stages_dock()
@@ -171,6 +180,9 @@ class miEye_module(QMainWindow):
         self.controller.stage_home_requested.connect(
             DeviceManager.instance().homeRequest
         )
+        self.controller.stage_center_requested.connect(
+            DeviceManager.instance().centerRequest
+        )
         self.controller.stage_toggle_lock.connect(DeviceManager.instance().toggleLock)
         FocusStabilizer.instance().focusStabilizationToggled.connect(
             self.controller.set_stabilizer_lock
@@ -178,6 +190,21 @@ class miEye_module(QMainWindow):
 
         self.addDockWidget(
             Qt.DockWidgetArea.LeftDockWidgetArea, self.controller, DOCKS.CONTROLLER
+        )
+
+    def init_slides(self):
+        self.slidesDock = QtWidgets.QDockWidget('Slides', self)
+        self.slidesDock.setFeatures(
+            QtWidgets.QDockWidget.DockWidgetFeature.DockWidgetFloatable
+            | QtWidgets.QDockWidget.DockWidgetFeature.DockWidgetMovable
+        )
+        self.slidesWidget = SlideWidget()
+        self.slidesDock.setWidget(self.slidesWidget)
+
+        self.updateGUI.connect(self.slidesWidget.update_position)
+
+        self.addDockWidget(
+            Qt.DockWidgetArea.RightDockWidgetArea, self.slidesDock, DOCKS.SLIDES
         )
 
     def init_devices_dock(self):
@@ -224,7 +251,7 @@ class miEye_module(QMainWindow):
         )
 
         self.addDockWidget(
-            Qt.DockWidgetArea.LeftDockWidgetArea, self.stagesDock, DOCKS.STAGES
+            Qt.DockWidgetArea.RightDockWidgetArea, self.stagesDock, DOCKS.STAGES
         )
 
     def init_py_dock(self):
@@ -339,6 +366,8 @@ class miEye_module(QMainWindow):
 
         docks: list[QtWidgets.QDockWidget] = [
             self.controller,
+            self.slidesDock,
+            self.protocolDock,
             self.devicesDock,
             self.pyDock,
             self.stagesDock,
@@ -379,12 +408,12 @@ class miEye_module(QMainWindow):
             QtWidgets.QTabWidget.TabPosition.North,
         )
 
-        self.tabifyDockWidget(self.lasersDock, self.devicesDock)
-        self.tabifyDockWidget(self.lasersDock, self.camDock)
-        self.tabifyDockWidget(self.lasersDock, self.protocolDock)
-        self.tabifyDockWidget(self.lasersDock, self.pyDock)
-
-        self.tabifyDockWidget(self.stagesDock, self.controller)
+        self.tabifyDockWidget(self.stagesDock, self.lasersDock)
+        self.tabifyDockWidget(self.stagesDock, self.slidesDock)
+        self.tabifyDockWidget(self.stagesDock, self.devicesDock)
+        self.tabifyDockWidget(self.stagesDock, self.camDock)
+        self.tabifyDockWidget(self.stagesDock, self.protocolDock)
+        self.tabifyDockWidget(self.stagesDock, self.pyDock)
 
         self.stagesDock.raise_()
 
@@ -512,30 +541,12 @@ class miEye_module(QMainWindow):
             + Worker
         )
 
-        # update indicators
-        DeviceManager.instance().elliptecView.updateHighlight()
-
-        DeviceManager.instance().laser_relay.updatePortState()
-        if not DeviceManager.instance().laser_relay.isOpen():
-            DeviceManager.instance().laser_relay.refreshPorts()
-            DeviceManager.instance().laser_relay.updateHighlight(
-                self.device_manager.laser_relay_settings()
-            )
-        else:
-            DeviceManager.instance().laser_relay.updateHighlight(
-                self.device_manager.laser_relay_settings()
-            )
-
-        for _, cam_list in CameraList.CAMERAS.items():
-            for cam in cam_list:
-                cam['Panel'].updateInfo()
-
         for tab_index in range(self.stagesWidget.count()):
             stage_widget = self.stagesWidget.widget(tab_index)
-            if hasattr(stage_widget, '_refresh_ports') and callable(
-                stage_widget._refresh_ports
+            if hasattr(stage_widget, '_update_gui') and callable(
+                stage_widget._update_gui
             ):
-                stage_widget._refresh_ports()
+                stage_widget._update_gui()
 
     def addDockWidget(
         self, area: Qt.DockWidgetArea, widget: QtWidgets.QDockWidget, key: DOCKS
@@ -582,6 +593,8 @@ def generateConfig(mieye: miEye_module):
         'is_maximized': mieye.isMaximized(),
     }
 
+    config['slides_config'] = mieye.slidesWidget.get_config()
+
     for _, (key, widget) in enumerate(mieye.dock_widgets.items()):
         if isinstance(widget, QtWidgets.QDockWidget):
             config[key.get_key()] = {
@@ -615,6 +628,10 @@ def loadConfig(mieye: miEye_module, auto_connect=True):
     with open(filename) as file:
         config = json.load(file)
 
+    mieye.device_manager.load_config(config)
+    if auto_connect:
+        mieye.device_manager.auto_connect()
+
     if 'miEye_module' in config:
         if (
             'is_maximized' in config['miEye_module']
@@ -645,9 +662,8 @@ def loadConfig(mieye: miEye_module, auto_connect=True):
             else:
                 widget.setFloating(False)
 
-    mieye.device_manager.load_config(config)
-    if auto_connect:
-        mieye.device_manager.auto_connect()
+    if 'slides_config' in config:
+        mieye.slidesWidget.load_config(config['slides_config'])
 
     print('Config.json file loaded!')
 

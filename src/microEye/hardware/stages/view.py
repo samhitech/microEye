@@ -115,25 +115,30 @@ class StageView(Tree):
             'children': [],
         }
         mapping = {
-            Axis.X: StageParams.X_MAX,
-            Axis.Y: StageParams.Y_MAX,
-            Axis.Z: StageParams.Z_MAX,
+            Axis.X: (StageParams.X_MAX, StageParams.X_CENTER),
+            Axis.Y: (StageParams.Y_MAX, StageParams.Y_CENTER),
+            Axis.Z: (StageParams.Z_MAX, StageParams.Z_CENTER),
         }
-        for axis, param in mapping.items():
+
+        def get_float_param(name, value, axis):
+            return {
+                'name': str(name),
+                'type': 'float',
+                'value': value,
+                'readonly': False,
+                'suffix': f'{self.stage.get_unit(axis).suffix()}',
+                'decimals': 8,
+            }
+
+        for axis, (max_param, center_param) in mapping.items():
             if axis in self.stage.axes:
                 options['children'].append(
-                    {
-                        'name': str(param),
-                        'type': 'float',
-                        'value': self.stage.x_max
-                        if axis == Axis.X
-                        else self.stage.y_max
-                        if axis == Axis.Y
-                        else self.stage.z_max,
-                        'readonly': True,
-                        'suffix': f'{self.stage.get_unit(axis).suffix()}',
-                        'decimals': 4,
-                    }
+                    get_float_param(str(max_param), self.stage.get_max(axis), axis)
+                )
+                options['children'].append(
+                    get_float_param(
+                        str(center_param), self.stage.get_center(axis), axis
+                    )
                 )
         if self.stage and self.stage.driver.is_dual_serial():
             options['children'].extend(
@@ -213,10 +218,6 @@ class StageView(Tree):
                             ]
                         ),
                         {
-                            'name': str(StageParams.REFRESH_PORTS),
-                            'type': 'action',
-                        },
-                        {
                             'name': str(StageParams.PORT_STATE),
                             'type': 'str',
                             'value': 'closed',
@@ -253,7 +254,6 @@ class StageView(Tree):
             StageParams.CENTER,
             StageParams.REFRESH,
             StageParams.STOP,
-            StageParams.REFRESH_PORTS,
             StageParams.SET_PORT,
             StageParams.SET_PORT_X,
             StageParams.SET_PORT_Y,
@@ -286,8 +286,6 @@ class StageView(Tree):
             self.stage.refresh_position()
         elif param == StageParams.STOP:
             self.stage.stop()
-        elif param == StageParams.REFRESH_PORTS:
-            self._refresh_ports()
         elif param == StageParams.SET_PORT:
             self.stage.setPortName(self.get_param_value(StageParams.PORT))
             self.stage.setBaudRate(self.get_param_value(StageParams.BAUDRATE))
@@ -362,6 +360,12 @@ class StageView(Tree):
                 self.stage.set_max_range(Axis.Y, data)
             elif path == StageParams.get_path(StageParams.Z_MAX):
                 self.stage.set_max_range(Axis.Z, data)
+            elif path == StageParams.get_path(StageParams.X_CENTER):
+                self.stage.set_center(Axis.X, data)
+            elif path == StageParams.get_path(StageParams.Y_CENTER):
+                self.stage.set_center(Axis.Y, data)
+            elif path == StageParams.get_path(StageParams.Z_CENTER):
+                self.stage.set_center(Axis.Z, data)
 
             self.paramsChanged.emit(p, data)
 
@@ -377,7 +381,7 @@ class StageView(Tree):
             baudrate for baudrate in QtSerialPort.QSerialPortInfo.standardBaudRates()
         ]
 
-    def _refresh_ports(self):
+    def _update_gui(self):
         port = self.get_param(StageParams.PORT)
         if port is not None:
             port.setLimits(self._get_available_ports())
@@ -385,6 +389,8 @@ class StageView(Tree):
         port_state = self.get_param(StageParams.PORT_STATE)
         if port_state is not None:
             port_state.setValue('open' if self.stage.is_open() else 'closed')
+
+        self._update_positions()
 
     def _remove_widget(self):
         '''

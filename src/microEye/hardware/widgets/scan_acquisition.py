@@ -64,10 +64,14 @@ class TiledImageSelector(QtWidgets.QWidget):
         central_layout.addWidget(self.imgView, 4)
 
     def clicked(self, event):
-        if event.modifiers() == Qt.ShiftModifier and event.button() == Qt.LeftButton:
+        if (
+            event.modifiers() == Qt.Modifier.SHIFT
+            and event.button() == Qt.MouseButton.LeftButton
+        ):
             self.save_raw_data(event.currentItem.item)
         elif (
-            event.modifiers() == Qt.ControlModifier and event.button() == Qt.LeftButton
+            event.modifiers() == Qt.Modifier.CTRL
+            and event.button() == Qt.MouseButton.LeftButton
         ):
             self.save_raw_data_all()
         else:
@@ -398,6 +402,7 @@ class ScanAcquisitionWidget(Tree):
 
     def __str__(self):
         return 'Scan Acquistion'
+
 
 if __name__ == '__main__':
     x = np.linspace(255, 0, 256)

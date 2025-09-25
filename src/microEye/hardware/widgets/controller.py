@@ -13,6 +13,7 @@ class Controller(QtWidgets.QDockWidget):
     stage_move_requested = Signal(Axis, bool, bool, bool)
     stage_stop_requested = Signal(Axis)
     stage_home_requested = Signal(Axis)
+    stage_center_requested = Signal(Axis)
     stage_toggle_lock = Signal(str)
 
     def __init__(self):
@@ -57,6 +58,9 @@ class Controller(QtWidgets.QDockWidget):
         self.btn_xy_stop = QtWidgets.QPushButton('⚠')
         self.btn_xy_stop.setToolTip('Stop XY movement immediately!')
 
+        self.btn_xy_center = QtWidgets.QPushButton('🎯')
+        self.btn_xy_center.setToolTip('Move to center position')
+
         # Set size policies and styling
         for btn in [
             self.btn_y_up,
@@ -68,6 +72,7 @@ class Controller(QtWidgets.QDockWidget):
             self.btn_x_left_fine,
             self.btn_x_right_fine,
             self.btn_xy_stop,
+            self.btn_xy_center,
         ]:
             btn.setFixedSize(50, 50)
             btn.setStyleSheet('''
@@ -91,6 +96,8 @@ class Controller(QtWidgets.QDockWidget):
 
         xy_layout.addWidget(self.btn_xy_stop, 2, 2)
 
+        xy_layout.addWidget(self.btn_xy_center, 4, 4)
+
         xy_group.setLayout(xy_layout)
 
         # Z Controls group
@@ -103,6 +110,8 @@ class Controller(QtWidgets.QDockWidget):
         self.btn_z_down_fine = QtWidgets.QPushButton('-')
         self.btn_z_home = QtWidgets.QPushButton('🏠︎')
         self.btn_z_home.setToolTip('Move to home position')
+        self.btn_z_center = QtWidgets.QPushButton('🎯')
+        self.btn_z_center.setToolTip('Move to center position')
         self.btn_z_toggle_stabilizer = QtWidgets.QPushButton('🔓')
         self.btn_z_toggle_stabilizer.setToolTip('Toggle Z-axis stabilizer')
 
@@ -112,6 +121,7 @@ class Controller(QtWidgets.QDockWidget):
             self.btn_z_up_fine,
             self.btn_z_down_fine,
             self.btn_z_home,
+            self.btn_z_center,
             self.btn_z_toggle_stabilizer,
         ]:
             btn.setFixedSize(50, 50)
@@ -128,6 +138,7 @@ class Controller(QtWidgets.QDockWidget):
         z_layout.addWidget(self.btn_z_down_fine)
         z_layout.addWidget(self.btn_z_down)
         z_layout.addWidget(self.btn_z_home)
+        z_layout.addWidget(self.btn_z_center)
         z_layout.addWidget(self.btn_z_toggle_stabilizer)
         z_group.setLayout(z_layout)
 
@@ -175,6 +186,9 @@ class Controller(QtWidgets.QDockWidget):
         )
 
         self.btn_xy_stop.clicked.connect(lambda: self.stage_stop_requested.emit(Axis.X))
+        self.btn_xy_center.clicked.connect(
+            lambda: self.stage_center_requested.emit(Axis.X)
+        )
 
         # Z movements
         self.btn_z_up.clicked.connect(lambda: self.move_stage(Axis.Z, True, True))
@@ -185,6 +199,9 @@ class Controller(QtWidgets.QDockWidget):
         )
 
         self.btn_z_home.clicked.connect(lambda: self.stage_home_requested.emit(Axis.Z))
+        self.btn_z_center.clicked.connect(
+            lambda: self.stage_center_requested.emit(Axis.Z)
+        )
         self.btn_z_toggle_stabilizer.clicked.connect(self.toggle_stabilizer)
 
     def toggle_stabilizer(self):
