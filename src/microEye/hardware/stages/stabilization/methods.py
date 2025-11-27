@@ -1,3 +1,4 @@
+import logging
 import traceback
 import warnings
 from abc import ABC, abstractmethod
@@ -578,6 +579,6 @@ class FiducialStrategy(StabilizationStrategy):
 
             return Params
         except Exception as e:
+            logging.getLogger(__name__).error('Failed beads fit!')
             traceback.print_exc()
-            print('Failed beads fit: ' + str(e))
             return None

@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Optional, Union
@@ -831,7 +832,7 @@ class PSFdata:
                     else:
                         slice_group.attrs[key] = value
 
-        print(f'PSF data saved to {filename}')
+        logging.getLogger(__name__).info(f'PSF data saved to {filename}')
 
     @staticmethod
     def load_hdf(filename: str):

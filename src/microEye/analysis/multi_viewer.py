@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import re
 import webbrowser
@@ -27,6 +28,7 @@ from microEye.qt import (
 )
 from microEye.utils import StartGUI
 
+logger = logging.getLogger(__name__)
 
 class DockKeys(Enum):
     FILE_SYSTEM = 'File System'
@@ -545,9 +547,9 @@ class multi_viewer(QMainWindow):
                 if results is not None:
                     view = LocalizationsView(results)
                     file_type = 'HDF5' if path.endswith('.h5') else 'TSV'
-                    print('Done importing results.')
+                    logger.info('Done importing results.')
                 else:
-                    print('Error importing results.')
+                    logger.error('Error importing results.')
             elif path.endswith('.psf.h5'):
                 view = PSFView(path)
                 file_type = 'PSF'
@@ -560,7 +562,7 @@ class multi_viewer(QMainWindow):
                     view = StackView(path, self.imsq_pattern.text())
                     file_type = 'ImageSeq'
                 except Exception as e:
-                    print(f'Error opening image sequence: {e}')
+                    logger.error(f'Error opening image sequence: {e}')
                     return
 
             view.localizedData.connect(self.localizedData)
@@ -678,7 +680,7 @@ def saveConfig(window: multi_viewer, filename: str = 'config_tiff.json'):
     with open(filename, 'w') as file:
         json.dump(config, file, indent=2)
 
-    print(f'{filename} file generated!')
+    logger.info(f'{filename} file generated!')
 
 
 def load_widget_config(widget: QtWidgets.QWidget, widget_config):
@@ -718,7 +720,7 @@ def loadConfig(window: multi_viewer, filename: str = 'config_tiff.json'):
         The filename of the configuration file, by default 'config_tiff.json'.
     """
     if not os.path.exists(filename):
-        print(f'{filename} not found!')
+        logger.warning(f'{filename} not found!')
         return
 
     config: dict = None
@@ -753,7 +755,7 @@ def loadConfig(window: multi_viewer, filename: str = 'config_tiff.json'):
             else:
                 dock.setFloating(False)
 
-    print(f'{filename} file loaded!')
+    logger.info(f'{filename} file loaded!')
 
 
 if __name__ == '__main__':

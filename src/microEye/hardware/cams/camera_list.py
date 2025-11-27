@@ -1,37 +1,93 @@
+import logging
 import os
 import typing
 
 from microEye.hardware.cams.camera_panel import Camera_Panel
+
+# Cameras
+from microEye.hardware.cams.dummy.dummy_panel import Dummy_Panel
 from microEye.hardware.cams.micam import miCamera, miDummy
+from microEye.hardware.cams.pycromanager import PycroCamera
+from microEye.hardware.cams.pycromanager.pycro_panel import PycroPanel
+
+# QT
 from microEye.qt import QtCore, QtGui, QtWidgets, Signal
 from microEye.utils.thread_worker import QThreadWorker
 
-try:
-    from pyueye import ueye
+logger = logging.getLogger(__name__)
 
+try:
+    logger.info('Importing peak module...')
+    from microEye.hardware.cams.peak.peak_camera import PeakCamera
+
+    logger.info('Importing peak panel module...')
+    from microEye.hardware.cams.peak.peak_panel import PeakPanel
+
+    logger.info('peak module imported successfully.')
+
+    IDS_PEAK_AVAILABLE = PeakCamera is not None and PeakPanel is not None
+except Exception as e:
+    logger.info('Importing peak module failed.')
+    logger.info(str(e))
+    PeakPanel = None
+    PeakCamera = None
+    IDS_PEAK_AVAILABLE = False
+
+try:
+    # if IDS_PEAK_AVAILABLE:
+    #     raise ImportError('cannot import ueye when peak is available!')
+    logger.info('Importing ueye module...')
     from microEye.hardware.cams.ueye.ueye_camera import IDS_Camera
     from microEye.hardware.cams.ueye.ueye_panel import IDS_Panel
-except Exception:
-    ueye = None
+
+    logger.info('ueye module imported successfully.')
+except Exception as e:
+    logger.info('Importing ueye module failed.')
+    logger.info(str(e))
     IDS_Camera = None
     IDS_Panel = None
 
-from microEye.hardware.cams.vimba import INSTANCE, vb
+try:
+    logger.info('Importing vimba module...')
 
-if vb is not None:
-    from microEye.hardware.cams.vimba.vimba_cam import vimba_cam
-    from microEye.hardware.cams.vimba.vimba_panel import Vimba_Panel
-else:
+    from microEye.hardware.cams.vimba import vb
+
+    if vb is not None:
+        from microEye.hardware.cams.vimba.vimba_cam import vimba_cam
+        from microEye.hardware.cams.vimba.vimba_panel import Vimba_Panel
+
+        logger.info('vimba module imported successfully.')
+    else:
+        raise ImportError('vimba module is None')
+except Exception as e:
+    logger.info('Importing vimba module failed.')
+    logger.info(str(e))
     vimba_cam = None
     Vimba_Panel = None
 
-from microEye.hardware.cams.basler.basler_cam import basler_cam
-from microEye.hardware.cams.basler.basler_panel import Basler_Panel
-from microEye.hardware.cams.dummy.dummy_panel import Dummy_Panel
-from microEye.hardware.cams.pycromanager import PycroCamera
-from microEye.hardware.cams.pycromanager.pycro_panel import PycroPanel
-from microEye.hardware.cams.thorlabs.thorlabs import thorlabs_camera
-from microEye.hardware.cams.thorlabs.thorlabs_panel import Thorlabs_Panel
+try:
+    logger.info('Importing basler module...')
+    from microEye.hardware.cams.basler.basler_cam import basler_cam
+    from microEye.hardware.cams.basler.basler_panel import Basler_Panel
+
+    logger.info('basler module imported successfully.')
+except Exception as e:
+    logger.info('Importing basler module failed.')
+    logger.info(str(e))
+    basler_cam = None
+    Basler_Panel = None
+
+try:
+    logger.info('Importing thorlabs module...')
+    from microEye.hardware.cams.thorlabs.thorlabs import thorlabs_camera
+    from microEye.hardware.cams.thorlabs.thorlabs_panel import Thorlabs_Panel
+
+    logger.info('thorlabs module imported successfully.')
+except Exception as e:
+    logger.info('Importing thorlabs module failed.')
+    logger.info(str(e))
+    thorlabs_camera = None
+    Thorlabs_Panel = None
 
 try:
     CAMERA_CLASSES = {cls.__name__: cls for cls in miCamera.__subclasses__()}
@@ -47,6 +103,12 @@ CAMERA_CONFIGS = {
         'camera_class': basler_cam,
         'camera_args': ['FullName'],
         'panel_class': Basler_Panel,
+    },
+    'IDS Peak': {
+        'driver': 'IDS Peak',
+        'camera_class': PeakCamera,
+        'camera_args': ['Serial'],
+        'panel_class': PeakPanel,
     },
     'miDummy': {
         'driver': 'miDummy',
@@ -80,15 +142,18 @@ CAMERA_CONFIGS = {
     },
 }
 
+
 # singleton camera manager class
 class CameraManager(QtCore.QObject):
     '''
     A singleton class to manage camera instances.
     '''
+
     _instance = None
 
-    CAMERAS : dict[str, list[dict]] = {
+    CAMERAS: dict[str, list[dict]] = {
         'Basler': [],
+        'IDS Peak': [],
         'miDummy': [],
         'PycroCore': [],
         'UC480': [],
@@ -143,6 +208,7 @@ class CameraManager(QtCore.QObject):
         '''
         if cls.instance().autofocusCam is not None:
             return cls.instance().autofocusCam.cam.snap_image()
+
 
 class CameraList(QtWidgets.QWidget):
     '''
@@ -319,7 +385,7 @@ class CameraList(QtWidgets.QWidget):
             camera = camera_class(*[cam[arg] for arg in camera_args])
             args.insert(0, camera)
 
-        panel : Camera_Panel = panel_class(*args)
+        panel: Camera_Panel = panel_class(*args)
 
         # Add to CAMERAS dict
         CameraManager.CAMERAS[driver].append(
@@ -469,8 +535,8 @@ class CameraList(QtWidgets.QWidget):
                 try:
                     if camera_class:
                         cam_list += camera_class.get_camera_list()
-                except Exception as e:
-                    print(f'Error getting camera list for {key}: {e}')
+                except Exception:
+                    logger.error(f'Error getting camera list for {key}.', exc_info=True)
 
             return cam_list
 
@@ -561,11 +627,11 @@ class CameraList(QtWidgets.QWidget):
         dict
             A dictionary containing the configuration of all added cameras.
         '''
-        config : list[dict] = []
+        config: list[dict] = []
 
         for _, cam_list in CameraManager.CAMERAS.items():
             for cam in cam_list:
-                cam_config : dict = cam['Info'].copy()
+                cam_config: dict = cam['Info'].copy()
                 cam_config['IR'] = cam['IR']
                 config.append(cam_config)
         return config
@@ -583,10 +649,14 @@ class CameraList(QtWidgets.QWidget):
             is_IR = cam.pop('IR', False)
             # check if camera is available in the current list
             if cam not in self.cam_list:
-                print(f'Camera {self.get_cam_title(cam)} not available; skipping.')
+                logger.warning(
+                    f'Camera {self.get_cam_title(cam)} not available; skipping.'
+                )
                 continue
             if self.autofocusCam is not None and is_IR:
-                print('Skipping adding autofocus IR camera; one already exists.')
+                logger.warning(
+                    'Skipping adding autofocus IR camera; one already exists.'
+                )
                 continue
             panel = self.add_camera(cam, is_IR)
             if panel:

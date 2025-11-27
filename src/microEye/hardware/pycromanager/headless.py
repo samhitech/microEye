@@ -1,3 +1,4 @@
+import logging
 from dataclasses import dataclass
 from typing import Optional
 
@@ -16,6 +17,8 @@ from pycromanager.headless import (
     start_headless,
     stop_headless,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -92,7 +95,7 @@ class HeadlessManager:
             self._instances[instance_config.port] = instance_config
             return True
         except Exception as e:
-            print(f'Failed to start headless instance: {e}')
+            logger.error(f'Failed to start headless instance.', exc_info=e)
             return False
 
     def stop_instance(self, port: int) -> bool:
@@ -105,7 +108,7 @@ class HeadlessManager:
             del self._instances[port]
             return True
         except Exception as e:
-            print(f'Failed to stop headless instance: {e}')
+            logger.error(f'Failed to stop headless instance.', exc_info=e)
             return False
 
     def stop_all_instances(self, debug=False) -> None:
@@ -115,7 +118,7 @@ class HeadlessManager:
             self._instances.clear()
             return True
         except Exception as e:
-            print(f'Failed to stop headless instances: {e}')
+            logger.error(f'Failed to stop headless instances.', exc_info=e)
             return False
 
     def get_instance(self, port: int) -> Optional[HeadlessInstance]:
@@ -130,7 +133,7 @@ class HeadlessManager:
                 yaml.dump(self._instances, f)
             return True
         except Exception as e:
-            print(f'Failed to save configuration: {e}')
+            logger.error(f'Failed to save configuration.', exc_info=e)
             return False
 
     def load_config(self, filepath: str) -> bool:
@@ -148,5 +151,5 @@ class HeadlessManager:
 
             return True
         except Exception as e:
-            print(f'Failed to load configuration: {e}')
+            logger.error(f'Failed to load configuration.', exc_info=e)
             return False

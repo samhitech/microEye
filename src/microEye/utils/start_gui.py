@@ -1,34 +1,11 @@
 import os
-import random
 import sys
 
-import pyfiglet
-import pyjokes
 import qdarkstyle
 import qdarktheme
 
 from microEye import __version__
 from microEye.qt import QT_API, QApplication, QtCore, QtGui, QtWidgets
-
-
-def splash(module):
-    fonts = [
-        # 'ansi_shadow',
-        # 'big',
-        # 'doom',
-        # 'slant',
-        'small',
-        'small_slant',
-        'smslant',
-        # 'standard',
-        # 'stop',
-    ]
-    print(
-        pyfiglet.Figlet(font=random.choice(fonts), width=250).renderText(
-            f'MicroEye v{__version__}\n{module}'
-        )
-    )
-
 
 QSS = '''
     ParameterControlledButton {
@@ -69,8 +46,6 @@ def StartGUI(cls: type, *args, **kwargs):
     tuple (QApplication, module)
         Returns a tuple with QApp and module window.
     '''
-    splash(cls.__name__)
-    print(pyjokes.get_joke())
     # create a QApp
     QtWidgets.QApplication.setAttribute(
         QtCore.Qt.ApplicationAttribute.AA_ShareOpenGLContexts

@@ -1,3 +1,4 @@
+import logging
 import os
 import re
 import threading
@@ -27,6 +28,7 @@ from microEye.utils.gui_helper import get_scaling_factor
 from microEye.utils.metadata_tree import MetadataEditorTree, MetaParams
 from microEye.utils.thread_worker import QThreadWorker
 
+logger = logging.getLogger(__name__)
 
 class Camera_Panel(QtWidgets.QGroupBox):
     '''
@@ -37,6 +39,8 @@ class Camera_Panel(QtWidgets.QGroupBox):
     asyncFreerun = Signal(str, threading.Event)
     updateStatsSignal = Signal(tuple)
     updateRangeSignal = Signal(int, int)
+
+    FACTOR = 1.0  # exposure time factor to convert to ms
 
     def __init__(self, cam: miCamera, mini=False, *args, **kwargs):
         '''
@@ -342,6 +346,8 @@ class Camera_Panel(QtWidgets.QGroupBox):
         - DET_MODEL
         - DET_SERIAL
         - DET_TYPE
+        - PX_SIZE
+        - PY_SIZE
         '''
         meta = self.cam.get_metadata()
         self.OME_tab.set_param_value(MetaParams.CHANNEL_NAME, meta['CHANNEL_NAME'])
@@ -351,6 +357,10 @@ class Camera_Panel(QtWidgets.QGroupBox):
         self.OME_tab.set_param_value(MetaParams.DET_MODEL, meta['DET_MODEL'])
         self.OME_tab.set_param_value(MetaParams.DET_SERIAL, meta['DET_SERIAL'])
         self.OME_tab.set_param_value(MetaParams.DET_TYPE, meta['DET_TYPE'])
+        if 'PX_SIZE' in meta:
+            self.OME_tab.set_param_value(MetaParams.PX_SIZE, meta['PX_SIZE'])
+        if 'PY_SIZE' in meta:
+            self.OME_tab.set_param_value(MetaParams.PY_SIZE, meta['PY_SIZE'])
 
     def _init_camera_specific(self):
         '''
@@ -473,7 +483,17 @@ class Camera_Panel(QtWidgets.QGroupBox):
         value : float
             selected exposure time
         '''
-        self.camera_options.set_param_value(CamParams.EXPOSURE, value)
+        self.camera_options.set_param_value(CamParams.EXPOSURE, value * self.FACTOR)
+
+    def getExposure(self) -> float:
+        '''Gets the exposure time from camera
+
+        Returns
+        -------
+        float
+            current exposure time
+        '''
+        return self.camera_options.get_param_value(CamParams.EXPOSURE) / self.FACTOR
 
     @property
     def isOpen(self) -> bool:
@@ -754,11 +774,46 @@ class Camera_Panel(QtWidgets.QGroupBox):
         return self.camera_options.get_json()
 
     def getAcquisitionJob(self, **kwargs) -> AcquisitionJob:
+        save = kwargs.get('save', self.camera_options.isSaveData)
         self._save_path = os.path.join(
             self._directory,
             self.camera_options.get_param_value(CamParams.EXPERIMENT_NAME) + '\\',
         )
         self.Event = kwargs.get('event')
+
+        extra_kwargs = {
+            # Camera
+            'name': self._cam.name,
+            'exposure': self.getExposure(),
+            'bytes_per_pixel': self._cam.bytes_per_pixel,
+            # Acquisition
+            'frames': kwargs.get(
+                'frames', self.camera_options.get_param_value(CamParams.FRAMES)
+            ),
+            'prefix': self._save_prefix,
+            'save': save,
+            'is_dark_cal': self.camera_options.isDarkCalibration,
+
+            'rois': self.camera_options.get_export_rois(),
+            'seperate_rois': self.camera_options.get_param_value(
+                CamParams.EXPORT_ROIS_SEPERATE
+            ),
+            'flip_rois': self.camera_options.get_param_value(
+                CamParams.EXPORT_ROIS_FLIPPED
+            ),
+            # Metadata
+            'meta_file': self.get_meta(),
+            'meta_func': self.OME_tab.gen_OME_XML
+            if self.camera_options.isFullMetadata
+            else self.OME_tab.gen_OME_XML_short,
+            'full_tif_meta': self.camera_options.isFullMetadata,
+            # Zarr
+            'Zarr': not self.camera_options.isTiff,
+            # Tiff
+            'biggTiff': self.camera_options.isBiggTiff,
+        }
+        extra_kwargs['s_event' if save else 'c_event'] = self.Event
+
         return AcquisitionJob(
             self._temps,
             self._buffer,
@@ -766,30 +821,7 @@ class Camera_Panel(QtWidgets.QGroupBox):
             self._save_path,
             self._cam.getHeight(),
             self._cam.getWidth(),
-            biggTiff=self.camera_options.isBiggTiff,
-            bytes_per_pixel=self._cam.bytes_per_pixel,
-            exposure=self._cam.getExposure(),
-            frames=kwargs.get(
-                'frames', self.camera_options.get_param_value(CamParams.FRAMES)
-            ),
-            full_tif_meta=self.camera_options.isFullMetadata,
-            is_dark_cal=self.camera_options.isDarkCalibration,
-            meta_file=self.get_meta(),
-            meta_func=self.OME_tab.gen_OME_XML
-            if self.camera_options.isFullMetadata
-            else self.OME_tab.gen_OME_XML_short,
-            name=self._cam.name,
-            prefix=self._save_prefix,
-            save=kwargs.get('save', self.camera_options.isSaveData),
-            Zarr=not self.camera_options.isTiff,
-            rois=self.camera_options.get_export_rois(),
-            seperate_rois=self.camera_options.get_param_value(
-                CamParams.EXPORT_ROIS_SEPERATE
-            ),
-            flip_rois=self.camera_options.get_param_value(
-                CamParams.EXPORT_ROIS_FLIPPED
-            ),
-            s_event=self.Event,
+            **extra_kwargs,
         )
 
     @Slot()
@@ -984,14 +1016,14 @@ def cam_save(params: AcquisitionJob, **kwargs):
                 and params.stop_threads
                 and params.display_done
             ):
-                print('Save thread break.')
+                logger.info('Save thread break.')
                 break
     except Exception:
         traceback.print_exc()
     finally:
         params.s_event.set()
         params.finalize()
-        print('Save thread finally finished.')
+        logger.info('Save thread finally finished.')
 
 
 def display_frame(
@@ -1146,9 +1178,9 @@ def cam_display(params: AcquisitionJob, camp: Camera_Panel, **kwargs):
                 and params.display_queue.empty()
                 and params.capture_done
             ):
-                print('Display thread break.')
+                logger.info('Display thread break.')
                 break
     except Exception:
         traceback.print_exc()
     finally:
-        print('Display thread finally finished.')
+        logger.info('Display thread finally finished.')

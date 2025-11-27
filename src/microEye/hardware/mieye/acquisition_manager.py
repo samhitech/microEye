@@ -1,3 +1,4 @@
+import logging
 import os
 import threading
 import traceback
@@ -34,6 +35,8 @@ from microEye.qt import (
     Signal,
 )
 from microEye.utils.thread_worker import QThreadWorker
+
+logger = logging.getLogger(__name__)
 
 
 class AcquisitionManager(QtCore.QObject):
@@ -279,7 +282,7 @@ def scanAcquisition(steps, step_size, delay, average=1, **kwargs):
 
             # device_manager.stage_xy.update()
         else:
-            print('XY-scan failed!')
+            logger.warning('XY-scan failed!')
             info = [
                 {
                     'XY-Stage Open': stage_manager.is_open(Axis.X),
@@ -385,7 +388,7 @@ def z_stack_acquisition(
                 cam_event.wait()
                 QtCore.QThread.msleep(100)
         else:
-            print('Z-scan failed!')
+            logger.warning('Z-scan failed!')
             info = [
                 {
                     'Z-Stage Open': stage_manager.z_stage().is_open(),
@@ -456,7 +459,7 @@ def z_calibration(
                     FocusStabilizer.instance().parameter_buffer[-nFrames:]
                 )
         else:
-            print('Z-calibration failed!')
+            logger.warning('Z-calibration failed!')
             info = [{'Z-Stage Open': stage_manager.z_stage().is_open()}]
             print(tabulate.tabulate(info, headers='keys', tablefmt='rounded_grid'))
             positions = None

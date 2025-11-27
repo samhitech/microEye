@@ -222,10 +222,12 @@ class StageManager(QtCore.QObject):
                     self.stageAdded.emit(key)
                     return key
                 else:
-                    logging.warning(f'Stage class {class_name} returned None.')
+                    logging.getLogger(__name__).warning(
+                        f'Stage class {class_name} returned None.'
+                    )
                     return None
 
-        logging.warning(f'Stage class {class_name} not found.')
+        logging.getLogger(__name__).warning(f'Stage class {class_name} not found.')
         return None
 
     def _remove_stage(self, key: str) -> bool:
@@ -247,7 +249,9 @@ class StageManager(QtCore.QObject):
         stage = StageManager.STAGES.get(key)
 
         if stage is None or axis not in stage.axes:
-            logging.warning('Stage must support the specified axis.')
+            logging.getLogger(__name__).warning(
+                'Stage must support the specified axis.'
+            )
             return
 
         self._metadata[axis]['stage'] = weakref.ref(stage)

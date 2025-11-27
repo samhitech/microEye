@@ -277,9 +277,13 @@ class ScanAcquisitionWidget(Tree):
 
         self.param_tree = Parameter.create(name='', type='group', children=params)
         self.param_tree.sigTreeStateChanged.connect(self.change)
-        self.header().setSectionResizeMode(
-            QtWidgets.QHeaderView.ResizeMode.ResizeToContents
-        )
+        header = self.header()
+        if header is not None:
+            mode = header.ResizeMode.ResizeToContents
+            try:
+                header.setSectionResizeMode(mode)
+            except TypeError:
+                header.setSectionResizeMode(0, mode)
 
         self.get_param(ScanParams.XY_START).sigActivated.connect(
             lambda: self.startScanning(True)

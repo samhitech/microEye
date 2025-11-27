@@ -9,6 +9,7 @@ from microEye.hardware.protocols.actions import (
     BaseAction,
     ForLoop,
     FunctionCall,
+    ListLoop,
     ParameterAdjustmentAction,
     WeakObjects,
 )
@@ -137,6 +138,16 @@ class BaseActionItem(QtWidgets.QGraphicsRectItem):
             )
             if ok:
                 self.action.setRepeatCount(text)
+                self.text_item.setHtml(self.action.toHTML())
+        elif isinstance(self.action, ListLoop):
+            text, ok = QtWidgets.QInputDialog.getText(
+                None,
+                'Edit Iterable Expression',
+                'Enter new iterable expression:',
+                text=self.action.iterable_expression,
+            )
+            if ok and text:
+                self.action.set_iterable(text)
                 self.text_item.setHtml(self.action.toHTML())
         else:
             text, ok = QtWidgets.QInputDialog.getText(
@@ -678,6 +689,7 @@ ACTION_TYPE_TO_ITEM = {
     ActionGroup: ActionGroupItem,
     FunctionCall: BaseActionItem,
     ForLoop: ActionGroupItem,
+    ListLoop: ActionGroupItem,
     ParameterAdjustmentAction: ParameterAdjustmentActionItem,
 }
 

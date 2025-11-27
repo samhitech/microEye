@@ -1,3 +1,4 @@
+import logging
 import os
 import re
 import traceback
@@ -26,6 +27,8 @@ from microEye.analysis.viewer.volume import PointCloudViewer, VolumeViewerWindow
 from microEye.qt import Qt, QtCore, QtGui, QtWidgets, getOpenFileName, getSaveFileName
 from microEye.utils.gui_helper import *
 from microEye.utils.thread_worker import QThreadWorker
+
+logger = logging.getLogger(__name__)
 
 
 class LocalizationsView(QtWidgets.QWidget):
@@ -1158,7 +1161,7 @@ class LocalizationsView(QtWidgets.QWidget):
         )
         self.results_plot.setData(self.currentResults.dataFrame())
         self.render_loc()
-        print('Filters applied.')
+        logger.info('Filters applied.')
 
     def zero_coordinates(self):
         '''Zero the fitting results coordinates.'''
@@ -1166,7 +1169,7 @@ class LocalizationsView(QtWidgets.QWidget):
             self.currentResults.zero_coordinates()
             self.results_plot.setData(self.currentResults.dataFrame())
             self.render_loc()
-            print('Coordinates reset.')
+            logger.info('Coordinates reset.')
 
     def toggle_track_plots(self):
         '''Toggle the track plots.'''
@@ -1311,6 +1314,6 @@ class LocalizationsView(QtWidgets.QWidget):
 
             if results is not None:
                 self.add_data_layer(results)
-                print('Done importing results.')
+                logger.info('Done importing results.')
             else:
-                print('Error importing results.')
+                logger.error('Error importing results.')

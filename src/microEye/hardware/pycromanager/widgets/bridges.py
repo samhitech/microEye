@@ -1,4 +1,5 @@
 import contextlib
+import logging
 import os
 import sys
 from typing import Any, Optional
@@ -232,7 +233,7 @@ class BridgesWidget(QtWidgets.QDialog):
             self.device_list.resizeRowsToContents()
 
         except Exception as e:
-            print(f'Error updating device list: {e}')
+            logger.getLogger(__name__).error(f'Error updating device list.', exc_info=e)
             return
 
     def _show_device_properties(self, device_name: str, core_instance: PycroCore):

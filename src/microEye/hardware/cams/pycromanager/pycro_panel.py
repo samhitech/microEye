@@ -243,7 +243,7 @@ class PycroPanel(Camera_Panel):
                 self.acq_job.frames_captured += 1
 
             self.acq_job.stop_threads = True
-            logging.debug('Stop')
+            logging.getLogger(__name__).debug('Stop')
         except Exception:
             traceback.print_exc()
         finally:

@@ -153,7 +153,7 @@ class Dummy_Panel(Camera_Panel):
                     break  # in case stop threads is initiated
 
             self.acq_job.stop_threads = True
-            logging.debug('Stop')
+            logging.getLogger(__name__).debug('Stop')
         except Exception:
             traceback.print_exc()
         finally:

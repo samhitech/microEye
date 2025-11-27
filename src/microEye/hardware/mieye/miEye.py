@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import weakref
 from enum import Enum
@@ -33,6 +34,7 @@ from microEye.tools.microscopy import ObjectiveCalculator
 from microEye.utils.pyscripting import pyEditor
 from microEye.utils.start_gui import StartGUI, __version__
 
+logger = logging.getLogger(__name__)
 
 class DOCKS(Enum):
     DEVICES = 0
@@ -92,6 +94,17 @@ class miEye_module(QMainWindow):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+        self.device_manager: DeviceManager | None = None
+        self.acquisition_manager: AcquisitionManager | None = None
+
+        self._pending_init = True
+        QtCore.QTimer.singleShot(250, self._bootstrap)
+
+    def _bootstrap(self):
+        if not self._pending_init:
+            return
+        self._pending_init = False
 
         self.device_manager = DeviceManager()
         self.acquisition_manager = AcquisitionManager()
@@ -321,7 +334,7 @@ class miEye_module(QMainWindow):
         import webbrowser
 
         if not webbrowser.open(url):
-            print(f'Failed to open URL: {url}')
+            logger.warning(f'Failed to open URL: {url}')
             QtWidgets.QMessageBox.warning(self, 'Error', f'Could not open URL: {url}')
 
     def init_menubar(self):
@@ -607,14 +620,14 @@ def generateConfig(mieye: miEye_module):
     with open(filename, 'w') as file:
         json.dump(config, file, indent=2)
 
-    print('Config.json file generated!')
+    logger.info('Config.json file generated!')
 
 
 def loadConfig(mieye: miEye_module, auto_connect=True):
     filename = 'config.json'
 
     if not os.path.exists(filename):
-        print('Config.json not found!')
+        logger.warning('Config.json not found!')
         return
 
     config: dict = None
@@ -659,7 +672,7 @@ def loadConfig(mieye: miEye_module, auto_connect=True):
     if 'slides_config' in config:
         mieye.slidesWidget.load_config(config['slides_config'])
 
-    print('Config.json file loaded!')
+    logger.info('Config.json file loaded!')
 
 
 if __name__ == '__main__':

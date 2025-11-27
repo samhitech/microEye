@@ -444,7 +444,7 @@ class IDS_Panel(Camera_Panel):
                     ):
                         self.acq_job.c_event.set()
                         self.acq_job.stop_threads = True
-                        logging.debug('Stop')
+                        logging.getLogger(__name__).debug('Stop')
                     self._cam.unlock_buffer()
 
                 QtCore.QThread.usleep(100)  # sleep 100us

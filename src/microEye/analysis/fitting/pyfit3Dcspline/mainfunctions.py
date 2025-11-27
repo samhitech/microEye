@@ -1,3 +1,4 @@
+import logging
 import math
 import time
 
@@ -9,7 +10,9 @@ from scipy import ndimage
 from microEye.analysis.fitting.pyfit3Dcspline import CPU
 from microEye.analysis.fitting.pyfit3Dcspline.constants import *
 
-if cuda.is_available():
+logger = logging.getLogger(__name__)
+
+if cuda.is_available() and len(list(cuda.gpus)) > 0:
     from microEye.analysis.fitting.pyfit3Dcspline import GPU
 
     def GPUmleFit_LM(
@@ -150,9 +153,9 @@ if cuda.is_available():
             + 'Please break your fitting into multiple smaller runs.\n',
         )
         if output:
-            print(
-                f'Allocating {100 * requiredMemory / availableMemory:.3e}% out of',
-                f'available GPU memory {availableMemory / (1024 * 1024):.0f}MB.',
+            logger.info('Allocating %.3e %% out of available GPU memory %0.0fMB.',
+                100 * requiredMemory / availableMemory,
+                availableMemory / (1024 * 1024),
             )
 
         # copy data to device
@@ -194,7 +197,7 @@ if cuda.is_available():
         stop = time.perf_counter_ns()
         togpu = stop - start
         if output:
-            print(f'Data copied to GPU in {togpu/1e9:.6f}s.\n')
+            logger.info(f'Data copied to GPU in {togpu/1e9:.6f}s.\n')
         start = time.perf_counter_ns()
 
         # setup kernel
@@ -314,7 +317,7 @@ if cuda.is_available():
         stop = time.perf_counter_ns()
         fit = stop - start
         if output:
-            print(f'Fitted {Nfitraw:d} localizations in {fit/1e9:6f}s.\n')
+            logger.info(f'Fitted {Nfitraw:d} localizations in {fit/1e9:6f}s.\n')
         start = time.perf_counter_ns()
 
         # copy to matlab output
@@ -336,7 +339,7 @@ if cuda.is_available():
         stop = time.perf_counter_ns()
         fromgpu = stop - start
         if output:
-            print(f'Data copied to Host in {fromgpu/1e9:.6f}s.\n')
+            logger.info(f'Data copied to Host in {fromgpu/1e9:.6f}s.\n')
         start = time.perf_counter_ns()
 
         # cleanup

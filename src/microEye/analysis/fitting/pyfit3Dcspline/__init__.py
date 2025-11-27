@@ -6,5 +6,5 @@ from microEye.analysis.fitting.pyfit3Dcspline.mainfunctions import (
     get_roi_list_CMOS,
 )
 
-if cuda.is_available():
+if cuda.is_available() and len(list(cuda.gpus)) > 0:
     from microEye.analysis.fitting.pyfit3Dcspline.mainfunctions import GPUmleFit_LM

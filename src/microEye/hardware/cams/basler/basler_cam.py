@@ -1,4 +1,5 @@
 import contextlib
+import logging
 import traceback
 from enum import Enum
 from typing import Any, Optional, Union
@@ -8,6 +9,8 @@ from pypylon import genicam, pylon
 
 from microEye.hardware.cams.camera_options import CamParams
 from microEye.hardware.cams.micam import miCamera
+
+logger = logging.getLogger(__name__)
 
 ICOMMANDS = [
     # 'AcquisitionAbort',
@@ -518,6 +521,7 @@ class basler_cam(miCamera):
                     'name': str(BaslerParams.FREERUN),
                     'type': 'action',
                     'parent': CamParams.ACQUISITION,
+                    'event': 'Event',
                 }
             )
             tree.append(
@@ -619,7 +623,7 @@ class basler_cam(miCamera):
             try:
                 attr.SetValue(param_value)
             except Exception as e:
-                print(
+                logger.error(
                     f'Failed to set {param_name} to {param_value}({type(param_value)})'
                 )
 
@@ -827,7 +831,7 @@ class basler_cam(miCamera):
                 self.exposure_unit = self.cam.ExposureTime.Unit
                 return self.exposure_current
         except Exception:
-            print('Exposure Get ERROR')
+            logger.error('Exposure Get ERROR')
         return exp
 
     def setExposure(self, exp: float) -> float:
@@ -849,7 +853,7 @@ class basler_cam(miCamera):
                 self.exposure_current = self.cam.ExposureTime()
                 return self.exposure_current
         except Exception:
-            print('Exposure Set ERROR')
+            logger.error('Exposure Set ERROR')
         return -127
 
     def AcquisitionStatus(self):

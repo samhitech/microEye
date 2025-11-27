@@ -1,4 +1,5 @@
 import json
+import logging
 import time
 import traceback
 from enum import Enum, auto
@@ -599,9 +600,12 @@ class FocusStabilizer(QtCore.QObject):
                     counter = counter + 1
                 QtCore.QThread.usleep(100)  # sleep for 100us
             except Exception as e:
+                logging.getLogger(__name__).error(f'Error in worker_function!')
                 traceback.print_exc()
 
-        print(f'{FocusStabilizer.__name__} worker is terminating.')
+        logging.getLogger(__name__).info(
+            f'{FocusStabilizer.__name__} worker is terminating.'
+        )
 
     def fit_parameter(self, data: np.ndarray, method: StabilizationMethods):
         """

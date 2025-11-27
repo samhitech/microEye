@@ -8,7 +8,9 @@ from tabulate import tabulate
 
 from microEye.hardware.cams.camera_options import CamParams
 from microEye.hardware.cams.micam import miCamera
-from microEye.hardware.cams.vimba import INSTANCE, vb
+from microEye.hardware.cams.vimba import get_instance, vb
+
+logger = logging.getLogger(__name__)
 
 
 class VimbaParams(Enum):
@@ -23,6 +25,14 @@ class VimbaParams(Enum):
     TRIGGER_SELECTOR = 'Acquisition Settings.Trigger Selector'
     TRIGGER_ACTIVATION = 'Acquisition Settings.Trigger Activation'
     PIXEL_FORMAT = 'Acquisition Settings.Pixel Format'
+    BLACK_LEVEL = 'Acquisition Settings.Black Level'
+    GAIN = 'Acquisition Settings.Gain'
+    CORRECTION_SELECTOR = 'Acquisition Settings.Correction Selector'
+    CORRECTION_MODE = 'Acquisition Settings.Correction Mode'
+    BINNING_SELECTOR = 'Acquisition Settings.Binning Selector'
+    BINNING_MODE = 'Acquisition Settings.Binning Mode'
+    BINNING_HORIZONTAL = 'Acquisition Settings.Binning Horizontal'
+    BINNING_VERTICAL = 'Acquisition Settings.Binning Vertical'
     LOAD = 'Acquisition Settings.Load Config'
     SAVE = 'Acquisition Settings.Save Config'
     LINE_SELECTOR = 'GPIOs.Line Selector'
@@ -66,6 +76,8 @@ class vimba_cam(miCamera):
         self.name = self.name.replace(' ', '_').replace('-', '_')
 
         self.temperature = -127
+
+        self.black_level = 5
 
         self.exposure_current = 0
         self.exposure_increment = 0.1
@@ -123,15 +135,26 @@ class vimba_cam(miCamera):
 
         self.pixel_formats = []
 
+        self.gain = 0
+        self.gain_range = [0, 5.0]
+
+        self.correction_selectors = []
+        self.correction_modes = []
+
+        self.binning_selectors = []
+        self.binning_modes = []
+        self.binning_horizontal = 0
+        self.binning_vertical = 0
+
         self.initialize()
 
     def __enter__(self):
         '''Enter the context - initialize Vimba system and camera'''
         try:
-            if INSTANCE is None:
+            if get_instance() is None:
                 return None
 
-            self._vmb_context = INSTANCE.__enter__()
+            self._vmb_context = get_instance().__enter__()
 
             # Get camera
             if self.cam:
@@ -140,7 +163,7 @@ class vimba_cam(miCamera):
 
                 return self.cam
             else:
-                return INSTANCE
+                return get_instance()
         except Exception as e:
             # Cleanup on error
             self.__exit__(type(e), e, e.__traceback__)
@@ -153,16 +176,16 @@ class vimba_cam(miCamera):
             try:
                 self.cam.__exit__(exc_type, exc_val, exc_tb)
             except Exception as e:
-                logging.warning(f'Error exiting camera context: {e}')
+                logger.warning(f'Error exiting camera context: {e}')
             finally:
                 self._cam_context = None
 
         # Exit Vimba system context
-        if self._vmb_context is not None and INSTANCE is not None:
+        if self._vmb_context is not None and get_instance() is not None:
             try:
-                INSTANCE.__exit__(exc_type, exc_val, exc_tb)
+                get_instance().__exit__(exc_type, exc_val, exc_tb)
             except Exception as e:
-                logging.warning(f'Error exiting Vimba context: {e}')
+                logger.warning(f'Error exiting Vimba context: {e}')
             finally:
                 self._vmb_context = None
 
@@ -173,10 +196,10 @@ class vimba_cam(miCamera):
     def get_camera_list(cls):
         cam_list = []
 
-        if INSTANCE is None:
+        if get_instance() is None:
             return cam_list
 
-        with INSTANCE as vimba:
+        with get_instance() as vimba:
             cams = vimba.get_all_cameras()
             for cam in cams:
                 access_modes = cam.get_permitted_access_modes()
@@ -198,19 +221,19 @@ class vimba_cam(miCamera):
 
     @classmethod
     def get_camera(cls, camera_id: Optional[str]):
-        if INSTANCE is None:
+        if get_instance() is None:
             return None
 
-        with INSTANCE as vimba:
+        with get_instance() as vimba:
             if camera_id:
                 try:
                     return vimba.get_camera_by_id(camera_id)
                 except vb.VmbCameraError:
-                    print(f"Failed to access Camera '{camera_id}'. Abort.")
+                    logger.error(f"Failed to access Camera '{camera_id}'. Abort.")
             else:
                 cams = vimba.get_all_cameras()
                 if not cams:
-                    print('No Cameras accessible. Abort.')
+                    logger.error('No Cameras accessible. Abort.')
                     return None
 
                 return cams[0]
@@ -229,7 +252,12 @@ class vimba_cam(miCamera):
             self.get_trigger_activation(False)
             self.get_acquisition_mode(False)
             self.get_pixel_format(False)
+            self.get_gain(False)
+
+            self.set_black_level(self.black_level)
             self.get_pixel_size(False)
+
+            self.get_gain(False)
             self.get_roi(False)
             self.get_temperature()
 
@@ -242,6 +270,14 @@ class vimba_cam(miCamera):
             self.exposure_auto_entries = self.get_exposure_auto_entries()
 
             self.pixel_formats = self.get_pixel_formats()
+
+            self.correction_selectors = self.get_correction_selectors()
+            self.correction_modes = self.get_correction_modes()
+
+            self.binning_selectors = self.get_binning_selectors()
+            self.binning_modes = self.get_binning_modes()
+            self.binning_horizontal = self.get_binning_horizontal()
+            self.binning_vertical = self.get_binning_vertical()
 
             if 'Mono12' in self.pixel_formats:
                 self.set_pixel_format('Mono12')
@@ -308,14 +344,13 @@ class vimba_cam(miCamera):
                 self.cam.UserSetSelector.set('Default')
 
             except (AttributeError, vb.VmbFeatureError):
-                print("Failed to set Feature 'UserSetSelector'")
+                logger.error("Failed to set Feature 'UserSetSelector'")
 
             try:
                 self.cam.UserSetLoad.run()
-                print('--> All feature values have been restored to default')
-
+                logger.info('--> All feature values have been restored to default')
             except (AttributeError, vb.VmbFeatureError):
-                print("Failed to run Feature 'UserSetLoad'")
+                logger.error("Failed to run Feature 'UserSetLoad'")
 
     def get_metadata(self):
         return {
@@ -358,10 +393,12 @@ class vimba_cam(miCamera):
                 self.exposure_unit = exposure.get_unit()
                 self.exposure_range = exposure.get_range()
             if output:
-                print('Current Exposure ', self.exposure_current, self.exposure_unit)
+                logger.info(
+                    'Current Exposure %s %s', self.exposure_current, self.exposure_unit
+                )
             return self.exposure_current
         except Exception:
-            print('Exposure Get ERROR')
+            logger.error('Exposure Get ERROR')
         return exp
 
     def set_exposure(self, value: float):
@@ -400,16 +437,71 @@ class vimba_cam(miCamera):
             self.get_framerate()
             return 1
         except Exception:
-            print('Exposure Set ERROR')
+            logger.error('Exposure Set ERROR')
             return 0
+
+    def get_black_level(self, output=True):
+        try:
+            blackLevel = self.cam.BlackLevel
+            self.black_level = blackLevel.get()
+            if output:
+                logger.info('Black Level %s', self.black_level)
+            return self.black_level
+        except Exception:
+            logger.error('Black Level Get ERROR')
+            return None
 
     def set_black_level(self, value: float):
         try:
             blackLevel = self.cam.BlackLevel
             blackLevel.set(value)
+            return True
+        except Exception:
+            logger.error('Black Level Set ERROR')
+            return False
+
+    def get_gain(self, output=True):
+        try:
+            # with self.cam:
+            gainFeature = self.cam.Gain
+            self.gain = gainFeature.get()
+            self.gain_increment = gainFeature.get_increment()
+            self.gain_range = gainFeature.get_range()
+            if output:
+                logger.info('Current Gain %s', self.gain)
+            return self.gain
+        except Exception:
+            logger.error('Gain Get ERROR')
+        return 0.0
+
+    def set_gain(self, value: float):
+        try:
+            # with self.cam:
+            gainFeature = self.cam.Gain
+            self.gain_increment = gainFeature.get_increment()
+            self.gain_range = gainFeature.get_range()
+
+            floor_value = (
+                self.gain_increment
+                * np.floor((value - self.gain_range[0]) / self.gain_increment)
+                + self.gain_range[0]
+            )
+            ceil_value = (
+                self.gain_increment
+                * np.ceil((value - self.gain_range[0]) / self.gain_increment)
+                + self.gain_range[0]
+            )
+            set_value = 0
+            if np.abs(floor_value - value) < np.abs(ceil_value - value):
+                set_value = floor_value
+            else:
+                set_value = ceil_value
+            set_value = max(min(set_value, self.gain_range[1]), self.gain_range[0])
+            gainFeature.set(set_value)
+            self.get_gain()
             return 1
         except Exception:
-            print('Black Level Set ERROR')
+            logger.error('Gain Set ERROR')
             return 0
 
     def set_exposure_mode(self, value: str = 'Timed'):
@@ -421,7 +513,7 @@ class vimba_cam(miCamera):
                 ExposureMode.set(value)
             return 1
         except Exception:
-            print('ExposureMode Set ERROR')
+            logger.error('ExposureMode Set ERROR')
             return 0
 
     def get_exposure_mode(self, output=True):
@@ -430,10 +522,10 @@ class vimba_cam(miCamera):
             ExposureMode = self.cam.ExposureMode
             self.exposure_mode = ExposureMode.get()
             if output:
-                print('Exposure mode ', self.exposure_mode)
+                logger.info('Exposure mode %s', self.exposure_mode)
             return self.exposure_mode
         except Exception:
-            print('ExposureMode get ERROR')
+            logger.error('ExposureMode get ERROR')
             return 'NA'
 
     def get_exposure_modes(self):
@@ -449,7 +541,7 @@ class vimba_cam(miCamera):
             displayNames += [entry._EnumEntry__info.displayName for entry in entries]
             tooltips += [entry._EnumEntry__info.tooltip for entry in entries]
         except Exception:
-            print('ExposureModes Get ERROR')
+            logger.error('ExposureModes Get ERROR')
 
         return [modes, displayNames, tooltips]
 
@@ -464,7 +556,7 @@ class vimba_cam(miCamera):
             else:
                 return 0
         except Exception:
-            print('ExposureAuto Set ERROR')
+            logger.error('ExposureAuto Set ERROR')
             return 0
 
     def get_exposure_auto(self, output=True):
@@ -473,10 +565,10 @@ class vimba_cam(miCamera):
             ExposureAuto = self.cam.ExposureAuto
             self.exposure_auto = ExposureAuto.get()
             if output:
-                print('Exposure Auto ', self.exposure_auto)
+                logger.info('Exposure Auto %s', self.exposure_auto)
             return self.exposure_auto
         except Exception:
-            print('ExposureAuto get ERROR')
+            logger.error('ExposureAuto get ERROR')
             return 'NA'
 
     def get_exposure_auto_entries(self):
@@ -492,7 +584,7 @@ class vimba_cam(miCamera):
             displayNames += [entry._EnumEntry__info.displayName for entry in entries]
             tooltips += [entry._EnumEntry__info.tooltip for entry in entries]
         except Exception:
-            print('ExposureAutos Get ERROR')
+            logger.error('ExposureAutos Get ERROR')
 
         return [modes, displayNames, tooltips]
 
@@ -502,16 +594,16 @@ class vimba_cam(miCamera):
             AcquisitionFrameRateEnable.set(enabled)
             self.frameRateEnabled = enabled
         except Exception:
-            print('AcquisitionFrameRateEnable set ERROR')
+            logger.error('AcquisitionFrameRateEnable set ERROR')
 
     def get_acquisition_framerate_enable(self, output: bool = True):
         try:
             AcquisitionFrameRateEnable = self.cam.AcquisitionFrameRateEnable
             self.frameRateEnabled = AcquisitionFrameRateEnable.get()
             if output:
-                print('AcquisitionFrameRate Enabled ', self.frameRateEnabled)
+                logger.info('AcquisitionFrameRate Enabled %s', self.frameRateEnabled)
         except Exception:
-            print('AcquisitionFrameRateEnable get ERROR')
+            logger.error('AcquisitionFrameRateEnable get ERROR')
 
     def get_framerate(self, output: bool = True):
         try:
@@ -520,10 +612,12 @@ class vimba_cam(miCamera):
             self.frameRate_unit = frameRate.get_unit()
             self.frameRate_range = frameRate.get_range()
             if output:
-                print('Current FrameRate ', self.frameRate, self.frameRate_unit)
+                logger.info(
+                    'Current FrameRate %s %s', self.frameRate, self.frameRate_unit
+                )
             return self.frameRate
         except Exception:
-            print('AcquisitionFrameRate get ERROR')
+            logger.error('AcquisitionFrameRate get ERROR')
             self.frameRate = 0.0
             return self.frameRate
 
@@ -544,7 +638,7 @@ class vimba_cam(miCamera):
             self.get_exposure(False)
             return 1
         except Exception:
-            print('AcquisitionFrameRate Set ERROR')
+            logger.error('AcquisitionFrameRate Set ERROR')
             return 0
 
     def set_trigger_mode(self, value: str = 'On'):
@@ -558,7 +652,7 @@ class vimba_cam(miCamera):
             else:
                 return 0
         except Exception:
-            print('trigger Set ERROR')
+            logger.error('trigger Set ERROR')
             return 0
 
     def get_trigger_mode(self, output=True):
@@ -567,10 +661,10 @@ class vimba_cam(miCamera):
             TriggerMode = self.cam.TriggerMode
             self.trigger_mode = TriggerMode.get()
             if output:
-                print('Trigger mode ', self.trigger_mode)
+                logger.info('Trigger mode %s', self.trigger_mode)
             return self.trigger_mode
         except Exception:
-            print('trigger get ERROR')
+            logger.error('trigger get ERROR')
             return 'NA'
 
     def get_trigger_modes(self):
@@ -586,7 +680,7 @@ class vimba_cam(miCamera):
             displayNames += [entry._EnumEntry__info.displayName for entry in entries]
             tooltips += [entry._EnumEntry__info.tooltip for entry in entries]
         except Exception:
-            print('trigger modes Get ERROR')
+            logger.error('trigger modes Get ERROR')
 
         return [modes, displayNames, tooltips]
 
@@ -601,7 +695,7 @@ class vimba_cam(miCamera):
             else:
                 return 0
         except Exception:
-            print('trigger source Set ERROR')
+            logger.error('trigger source Set ERROR')
             return 0
 
     def get_trigger_source(self, output=True):
@@ -610,10 +704,10 @@ class vimba_cam(miCamera):
             TriggerSource = self.cam.TriggerSource
             self.trigger_source = TriggerSource.get()
             if output:
-                print('Trigger source ', self.trigger_source)
+                logger.info('Trigger source %s', self.trigger_source)
             return self.trigger_source
         except Exception:
-            print('trigger source get ERROR')
+            logger.error('trigger source get ERROR')
             return 'NA'
 
     def get_trigger_sources(self):
@@ -629,7 +723,7 @@ class vimba_cam(miCamera):
             displayNames += [entry._EnumEntry__info.displayName for entry in entries]
             tooltips += [entry._EnumEntry__info.tooltip for entry in entries]
         except Exception:
-            print('trigger sources Get ERROR')
+            logger.error('trigger sources Get ERROR')
 
         return [sources, displayNames, tooltips]
 
@@ -644,7 +738,7 @@ class vimba_cam(miCamera):
             else:
                 return 0
         except Exception:
-            print('trigger selector Set ERROR')
+            logger.error('trigger selector Set ERROR')
             return 0
 
     def get_trigger_selector(self, output=True):
@@ -653,10 +747,10 @@ class vimba_cam(miCamera):
             TriggerSelector = self.cam.TriggerSelector
             self.trigger_selector = TriggerSelector.get()
             if output:
-                print('Trigger selector ', self.trigger_selector)
+                logger.info('Trigger selector %s', self.trigger_selector)
             return self.trigger_selector
         except Exception:
-            print('trigger selector get ERROR')
+            logger.error('trigger selector get ERROR')
             return 'NA'
 
     def get_trigger_selectors(self):
@@ -671,7 +765,7 @@ class vimba_cam(miCamera):
             displayNames += [entry._EnumEntry__info.displayName for entry in entries]
             tooltips += [entry._EnumEntry__info.tooltip for entry in entries]
         except Exception:
-            print('trigger selectors Get ERROR')
+            logger.error('trigger selectors Get ERROR')
 
         return [selectors, displayNames, tooltips]
 
@@ -686,7 +780,7 @@ class vimba_cam(miCamera):
             else:
                 return 0
         except Exception:
-            print('TriggerActivation Set ERROR')
+            logger.error('TriggerActivation Set ERROR')
             return 0
 
     def get_trigger_activation(self, output=True):
@@ -695,10 +789,10 @@ class vimba_cam(miCamera):
             TriggerActivation = self.cam.TriggerActivation
             self.trigger_activation = TriggerActivation.get()
             if output:
-                print('Trigger activation ', self.trigger_activation)
+                logger.info('Trigger activation %s', self.trigger_activation)
             return self.trigger_activation
         except Exception:
-            print('TriggerActivation get ERROR')
+            logger.error('TriggerActivation get ERROR')
             return 'NA'
 
     def get_trigger_activations(self):
@@ -713,7 +807,7 @@ class vimba_cam(miCamera):
             displayNames += [entry._EnumEntry__info.displayName for entry in entries]
             tooltips += [entry._EnumEntry__info.tooltip for entry in entries]
         except Exception:
-            print('TriggerActivation Get ERROR')
+            logger.error('TriggerActivation Get ERROR')
 
         return [activations, displayNames, tooltips]
 
@@ -728,7 +822,7 @@ class vimba_cam(miCamera):
             else:
                 return 0
         except Exception:
-            print('AcquisitionMode Set ERROR')
+            logger.error('AcquisitionMode Set ERROR')
             return 0
 
     def get_acquisition_mode(self, output=True):
@@ -737,10 +831,10 @@ class vimba_cam(miCamera):
             AcquisitionMode = self.cam.AcquisitionMode
             self.acquisition_mode = AcquisitionMode.get()
             if output:
-                print('Acquisition mode ', self.acquisition_mode)
+                logger.info('Acquisition mode %s', self.acquisition_mode)
             return self.acquisition_mode
         except Exception:
-            print('AcquisitionMode get ERROR')
+            logger.error('AcquisitionMode get ERROR')
             return 'NA'
 
     def get_acquisition_modes(self):
@@ -755,7 +849,7 @@ class vimba_cam(miCamera):
             displayNames += [entry._EnumEntry__info.displayName for entry in entries]
             tooltips += [entry._EnumEntry__info.tooltip for entry in entries]
         except Exception:
-            print('AcquisitionModes Get ERROR')
+            logger.error('AcquisitionModes Get ERROR')
 
         return [modes, displayNames, tooltips]
 
@@ -766,7 +860,7 @@ class vimba_cam(miCamera):
             fmts = self.cam.get_pixel_formats()
             formats += map(str, fmts)
         except Exception:
-            print('Pixel Formats Get ERROR')
+            logger.error('Pixel Formats Get ERROR')
 
         return formats
 
@@ -776,10 +870,10 @@ class vimba_cam(miCamera):
             # with self.cam:
             self.pixel_format = self.cam.get_pixel_format()
             if output:
-                print('Pixel Format', self.pixel_format)
+                logger.info('Pixel Format %s', self.pixel_format)
             return self.pixel_format
         except Exception:
-            print('Pixel Format Get ERROR')
+            logger.error('Pixel Format Get ERROR')
             return 'NA'
 
     def set_pixel_format(self, value: str):
@@ -799,14 +893,14 @@ class vimba_cam(miCamera):
                 self.bytes_per_pixel = 1
                 return self.pixel_size
             elif '12p' in pFormat:
-                print('Pixel Format Not supported.')
+                logger.error('Pixel Format Not supported.')
                 return 'NA'
             elif '12' in pFormat:
                 self.pixel_size = 16
                 self.bytes_per_pixel = 2
                 return self.pixel_size
             else:
-                print('Pixel Format Not supported.')
+                logger.error('Pixel Format Not supported.')
                 return 'NA'
         finally:
             self.set_black_level(5.0)
@@ -817,10 +911,10 @@ class vimba_cam(miCamera):
             self.pixel_size = self.cam.PixelSize.get()
             self.bytes_per_pixel = int(np.ceil(int(self.pixel_size) / 8))
             if output:
-                print('Pixel Size', self.pixel_size)
+                logger.info('Pixel Size %s', self.pixel_size)
             return self.pixel_size
         except Exception:
-            print('Pixel Size Get ERROR')
+            logger.error('Pixel Size Get ERROR')
             return 'NA'
 
     def get_io_lines(self):
@@ -830,7 +924,7 @@ class vimba_cam(miCamera):
                 lines.append(str(line))
             return lines
         except Exception:
-            print('get_io_lines ERROR')
+            logger.error('get_io_lines ERROR')
             return None
 
     def get_line_modes(self):
@@ -840,7 +934,7 @@ class vimba_cam(miCamera):
                 modes.append(str(mode))
             return modes
         except Exception:
-            print('get_line_modes ERROR')
+            logger.error('get_line_modes ERROR')
             return None
 
     def get_line_sources(self):
@@ -850,35 +944,35 @@ class vimba_cam(miCamera):
                 sources.append(str(source))
             return sources
         except Exception:
-            print('get_line_sources ERROR')
+            logger.error('get_line_sources ERROR')
             return None
 
     def get_line_source(self):
         try:
             return str(self.cam.LineSource.get())
         except Exception:
-            print('get_line_source ERROR')
+            logger.error('get_line_source ERROR')
             return None
 
     def get_line_mode(self):
         try:
             return str(self.cam.LineMode.get())
         except Exception:
-            print('get_line_mode ERROR')
+            logger.error('get_line_mode ERROR')
             return None
 
     def get_line_inverter(self):
         try:
             return self.cam.LineInverter.get()
         except Exception:
-            print('get_line_inverter ERROR')
+            logger.error('get_line_inverter ERROR')
             return None
 
     def get_line_status(self):
         try:
             return self.cam.LineStatus.get()
         except Exception:
-            print('get_line_status ERROR')
+            logger.error('get_line_status ERROR')
             return None
 
     def set_line_inverter(self, value: bool):
@@ -886,7 +980,7 @@ class vimba_cam(miCamera):
             self.cam.LineInverter.set(value)
             return True
         except Exception:
-            print('set_line_inverter ERROR')
+            logger.error('set_line_inverter ERROR')
             return False
 
     def set_line_source(self, value: str):
@@ -894,7 +988,7 @@ class vimba_cam(miCamera):
             self.cam.LineSource.set(value)
             return True
         except Exception:
-            print('set_line_source ERROR')
+            logger.error('set_line_source ERROR')
             return False
 
     def set_line_mode(self, value: str):
@@ -902,7 +996,7 @@ class vimba_cam(miCamera):
             self.cam.LineMode.set(value)
             return True
         except Exception:
-            print('set_line_mode ERROR')
+            logger.error('set_line_mode ERROR')
             return False
 
     def select_io_line(self, value: str):
@@ -910,7 +1004,7 @@ class vimba_cam(miCamera):
             self.cam.LineSelector.set(value)
             return True
         except Exception:
-            print('select_io_line ERROR')
+            logger.error('select_io_line ERROR')
             return False
 
     def get_timers(self):
@@ -920,7 +1014,7 @@ class vimba_cam(miCamera):
                 timers.append(str(timer))
             return timers
         except Exception:
-            print('get_timers ERROR')
+            logger.error('get_timers ERROR')
             return None
 
     def get_timer_trigger_activations(self):
@@ -930,7 +1024,7 @@ class vimba_cam(miCamera):
                 modes.append(str(mode))
             return modes
         except Exception:
-            print('get_timer_trigger_activations ERROR')
+            logger.error('get_timer_trigger_activations ERROR')
             return None
 
     def get_timer_trigger_sources(self):
@@ -940,28 +1034,28 @@ class vimba_cam(miCamera):
                 sources.append(str(source))
             return sources
         except Exception:
-            print('get_timer_trigger_sources ERROR')
+            logger.error('get_timer_trigger_sources ERROR')
             return None
 
     def get_timer_trigger_source(self):
         try:
             return str(self.cam.TimerTriggerSource.get())
         except Exception:
-            print('get_timer_trigger_source ERROR')
+            logger.error('get_timer_trigger_source ERROR')
             return None
 
     def get_timer_trigger_activation(self):
         try:
             return str(self.cam.TimerTriggerActivation.get())
         except Exception:
-            print('get_timer_trigger_activation ERROR')
+            logger.error('get_timer_trigger_activation ERROR')
             return None
 
     def get_timer_status(self):
         try:
             return self.cam.TimerStatus.get()
         except Exception:
-            print('get_timer_status ERROR')
+            logger.error('get_timer_status ERROR')
             return None
 
     def set_timer_trigger_source(self, value: str):
@@ -969,7 +1063,7 @@ class vimba_cam(miCamera):
             self.cam.TimerTriggerSource.set(value)
             return True
         except Exception:
-            print('set_timer_trigger_source ERROR')
+            logger.error('set_timer_trigger_source ERROR')
             return False
 
     def set_timer_trigger_activation(self, value: str):
@@ -977,7 +1071,7 @@ class vimba_cam(miCamera):
             self.cam.TimerTriggerActivation.set(value)
             return True
         except Exception:
-            print('set_line_mode ERROR')
+            logger.error('set_line_mode ERROR')
             return False
 
     def get_timer_duration(self):
@@ -985,21 +1079,21 @@ class vimba_cam(miCamera):
             duration = self.cam.TimerDuration
             return duration.get(), duration.get_range()
         except Exception:
-            print('get_timer_duration ERROR')
+            logger.error('get_timer_duration ERROR')
 
     def get_timer_delay(self):
         try:
             delay = self.cam.TimerDelay
             return delay.get(), delay.get_range()
         except Exception:
-            print('get_timer_delay ERROR')
+            logger.error('get_timer_delay ERROR')
 
     def set_timer_duration(self, value: float):
         try:
             self.cam.TimerDuration.set(value)
             return True
         except Exception:
-            print('set_timer_duration ERROR')
+            logger.error('set_timer_duration ERROR')
             return False
 
     def set_timer_delay(self, value: float):
@@ -1007,7 +1101,7 @@ class vimba_cam(miCamera):
             self.cam.TimerDelay.set(value)
             return True
         except Exception:
-            print('set_timer_delay ERROR')
+            logger.error('set_timer_delay ERROR')
             return False
 
     def select_timer(self, value: str):
@@ -1015,7 +1109,7 @@ class vimba_cam(miCamera):
             self.cam.TimerSelector.set(value)
             return True
         except Exception:
-            print('select_timer ERROR')
+            logger.error('select_timer ERROR')
             return False
 
     def reset_timer(self):
@@ -1023,7 +1117,137 @@ class vimba_cam(miCamera):
             self.cam.TimerReset.run()
             return True
         except Exception:
-            print('reset_timer ERROR')
+            logger.error('reset_timer ERROR')
+            return False
+
+    def get_correction_selectors(self):
+        try:
+            selectors = []
+            for source in self.cam.CorrectionSelector.get_available_entries():
+                selectors.append(str(source))
+            return selectors
+        except Exception:
+            logger.error('get_correction_selectors ERROR')
+            return []
+
+    def set_correction_selector(self, value: str):
+        try:
+            self.cam.CorrectionSelector.set(value)
+            return True
+        except Exception:
+            logger.error('set_correction_selector ERROR')
+            return False
+
+    def get_correction_selector(self):
+        try:
+            return str(self.cam.CorrectionSelector.get())
+        except Exception:
+            logger.error('get_correction_selector ERROR')
+            return None
+
+    def set_correction_mode(self, value: str):
+        try:
+            self.cam.CorrectionMode.set(value)
+            return True
+        except Exception:
+            logger.error('set_correction_mode ERROR')
+            return False
+
+    def get_correction_mode(self):
+        try:
+            return str(self.cam.CorrectionMode.get())
+        except Exception:
+            logger.error('get_correction_mode ERROR')
+            return None
+
+    def get_correction_modes(self):
+        try:
+            modes = []
+            for mode in self.cam.CorrectionMode.get_available_entries():
+                modes.append(str(mode))
+            return modes
+        except Exception:
+            logger.error('get_correction_modes ERROR')
+            return []
+
+    def get_binning_selectors(self):
+        try:
+            selectors = []
+            for source in self.cam.BinningSelector.get_available_entries():
+                selectors.append(str(source))
+            return selectors
+        except Exception:
+            logger.error('get_binning_selectors ERROR')
+            return []
+
+    def get_binning_modes(self):
+        try:
+            modes = []
+            for mode in self.cam.BinningMode.get_available_entries():
+                modes.append(str(mode))
+            return modes
+        except Exception:
+            logger.error('get_binning_modes ERROR')
+            return []
+
+    def get_binning_selector(self):
+        try:
+            return str(self.cam.BinningSelector.get())
+        except Exception:
+            logger.error('get_binning_selector ERROR')
+            return None
+
+    def set_binning_selector(self, value: str):
+        try:
+            self.cam.BinningSelector.set(value)
+            return True
+        except Exception:
+            logger.error('set_binning_selector ERROR')
+            return False
+
+    def set_binning_mode(self, value: str):
+        try:
+            self.cam.BinningMode.set(value)
+            return True
+        except Exception:
+            logger.error('set_binning_mode ERROR')
+            return False
+
+    def get_binning_mode(self):
+        try:
+            return str(self.cam.BinningMode.get())
+        except Exception:
+            logger.error('get_binning_mode ERROR')
+            return None
+
+    def get_binning_horizontal(self):
+        try:
+            return self.cam.BinningHorizontal.get()
+        except Exception:
+            logger.error('get_binning_horizontal ERROR')
+            return None
+
+    def set_binning_horizontal(self, value: int):
+        try:
+            self.cam.BinningHorizontal.set(value)
+            return True
+        except Exception:
+            logger.error('set_binning_horizontal ERROR')
+            return False
+
+    def get_binning_vertical(self):
+        try:
+            return self.cam.BinningVertical.get()
+        except Exception:
+            logger.error('get_binning_vertical ERROR')
+            return None
+
+    def set_binning_vertical(self, value: int):
+        try:
+            self.cam.BinningVertical.set(value)
+            return True
+        except Exception:
+            logger.error('set_binning_vertical ERROR')
             return False
 
     def get_roi(self, output=True):
@@ -1044,9 +1268,12 @@ class vimba_cam(miCamera):
             self.offsetY_range = self.cam.OffsetY.get_range()
             self.offsetY_inc = self.cam.OffsetY.get_increment()
             if output:
-                print(
-                    f'X = {self.offsetX} Y = {self.offsetY}',
-                    f'W = {self.width} H = {self.height}',
+                logger.info(
+                    'X = %d Y = %d W = %d H = %d',
+                    self.offsetX,
+                    self.offsetY,
+                    self.width,
+                    self.height,
                 )
             return (
                 int(self.offsetX),
@@ -1055,7 +1282,7 @@ class vimba_cam(miCamera):
                 int(self.height),
             )
         except Exception:
-            print('ROI Get ERROR')
+            logger.error('ROI Get ERROR')
             return 'NA'
 
     def set_roi(self, x, y, width, height):
@@ -1089,7 +1316,7 @@ class vimba_cam(miCamera):
             self.cam.OffsetY.set(self.offsetY)
             return 1
         except Exception:
-            print('ROI Set ERROR')
+            logger.error('ROI Set ERROR')
             return 0
 
     def reset_roi(self):
@@ -1166,10 +1393,65 @@ class vimba_cam(miCamera):
             'value': self.pixel_format.name if self.pixel_format else None,
         }
 
+        BLACK_LEVEL = {
+            'name': str(VimbaParams.BLACK_LEVEL),
+            'type': 'int',
+            'value': self.black_level,
+            'limits': [0, 255],
+        }
+
+        GAIN = {
+            'name': str(VimbaParams.GAIN),
+            'type': 'float',
+            'value': self.gain,
+            'dec': True,
+            'decimals': 5,
+            'limits': [self.gain_range[0], self.gain_range[1]],
+        }
+
+        CORRECTION_SELECTOR = {
+            'name': str(VimbaParams.CORRECTION_SELECTOR),
+            'type': 'list',
+            'limits': self.correction_selectors if self.correction_selectors else [],
+        }
+
+        CORRECTION_MODE = {
+            'name': str(VimbaParams.CORRECTION_MODE),
+            'type': 'list',
+            'limits': self.correction_modes if self.correction_modes else [],
+        }
+
+        BINNING_SELECTOR = {
+            'name': str(VimbaParams.BINNING_SELECTOR),
+            'type': 'list',
+            'limits': self.binning_selectors if self.binning_selectors else [],
+        }
+
+        BINNING_MODE = {
+            'name': str(VimbaParams.BINNING_MODE),
+            'type': 'list',
+            'limits': self.binning_modes if self.binning_modes else [],
+        }
+
+        BINNING_HORIZONTAL = {
+            'name': str(VimbaParams.BINNING_HORIZONTAL),
+            'type': 'int',
+            'value': self.binning_horizontal,
+            'limits': [0, 99],
+        }
+
+        BINNING_VERTICAL = {
+            'name': str(VimbaParams.BINNING_VERTICAL),
+            'type': 'int',
+            'value': self.binning_vertical,
+            'limits': [0, 99],
+        }
+
         FREERUN = {
             'name': str(VimbaParams.FREERUN),
             'type': 'action',
             'parent': CamParams.ACQUISITION,
+            'event': 'Event',
         }
         STOP = {
             'name': str(VimbaParams.STOP),
@@ -1271,6 +1553,14 @@ class vimba_cam(miCamera):
             TRIGGER_SELECTOR,
             TRIGGER_ACTIVATION,
             PIXEL_FORMAT,
+            BLACK_LEVEL,
+            GAIN,
+            CORRECTION_SELECTOR,
+            CORRECTION_MODE,
+            BINNING_SELECTOR,
+            BINNING_MODE,
+            BINNING_HORIZONTAL,
+            BINNING_VERTICAL,
             FREERUN,
             STOP,
             LOAD,
@@ -1321,6 +1611,26 @@ class vimba_cam(miCamera):
                 self.get_exposure_auto()
             elif param_name == VimbaParams.PIXEL_FORMAT:
                 self.set_pixel_format(param_value)
+            elif param_name == VimbaParams.BLACK_LEVEL:
+                self.set_black_level(param_value)
+                self.get_black_level()
+            elif param_name == VimbaParams.GAIN:
+                self.set_gain(param_value)
+                self.get_gain()
+            elif param_name == VimbaParams.CORRECTION_SELECTOR:
+                self.set_correction_selector(param_value)
+            elif param_name == VimbaParams.CORRECTION_MODE:
+                self.set_correction_mode(param_value)
+            elif param_name == VimbaParams.BINNING_HORIZONTAL:
+                self.set_binning_horizontal(param_value)
+                self.binning_horizontal = param_value
+            elif param_name == VimbaParams.BINNING_VERTICAL:
+                self.set_binning_vertical(param_value)
+                self.binning_vertical = param_value
+            elif param_name == VimbaParams.BINNING_SELECTOR:
+                self.set_binning_selector(param_value)
+            elif param_name == VimbaParams.BINNING_MODE:
+                self.set_binning_mode(param_value)
 
 
 # if __name__ == '__main__':

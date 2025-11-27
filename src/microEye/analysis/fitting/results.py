@@ -1,3 +1,4 @@
+import logging
 from enum import Enum
 
 import numpy as np
@@ -12,6 +13,8 @@ from microEye.analysis.fitting.rcc import (
     rcc_solve,
 )
 from microEye.analysis.rendering import BaseRenderer, Projection, RenderModes
+
+logger = logging.getLogger(__name__)
 
 UNIQUE_COLUMNS = [
     'frame',
@@ -545,17 +548,17 @@ class FittingResults:
 
         # Check edge cases
         if len(unique_frames) < 2:
-            print('Animation failed: 2 or more frames are required.')
+            logger.error('Animation failed: 2 or more frames are required.')
             return None, None, None
 
         if n_bins < 2:
-            print('Animation failed: 2 or more bins are required.')
+            logger.error('Animation failed: 2 or more bins are required.')
             return None, None, None
 
         frames_per_bin = int(np.floor(np.max(unique_frames) / n_bins))
 
         if frames_per_bin < 2:
-            print('Animation failed: 2 or more frames per bin are required.')
+            logger.error('Animation failed: 2 or more frames per bin are required.')
             return None, None, None
 
         renderEngine = BaseRenderer(pixelSize, z_pixel_size, renderMode)
@@ -587,7 +590,7 @@ class FittingResults:
             locs_per_bin.append(mask.stop - mask.start)
             frames.append(f * frames_per_bin + frames_per_bin / 2)
             sub_images.append(image)
-            print(f'Bins: {f + 1:d}/{n_bins:d}', end='\r')
+            logger.info(f'Bins: {f + 1:d}/{n_bins:d}')
 
         return (
             np.array(sub_images),
@@ -636,13 +639,13 @@ class FittingResults:
         """
         unique_frames = np.unique(self.data[DataColumns.FRAME])
         if len(unique_frames) < 2:
-            print('Drift cross-correlation failed: no frame info.')
+            logger.error('Drift cross-correlation failed: no frame info.')
             return
 
         frames_per_bin = int(np.floor(np.max(unique_frames) / n_bins))
 
         if frames_per_bin < 2:
-            print('Drift cross-correlation failed: 2 or more bins are required.')
+            logger.error('Drift cross-correlation failed: 2 or more bins are required.')
             return
 
         renderEngine = BaseRenderer(pixelSize, RenderModes.HISTOGRAM)
@@ -673,16 +676,16 @@ class FittingResults:
             )
             frames.append(f * frames_per_bin + frames_per_bin / 2)
             sub_images.append(image)
-            print(f'Bins: {f + 1:d}/{n_bins:d}', end='\r')
+            logger.info(f'Bins: {f + 1:d}/{n_bins:d}')
 
         sub_images = np.array(sub_images)
 
-        print('Shift Estimation ...', end='\r')
+        logger.info('Shift Estimation ...')
         try:
             if method == 'rcc':
                 imshift, A = rcc_shift_estimation(sub_images, pixelSize)
 
-                print('Shift Optimization ...', end='\r')
+                logger.info('Shift Optimization ...')
                 drift = rcc_solve(imshift, A, n_bins, rmax=rmax)
             elif method == 'mcc':
                 drift = mcc_shift_estimation(sub_images, pixelSize)
@@ -693,10 +696,10 @@ class FittingResults:
             else:
                 raise ValueError(f'Unknown drift estimation method: {method}')
         except MemoryError as e:
-            print(f'Drift cross-correlation failed: {e}')
+            logger.error(f'Drift cross-correlation failed: {e}')
             return
 
-        print('Shift Correction ...', end='\r')
+        logger.info('Shift Correction ...')
 
         frames_interp = np.concatenate(([0], np.array(frames), [max_frame - 1]))
 
@@ -809,7 +812,7 @@ class FittingResults:
                 )
             print(f'NN {frameID / max_frame:.2%} ...               ', end='\r')
 
-        print('Done ...                         ')
+        logger.info('\nDone ...')
 
         return self
 
@@ -829,14 +832,14 @@ class FittingResults:
 
         data = df.to_numpy()
 
-        print('Merging ...                         ')
+        logger.info('Merging ...\n')
         finalData = merge_localizations(data, column_ids, maxLength)
 
         df = pd.DataFrame(finalData, columns=columns).sort_values(
             by=str(DataColumns.FRAME)
         )
 
-        print('Done ...                         ')
+        logger.info('Done ...                         ')
 
         return FittingResults.fromDataFrame(df, self.pixel_size)
 
@@ -858,14 +861,14 @@ class FittingResults:
             self.data[DataColumns.FRAME], return_counts=True
         )
         if len(unique_frames) < 2:
-            print('Drift correction failed: no frame info.')
+            logger.error('Drift correction failed: no frame info.')
             return
 
         if self.data[DataColumns.TRACK_ID] is None:
-            print('Drift correction failed: please perform NN, no trackIDs.')
+            logger.error('Drift correction failed: please perform NN, no trackIDs.')
             return
         if np.max(self.data[DataColumns.TRACK_ID]) < 1:
-            print('Drift correction failed: please perform NN, no trackIDs.')
+            logger.error('Drift correction failed: please perform NN, no trackIDs.')
             return
 
         unique_tracks, track_counts = np.unique(
@@ -878,14 +881,16 @@ class FittingResults:
         fiducial_trackIDs = unique_tracks[fiducial_tracks_mask]
 
         if len(fiducial_trackIDs) < 1:
-            print('Drift correction failed: no ' + 'fiducial markers tracks detected.')
+            logger.error(
+                'Drift correction failed: no ' + 'fiducial markers tracks detected.'
+            )
             return
         else:
-            print(f'{len(fiducial_trackIDs):d} tracks detected.', end='\r')
+            logger.info(f'{len(fiducial_trackIDs):d} tracks detected.')
 
         fiducial_markers = np.zeros((len(fiducial_trackIDs), len(unique_frames), 2))
 
-        print('Fiducial markers ...                 ', end='\r')
+        logger.info('Fiducial markers ...')
         for idx in np.arange(fiducial_markers.shape[0]):
             mask = self.data[DataColumns.TRACK_ID] == fiducial_trackIDs[idx]
             fiducial_markers[idx] = np.c_[
@@ -895,14 +900,14 @@ class FittingResults:
             fiducial_markers[idx, :, 0] -= fiducial_markers[idx, 0, 0]
             fiducial_markers[idx, :, 1] -= fiducial_markers[idx, 0, 1]
 
-        print('Drift estimate ...                 ', end='\r')
+        logger.info('Drift estimate ...')
         drift_x = np.mean(fiducial_markers[:, :, 0], axis=0)
         drift_y = np.mean(fiducial_markers[:, :, 1], axis=0)
 
         error_bar_x = np.std(fiducial_markers[:, :, 0], axis=0)
         error_bar_y = np.std(fiducial_markers[:, :, 1], axis=0)
 
-        print('Drift correction ...                 ', end='\r')
+        logger.info('Drift correction ...')
         ids = np.cumsum(np.bincount(self.data[DataColumns.FRAME].astype(np.int64)))
 
         for idx in np.arange(len(unique_frames)):

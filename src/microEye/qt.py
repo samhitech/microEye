@@ -1,34 +1,6 @@
 import os
 
-
-def check_modules(modules: list[str]) -> dict[str, bool]:
-    availability = {}
-    for module in modules:
-        try:
-            __import__(module)
-            availability[module] = True
-        except ImportError:
-            availability[module] = False
-    return availability
-
-availability = check_modules(['PySide6', 'PyQt6', 'PyQt5'])
-
-all_false = all(not value for value in availability.values())
-
-if all_false:
-    raise ImportError('Missing Qt packages, install one of PySide6, PyQt5, PyQt6.')
-
 QT_API = os.environ.get('QT_API', 'PySide6')
-
-if not availability.get(QT_API, False):
-    for key, value in availability.items():
-        if value:
-            QT_API = key
-            break
-
-
-os.environ['QT_API'] = QT_API
-os.environ['PYQTGRAPH_QT_LIB'] = QT_API
 
 if QT_API == 'PySide6':
     from PySide6 import QtCore, QtGui, QtSerialPort, QtSvg, QtWidgets

@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 from dataclasses import asdict
 from pprint import pprint
@@ -15,6 +16,7 @@ from microEye.analysis.fitting.results import PARAMETER_HEADERS, FittingMethod
 from microEye.qt import QtCore, QtWidgets, getOpenFileName, getSaveFileName
 from microEye.utils.enum_encoder import EnumEncoder
 
+logger = logging.getLogger(__name__)
 
 class PSFView(QtWidgets.QWidget):
     '''
@@ -658,8 +660,8 @@ class PSFView(QtWidgets.QWidget):
                         )
                         self.gl_widget.addItem(text)
 
-        except Exception as e:
-            print(f'Error updating 3D view: {str(e)}')
+        except Exception:
+            logger.error('Error updating 3D view!', exc_info=True)
 
     def update_range_spinboxes(self):
         mn, mx = self.range_roi.getRegion()
@@ -786,9 +788,7 @@ class PSFView(QtWidgets.QWidget):
         if stats.export_fit_curve(
             self.fit_result, self, os.path.dirname(self.psf_data.path)
         ):
-            print(
-                f'Fit curve exported!'
-            )
+            logger.info('Fit curve exported!')
 
     def import_fit_curve(self):
         fit_result, _ = stats.import_fit_curve(

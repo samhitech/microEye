@@ -9,12 +9,12 @@ This toolkit is compatible with the [hardware](#hardware) used in our microscope
 ```bash
    __  ____              ____                ___  ____  ___       ____
   /  |/  (_)__________  / __/_ _____   _  __|_  |/ / / / _ \___ _/ __/
- / /|_/ / / __/ __/ _ \/ _// // / -_) | |/ / __//_  _// // / _ `/__ \
-/_/  /_/_/\__/_/  \___/___/\_, /\__/  |___/____(_)_/(_)___/\_,_/____/
+ / /|_/ / / __/ __/ _ \/ _// // / -_) | |/ / __//_  _// // / _ `/ _ \
+/_/  /_/_/\__/_/  \___/___/\_, /\__/  |___/____(_)_/(_)___/\_,_/\___/
                           /___/
-                         ___   __     __                         
-                        / _ | / /__  / /  ___ _  
-                       / __ |/ / _ \/ _ \/ _ `/ 
+                         ___   __     __
+                        / _ | / /__  / /  ___ _
+                       / __ |/ / _ \/ _ \/ _ `/
                       /_/ |_/_/ .__/_//_/\_,_/
                              /_/
 ```
@@ -74,7 +74,7 @@ This toolkit is compatible with the [hardware](#hardware) used in our microscope
 
 1. **Install Python:**
 
-   Download and install the latest [`Python`](https://www.python.org/downloads/) stable release (version ≥3.9 and ≤3.11).
+   Download and install the latest [`Python`](https://www.python.org/downloads/) stable release (version ≥3.11.9).
 
 2. **Install microEye package:**
 
@@ -92,14 +92,39 @@ This toolkit is compatible with the [hardware](#hardware) used in our microscope
 
 3. **Install specific hardware drivers: (Optional)**
 
-   - Allied Vision CMOS cameras: Install the [`Vimba X SDK`](https://www.alliedvision.com/en/products/software/vimba-x-sdk/) (_avoid installing it inside the Program Files directory_). After installation, navigate to the `Python API` directory (e.g., `C:\Allied Vision\Vimba X\api\python`) where the `vmbpy` wheel file (`.whl`) is located, and install it using:
+   - Allied Vision CMOS cameras:
 
-     ```bash
+     Install the [`Vimba X SDK`](https://www.alliedvision.com/en/products/software/vimba-x-sdk/) (_avoid installing it inside the Program Files directory_). After installation, navigate to the `Python API` directory (e.g., `C:\Allied Vision\Vimba X\api\python`) where the `vmbpy` wheel file (`.whl`) is located, and install it using:
+
+     ```powershell
      python -m pip install vmbpy-1.1.1-py3-none-win_amd64.whl
      ```
 
+     **Important note**
+
+     It has been observed that `vmbpy` can hang when initializing `GenICAM` transport layers (TLs) if the `GENICAM_GENTL64_PATH` environment variable contains `.cti` folders from other providers (e.g., `IDS Peak` or `pylon`). To avoid this, restrict `Vimba X` to load only its own TLs by explicitly specifying the `Vimba X` `.cti` directory in `VmbC.xml`.
+
+     **Steps**
+
+     1. **Auto (recommended)**
+
+        Set the `VIMBA_X_HOME` environment variable to your `Vimba X` installation directory. `microEye` will read `VIMBA_X_HOME` at startup and use it to point the Vimba X transport-layer (`.cti`) configuration (e.g., `VIMBA_X_HOME/cti`).
+
+        > Note: On Windows the `Vimba X installer` typically creates this variable automatically — verify it before manually setting it.
+
+     2. **Manual**
+
+        If the automatic method is not prefered, create the environment variable `VIMBA_X_CTI` and point it to the directory (or directories) that contain the `Vimba X` `.cti` transport-layer files. Use directory paths (not individual `.cti` files). Multiple directories are allowed — separate them with the platform-specific path separator.
+
    - Basler CMOS cameras: Install [`pylon`](https://www.baslerweb.com/en/downloads/software/?srsltid=AfmBOoqsMrbQT24hcWiCw-0ptD9PR7nCrPMBZSzi0YlI1CVItNQikMKW&downloadCategory.values.label.data=pylon) (_avoid installing it inside the Program Files directory_).
-   - IDS uEye CMOS cameras: Install [`IDS Software Suite 4.96.1`](https://en.ids-imaging.com/download-details/AB00604.html?os=windows&version=win10&bus=64&floatcalc=) for Windows 32/64-bit.
+   - IDS CMOS cameras:
+
+     - Install [`IDS Software Suite 4.96.1`](https://en.ids-imaging.com/download-details/AB00604.html?os=windows&version=win10&bus=64&floatcalc=) for Windows 32/64-bit.
+     - Alternatively, [`IDS Peak Extended Setup`](https://en.ids-imaging.com/download-peak.html) is prefered as it support old uEye models and the new uEye+ ones.
+
+       > - The installation package also includes the uEye camera drivers for UI models in addition to the standard setup. Therefore, no installation of the IDS Software Suite is required for the operation of UI models.
+       > - If the process cannot read the system-wide `GENICAM_GENTL_PATH`/`GENICAM_GENTL64_PATH`, add the same variable to your User environment variables (not just System) and restart any open terminals or applications for the change to take effect.
+
    - Integrated Optics Lasers: Install [`Laser control software`](https://integratedoptics.com/downloads).
 
    - PCO cameras: Install [`pco.sdk`, `pco.runtime`](https://www.excelitas.com/product/pco-software-development-kits).
@@ -113,16 +138,21 @@ This toolkit is compatible with the [hardware](#hardware) used in our microscope
 4. **Open a terminal and execute microEye:** :partying_face:
 
    ```powershell
-   usage: microEye.exe [-h] [--module MODULE] [--QT_API QT_API] [--theme THEME]
+   usage: microEye.exe [-h] [--module {mieye,viewer}] [--QT_API {PySide6,PyQt6,PyQt5}] [--theme {None,qdarktheme,qdarkstyle,...}]
+                    [--log-level {CRITICAL,ERROR,WARNING,INFO,DEBUG}] [--no-log-file] [--no-log-console]
 
-   optional arguments:
-    -h, --help            show this help message and exit
-    --module {mieye,viewer}
-                          The module to launch [mieye|viewer], If not specified, launcher is executed.
-    --QT_API {PySide6,PyQT6,PyQt5}
-                          Select QT API [PySide6|PyQT6|PyQt5], If not specified, the environment variable QT_API is used.
-    --theme {None,qdarktheme,qdarkstyle,...}
-                          The theme of the app, if not specified, the environment variable MITHEME is used.
+   options:
+     -h, --help            show this help message and exit
+     --module {mieye,viewer}
+                           The module to launch [mieye|viewer], If not specified, launcher is executed.
+     --QT_API {PySide6,PyQt6,PyQt5}
+                           Select QT API [PySide6|PyQT6|PyQt5], If not specified, the environment variable QT_API is used.
+     --theme {None,qdarktheme,qdarkstyle,...}
+                           The theme of the app, if not specified, the environment variable MITHEME is used.
+     --log-level {CRITICAL,ERROR,WARNING,INFO,DEBUG}
+                           Root logging level (default WARNING).
+     --no-log-file         Disable logging to file.
+     --no-log-console      Disable logging to console.
    ```
 
 > **Note:** Ensure all necessary drivers are installed for microEye to function properly.
@@ -219,21 +249,17 @@ microEye --module viewer
 
 The `microEye` uses the following Python packages:
 
-| Data Analysis and Visualization |   GUI and UI Development    | Code Quality and Formatting | Image and Video Processing | File and Data Storage | Other Utilities |  Microscopy  |
-| :-----------------------------: | :-------------------------: | :-------------------------: | :------------------------: | :-------------------: | :-------------: | :----------: |
-|              dask               |           PySide6           |          autopep8           |       opencv-python        |       ome-types       |     hidapi      | pycromanager |
-|           matplotlib            |        pyqtdarktheme        |          pyflakes           |                            |        tables         |    pyfiglet     |              |
-|              numba              |          pyqtgraph          |                             |                            |         zarr          |    pyserial     |              |
-|              numpy              |         QDarkStyle          |                             |                            |                       |     pyjokes     |              |
-|             pandas              |         QScintilla          |                             |                            |                       |   setuptools    |              |
-|          scikit-image           |      PyQt5 (optional)       |                             |                            |                       |    tabulate     |              |
-|          scikit_learn           |      PyQt6 (optional)       |                             |                            |                       |     pyueye      |              |
-|              scipy              | PyQt6-QScintilla (optional) |                             |                            |                       |      tqdm       |              |
-|            tifffile             |                             |                             |                            |                       |                 |              |
-|              h5py               |                             |                             |                            |                       |                 |              |
-|               pco               |                             |                             |                            |                       |                 |              |
-|                                 |                             |                             |                            |                       |                 |              |
-|            PyOpenGL             |                             |                             |                            |                       |                 |              |
+| Code Quality and Formatting | Data Analysis and Visualization | File and Data Storage |   GUI and UI Development    | Image and Video Processing |  Microscopy  | Other Utilities |
+| :-------------------------: | :-----------------------------: | :-------------------: | :-------------------------: | :------------------------: | :----------: | :-------------: |
+|          autopep8           |              dask               |         h5py          |      PyQt5 (optional)       |       opencv_python        |     pco      |     hidapi      |
+|          pyflakes           |           matplotlib            |       ome_types       |      PyQt6 (optional)       |          PyOpenGL          | pycromanager |    mmpycorex    |
+|                             |              numba              |        tables         | PyQt6-QScintilla (optional) |                            |    pyueye    |    pyfiglet     |
+|                             |              numpy              |       tifffile        |           PySide6           |                            |   pypylon    |     pyjokes     |
+|                             |             pandas              |         zarr          |          pyqtgraph          |                            |              |    pyserial     |
+|                             |           pystackreg            |                       |        pyqtdarktheme        |                            |              |   setuptools    |
+|                             |          scikit-image           |                       |         QDarkStyle          |                            |              |    tabulate     |
+|                             |          scikit_learn           |                       |         QScintilla          |                            |              |      tqdm       |
+|                             |              scipy              |                       |                             |                            |              |                 |
 
 > **Note:** The VimbaPython package is bundled with the Vimba SDK and must be installed manually.
 >

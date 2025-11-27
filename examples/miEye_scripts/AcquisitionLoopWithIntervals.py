@@ -1,4 +1,5 @@
-from microEye.hardware.cams import CameraManager, Vimba_Panel
+from microEye.hardware.cams.camera_list import CameraManager
+from microEye.hardware.cams.vimba.vimba_panel import Vimba_Panel
 from microEye.qt import QtCore
 from microEye.utils.thread_worker import QThreadWorker
 

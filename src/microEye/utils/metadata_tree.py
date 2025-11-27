@@ -1,3 +1,4 @@
+import logging
 from enum import Enum
 from typing import Any, Optional, Union
 
@@ -9,6 +10,7 @@ from pyqtgraph.parametertree import Parameter
 from microEye.qt import QtWidgets, getOpenFileName, getSaveFileName
 from microEye.utils.parameter_tree import Tree
 
+logger = logging.getLogger(__name__)
 
 class MetaParams(Enum):
     '''
@@ -475,7 +477,7 @@ class MetadataEditorTree(Tree):
                 with open(filename, 'w', encoding='utf8') as f:
                     f.write(ome_obj.to_xml())
         except Exception as e:
-            print(f'Error saving file: {e}')
+            logger.error('Error saving file.', exc_info=e)
 
     def load_xml(self):
         '''
@@ -495,7 +497,7 @@ class MetadataEditorTree(Tree):
                     xml = f.read()
                 self.pop_OME_XML(OME.from_xml(xml))
         except Exception as e:
-            print(f'Error loading file: {e}')
+            logger.error('Error loading file.', exc_info=e)
 
     def gen_OME_XML(
         self,

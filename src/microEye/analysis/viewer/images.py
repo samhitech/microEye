@@ -1,4 +1,5 @@
 import json
+import logging
 import math
 import os
 import threading
@@ -56,6 +57,8 @@ from microEye.utils.gui_helper import *
 from microEye.utils.labelled_slider import LabelledSlider
 from microEye.utils.metadata_tree import MetadataEditorTree, MetaParams
 from microEye.utils.thread_worker import QThreadWorker
+
+logger = logging.getLogger(__name__)
 
 
 class StackView(QtWidgets.QWidget):
@@ -783,7 +786,7 @@ class StackView(QtWidgets.QWidget):
                 if res is not None:
                     self.localizedData.emit(filename)
 
-            print('\nPSF Extraction Protocol:')
+            logger.info('PSF Extraction Protocol:')
             # Any other args, kwargs are passed to the run function
             self.worker = QThreadWorker(self.extraction_protocol, filename)
             self.worker.signals.result.connect(done)
@@ -805,15 +808,15 @@ class StackView(QtWidgets.QWidget):
             or not cuda.is_available()
             or not self.get_param(Parameters.LOCALIZE_GPU).value()
         ):
-            print('\nCPU Fit')
+            logger.info('CPU Fit')
             # Any other args, kwargs are passed to the run function
             frames_list, params, crlbs, loglike = self.localizeStackCPU()
         else:
-            print('\nGPU Fit')
+            logger.info('GPU Fit')
             # Any other args, kwargs are passed to the run function
             frames_list, params, crlbs, loglike = self.localizeStackGPU()
 
-        print('\nPSF Extraction:')
+        logger.info('PSF Extraction:')
         results = psf.get_psf_rois(
             self.stack_handler,
             frames_list,
@@ -868,12 +871,12 @@ class StackView(QtWidgets.QWidget):
                 or not cuda.is_available()
                 or not self.get_param(Parameters.LOCALIZE_GPU).value()
             ):
-                print('\nCPU Fit')
+                logger.info('CPU Fit')
                 # Any other args, kwargs are passed to the run function
                 self.worker = QThreadWorker(self.localizeStackCPU)
                 self.worker.signals.result.connect(done)
             else:
-                print('\nGPU Fit')
+                logger.info('GPU Fit')
                 # Any other args, kwargs are passed to the run function
                 self.worker = QThreadWorker(self.localizeStackGPU)
                 self.worker.signals.result.connect(done)
@@ -968,7 +971,7 @@ class StackView(QtWidgets.QWidget):
         '''GPU Localization main thread worker function.'''
         options = self._initialize_parameters()
 
-        print('\nCollecting Prefit ROIs...')
+        logger.info('Collecting Prefit ROIs...')
         start = QDateTime.currentDateTime()  # timer
 
         PSFparam = options['PSFparam']
@@ -998,8 +1001,8 @@ class StackView(QtWidgets.QWidget):
         coord_list = np.vstack(coord_list)
         varim_list = None if options['varim'] is None else np.vstack(varim_list)
 
-        print(
-            '\nROIs collected in',
+        logger.info(
+            'ROIs collected in %s',
             time_string_ms(start.msecsTo(QDateTime.currentDateTime())),
         )
 
@@ -1023,7 +1026,9 @@ class StackView(QtWidgets.QWidget):
                 params[:, 0] += origin[0]
                 params[:, 1] += origin[1]
 
-        print('\nDone...', time_string_ms(start.msecsTo(QDateTime.currentDateTime())))
+        logger.info(
+            'Done...  %s', time_string_ms(start.msecsTo(QDateTime.currentDateTime()))
+        )
 
         return frames_list, params, crlbs, loglike
 
@@ -1135,7 +1140,7 @@ class StackView(QtWidgets.QWidget):
                     self.set_protocol_from_metadata(metadata)
             except Exception as e:
                 # Handle any errors that might occur during file reading
-                print(f'Error importing metadata: {e}')
+                logger.error(f'Error importing metadata: {e}')
 
     def export_metadata_to_file(self, filepath=None):
         if filepath is None:
@@ -1153,7 +1158,7 @@ class StackView(QtWidgets.QWidget):
                     json.dump(metadata, file, indent=2)
             except Exception as e:
                 # Handle any errors that might occur during file writing
-                print(f'Error exporting metadata: {e}')
+                logger.error(f'Error exporting metadata: {e}')
 
     def closeEvent(self, event):
         if (

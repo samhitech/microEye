@@ -1,3 +1,4 @@
+import logging
 import threading
 import time
 from typing import Optional
@@ -11,6 +12,7 @@ from microEye.utils.parameter_tree import Tree
 from microEye.utils.start_gui import StartGUI
 from microEye.utils.thread_worker import QThreadWorker
 
+logger = logging.getLogger(__name__)
 
 class io_combiner(QtCore.QObject):
     '''
@@ -228,7 +230,7 @@ class io_combiner(QtCore.QObject):
                     ) * 1000  # Convert to milliseconds
                     if log_print:
                         rx = response[0] if len(response) == 1 else '...'
-                        print(
+                        logger.info(
                             f'Command: {command} | '
                             f'Response: {rx} | '
                             f'Time: {elapsed_time:.1f} ms'
@@ -238,10 +240,10 @@ class io_combiner(QtCore.QObject):
 
                     return response[0] if len(response) == 1 else response
                 except serial.SerialException as e:
-                    print(f'Serial communication error: {e}')
+                    logger.error(f'Serial communication error.', exc_info=e)
                     return '<ERR>'
                 except Exception as e:
-                    print(f'Unexpected error: {e}')
+                    logger.error(f'Unexpected error.', exc_info=e)
                     return '<ERR>'
 
     def OpenCOM(self):
@@ -250,7 +252,7 @@ class io_combiner(QtCore.QObject):
             try:
                 self.ser.open()
             except serial.SerialException as e:
-                print(f'Error opening serial port: {e}')
+                logger.error(f'Error opening serial port.', exc_info=e)
 
             if self.isOpen():
                 try:
@@ -265,7 +267,7 @@ class io_combiner(QtCore.QObject):
                     self.SetCurrent(4, 0)
                     self.GetMaxCurrent()
                 except serial.SerialException as e:
-                    print(f'Error during initialization: {e}')
+                    logger.error(f'Error during initialization.', exc_info=e)
 
         return self.isOpen()
 
@@ -275,7 +277,7 @@ class io_combiner(QtCore.QObject):
             try:
                 self.SendCommand(io_combiner.OFF)
             except serial.SerialException as e:
-                print(f'Error closing serial port: {e}')
+                logger.error(f'Error closing serial port.', exc_info=e)
             finally:
                 self.ser.close()
 
@@ -789,7 +791,7 @@ class CombinerLaserWidget(Tree):
                         self.Laser.GetCurrent()
                         return readings, settings
                 except Exception as e:
-                    print(f'Error fetching stats: {e}')
+                    logger.error(f'Error fetching stats.', exc_info=e)
 
                 return {}, {}
 
@@ -899,7 +901,7 @@ class CombinerLaserWidget(Tree):
             self.removed.emit(self)
             self.deleteLater()
         else:
-            print(f'Disconnect device {self.Laser.Model} before removing!')
+            logger.warning(f'Disconnect device {self.Laser.Model} before removing!')
 
     def __str__(self):
         return self.Laser.Model.strip() or self.__class__.__name__

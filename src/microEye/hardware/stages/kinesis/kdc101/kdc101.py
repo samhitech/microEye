@@ -1,8 +1,11 @@
+import logging
 from collections import deque
 from dataclasses import dataclass
 
 from microEye.hardware.stages.kinesis.kdc101.factory import *
 from microEye.qt import QtCore, QtSerialPort, Signal
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -667,12 +670,14 @@ class KDC101Controller(QtCore.QObject):
                     response_enum, parsed_data = KDC101_Factory.interpret_response(
                         message
                     )
-                    print(response_enum, parsed_data)
+                    logger.info(
+                        f'\nReceived response: {response_enum}, Data: {parsed_data}'
+                    )
                     self.__responses.append((response_enum, parsed_data))
                     self._handle_state_update(response_enum, parsed_data)
                     self.dataReceived.emit(response_enum, parsed_data)
                 except ValueError as e:
-                    print(f'Error interpreting response: {e}')
+                    logger.error(f'Error interpreting response.', exc_info=e)
 
         except Exception as e:
             self.__serial.errorOccurred.emit(str(e))
@@ -707,11 +712,11 @@ class KDC101Controller(QtCore.QObject):
                     return response_enum, parsed_data
 
             if not self.isOpen():
-                print('Serial port closed while waiting for response.')
+                logger.error('Serial port closed while waiting for response.')
                 return None, None
 
             QtCore.QCoreApplication.processEvents()
             QtCore.QThread.msleep(10)
 
-        print(f'Timeout waiting for response: {expected_response}')
+        logger.error(f'Timeout waiting for response: {expected_response}')
         return None, None

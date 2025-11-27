@@ -1,3 +1,4 @@
+import logging
 import typing
 
 import numpy as np
@@ -144,7 +145,7 @@ class cmosMaps(QtWidgets.QWidget):
                 self.thermalNoiseSQ = img
 
     def missingMap(self):
-        print('Missing Maps!')
+        logging.getLogger(__name__).warning('Missing Maps!')
 
     def calcMaps(self, export=True):
         if self.invGain is None:
@@ -174,7 +175,7 @@ class cmosMaps(QtWidgets.QWidget):
         if not np.all(shapes[:, 0] == shapes[0, 0]) or not np.all(
             shapes[:, 1] == shapes[0, 1]
         ):
-            print('Maps have unmatching dimensions!')
+            logging.getLogger(__name__).warning('Maps have unmatching dimensions!')
             return False
 
         self.expTime = self.exp_spin.value()

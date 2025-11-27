@@ -1,3 +1,4 @@
+import logging
 import sys
 import traceback
 import typing
@@ -156,8 +157,10 @@ class resultsStatsWidget(QtWidgets.QWidget):
                 brush=(0, 0, 255, 150),
             )
         except Exception:
+            logging.getLogger(__name__).error(
+                f'Failed to create histogram: {column_name}'
+            )
             traceback.print_exc()
-            print(column_name)
 
     def _calculate_column_range(
         self, data_series: pd.Series, column_name: str

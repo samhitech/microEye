@@ -51,7 +51,7 @@ class focusWidget(QtWidgets.QDockWidget):
 
         self.focusStabilizerView = FocusStabilizerView()
 
-        self._worker = None
+        self._updating = False
         self._last_range_update = perf_counter_ns()
 
         self.init_layout()
@@ -283,26 +283,25 @@ class focusWidget(QtWidgets.QDockWidget):
 
     def connectUpdateGui(self):
         FocusStabilizer.instance().updateViewBox.connect(self.updateViewBox)
-        FocusStabilizer.instance().updatePlots.connect(self._update_plots_worker)
+        FocusStabilizer.instance().updatePlots.connect(self._update_event)
         self.focusStabilizerView.methodChanged.connect(self._update_plot_visibility)
         self.focusStabilizerView.setRoiActivated.connect(self.set_rois)
 
     def updateViewBox(self, data: np.ndarray):
         self._image_item.setImage(data, _callSync='off')
 
-    def _update_plots_worker(self, kwargs: dict = None):
+    def _update_event(self, kwargs: dict = None):
         '''Worker function to update the plots.'''
-        if kwargs is None or self._worker is not None:
+        if kwargs is None or self._updating:
             return
 
-        def done():
-            self._worker = None
+        try:
+            self._updating = True
+            self._update_plots(**kwargs)
+        finally:
+            self._updating = False
 
-        self._worker = QThreadWorker(self.updatePlots, **kwargs)
-        self._worker.signals.finished.connect(done)
-        QtCore.QThreadPool.globalInstance().start(self._worker)
-
-    def updatePlots(self, **kwargs):
+    def _update_plots(self, **kwargs):
         '''Updates the graphs.'''
 
         _time: np.ndarray = kwargs.get('time')

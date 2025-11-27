@@ -1,3 +1,4 @@
+import logging
 import time
 import traceback
 
@@ -147,7 +148,7 @@ class TARDIS_Widget(QtWidgets.QWidget):
                 stop = time.perf_counter_ns()
                 calc = stop - start
                 message = f'Computed in {calc/1e9:.5f}s.\n'
-                print(message)
+                logging.getLogger(__name__).info(message)
                 self.log.appendPlainText('    ' + message)
                 self.plot_hist()
             else:

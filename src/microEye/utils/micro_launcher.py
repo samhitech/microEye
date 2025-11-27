@@ -136,15 +136,34 @@ class microLauncher(QtWidgets.QMainWindow):
             self.theme_combobox, ['qdarktheme', 'qdarkstyle', 'None'], True
         )
 
+        # Create logger options
+        self.log_level_combobox = QtWidgets.QComboBox()
+        self.log_level_combobox.addItems(
+            ['CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG'],
+        )
+        self.log_level_combobox.setCurrentText('INFO')
+
+        self.no_log_file_checkbox = QtWidgets.QCheckBox('Disable logging to file')
+        self.no_log_file_checkbox.setChecked(False)
+        self.no_log_console_checkbox = QtWidgets.QCheckBox('Disable logging to console')
+        self.no_log_console_checkbox.setChecked(False)
+
         # Layout for buttons
         self.buttons_layout = QtWidgets.QHBoxLayout()
         self.buttons_layout.addWidget(self.button1)
         self.buttons_layout.addWidget(self.button2)
 
+        # layout for logger options
+        self.logger_layout = QtWidgets.QHBoxLayout()
+        self.logger_layout.addWidget(self.no_log_file_checkbox)
+        self.logger_layout.addWidget(self.no_log_console_checkbox)
+
         # Add widgets to the main layout
         self.main_layout.addLayout(self.buttons_layout)
         self.main_layout.addWidget(self.qt_api_combobox)
         self.main_layout.addWidget(self.theme_combobox)
+        self.main_layout.addWidget(self.log_level_combobox)
+        self.main_layout.addLayout(self.logger_layout)
 
         # Set central widget
         central_widget = QtWidgets.QWidget()
@@ -163,11 +182,35 @@ class microLauncher(QtWidgets.QMainWindow):
         '''Launch the selected module'''
         qt_api = self.qt_api_combobox.currentText()
         miTheme = self.theme_combobox.currentText()
+        log_level = self.log_level_combobox.currentText()
+        no_log_file = self.no_log_file_checkbox.isChecked()
+        no_log_console = self.no_log_console_checkbox.isChecked()
 
-        env = dict(os.environ, QT_API=qt_api, PYQTGRAPH_QT_LIB=qt_api, MITHEME=miTheme)
+        env = os.environ
+        env['QT_API'] = qt_api
+        env['PYQTGRAPH_QT_LIB'] = qt_api
+        env['MITHEME'] = miTheme
+        env['MICROEYE_LOG_LEVEL'] = log_level
 
         # Define the command and arguments
-        cmd = ['python', '-m', 'microEye.launcher', '--module', module]
+        cmd = [
+            'python',
+            '-m',
+            'microEye.launcher',
+            '--module',
+            module,
+            '--QT_API',
+            qt_api,
+            '--theme',
+            miTheme,
+            '--log-level',
+            log_level,
+        ]
+
+        if no_log_file:
+            cmd.append('--no-log-file')
+        if no_log_console:
+            cmd.append('--no-log-console')
 
         # Get the current working directory
         cwd = os.getcwd()
@@ -185,7 +228,11 @@ class microLauncher(QtWidgets.QMainWindow):
                 'creationflags': flags,
             }
             subprocess.Popen(
-                ['start', 'cmd', '/k'] + cmd, cwd=cwd, shell=True, env=env, **pkwargs
+                ['start', 'cmd', '/k'] + cmd,
+                cwd=cwd,
+                shell=True,
+                env=env,
+                **pkwargs,
             )
             # self.close()
         else:  # Unix-based systems (Linux, macOS, etc.)

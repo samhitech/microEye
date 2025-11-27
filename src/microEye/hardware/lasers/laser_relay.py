@@ -1,3 +1,4 @@
+import logging
 from enum import Enum
 from typing import Optional
 
@@ -7,6 +8,7 @@ from microEye.qt import QtCore, QtSerialPort, QtWidgets, Signal
 from microEye.utils.parameter_tree import Tree
 from microEye.utils.start_gui import StartGUI
 
+logger = logging.getLogger(__name__)
 
 class LaserRelay:
     def __init__(self) -> None:
@@ -168,9 +170,9 @@ class LaserRelay:
 
             self.__port.write(config.encode('utf-8'))
             self.__last = config
-            print(str(self.__port.readAll(), encoding='utf-8'))
+            logger.info(str(self.__port.readAll(), encoding='utf-8'))
         except Exception as e:
-            print('Failed Laser Relay Send Config: ' + str(e))
+            logger.error('Failed Laser Relay Send Config.', exc_info=e)
 
 
 class RelayParams(Enum):
@@ -288,7 +290,7 @@ class LaserRelayView(Tree):
             self.removed.emit(self)
             self.deleteLater()
         else:
-            print(f'Disconnect Laser Relay before removing!')
+            logger.warning(f'Disconnect Laser Relay before removing!')
 
     def StartGUI():
         '''Initializes a new :class:`QApplication` and :class:`LaserRelay`.

@@ -1,3 +1,4 @@
+import logging
 import threading
 import time
 from queue import Queue
@@ -14,6 +15,8 @@ from microEye.hardware.pycromanager.enums import (
     PropertyType,
 )
 from microEye.hardware.pycromanager.utils import *
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT = 30  # Default timeout in seconds
 MAX_RECONNECT_ATTEMPTS = 3
@@ -56,19 +59,19 @@ class CoreWorker(threading.Thread):
                     port=self.port,
                     convert_camel_case=self.camel_case,
                 )
-                print(f'Successfully connected on attempt {attempt + 1}')
+                logger.info(f'Successfully connected on attempt {attempt + 1}')
                 self.__initialized = True
                 break
             except Exception as e:
                 self.core = None
-                print(f'Connection attempt {attempt + 1} failed: {str(e)}')
+                logger.warning(f'Connection attempt {attempt + 1} failed: {str(e)}')
                 if attempt < MAX_RECONNECT_ATTEMPTS - 1:
-                    print(f'Retrying in {RECONNECT_DELAY} seconds...')
+                    logger.info(f'Retrying in {RECONNECT_DELAY} seconds...')
                     time.sleep(RECONNECT_DELAY)
 
         if self.core is None:
             e = ConnectionError('Failed to connect to Micro-Manager Core')
-            print(f'Error initializing Core: {e}')
+            logger.error(f'Error initializing Core.', exc_info=e)
             self.running = False
 
         while self.running:
@@ -83,7 +86,7 @@ class CoreWorker(threading.Thread):
             if self.core is not None:
                 self.core._close()
         except Exception as e:
-            print(f'Error closing core: {e}')
+            logger.error(f'Error closing core.', exc_info=e)
 
     def stop(self):
         self.running = False
@@ -229,7 +232,7 @@ class PycroCore:
         del PycroCore._instances[self.port]
 
     def reconnect(self):
-        print('Attempting to reconnect...')
+        logger.info('Attempting to reconnect...')
         self.start()
 
     def is_connected(self):

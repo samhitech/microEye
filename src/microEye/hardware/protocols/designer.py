@@ -4,6 +4,7 @@ import sys
 from microEye import __version__
 from microEye.hardware.protocols.actions import (
     ForLoop,
+    ListLoop,
     ParameterAdjustmentAction,
 )
 from microEye.hardware.protocols.scene_manager import SceneManager
@@ -87,6 +88,9 @@ class ExperimentDesignerView(QtWidgets.QGraphicsView):
         #     'Function Call', lambda: self.scene_manager.add_action(FunctionCall())
         # )
         add_menu.addAction('For Loop', lambda: self.scene_manager.add_action(ForLoop()))
+        add_menu.addAction(
+            'List Loop', lambda: self.scene_manager.add_action(ListLoop())
+        )
         add_menu.addAction(
             'Parameter Adjustment',
             lambda: self.scene_manager.add_action(ParameterAdjustmentAction()),
@@ -186,6 +190,7 @@ class ExperimentDesignerView(QtWidgets.QGraphicsView):
         if self.import_protocol():
             self.scene_manager.execute_actions()
 
+
 class ExperimentDesigner(QtWidgets.QWidget):
     HEADER = '> <span style="color:#0f0;">Experiment Designer ('
     HEADER += f'<span style="color:#aaf;">microEye v{__version__}</span>)</span>'
@@ -202,9 +207,7 @@ class ExperimentDesigner(QtWidgets.QWidget):
         self.text_terminal = QtWidgets.QPlainTextEdit()
         self.text_terminal.setReadOnly(True)
         self.text_terminal.appendHtml(self.HEADER)
-        self.text_terminal.setStyleSheet(
-            'QPlainTextEdit { background-color: #111;}'
-        )
+        self.text_terminal.setStyleSheet('QPlainTextEdit { background-color: #111;}')
 
         self.experiment_view.scene_manager.updateTerminal.connect(self.updateTerminal)
         self.experiment_view.scene_manager.clearTerminal.connect(self.clearTerminal)

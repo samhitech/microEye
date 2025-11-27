@@ -48,6 +48,8 @@ class Basler_Panel(Camera_Panel):
 
     PARAMS = BaslerParams
 
+    FACTOR = 1e3  # exposure time factor to convert to ms
+
     def __init__(self, cam: basler_cam, mini=False, *args, **kwargs):
         '''
         Initializes a new Basler_Panel Qt widget.
@@ -231,16 +233,6 @@ class Basler_Panel(Camera_Panel):
         '''
         self._cam = cam
 
-    def setExposure(self, value):
-        '''Sets the exposure time widget of camera
-
-        Parameters
-        ----------
-        value : float
-            selected exposure time
-        '''
-        super().setExposure(value * 1e3)
-
     def exposure_changed(self, param, value: float):
         '''
         Slot for changed exposure
@@ -347,8 +339,7 @@ class Basler_Panel(Camera_Panel):
                 ):
                     self.acq_job.c_event.set()
                     self.acq_job.stop_threads = True
-                    logging.debug('Stop')
-                    print('Capture Stopped!')
+                    logging.getLogger(__name__).debug('Capture Stopped!')
 
                 QtCore.QThread.usleep(100)
         except Exception:

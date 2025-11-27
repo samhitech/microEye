@@ -1,3 +1,4 @@
+import logging
 import os
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -17,6 +18,8 @@ from microEye.images import ImageSequenceBase, TiffSeqHandler, create_array
 from microEye.qt import Qt, QtCore, QtGui, QtWidgets, getOpenFileName, getSaveFileName
 from microEye.utils.display import DisplayManager, fast_autolevels_opencv
 from microEye.utils.thread_worker import QThreadWorker
+
+logger = logging.getLogger(__name__)
 
 
 class RegistrationMethod(Enum):
@@ -108,15 +111,14 @@ def process_stack(
 
         if ref_stack is not None:
             if any(ref_stack.shapeTCZYX()[i] != shape[i] for i in [0, 2, 3, 4]):
-                print(
-                    'Error',
+                logger.error(
                     'Reference and moving stacks must have the same dimensions '
                     '(T, Z, Y, X).',
                 )
                 return False
             if ref_stack._dtype != moving_stack._dtype:
-                print(
-                    'Error', 'Reference and moving stacks must have the same data type.'
+                logger.error(
+                    'Reference and moving stacks must have the same data type.'
                 )
                 return False
             channels = 2
@@ -139,7 +141,7 @@ def process_stack(
                 ome=False,
             )
         else:
-            print('Unsupported file format. Please select a .zarr or .tif file.')
+            logger.error('Unsupported file format. Please select a .zarr or .tif file.')
             return False
 
         success = False
@@ -181,7 +183,7 @@ def process_stack(
 
         success = True
     except Exception as e:
-        print('Error', f'Failed to save registered stack: {e}')
+        logger.error(f'Failed to save registered stack: {e}')
     finally:
         if filename.endswith('.tif'):
             writer.close()
@@ -409,7 +411,7 @@ class RegistrationWidget(QtWidgets.QDialog):
 
     def register_images(self):
         method = RegistrationMethod.from_string(self.method_combo.currentText())
-        print(f'Registering images using method: {method.name}')
+        logger.info(f'Registering images using method: {method.name}')
 
         if self.reference_stack.currentText() == self.moving_stack.currentText():
             QtWidgets.QMessageBox.warning(
@@ -433,7 +435,7 @@ class RegistrationWidget(QtWidgets.QDialog):
         self._stack_reg = StackReg(method.value)
         self._transformation = self._stack_reg.register(img1, img2)
 
-        print('Registration complete.')
+        logger.info('Registration complete.')
         # Here you would typically update the displayed images in the GUI
 
     def register_stack(self):

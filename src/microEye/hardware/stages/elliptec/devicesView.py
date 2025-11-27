@@ -1,3 +1,4 @@
+import logging
 from enum import Enum
 from typing import Any, Callable, Optional
 
@@ -10,6 +11,8 @@ from microEye.hardware.stages.elliptec.ellDevices import *
 from microEye.hardware.stages.elliptec.motorInfo import MotorInfo
 from microEye.qt import QtCore, QtSerialPort, QtWidgets, Signal
 from microEye.utils.parameter_tree import Tree
+
+logger = logging.getLogger(__name__)
 
 
 class ElliptecStageParams(Enum):
@@ -191,7 +194,7 @@ class ElliptecStageView(Tree):
 
     def findDevices(self):
         if not DevicePort.isOpen():
-            print('Open the serial port first!')
+            logger.warning('Open the serial port first!')
             return
 
         self.get_param(ElliptecStageParams.DEVICES).clearChildren()
@@ -429,7 +432,7 @@ class ElliptecStageView(Tree):
             self.removed.emit(self)
             self.deleteLater()
         else:
-            print(f'Disconnect Elliptec stage before removing!')
+            logger.warning('Disconnect Elliptec stage before removing!')
 
     def __str__(self):
         return f'Elliptec Devices ({DevicePort.instance().serial.portName()})'
@@ -493,7 +496,6 @@ class ElliptecView(QtWidgets.QTabWidget):
         # Set up the layout
         self.addTab(self._elliptecStageView, 'Devices')
         self.addTab(self._output, 'Output')
-
 
     def isOpen(self):
         return DevicePort.isOpen()
@@ -691,16 +693,16 @@ if __name__ == '__main__':
     from microEye.qt import QApplication
 
     try:
-        print('Starting application...')
+        logger.info('Starting application...')
         app = QApplication(sys.argv)
 
-        print('Creating ElliptecView...')
+        logger.info('Creating ElliptecView...')
         view = ElliptecView()
 
-        print('Showing window...')
+        logger.info('Showing window...')
         view.show()
 
-        print('Entering event loop...')
+        logger.info('Entering event loop...')
         sys.exit(app.exec())
     except Exception as e:
-        print(f'An error occurred: {e}')
+        logger.error(f'An error occurred: {e}')

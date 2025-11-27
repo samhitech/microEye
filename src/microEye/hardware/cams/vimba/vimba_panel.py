@@ -3,7 +3,7 @@ import traceback
 
 from microEye.hardware.cams.camera_options import CamParams
 from microEye.hardware.cams.camera_panel import Camera_Panel
-from microEye.hardware.cams.vimba import INSTANCE, vb
+from microEye.hardware.cams.vimba import vb
 from microEye.hardware.cams.vimba.vimba_cam import VimbaParams, vimba_cam
 from microEye.qt import (
     QDateTime,
@@ -22,6 +22,8 @@ class Vimba_Panel(Camera_Panel):
      | Inherits Camera_Panel
     '''
     PARAMS = VimbaParams
+
+    FACTOR = 1e3  # exposure time factor to convert to ms
 
     def __init__(self, cam: vimba_cam, mini=False, *args, **kwargs):
         '''
@@ -111,6 +113,34 @@ class Vimba_Panel(Camera_Panel):
             self.set_io_line_config
         )
 
+        # Binning
+        def binning_selector_changed(value):
+            with self._cam:
+                mode = self.cam.get_binning_mode()
+                self.camera_options.set_param_value(VimbaParams.BINNING_MODE, mode)
+                h_bin = self.cam.get_binning_horizontal()
+                v_bin = self.cam.get_binning_vertical()
+                self.camera_options.set_param_value(
+                    VimbaParams.BINNING_HORIZONTAL, h_bin
+                )
+                self.camera_options.set_param_value(
+                    VimbaParams.BINNING_VERTICAL, v_bin
+                )
+
+        self.camera_options.get_param(VimbaParams.BINNING_SELECTOR).sigValueChanged.connect(
+            binning_selector_changed
+        )
+
+        # correction
+        def correction_selector_changed(value):
+            with self._cam:
+                mode = self.cam.get_correction_mode()
+                self.camera_options.set_param_value(VimbaParams.CORRECTION_MODE, mode)
+
+        self.camera_options.get_param(VimbaParams.CORRECTION_SELECTOR).sigValueChanged.connect(
+            correction_selector_changed
+        )
+
         # Timers
         def reset_timer():
             with self._cam:
@@ -187,16 +217,6 @@ class Vimba_Panel(Camera_Panel):
             the vimba_cam to set as panel camera.
         '''
         self._cam = cam
-
-    def setExposure(self, value):
-        '''Sets the exposure time widget of camera
-
-        Parameters
-        ----------
-        value : float
-            selected exposure time
-        '''
-        super().setExposure(value * 1e3)
 
     def set_ROI(self):
         '''Sets the ROI for the slected vimba_cam'''
@@ -298,8 +318,7 @@ class Vimba_Panel(Camera_Panel):
         if self.acq_job.frames_captured > self.acq_job.frames - 1 and not self.mini:
             self.acq_job.c_event.set()
             self.acq_job.stop_threads = True
-            logging.debug('Stop')
-            print('Capture Stopped!')
+            logging.getLogger(__name__).debug('Capture Stopped!')
 
     def cam_capture(self, *args, **kwargs):
         '''Capture function executed by the capture worker.

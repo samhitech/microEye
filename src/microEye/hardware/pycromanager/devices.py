@@ -1,3 +1,5 @@
+import logging
+
 from microEye.hardware.pycromanager.core import DEFAULT_BRIDGE_PORT, PycroCore
 from microEye.hardware.pycromanager.enums import DeviceType, PropertyType
 
@@ -59,8 +61,8 @@ class PycroDevice:
 
     @name.setter
     def name(self, value: str):
+        logger.warning('Setting PycroDevice name is not supported')
         return
-        print('Setting PycroDevice name is not supported')
 
     def wait_for_device(self):
         self._core.wait_for_device(self._label)

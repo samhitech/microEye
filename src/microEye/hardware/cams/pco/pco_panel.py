@@ -192,8 +192,7 @@ class PCO_Panel(Camera_Panel):
                 ):
                     self.acq_job.c_event.set()
                     self.acq_job.stop_threads = True
-                    logging.debug('Stop')
-                    print('Capture Stopped!')
+                    logging.getLogger(__name__).debug('Capture Stopped!')
 
             self.acq_job.c_event.wait()
         except Exception:

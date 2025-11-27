@@ -1,3 +1,4 @@
+import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
@@ -590,7 +591,7 @@ def localizeStackCPU(
                     all_loglike.extend(loglike)
 
     duration = (datetime.now() - start).total_seconds() * 1000
-    print(f'\nDone... {time_string_ms(duration)}')
+    logging.getLogger(__name__).info(f'\nDone... {time_string_ms(duration)}')
 
     return (
         np.array(all_frames, dtype=np.int64),

@@ -222,7 +222,7 @@ class AcquisitionJob:
         self.stop_threads = False
         '''cross-thread attribute (use lock)'''
 
-        self.c_event = threading.Event()
+        self.c_event: threading.Event = kwargs.get('c_event', threading.Event())
         self.s_event: threading.Event = kwargs.get('s_event', threading.Event())
 
         self.tiffWriter: list[tf.TiffWriter] = []

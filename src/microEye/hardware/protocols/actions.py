@@ -251,6 +251,107 @@ class ForLoop(ActionGroup):
         )
 
 
+class ListLoop(ActionGroup):
+    '''
+    Action that iterates over a user-specified iterable and exposes the index
+    and element to its child actions.
+    '''
+
+    NAME = 'List Loop'
+
+    def __init__(self, iterable='[1, 2, 3]'):
+        super().__init__()
+        self.iterable_expression = ''
+        self.iterable_values: list[Any] = []
+        self.set_iterable(iterable)
+
+    def set_iterable(self, iterable):
+        '''
+        Accept either a literal iterable or a string expression (evaluated once
+        when set) and normalize it to a list for iteration.
+        '''
+        if isinstance(iterable, str):
+            self.iterable_expression = iterable.strip()
+            evaluated = self._evaluate_iterable_expression(self.iterable_expression)
+        else:
+            evaluated = iterable
+            self.iterable_expression = repr(iterable)
+        self.iterable_values = self._normalize_iterable(evaluated)
+
+    def _evaluate_iterable_expression(self, expr: str):
+        if not expr:
+            return []
+        try:
+            ast.parse(expr, mode='eval')
+        except SyntaxError as exc:
+            raise ValueError(f'Invalid iterable expression: {expr}') from exc
+
+        allowed_names = {
+            'range': range,
+            'list': list,
+            'tuple': tuple,
+            'set': set,
+        }
+
+        try:
+            return eval(expr, {'__builtins__': {}}, allowed_names)
+        except Exception as exc:
+            raise ValueError(f'Unable to evaluate iterable expression: {exc}') from exc
+
+    def _normalize_iterable(self, value):
+        if value is None:
+            return []
+        if isinstance(value, (str, bytes)):
+            raise ValueError('Iterable cannot be a string or bytes object.')
+        try:
+            return list(value)
+        except TypeError as exc:
+            raise ValueError('Provided object is not iterable.') from exc
+
+    def execute(self, **kwargs):
+        event: threading.Event = kwargs.get('event')
+        if event and event.is_set():
+            self.output(f'{str(self)}: Execution stopped.', **kwargs)
+            return
+
+        if not self.iterable_values:
+            self.output(f'{str(self)}: No items to iterate.', **kwargs)
+            return
+
+        new_kwargs = kwargs.copy()
+        new_kwargs['level'] = kwargs.get('level', 0) + 1
+
+        for index, element in enumerate(self.iterable_values):
+            if event and event.is_set():
+                break
+            self.output(
+                f'{self.__class__.NAME} {self.id}: '
+                f'{element} ({index + 1}/{len(self.iterable_values)})', **kwargs
+            )
+            new_kwargs[f'i{self.id}'] = index
+            new_kwargs[f'item{self.id}'] = element
+            for child_action in self.child_actions:
+                if event and event.is_set():
+                    break
+                child_action.execute(**new_kwargs)
+
+    def __str__(self) -> str:
+        display = self.iterable_expression or repr(self.iterable_values)
+        return f'{self.__class__.NAME} {self.id}: {display}'
+
+    def toHTML(self) -> str:
+        display = (self.iterable_expression or repr(self.iterable_values)).replace(
+            '<', '&lt;'
+        ).replace('>', '&gt;')
+        return (
+            f'<span style="color:#c586c0;">for</span> '
+            f'<span style="color:#9cdcfe;">i{self.id}, item{self.id}</span> '
+            f'<span style="color:#c586c0;">in</span> '
+            f'<span style="color:#4ec9b0;">{display}</span>'
+            '<span style="color:#cccccc;">:</span>'
+        )
+
+
 class ParameterAdjustmentAction(BaseAction):
     NAME = 'Parameter'
 

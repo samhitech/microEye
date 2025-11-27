@@ -1,3 +1,4 @@
+import logging
 import weakref
 from typing import Optional
 
@@ -403,7 +404,9 @@ class StageView(Tree):
             self.removed.emit(self)
             self.deleteLater()
         else:
-            print(f'Cannot remove {self.stage} widget. Try to disconnect first.')
+            logging.getLogger(__name__).warning(
+                f'Cannot remove {self.stage} widget. Try to disconnect first.'
+            )
 
     def __str__(self):
         return f'{self.stage} View'

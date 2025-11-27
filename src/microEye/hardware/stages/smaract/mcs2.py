@@ -8,6 +8,8 @@ try:
 except ImportError:
     ctl = None
 
+logger = logging.getLogger(__name__)
+
 
 def assert_lib_compatibility():
     '''
@@ -51,12 +53,12 @@ class MCS2Stage(AbstractStage):
             if locators and self.locator in locators:
                 try:
                     self.__handle = ctl.Open(self.locator)
-                    logging.info(f'MCS2 connected to {self.locator}.')
+                    logger.info(f'MCS2 connected to {self.locator}.')
                 except Exception as e:
                     self.__handle = None
-                    logging.error(f'MCS2 failed to connect to {self.locator}. {e}')
+                    logger.error(f'MCS2 failed to connect to {self.locator}. {e}')
             else:
-                logging.error(f'MCS2 device {self.locator} not found.')
+                logger.error(f'MCS2 device {self.locator} not found.')
 
     @classmethod
     def find_devices(cls):
@@ -73,14 +75,14 @@ class MCS2Stage(AbstractStage):
 
             buffer = ctl.FindDevices()
             if len(buffer) == 0:
-                logging.warning('MCS2 no devices found.')
+                logger.warning('MCS2 no devices found.')
                 raise ConnectionError
             locators = buffer.split('\n')
             for locator in locators:
-                logging.info(f'MCS2 available devices: {locator}')
+                logger.info(f'MCS2 available devices: {locator}')
         except Exception as e:
             locators = []
-            logging.error(f'MCS2 failed to find devices. {e}')
+            logger.error(f'MCS2 failed to find devices. {e}')
 
         return locators.copy()
 

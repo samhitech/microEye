@@ -1,3 +1,4 @@
+import logging
 import typing
 
 import ome_types.model as om
@@ -11,6 +12,8 @@ from microEye.utils.gui_helper import (
     create_line_edit,
     create_text_edit,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class MetadataEditor(QtWidgets.QWidget):
@@ -263,7 +266,7 @@ class MetadataEditor(QtWidgets.QWidget):
                 with open(filename, 'w', encoding='utf8') as f:
                     f.write(ome_obj.to_xml())
         except Exception as e:
-            print(f'Error saving file: {e}')
+            logger.error('Error saving file.', exc_info=e)
 
     def load_xml(self):
         '''
@@ -278,7 +281,7 @@ class MetadataEditor(QtWidgets.QWidget):
                     xml = f.read()
                 self.pop_OME_XML(OME.from_xml(xml))
         except Exception as e:
-            print(f'Error loading file: {e}')
+            logger.error('Error loading file.', exc_info=e)
 
 
     def gen_OME_XML(

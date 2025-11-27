@@ -1,4 +1,5 @@
 import json
+import logging
 import traceback
 from queue import Queue
 
@@ -12,6 +13,8 @@ from microEye.images import TiffSeqHandler, ZarrImageSequence, uImage
 from microEye.qt import Qt, QtCore, QtWidgets, Signal, getOpenFileName, getSaveFileName
 from microEye.utils.gui_helper import *
 from microEye.utils.thread_worker import QThreadWorker
+
+logger = logging.getLogger(__name__)
 
 
 class MultiLineROISelector:
@@ -682,7 +685,7 @@ class Kymogram:
                 return kymogram
 
         except Exception as e:
-            print(f'Error reading TIFF file: {e}')
+            logger.error(f'Error reading TIFF file: {e}')
             return None
 
 
@@ -1076,4 +1079,4 @@ if __name__ == '__main__':
                 plt.legend()
                 plt.show()
             else:
-                print('Error: Please select at least two points.')
+                logger.error('Error: Please select at least two points.')

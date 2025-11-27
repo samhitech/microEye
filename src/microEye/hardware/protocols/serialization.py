@@ -5,6 +5,7 @@ from microEye.hardware.protocols.actions_items import (
     BaseAction,
     ForLoop,
     FunctionCall,
+    ListLoop,
     ParameterAdjustmentAction,
     get_action_item,
 )
@@ -35,6 +36,11 @@ def serialize_action(action: BaseAction) -> dict[str, Any]:
         action_data['function_args'] = list(action.function_args)
     elif isinstance(action, ForLoop):
         action_data['repeat_count'] = action.repeat_count
+        action_data['child_actions'] = [
+            serialize_action(child) for child in action.child_actions
+        ]
+    elif isinstance(action, ListLoop):
+        action_data['iterable_expression'] = action.iterable_expression
         action_data['child_actions'] = [
             serialize_action(child) for child in action.child_actions
         ]
@@ -72,6 +78,12 @@ def deserialize_action(action_data: dict[str, Any]) -> tuple[BaseAction, Any]:
         action_item = get_action_item(action)
     elif action_type == ForLoop:
         action = ForLoop(action_data['repeat_count'])
+        action_item = ActionGroupItem(action)
+        for child_data in action_data['child_actions']:
+            child_action, child_item = deserialize_action(child_data)
+            action_item.add_child_item(child_item)
+    elif action_type == ListLoop:
+        action = ListLoop(action_data['iterable_expression'])
         action_item = ActionGroupItem(action)
         for child_data in action_data['child_actions']:
             child_action, child_item = deserialize_action(child_data)

@@ -10,6 +10,7 @@ from microEye.hardware.cams.camera_options import CamParams
 from microEye.hardware.cams.micam import miCamera
 from microEye.hardware.cams.pco.enums import *
 
+logger = logging.getLogger(__name__)
 
 class pcoParams(Enum):
     FREERUN = 'Acquisition.Freerun'
@@ -175,7 +176,7 @@ class pco_cam(miCamera):
     @height.setter
     def height(self, value):
         '''Invalid set height, use `setROI` instead'''
-        print('Invalid set height, use setROI instead')
+        logger.error('Invalid set height, use setROI instead')
         pass
 
     @property
@@ -186,7 +187,7 @@ class pco_cam(miCamera):
     @width.setter
     def width(self, value):
         '''Invalid set width, use `setROI` instead'''
-        print('Invalid set width, use setROI instead')
+        logger.error('Invalid set width, use setROI instead')
         pass
 
     @property
@@ -280,7 +281,7 @@ class pco_cam(miCamera):
                 self.exposure_unit = 's'
                 return self.exposure_current
         except Exception:
-            print('Exposure Get ERROR')
+            logger.error('Exposure Get ERROR')
         return exp
 
     def setExposure(self, exp: float) -> float:
@@ -302,7 +303,7 @@ class pco_cam(miCamera):
                 self.exposure_current = self.cam.exposure_time
                 return self.exposure_current
         except Exception:
-            print('Exposure Set ERROR')
+            logger.error('Exposure Set ERROR')
         return -127
 
     def getDelay(self) -> float:
@@ -319,7 +320,7 @@ class pco_cam(miCamera):
                 self.delay_current = self.cam.delay_time
                 return self.delay_current
         except Exception:
-            print('Delay Get ERROR')
+            logger.error('Delay Get ERROR')
         return delay
 
     def setDelay(self, delay: float) -> float:
@@ -341,7 +342,7 @@ class pco_cam(miCamera):
                 self.delay_current = self.cam.delay_time
                 return self.delay_current
         except Exception:
-            print('Delay Set ERROR')
+            logger.error('Delay Set ERROR')
         return -127
 
     def isRecording(self):
@@ -827,6 +828,7 @@ class pco_cam(miCamera):
             'name': str(pcoParams.FREERUN),
             'type': 'action',
             'parent': CamParams.ACQUISITION,
+            'event': 'Event',
         }
         STOP = {
             'name': str(pcoParams.STOP),
@@ -857,4 +859,4 @@ class pco_cam(miCamera):
 if __name__ == '__main__':
     cam = pco_cam()
 
-    print(cam.get_temperature())
+    logger.info(cam.get_temperature())

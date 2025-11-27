@@ -1,3 +1,5 @@
+import logging
+
 import numba as nb
 import numpy as np
 import pyqtgraph as pg
@@ -56,8 +58,7 @@ def Gaussian_dist(x: np.ndarray, mu: np.ndarray, sigma: np.ndarray):
     np.ndarray
         the Gaussian distribution PDF
     '''
-    return 1 / (np.sqrt(np.pi / 2) * sigma) * \
-        np.exp(-2 * (x - mu)**2 / sigma**2)
+    return 1 / (np.sqrt(np.pi / 2) * sigma) * np.exp(-2 * (x - mu) ** 2 / sigma**2)
 
 
 @nb.njit(cache=True)
@@ -84,10 +85,7 @@ def NeNA_model(x: np.ndarray, params):
     x1 = params[3]
     sig0, sig1 = params[4:6]
 
-    return (
-        a0 * Rayleigh_dist(x, x0, sig0) +
-        a1 * Gaussian_dist(x, x1, sig1) +
-        a2 * x)
+    return a0 * Rayleigh_dist(x, x0, sig0) + a1 * Gaussian_dist(x, x1, sig1) + a2 * x
 
 
 def NeNA_log_like(params, args):
@@ -124,7 +122,7 @@ def NeNA_log_like(params, args):
     # Calculate negative log likelihood
     LL = -np.sum(norm.logpdf(data, loc=dataPred, scale=sd))
 
-    return (LL)
+    return LL
 
 
 def NeNA_fit(x, y, params):
@@ -144,8 +142,7 @@ def NeNA_fit(x, y, params):
     OptimizeResult
         The optimization result represented as an OptimizeResult object.
     '''
-    return minimize(
-        NeNA_log_like, params, args=[x, y], method='Nelder-Mead', tol=1e-8)
+    return minimize(NeNA_log_like, params, args=[x, y], method='Nelder-Mead', tol=1e-8)
 
 
 def get_bincenters(edges: np.ndarray):
@@ -161,14 +158,23 @@ def get_bincenters(edges: np.ndarray):
     np.ndarray
         array of bin centers of histogram bin edges.
     '''
-    return np.array([(edges[i]+edges[i+1])/2. for i in range(len(edges)-1)])
+    return np.array([(edges[i] + edges[i + 1]) / 2.0 for i in range(len(edges) - 1)])
 
 
 def NeNA_resolution_estimate(
-        distances: np.ndarray, trackIDs: np.ndarray,
-        minDist=0.5, range=None, bins=500,
-        a_ray=0.5, a_gauss=0.25, a_lin=1, xc_gauss=15,
-        sig_ray=None, sig_gauss=30, sd_fit=1e-4):
+    distances: np.ndarray,
+    trackIDs: np.ndarray,
+    minDist=0.5,
+    range=None,
+    bins=500,
+    a_ray=0.5,
+    a_gauss=0.25,
+    a_lin=1,
+    xc_gauss=15,
+    sig_ray=None,
+    sig_gauss=30,
+    sd_fit=1e-4,
+):
     if range is None:
         range = [0, 200]
     dist = distances[np.logical_and(trackIDs > 0, distances > minDist)]
@@ -179,25 +185,27 @@ def NeNA_resolution_estimate(
         sig_ray = np.sqrt(np.sum(np.square(dist)) / (2 * dist.shape[0]))
 
     res = NeNA_fit(
-        get_bincenters(bin_edges), n,
-        [a_ray, a_gauss, a_lin, xc_gauss, sig_ray, sig_gauss, sd_fit])
+        get_bincenters(bin_edges),
+        n,
+        [a_ray, a_gauss, a_lin, xc_gauss, sig_ray, sig_gauss, sd_fit],
+    )
 
-    print('NeNA resolution estimate')
-    print(f'A0 {res.x[0]:.5f} Loc0 {0:.5f} Sig0 {res.x[4]:.5f}')
-    print(f'A1 {res.x[1]:.5f} Loc1 {res.x[3]:.5f} Sig1 {res.x[5]:.5f}')
-    print(f'A2 {res.x[2]:e} SD {res.x[6]:e}')
+    logger = logging.getLogger(__name__)
+    logger.info('NeNA resolution estimate')
+    logger.info(f'A0 {res.x[0]:.5f} Loc0 {0:.5f} (Sig0) {res.x[4]:.5f}')
+    logger.info(f'A1 {res.x[1]:.5f} Loc1 {res.x[3]:.5f} Sig1 {res.x[5]:.5f}')
+    logger.info(f'A2 {res.x[2]:e} SD {res.x[6]:e}')
 
     return res, (bin_edges, n, get_bincenters(bin_edges))
 
 
 class NeNA_Widget(QtWidgets.QDialog):
-
     def __init__(
-            self,
-            neighbourDists: np.ndarray,
-            trackIDs: np.ndarray,
-            parent=None,
-            ):
+        self,
+        neighbourDists: np.ndarray,
+        trackIDs: np.ndarray,
+        parent=None,
+    ):
         super().__init__(parent)
 
         self.setWindowTitle('NeNA localization precision estimate')
@@ -223,8 +231,7 @@ class NeNA_Widget(QtWidgets.QDialog):
         self.bins.setMaximum(10000)
         self.bins.setValue(200)
 
-        self.fitlay.addRow(
-            QtWidgets.QLabel('N of bins:'), self.bins)
+        self.fitlay.addRow(QtWidgets.QLabel('N of bins:'), self.bins)
 
         self.A0 = QtWidgets.QDoubleSpinBox()
         self.A0.setMinimum(0)
@@ -239,9 +246,8 @@ class NeNA_Widget(QtWidgets.QDialog):
         self.sig0.setDecimals(4)
         self.sig0.setSingleStep(0.01)
         self.sig0.setValue(
-            np.sqrt(
-                np.sum(np.square(self.nDists)
-                       ) / (2 * self.nDists.shape[0])))
+            np.sqrt(np.sum(np.square(self.nDists)) / (2 * self.nDists.shape[0]))
+        )
 
         self.A1 = QtWidgets.QDoubleSpinBox()
         self.A1.setMinimum(0)
@@ -263,9 +269,8 @@ class NeNA_Widget(QtWidgets.QDialog):
         self.loc1.setDecimals(4)
         self.loc1.setSingleStep(0.01)
         self.loc1.setValue(
-            np.sqrt(
-                np.sum(np.square(self.nDists)
-                       ) / (2 * self.nDists.shape[0])))
+            np.sqrt(np.sum(np.square(self.nDists)) / (2 * self.nDists.shape[0]))
+        )
 
         self.A2 = QtWidgets.QDoubleSpinBox()
         self.A2.setMinimum(0)
@@ -281,22 +286,14 @@ class NeNA_Widget(QtWidgets.QDialog):
         self.sd.setSingleStep(0.00001)
         self.sd.setValue(1e-4)
 
-        self.fitlay.addRow(
-            QtWidgets.QLabel('Rayleigh Coeff.:'), self.A0)
-        self.fitlay.addRow(
-            QtWidgets.QLabel('Rayleigh Sigma:'), self.sig0)
-        self.fitlay.addRow(
-            QtWidgets.QLabel('Rayleigh Loc:'), QtWidgets.QLabel('0.00'))
-        self.fitlay.addRow(
-            QtWidgets.QLabel('Gaussian Coeff.:'), self.A1)
-        self.fitlay.addRow(
-            QtWidgets.QLabel('Gaussian Sigma:'), self.sig1)
-        self.fitlay.addRow(
-            QtWidgets.QLabel('Gaussian Loc:'), self.loc1)
-        self.fitlay.addRow(
-            QtWidgets.QLabel('Linear Coeff.:'), self.A2)
-        self.fitlay.addRow(
-            QtWidgets.QLabel('MLE SD:'), self.sd)
+        self.fitlay.addRow(QtWidgets.QLabel('Rayleigh Coeff.:'), self.A0)
+        self.fitlay.addRow(QtWidgets.QLabel('Rayleigh Sigma:'), self.sig0)
+        self.fitlay.addRow(QtWidgets.QLabel('Rayleigh Loc:'), QtWidgets.QLabel('0.00'))
+        self.fitlay.addRow(QtWidgets.QLabel('Gaussian Coeff.:'), self.A1)
+        self.fitlay.addRow(QtWidgets.QLabel('Gaussian Sigma:'), self.sig1)
+        self.fitlay.addRow(QtWidgets.QLabel('Gaussian Loc:'), self.loc1)
+        self.fitlay.addRow(QtWidgets.QLabel('Linear Coeff.:'), self.A2)
+        self.fitlay.addRow(QtWidgets.QLabel('MLE SD:'), self.sd)
 
         self.res_guess = QtWidgets.QCheckBox('Result as initial guess.')
         self.fitlay.addWidget(self.res_guess)
@@ -322,54 +319,75 @@ class NeNA_Widget(QtWidgets.QDialog):
         self.histogram.setLabel('left', 'PDF', **label_style)
         _bins = np.linspace(0, self.maxDist, self.bins.value())
         self._hist_ref = self.histogram.plot(
-            _bins, np.zeros(_bins.shape[0]-1), stepMode='center',
-            fillLevel=0, fillOutline=True, brush=(0, 0, 255, 150),
-            name='NN Dinstances')
+            _bins,
+            np.zeros(_bins.shape[0] - 1),
+            stepMode='center',
+            fillLevel=0,
+            fillOutline=True,
+            brush=(0, 0, 255, 150),
+            name='NN Dinstances',
+        )
         self._fit_ref = self.histogram.plot(
-            _bins, np.ones_like(_bins), pen=greenP, name='NeNA fit')
+            _bins, np.ones_like(_bins), pen=greenP, name='NeNA fit'
+        )
         self._ray_ref = self.histogram.plot(
-            _bins, np.ones_like(_bins), pen=redP, name='Rayleigh')
+            _bins, np.ones_like(_bins), pen=redP, name='Rayleigh'
+        )
         self._gauss_ref = self.histogram.plot(
-            _bins, np.ones_like(_bins), pen=yellowP, name='Gauss')
+            _bins, np.ones_like(_bins), pen=yellowP, name='Gauss'
+        )
         self._line_ref = self.histogram.plot(
-            _bins, np.ones_like(_bins), pen=whiteP, name='Linear')
+            _bins, np.ones_like(_bins), pen=whiteP, name='Linear'
+        )
 
     def fit_data(self):
         self.log.appendPlainText(
-            QDateTime.currentDateTime().toString(
-                '>>> yyyy/MM/dd hh:mm:ss') + ' NeNA fit started \n'
+            QDateTime.currentDateTime().toString('>>> yyyy/MM/dd hh:mm:ss')
+            + ' NeNA fit started \n'
         )
 
         if self.res is None or not self.res_guess.isChecked():
             res, (edges, n, x) = NeNA_resolution_estimate(
-                self.nDists, self.trackIDs, bins=self.bins.value(),
-                a_ray=self.A0.value(), sig_ray=self.sig0.value(),
-                a_gauss=self.A1.value(), sig_gauss=self.sig1.value(),
-                xc_gauss=self.loc1.value(), a_lin=self.A2.value(),
-                sd_fit=self.sd.value())
+                self.nDists,
+                self.trackIDs,
+                bins=self.bins.value(),
+                a_ray=self.A0.value(),
+                sig_ray=self.sig0.value(),
+                a_gauss=self.A1.value(),
+                sig_gauss=self.sig1.value(),
+                xc_gauss=self.loc1.value(),
+                a_lin=self.A2.value(),
+                sd_fit=self.sd.value(),
+            )
         else:
             res, (edges, n, x) = NeNA_resolution_estimate(
-                self.nDists, self.trackIDs, bins=self.bins.value(),
-                a_ray=self.res.x[0], sig_ray=self.res.x[4],
-                a_gauss=self.res.x[1], sig_gauss=self.res.x[5],
-                xc_gauss=self.res.x[3], a_lin=self.res.x[2],
-                sd_fit=self.res.x[6])
+                self.nDists,
+                self.trackIDs,
+                bins=self.bins.value(),
+                a_ray=self.res.x[0],
+                sig_ray=self.res.x[4],
+                a_gauss=self.res.x[1],
+                sig_gauss=self.res.x[5],
+                xc_gauss=self.res.x[3],
+                a_lin=self.res.x[2],
+                sd_fit=self.res.x[6],
+            )
 
         self.res = res
 
         self._hist_ref.setData(edges, n)
         self._fit_ref.setData(edges, NeNA_model(edges, res.x[:7]))
-        self._ray_ref.setData(
-            edges, res.x[0] * Rayleigh_dist(edges, 0, res.x[4]))
+        self._ray_ref.setData(edges, res.x[0] * Rayleigh_dist(edges, 0, res.x[4]))
         self._gauss_ref.setData(
-            edges, res.x[1] * Gaussian_dist(edges, res.x[3], res.x[5]))
+            edges, res.x[1] * Gaussian_dist(edges, res.x[3], res.x[5])
+        )
         self._line_ref.setData(edges, res.x[2] * edges)
 
+        self.log.appendPlainText('    NeNA resolution estimate \n')
         self.log.appendPlainText(
-            '    NeNA resolution estimate \n')
+            f'    A0 {res.x[0]:.5f} Loc0 {0:.5f} Sig0 {res.x[4]:.5f}\n'
+        )
         self.log.appendPlainText(
-            f'    A0 {res.x[0]:.5f} Loc0 {0:.5f} Sig0 {res.x[4]:.5f}\n')
-        self.log.appendPlainText(
-            f'    A1 {res.x[1]:.5f} Loc1 {res.x[3]:.5f} Sig1 {res.x[5]:.5f}\n')
-        self.log.appendPlainText(
-            f'    A2 {res.x[2]:e} SD {res.x[6]:e}\n')
+            f'    A1 {res.x[1]:.5f} Loc1 {res.x[3]:.5f} Sig1 {res.x[5]:.5f}\n'
+        )
+        self.log.appendPlainText(f'    A2 {res.x[2]:e} SD {res.x[6]:e}\n')

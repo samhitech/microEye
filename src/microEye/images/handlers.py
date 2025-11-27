@@ -1,3 +1,4 @@
+import logging
 import os
 from typing import Optional, Union
 
@@ -10,6 +11,7 @@ import zarr.storage
 
 from microEye import __version__
 
+logger = logging.getLogger(__name__)
 
 class ImageSequenceBase:
     '''
@@ -893,15 +895,15 @@ def saveZarrImage(
             )
 
             # Use tuple unpacking to apply the slices to the image
-            print('Saving ...', end='\r')
+            logger.info('Saving ...')
             zarrImg[zarrSlice, ...] = imgSeq.getSlice(
                 tiffSlice, channelSlice, zSlice, ySlice, xSlice, broadcasted=True
             )
 
-        print('Done ...', end='\r')
+        logger.info('Done ...')
         return True
     elif isinstance(imgSeq, ZarrImageSequence):
-        print('Saving ...', end='\r')
+        logger.info('Saving ...')
         shape = (
             ifnone(timeSlice.stop, imgSeq.shape[0]) - ifnone(timeSlice.start, 0),
             ifnone(channelSlice.stop, imgSeq.shape[1]) - ifnone(channelSlice.start, 0),
@@ -926,8 +928,8 @@ def saveZarrImage(
         )
         zarrImg[:] = imgSeq.getSlice(timeSlice, channelSlice, zSlice, ySlice, xSlice)
 
-        print('Done ...', end='\r')
+        logger.info('Done ...')
         return True
     else:
-        print('Failed ...', end='\r')
+        logger.error('Failed ...')
         return False

@@ -1,3 +1,4 @@
+import logging
 import re
 import traceback
 import weakref
@@ -454,7 +455,7 @@ class DeviceManager(QtCore.QObject):
         for func in funcs:
             retry_exec(func)
 
-        print('All devices disconnected!')
+        logging.getLogger(__name__).info('All devices disconnected!')
         if not exit:
             return
 
