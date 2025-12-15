@@ -513,7 +513,7 @@ class SingleMatchBox(Tree):
                     {
                         'name': str(MB_Params.STATE),
                         'type': 'list',
-                        'value': LaserState.OFF,
+                        'value': LaserState.OFF.value,
                         'limits': LaserState.get_list(),
                     },
                     {
@@ -804,7 +804,7 @@ class SingleMatchBox(Tree):
         '''Sends enable/disable signals to the
         laser combiner according to selected state setting
         '''
-        if self.get_param_value(MB_Params.STATE) == LaserState.OFF:
+        if self.get_param_value(MB_Params.STATE) == LaserState.OFF.value:
             self.Laser.SendCommand(io_single_laser.ON_DIS)
         else:
             self.Laser.SendCommand(io_single_laser.ON_EN)

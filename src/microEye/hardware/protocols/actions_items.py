@@ -1,3 +1,4 @@
+import logging
 from typing import Union
 
 from pyqtgraph.parametertree import Parameter
@@ -528,37 +529,58 @@ class ParameterAdjustmentDialog(QtWidgets.QDialog):
         self.value_editor_stack.setVisible(not is_expression)
         self.expression_editor.setVisible(is_expression)
 
-    def create_value_editor(self, param: Parameter):
+    def _get_value_editor(self, param: Parameter):
         param_type = param.opts.get('type', None)
         param_limits = param.opts.get('limits', [])
-
         if param_type in ['int', 'float']:
-            value_editor = (
+            editor = (
                 QtWidgets.QDoubleSpinBox()
                 if param_type == 'float'
                 else QtWidgets.QSpinBox()
             )
             if param_limits:
-                value_editor.setMinimum(param_limits[0])
-                value_editor.setMaximum(param_limits[1])
+                editor.setMinimum(int(param_limits[0]))
+                editor.setMaximum(int(param_limits[1]))
             else:
-                value_editor.setMinimum(0)
-                value_editor.setMaximum(int(1e9))
-            value_editor.setValue(param.value())
+                editor.setMinimum(0)
+                editor.setMaximum(int(1e9))
+            editor.setValue(param.value())
+            return editor
         elif param_type == 'bool':
-            value_editor = QtWidgets.QCheckBox()
-            value_editor.setChecked(param.value())
+            editor = QtWidgets.QCheckBox()
+            editor.setChecked(param.value())
+            return editor
         elif param_type == 'action':
-            value_editor = QtWidgets.QCheckBox('Try to wait for Event')
-        elif param_type == 'str' or param_type == 'file':
-            value_editor = QtWidgets.QLineEdit()
-            value_editor.setText(param.value())
+            editor = QtWidgets.QCheckBox('Try to wait for Event')
+            return editor
+        elif param_type in ['str', 'file']:
+            editor = QtWidgets.QLineEdit()
+            editor.setText(param.value())
+            return editor
         elif param_type == 'list':
-            value_editor = QtWidgets.QComboBox()
+            editor = QtWidgets.QComboBox()
             for limit in param_limits:
-                value_editor.addItem(str(limit), limit)
-            value_editor.setCurrentText(str(param.value()))
+                editor.addItem(str(limit), limit)
+            editor.setCurrentText(str(param.value()))
+            return editor
         else:
+            return None
+
+    def create_value_editor(self, param: Parameter):
+        param_type = param.opts.get('type', None)
+
+        try:
+            if param_type in ['int', 'float', 'bool', 'str', 'file', 'list', 'action']:
+                value_editor = self._get_value_editor(param)
+            else:
+                value_editor = None
+        except Exception as e:
+            logging.getLogger(__name__).error(
+                f'Error creating value editor for parameter {param.name()}: {e}'
+            )
+            logging.getLogger(__name__).error(
+                f'Parameter opts:\n{param.opts}'
+            )
             value_editor = None
 
         return value_editor

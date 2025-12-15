@@ -446,7 +446,7 @@ class LaserSwitches:
         object : [QRadioButton]
             the radio button toggled
         '''
-        self.state = value
+        self.state = LaserState(value)
         if self.state == LaserState.OFF:
             self.Laser.SetDisabled(self.index)
         else:
@@ -463,7 +463,7 @@ class LaserSwitches:
             {
                 'name': self.STATE.split('.')[1],
                 'type': 'list',
-                'value': LaserState.OFF,
+                'value': LaserState.OFF.value,
                 'limits': LaserState.get_list(),
             },
             {

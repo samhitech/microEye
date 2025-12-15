@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import threading
 import time
@@ -287,10 +288,13 @@ class AcquisitionJob:
         frame : np.ndarray
             Dark frame data.
         '''
-        if self.is_dark_cal:
-            if self.dark_cal is None:
-                self.dark_cal = dark_calibration(frame.shape, self.exposure)
-            self.dark_cal.addFrame(frame)
+        try:
+            if self.is_dark_cal:
+                if self.dark_cal is None:
+                    self.dark_cal = dark_calibration(frame.shape, self.exposure)
+                self.dark_cal.addFrame(frame)
+        except Exception as e:
+            logging.getLogger(__name__).error(f'Error adding dark frame.', exc_info=e)
 
     def _extract_roi_data(
         self, frame: np.ndarray, roi: tuple, flip: bool = False
@@ -482,7 +486,7 @@ class AcquisitionJob:
     def finalize(self):
         '''Finalize and clean up resources.'''
         if self.dark_cal is not None:
-            if self.dark_cal._counter > 1:
+            if self.dark_cal._count > 1:
                 self.dark_cal.saveResults(self.path, f'{self.major:02d}_{self.prefix}')
 
         if self.zarr and self.zarr_array is not None:

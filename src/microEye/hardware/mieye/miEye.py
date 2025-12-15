@@ -548,6 +548,10 @@ class miEye_module(QMainWindow):
             + Worker
         )
 
+        self.controller.update_laser_indicators(
+            DeviceManager.instance()._fetch_laser_states()
+        )
+
         for tab_index in range(self.stagesWidget.count()):
             stage_widget = self.stagesWidget.widget(tab_index)
             if hasattr(stage_widget, '_update_gui') and callable(

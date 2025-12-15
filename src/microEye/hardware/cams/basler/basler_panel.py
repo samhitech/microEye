@@ -326,7 +326,9 @@ class Basler_Panel(Camera_Panel):
                 cycle_time = perf_counter_ns()
                 self.acq_job.capture_time = (cycle_time - self.time) / 1e6
                 self.time = cycle_time
-                with self.cam.cam.RetrieveResult(100) as res:
+                with self.cam.cam.RetrieveResult(
+                    100 + int(self.cam.exposure_current / self.FACTOR)
+                ) as res:
                     if res.GrabSucceeded():
                         self._buffer.put(res.Array.copy())
                         # add sensor temperature to the stack

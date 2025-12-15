@@ -11,8 +11,8 @@ class LaserState(Enum):
         return self.value.upper()
 
     @staticmethod
-    def get_list() -> list:
-        return [member for member in LaserState]
+    def get_list() -> list[str]:
+        return [member.value for member in LaserState]
 
     @staticmethod
     def get_enum(value: str) -> 'LaserState':

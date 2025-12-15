@@ -10,7 +10,7 @@ from microEye.hardware.cams.camera_panel import Camera_Panel
 from microEye.hardware.cams.linescan.IR_Cam import DemoLineScanner, ParallaxLineScanner
 
 # lasers
-from microEye.hardware.lasers.io_matchbox import CombinerLaserWidget
+from microEye.hardware.lasers.io_matchbox import CombinerLaserWidget, MB_Params
 from microEye.hardware.lasers.io_single_laser import SingleMatchBox
 from microEye.hardware.lasers.laser_relay import LaserRelayController
 from microEye.hardware.protocols.actions import WeakObjects
@@ -103,9 +103,7 @@ class DeviceManager(QtCore.QObject):
 
     def _init_laser_relay(self):
         self.laser_relay = LaserRelayController()
-        self.laser_relay.sendCommandActivated.connect(
-            lambda: self.laser_relay.sendCommand(self.laser_relay_settings())
-        )
+        self.laser_relay.sendCommandActivated.connect(self._send_laser_relay_settings)
         DeviceManager.WIDGETS[DEVICES.LASER_RELAY] = self.laser_relay.view
         WeakObjects.addObject(self.laser_relay)
         self.widgetAdded.emit(DEVICES.LASER_RELAY, self.laser_relay.view)
@@ -139,7 +137,9 @@ class DeviceManager(QtCore.QObject):
         self.widgetAdded.emit(DEVICES.HID_CONTROLLER, self.hid_controller)
 
     def _init_focus_stabilizer(self):
-        FocusStabilizer.instance().moveXYZ.connect(StageManager.instance().move_relative)
+        FocusStabilizer.instance().moveXYZ.connect(
+            StageManager.instance().move_relative
+        )
         FocusStabilizer.instance().startWorker()
 
         self.focus = focusWidget()
@@ -155,9 +155,7 @@ class DeviceManager(QtCore.QObject):
         self.elliptecView.updateHighlight()
         self.laser_relay.updatePortState()
         self.laser_relay.refreshPorts()
-        self.laser_relay.updateHighlight(
-            self.laser_relay_settings()
-        )
+        self.laser_relay.updateHighlight(self._laser_relay_settings())
 
     def stopRequest(self, axis: Axis):
         StageManager.instance().stop(axis)
@@ -271,6 +269,42 @@ class DeviceManager(QtCore.QObject):
             self.lasers.remove(widget)
         self.widgetRemoved.emit(DEVICES.LASER, widget)
 
+    def _fetch_laser_states(self) -> dict:
+        '''
+        Returns the laser configurations.
+        '''
+        relay_config = self.laser_relay.lastCommand
+        laser_config = {}
+
+        def update_config(wl: int, state: str) -> dict:
+            if wl <= 0:
+                return
+
+            config: dict = laser_config.get(wl, {})
+
+            laser = config.get('state', False) or state != 'OFF'
+
+            match = re.search(r'L(\d+)(ON|F1|F2)', relay_config)
+            relay = (
+                config.get('relay', False)
+                or (match is not None and int(match.group(1)) == wl)
+            )
+            config.update({'state': laser, 'relay': relay})
+            laser_config[wl] = config
+
+        for panel in self.lasers:
+            if isinstance(panel, SingleMatchBox):
+                wl = int(panel.wavelength)
+                state = panel.get_param_value(MB_Params.STATE)
+                update_config(wl, state)
+            elif isinstance(panel, CombinerLaserWidget):
+                for switch in panel._laserSwitches:
+                    wl = int(switch.wavelength)
+                    state = switch.state.value
+                    update_config(wl, state)
+
+        return laser_config
+
     def _add_camera(self, widget: Camera_Panel, ir: bool):
         if ir:
             widget._frames = FocusStabilizer.instance().buffer
@@ -346,7 +380,7 @@ class DeviceManager(QtCore.QObject):
         WeakObjects.addObject(view)
         self.widgetAdded.emit(DEVICES.STAGE, view)
 
-    def laser_relay_settings(self):
+    def _laser_relay_settings(self):
         '''Returns the RelayBox setting command.
 
         Returns
@@ -358,6 +392,10 @@ class DeviceManager(QtCore.QObject):
         for panel in self.lasers:
             config += panel.GetRelayState()
         return self.laser_relay.getCommand(config)
+
+    def _send_laser_relay_settings(self):
+        '''Sends the RelayBox setting command.'''
+        self.laser_relay.sendCommand(self._laser_relay_settings())
 
     def _get_laser_configs(self) -> dict:
         '''

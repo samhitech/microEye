@@ -5,8 +5,16 @@ import pyqtgraph as pg
 
 from microEye.hardware.stages.stabilizer import *
 from microEye.hardware.stages.stage import Axis
+from microEye.hardware.widgets.indicator import LaserIndicator
 from microEye.qt import QtWidgets
 from microEye.utils.gui_helper import GaussianOffSet
+
+
+def clear_layout(layout: QtWidgets.QLayout):
+    while layout.count():
+        child = layout.takeAt(0)
+        if child.widget():
+            child.widget().deleteLater()
 
 
 class Controller(QtWidgets.QDockWidget):
@@ -166,9 +174,23 @@ class Controller(QtWidgets.QDockWidget):
         self.snap_image_after_movement.setChecked(False)
         options_layout.addWidget(self.snap_image_after_movement)
 
+        # Laser Indicators group
+        self.laser_group = QtWidgets.QGroupBox('Laser Indicators')
+        self.laser_layout = QtWidgets.QHBoxLayout()
+        self.laser_group.setLayout(self.laser_layout)
+        self.laser_group.setVisible(False)
+
+        # Laser relay indicators group
+        self.laser_relay_group = QtWidgets.QGroupBox('Laser Relay Indicators')
+        self.laser_relay_layout = QtWidgets.QHBoxLayout()
+        self.laser_relay_group.setLayout(self.laser_relay_layout)
+        self.laser_relay_group.setVisible(False)
+
         # Add all groups to main layout
         main_layout.addLayout(controls_layout)
         main_layout.addWidget(options_group)
+        main_layout.addWidget(self.laser_group)
+        main_layout.addWidget(self.laser_relay_group)
         main_layout.addStretch()
 
     def connect_signals(self):
@@ -246,6 +268,26 @@ class Controller(QtWidgets.QDockWidget):
         self.stage_move_requested.emit(
             axis, direction, coarse, self.snap_image_after_movement.isChecked()
         )
+
+    def update_laser_indicators(self, config: dict[int, dict]):
+        # Clear existing indicators
+        clear_layout(self.laser_layout)
+        clear_layout(self.laser_relay_layout)
+
+        # Add new indicators based on config
+        for wl, state in sorted(config.items()):
+            indicator = LaserIndicator(
+                wavelength_nm=wl, on=state.get('state', False), read_only=True
+            )
+            self.laser_layout.addWidget(indicator)
+
+            relay_indicator = LaserIndicator(
+                wavelength_nm=wl, on=state.get('relay', False), read_only=True
+            )
+            self.laser_relay_layout.addWidget(relay_indicator)
+
+        self.laser_group.setVisible(self.laser_layout.count() > 0)
+        self.laser_relay_group.setVisible(self.laser_relay_layout.count() > 0)
 
     def __str__(self):
         return 'Controller Unit Widget'

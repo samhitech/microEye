@@ -70,10 +70,6 @@ def getArgs():
     _select_qt_api(qt_api)
 
     os.environ.setdefault('MITHEME', args.theme or 'qdarktheme')
-    os.environ.setdefault('PYDEVD_USE_FRAME_EVAL', 'NO')
-    os.environ.setdefault('PYTHONIOENCODING', 'UTF-8')
-    os.environ.setdefault('PYTHONUNBUFFERED', '1')
-    os.environ.setdefault('DEBUGPY_RUNNING', 'true')
 
     configure_logger(args)
 
