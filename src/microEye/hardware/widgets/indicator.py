@@ -3,7 +3,7 @@ from microEye.tools.color import wavelength_to_rgb
 
 
 class LaserIndicator(QtWidgets.QWidget):
-    toggled = Signal(bool)
+    toggleSignal = Signal(bool)
     _size = 24
 
     def __init__(
@@ -11,6 +11,7 @@ class LaserIndicator(QtWidgets.QWidget):
         wavelength_nm: float,
         on: bool = False,
         read_only: bool = False,
+        label: str = None,
         parent=None,
     ):
         super().__init__(parent)
@@ -18,11 +19,16 @@ class LaserIndicator(QtWidgets.QWidget):
         self._on = on
         self._color = QtGui.QColor(*wavelength_to_rgb(wavelength_nm, max_intensity=255))
         self._read_only = read_only
-        if self._read_only:
-            self.setCursor(QtCore.Qt.CursorShape.ArrowCursor)
-        else:
-            self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        self._label = label or f'{int(wavelength_nm)}'
+        self._sync_cursor()
         self.setFixedSize(self._size * 2, int(self._size * 1.5))
+
+    def _sync_cursor(self):
+        self.setCursor(
+            QtCore.Qt.CursorShape.ArrowCursor
+            if self._read_only
+            else QtCore.Qt.CursorShape.PointingHandCursor
+        )
 
     @property
     def wavelength(self) -> float:
@@ -32,11 +38,25 @@ class LaserIndicator(QtWidgets.QWidget):
     def is_on(self) -> bool:
         return self._on
 
-    def set_on(self, value: bool):
+    def set_on(self, value: bool, *, emit: bool = True):
+        value = bool(value)
         if self._on != value:
             self._on = value
-            self.toggled.emit(self._on)
+            if emit:
+                self.toggleSignal.emit(self._on)
             self.update()
+
+    def set_label(self, label: str | None):
+        label = label or f'{int(self._wavelength)}'
+        if self._label != label:
+            self._label = label
+            self.update()
+
+    def set_read_only(self, read_only: bool):
+        read_only = bool(read_only)
+        if self._read_only != read_only:
+            self._read_only = read_only
+            self._sync_cursor()
 
     def mousePressEvent(self, event):
         if event.button() == QtCore.Qt.MouseButton.LeftButton and not self._read_only:
@@ -60,7 +80,7 @@ class LaserIndicator(QtWidgets.QWidget):
         painter.drawText(
             rect,
             QtCore.Qt.AlignmentFlag.AlignCenter,
-            f'{int(self._wavelength)}',
+            self._label,
         )
 
 

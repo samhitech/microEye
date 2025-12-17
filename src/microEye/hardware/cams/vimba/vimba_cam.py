@@ -1320,6 +1320,8 @@ class vimba_cam(miCamera):
             return 0
 
     def reset_roi(self):
+        self.get_roi()
+
         self.cam.OffsetX.set(0)
         self.cam.OffsetY.set(0)
         self.cam.Width.set(self.width_max)

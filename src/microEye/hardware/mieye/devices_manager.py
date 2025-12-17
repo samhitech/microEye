@@ -282,14 +282,20 @@ class DeviceManager(QtCore.QObject):
 
             config: dict = laser_config.get(wl, {})
 
+            # Determine laser state
             laser = config.get('state', False) or state != 'OFF'
 
-            match = re.search(r'L(\d+)(ON|F1|F2)', relay_config)
-            relay = (
-                config.get('relay', False)
-                or (match is not None and int(match.group(1)) == wl)
-            )
+            # Determine relay state
+            match = re.search(r'LWAVE(ON|F1|F2)'.replace('WAVE', str(wl)), relay_config)
+            relay = config.get('relay', False) or match is not None
+
+            # Update config
             config.update({'state': laser, 'relay': relay})
+
+            # Update label if not already set
+            if match and config.get('label') is None:
+                config['label'] = match.group(1)
+
             laser_config[wl] = config
 
         for panel in self.lasers:
@@ -304,6 +310,60 @@ class DeviceManager(QtCore.QObject):
                     update_config(wl, state)
 
         return laser_config
+
+    def set_laser_enabled_by_wavelength(self, wavelength: float, state: bool | str):
+        lasers = []
+        model = None
+        for panel in self.lasers:
+            if isinstance(panel, SingleMatchBox):
+                if int(panel.wavelength) == wavelength:
+                    lasers.append(panel.Laser.Model)
+            elif isinstance(panel, CombinerLaserWidget):
+                for switch in panel._laserSwitches:
+                    if int(switch.wavelength) == wavelength:
+                        lasers.append(panel.Laser.Model)
+
+        if not lasers:
+            return
+
+        if len(lasers) > 1:
+            model, ok = QtWidgets.QInputDialog.getItem(
+                None,
+                'Select Laser',
+                'Choose one:',
+                lasers,
+                0,
+                False,
+            )
+            if not ok:
+                return
+
+        if model is None:
+            model = lasers[0]
+
+        items = ['OFF', 'ON', 'F1', 'F2']
+        item, ok = QtWidgets.QInputDialog.getItem(
+            None,
+            f'Select {int(wavelength)} State',
+            'Choose one:',
+            items,
+            1 if state else 0,
+            False,
+        )
+
+        if ok and item:
+            # Apply the updated configuration
+            for panel in self.lasers:
+                if panel.Laser.Model != model:
+                    continue
+
+                if isinstance(panel, SingleMatchBox):
+                    if int(panel.wavelength) == wavelength:
+                        panel.set_param_value(MB_Params.STATE, item)
+                elif isinstance(panel, CombinerLaserWidget):
+                    for switch in panel._laserSwitches:
+                        if int(switch.wavelength) == wavelength:
+                            panel.get_param(switch.STATE).setValue(item)
 
     def _add_camera(self, widget: Camera_Panel, ir: bool):
         if ir:

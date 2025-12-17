@@ -197,6 +197,11 @@ class miEye_module(QMainWindow):
             DeviceManager.instance().centerRequest
         )
         self.controller.stage_toggle_lock.connect(DeviceManager.instance().toggleLock)
+
+        self.controller.laser_toggle_requested.connect(
+            DeviceManager.instance().set_laser_enabled_by_wavelength
+        )
+
         FocusStabilizer.instance().focusStabilizationToggled.connect(
             self.controller.set_stabilizer_lock
         )

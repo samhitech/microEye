@@ -24,6 +24,19 @@ class Controller(QtWidgets.QDockWidget):
     stage_center_requested = Signal(Axis)
     stage_toggle_lock = Signal(Axis)
 
+    laser_toggle_requested = Signal(int, object)
+    '''
+    laser toggle request signal
+
+    Parameters
+    ----------
+    wavelength: int
+        - wavelength of the laser to be toggled
+    state: bool | str
+        - boolean new state (True=ON, False=OFF)
+        - string for flashing modes ('F1', 'F2')
+    '''
+
     def __init__(self):
         ''' '''
         super().__init__('Controller Unit')
@@ -174,6 +187,10 @@ class Controller(QtWidgets.QDockWidget):
         self.snap_image_after_movement.setChecked(False)
         options_layout.addWidget(self.snap_image_after_movement)
 
+        # persistent indicator caches
+        self._laser_indicators: dict[int, LaserIndicator] = {}
+        self._relay_indicators: dict[int, LaserIndicator] = {}
+
         # Laser Indicators group
         self.laser_group = QtWidgets.QGroupBox('Laser Indicators')
         self.laser_layout = QtWidgets.QHBoxLayout()
@@ -269,22 +286,118 @@ class Controller(QtWidgets.QDockWidget):
             axis, direction, coarse, self.snap_image_after_movement.isChecked()
         )
 
+    def _ensure_indicator(
+        self,
+        cache: dict[int, LaserIndicator],
+        layout: QtWidgets.QBoxLayout,
+        wl: int,
+        *,
+        read_only: bool,
+        label: str | None = None,
+        clickable: bool = False,
+        state: bool = False,
+    ) -> LaserIndicator:
+        ind = cache.get(wl)
+        if ind is None:
+            ind = LaserIndicator(
+                wavelength_nm=wl, on=False, read_only=read_only, label=label
+            )
+            cache[wl] = ind
+            layout.addWidget(ind)
+
+            # Connect once, never recreated => stable
+            if clickable and not read_only:
+                ind.toggleSignal.connect(
+                    lambda on, _wl=wl: self.laser_toggle_requested.emit(_wl, on)
+                )
+        else:
+            ind.set_read_only(read_only)
+            ind.set_label(label)
+
+        ind.set_on(state, emit=False)
+
+        return ind
+
+    def _ensure_sorted(
+        self, cache: dict[int, LaserIndicator], layout: QtWidgets.QBoxLayout
+    ):
+        wls = self._layout_wavelengths(layout)
+        if wls == sorted(wls):
+            return  # already ordered -> do nothing
+
+        # Reorder widgets in layout according to sorted wavelengths
+        for i in reversed(range(layout.count())):
+            layout.takeAt(i)
+
+        for wl in sorted(cache.keys()):
+            layout.addWidget(cache[wl])
+
+    def _remove_missing(
+        self,
+        cache: dict[int, LaserIndicator],
+        layout: QtWidgets.QBoxLayout,
+        keep: set[int],
+    ):
+        wls = self._layout_wavelengths(layout)
+
+        # check if wls matches keep
+        if set(wls) == keep:
+            return
+
+        for wl in list(cache.keys()):
+            if wl not in keep:
+                w = cache.pop(wl)
+                layout.removeWidget(w)
+                w.deleteLater()
+
+    def _layout_wavelengths(self, layout: QtWidgets.QBoxLayout) -> list[int]:
+        '''Returns the list of wavelengths of LaserIndicators in the given layout,
+        in the order they appear.'''
+        out: list[int] = []
+        for i in range(layout.count()):
+            w = layout.itemAt(i).widget()
+            if isinstance(w, LaserIndicator):
+                out.append(int(w.wavelength))
+        return out
+
     def update_laser_indicators(self, config: dict[int, dict]):
-        # Clear existing indicators
-        clear_layout(self.laser_layout)
-        clear_layout(self.laser_relay_layout)
+        '''
+        config example:
+            {
+              405: {"state": True, "relay": False, "label": "ON"},
+              488: {"state": False, "relay": True, "label": "F1"},
+            }
+        '''
 
         # Add new indicators based on config
         for wl, state in sorted(config.items()):
-            indicator = LaserIndicator(
-                wavelength_nm=wl, on=state.get('state', False), read_only=True
+            self._ensure_indicator(
+                self._laser_indicators,
+                self.laser_layout,
+                wl,
+                read_only=False,
+                clickable=True,
+                state=state.get('state', False),
             )
-            self.laser_layout.addWidget(indicator)
 
-            relay_indicator = LaserIndicator(
-                wavelength_nm=wl, on=state.get('relay', False), read_only=True
+            self._ensure_indicator(
+                self._relay_indicators,
+                self.laser_relay_layout,
+                wl,
+                read_only=True,
+                label=state.get('label'),
+                clickable=False,
+                state=state.get('relay', False),
             )
-            self.laser_relay_layout.addWidget(relay_indicator)
+
+        # Remove stale ones (laser removed)
+        keep_wls = set(int(wl) for wl in config)
+        self._remove_missing(self._laser_indicators, self.laser_layout, keep_wls)
+        self._remove_missing(self._relay_indicators, self.laser_relay_layout, keep_wls)
+
+        # Ensure sorted order
+        self._ensure_sorted(self._laser_indicators, self.laser_layout)
+        self._ensure_sorted(self._relay_indicators, self.laser_relay_layout)
 
         self.laser_group.setVisible(self.laser_layout.count() > 0)
         self.laser_relay_group.setVisible(self.laser_relay_layout.count() > 0)
