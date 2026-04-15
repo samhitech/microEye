@@ -2,6 +2,7 @@ import logging
 import traceback
 import warnings
 from abc import ABC, abstractmethod
+from copy import deepcopy
 from enum import Enum
 from typing import Union
 
@@ -11,7 +12,7 @@ import numpy as np
 from scipy.optimize import OptimizeWarning, curve_fit
 from scipy.signal import find_peaks
 
-from microEye.analysis.filters.spatial import PointGaussFilter
+from microEye.analysis.filters.spatial import FourierFilter
 from microEye.analysis.fitting import pyfit3Dcspline
 from microEye.analysis.fitting.fit import CV_BlobDetector
 from microEye.analysis.tools.kymograms import get_kymogram_row
@@ -255,6 +256,12 @@ class StabilizationMethods(Enum):
 class StabilizationStrategy(ABC):
     '''Base class for stabilization method strategies'''
 
+    PARAMS : dict[str, dict] = {}
+
+    def __init__(self):
+        # Isolate mutable nested defaults between strategy instances.
+        self.__tunable_params = deepcopy(self.PARAMS)
+
     @abstractmethod
     def fit(
         self,
@@ -288,8 +295,79 @@ class StabilizationStrategy(ABC):
         '''Get shifts'''
         raise NotImplementedError('Subclasses must implement this')
 
+    def get_tunable_params(self) -> list[dict]:
+        return [
+            {
+                'name': key,
+                'type': param.get('type', 'str'),
+                'value': param.get('value'),
+                'step': param.get('step'),
+                'limits': param.get('limits'),
+            }
+            for key, param in self.__tunable_params.items()
+        ]
+
+    def get_param_values(self) -> dict:
+        return {key: param['value'] for key, param in self.__tunable_params.items()}
+
+    def set_param_values(self, values: dict):
+        if not isinstance(values, dict):
+            return
+        for name, value in values.items():
+            self.set_param(name, value)
+
+    def set_param(self, name: str, value) -> bool:
+        if name in self.__tunable_params:
+            self.__tunable_params[name]['value'] = value
+            return True
+        return False
+
+    def get_param(self, name: str, default=None):
+        if name in self.__tunable_params:
+            return self.__tunable_params[name].get('value', default)
+        return default
+
 
 class ReflectionStrategy(StabilizationStrategy):
+    PARAMS = {
+        'prominence': {
+            'type': 'float',
+            'value': 1.0,
+            'step': 0.1,
+            'limits': [0.0, 4096.0],
+        },
+        'min_distance': {
+            'type': 'int',
+            'value': 20,
+            'step': 1,
+            'limits': [1, 1024],
+        },
+        'fit_half_window': {
+            'type': 'int',
+            'value': 18,
+            'step': 1,
+            'limits': [3, 256],
+        },
+        'sigma_min': {
+            'type': 'float',
+            'value': 1.0,
+            'step': 0.1,
+            'limits': [0.1, 1024.0],
+        },
+        'sigma_max': {
+            'type': 'float',
+            'value': 100.0,
+            'step': 0.1,
+            'limits': [0.1, 2048.0],
+        },
+        'maxfev': {
+            'type': 'int',
+            'value': 1000,
+            'step': 50,
+            'limits': [50, 100000],
+        },
+    }
+
     def fit(
         self,
         image: np.ndarray,
@@ -339,6 +417,47 @@ class ReflectionStrategy(StabilizationStrategy):
 
         return shifts
 
+    def _detect_candidates(self, y: np.ndarray, **kwargs):
+        med = float(np.nanmedian(y))
+        mad = float(np.nanmedian(np.abs(y - med)))
+        sigma_n = max(1.4826 * mad, 1e-6)
+
+        q50 = float(np.nanpercentile(y, 50))
+        q99 = float(np.nanpercentile(y, 99))
+        dyn = max(q99 - q50, 1e-6)
+
+        # Adaptive thresholds
+        k_noise = float(kwargs.get('k_noise', 6.0))
+        k_dyn = float(kwargs.get('k_dyn', 0.05))
+
+        prom_auto = max(k_noise * sigma_n, k_dyn * dyn)
+
+        # Keep user floor, then adaptive value
+        prom = max(float(self.get_param('prominence')), prom_auto)
+        prom = float(np.clip(prom, 1.0, 2048.0))
+
+        # Height gate to avoid baseline noise lobes
+        min_height = med + max(2.0 * sigma_n, 0.05 * dyn)
+
+        peaks, props = find_peaks(
+            y,
+            height=min_height,
+            prominence=prom,
+            distance=self.get_param('min_distance'),
+        )
+
+        # Fallback: at least one candidate
+        if len(peaks) == 0:
+            idx = int(np.nanargmax(y))
+            peaks = np.array([idx], dtype=int)
+            props = {'prominences': np.array([max(y[idx] - med, 1e-6)], dtype=float)}
+
+        prominences = np.asarray(
+            props.get('prominences', np.ones_like(peaks, dtype=float)),
+            dtype=float,
+        )
+        return peaks, prominences
+
     def peak_fit(self, data: np.ndarray):
         '''
         Fit the data to a GaussianOffSet function and update the parameter buffer.
@@ -354,20 +473,76 @@ class ReflectionStrategy(StabilizationStrategy):
             If an error occurs during the fitting process.
         '''
         try:
-            # find IR peaks above a specific height
-            peaks = find_peaks(data, height=1)
-            nPeaks = len(peaks[0])  # number of peaks
-            maxPeakIdx = np.argmax(peaks[1]['peak_heights'])  # highest peak
-            x0 = 64 if nPeaks == 0 else peaks[0][maxPeakIdx]
-            a0 = 1 if nPeaks == 0 else peaks[1]['peak_heights'][maxPeakIdx]
+            y = np.asarray(data, dtype=np.float64).squeeze()
+            if y.ndim != 1 or y.size < 5:
+                return None
 
-            # curve_fit to GaussianOffSet
+            finite = np.isfinite(y)
+            if not np.any(finite):
+                return None
+            if not np.all(finite):
+                fill = float(np.nanmedian(y[finite]))
+                y = np.where(finite, y, fill)
+
+            peaks, prominences = self._detect_candidates(y)
+            pk = int(peaks[int(np.argmax(prominences))])  # strongest prominence only
+
+            left = max(0, pk - self.get_param('fit_half_window'))
+            right = min(y.size, pk + self.get_param('fit_half_window') + 1)
+            if right - left < 5:
+                return None
+
+            x_full = np.arange(y.size, dtype=np.float64)
+            x = x_full[left:right]
+            yy = y[left:right]
+
+            med_local = float(np.nanmedian(yy))
+            mad_local = float(np.nanmedian(np.abs(yy - med_local)))
+            sigma_n_local = max(1.4826 * mad_local, 1e-6)
+
+            base = float(np.nanpercentile(yy, 10))
+            p90 = float(np.nanpercentile(yy, 90))
+            p99 = float(np.nanpercentile(yy, 99))
+
+            amp0 = max(p99 - base, 1.0)
+            x0 = float(pk)
+            s0 = float(
+                np.clip(
+                    (right - left) / 6.0,
+                    self.get_param('sigma_min'),
+                    self.get_param('sigma_max'),
+                )
+            )
+            c0 = base
+
+            p0 = [amp0, x0, s0, c0]
+
+            amp_hi = max(4.0 * amp0, 10.0)
+
+            # Tight offset bounds to prevent fit dropping below baseline
+            offset_lo = base
+            offset_hi = p90 + 2.5 * sigma_n_local
+
+            lower = [0.0, float(left), self.get_param('sigma_min'), float(offset_lo)]
+            upper = [
+                float(amp_hi),
+                float(right - 1),
+                self.get_param('sigma_max'),
+                float(offset_hi),
+            ]
+
             fit_params, _ = curve_fit(
-                GaussianOffSet, np.arange(data.shape[0]), data, p0=[a0, x0, 1, 0]
+                GaussianOffSet,
+                x,
+                yy,
+                p0=p0,
+                bounds=(lower, upper),
+                maxfev=self.get_param('maxfev'),
             )
 
             return fit_params
-        except Exception as e:
+
+        except Exception:
             return None
 
 
@@ -429,6 +604,52 @@ def get_xy_shift(
 
 
 class FiducialStrategy(StabilizationStrategy):
+    PARAMS = {
+        # roi_size should be odd to have a center pixel
+        'roi_size': {
+            'type': 'int',
+            'value': 13,
+            'step': 2,
+            'limits': [7, 51],
+        },
+        'relative_threshold': {
+            'type': 'float',
+            'value': 0.5,
+            'step': 0.05,
+            'limits': [0.0, 1.0],
+        },
+        'fit_initial_sigma': {
+            'type': 'float',
+            'value': 1.0,
+            'step': 0.1,
+            'limits': [0.1, 100.0],
+        },
+        'filter_center': {
+            'type': 'int',
+            'value': 36,
+            'step': 1,
+            'limits': [1, 512],
+        },
+        'filter_width': {
+            'type': 'int',
+            'value': 120,
+            'step': 1,
+            'limits': [1, 512],
+        },
+        'filter_profile': {
+            'type': 'list',
+            'value': 'Gaussian',
+            'step': None,
+            'limits': ['Gaussian', 'Butterworth', 'Ideal'],
+        },
+        'filter_bandtype': {
+            'type': 'list',
+            'value': 'Band',
+            'step': None,
+            'limits': ['Low', 'High', 'Band'],
+        },
+    }
+
     def __init__(self, fit_method: bool = True):
         '''
         Parameters
@@ -437,8 +658,13 @@ class FiducialStrategy(StabilizationStrategy):
             - If True, use astigmatic fitting method.
             - If False, use standard 2D Gaussian fitting.
         '''
+        super().__init__()
+
         self.fit_method = fit_method
-        self.point_gauss_filter = PointGaussFilter(sigma=2)
+        self.fourier_filter = FourierFilter(
+            center=self.get_param('filter_center', 36),
+            width=self.get_param('filter_width', 120),
+        )
 
     def fit(
         self,
@@ -523,13 +749,24 @@ class FiducialStrategy(StabilizationStrategy):
 
         return shifts
 
+    def __update_filter_params(self):
+        to_update = {
+            'center': 'filter_center',
+            'width': 'filter_width',
+            'type': 'filter_profile',
+            'pass_type': 'filter_bandtype',
+        }
+
+        for attr, param_name in to_update.items():
+            value = self.get_param(param_name)
+            if value is not None and value != self.fourier_filter.parameters.get(attr):
+                self.fourier_filter.parameters[attr] = value
+
     def fiducials_fit(
         self,
         data: np.ndarray,
         x: float = 0.0,
         y: float = 0.0,
-        sigma: float = 1.0,
-        roi_size: int = 29,
     ):
         '''
         Fit the data to a 2D Gaussian function and update the parameter buffer.
@@ -546,12 +783,14 @@ class FiducialStrategy(StabilizationStrategy):
         '''
         try:
             # apply Fourier filter to the data
-            filtered = self.point_gauss_filter.run(data)
+            self.__update_filter_params()
+            filtered = self.fourier_filter.run(data)
 
             # Threshold the image
             _, th_img = cv2.threshold(
                 filtered,
-                np.quantile(filtered, 1 - 1e-4) * 0.4,
+                np.quantile(filtered, 1 - 1e-4)
+                * float(self.get_param('relative_threshold', 0.5)),
                 255,
                 cv2.THRESH_BINARY,
             )
@@ -563,10 +802,16 @@ class FiducialStrategy(StabilizationStrategy):
                 return None
 
             # Get the ROI list for fitting
-            rois, coords = pyfit3Dcspline.get_roi_list(data, points, roi_size)
+            rois, coords = pyfit3Dcspline.get_roi_list(
+                data, points, int(self.get_param('roi_size', 13))
+            )
 
             Params, _, _ = pyfit3Dcspline.CPUmleFit_LM(
-                rois, 4 if self.fit_method else 2, np.array([sigma]), None, 0
+                rois,
+                4 if self.fit_method else 2,
+                np.array([self.get_param('fit_initial_sigma', 1.0)]),
+                None,
+                0,
             )
 
             if Params is None and len(Params) < 1:
@@ -582,3 +827,91 @@ class FiducialStrategy(StabilizationStrategy):
             logging.getLogger(__name__).error('Failed beads fit!')
             traceback.print_exc()
             return None
+
+
+class HybridStrategy(StabilizationStrategy):
+    '''
+    Hybrid strategy:
+    - Z from ReflectionStrategy
+    - XY from FiducialStrategy
+    '''
+    PARAMS = {
+        **ReflectionStrategy.PARAMS,
+        **FiducialStrategy.PARAMS,
+    }
+
+    def __init__(
+        self,
+        z_strategy: ReflectionStrategy = None,
+        xy_strategy: FiducialStrategy = None,
+        xy_fit_method: bool = False,
+    ):
+        super().__init__()
+        self.z_strategy = z_strategy if z_strategy is not None else ReflectionStrategy()
+        self.xy_strategy = (
+            xy_strategy if xy_strategy is not None else FiducialStrategy(xy_fit_method)
+        )
+
+    def fit(
+        self,
+        image: np.ndarray,
+        roi_manager: ROIManager,
+        calibration_manager: CalibrationManager,
+        controller: BaseController,
+    ) -> dict:
+        z_res = self.z_strategy.fit(image, roi_manager, calibration_manager, controller)
+        xy_res = self.xy_strategy.fit(
+            image, roi_manager, calibration_manager, controller
+        )
+
+        if z_res is None:
+            z_res = {'params': {'z': None}, 'fit_params': None, 'line_profile': []}
+        if xy_res is None:
+            xy_res = {
+                'params': {'xy': None},
+                'localizations': {'x': [], 'y': []},
+            }
+
+        params = {
+            'z': z_res.get('params', {}).get('z', None),
+            'xy': xy_res.get('params', {}).get('xy', None),
+        }
+
+        return {
+            'params': params,
+            'fit_params': z_res.get('fit_params'),
+            'line_profile': z_res.get('line_profile', []),
+            'localizations': xy_res.get('localizations', {'x': [], 'y': []}),
+        }
+
+    def get_shifts(
+        self,
+        old_z: float,
+        new_z: float,
+        old_xy: np.ndarray,
+        new_xy: np.ndarray,
+        calibration_manager: CalibrationManager,
+        controller: BaseController,
+    ) -> dict:
+        z_shifts = self.z_strategy.get_shifts(
+            old_z,
+            new_z,
+            old_xy,
+            new_xy,
+            calibration_manager,
+            controller,
+        )
+        xy_shifts = self.xy_strategy.get_shifts(
+            old_z,
+            new_z,
+            old_xy,
+            new_xy,
+            calibration_manager,
+            controller,
+        )
+
+        return {
+            Axis.X: xy_shifts.get(Axis.X, 0.0),
+            Axis.Y: xy_shifts.get(Axis.Y, 0.0),
+            Axis.Z: z_shifts.get(Axis.Z, 0.0),
+        }

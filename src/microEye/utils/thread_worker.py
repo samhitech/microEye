@@ -54,6 +54,7 @@ class QThreadWorker(QtCore.QRunnable):
 
         # Add the callback to our kwargs
         if kwargs.get('progress'):
+            kwargs.pop('progress')
             self.kwargs['progress_callback'] = self.signals.progress
 
     @property

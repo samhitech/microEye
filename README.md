@@ -19,7 +19,7 @@ This toolkit is compatible with the [hardware](#hardware) used in our microscope
                              /_/
 ```
 
-![Package Health](https://snyk.io/advisor/python/microEye/badge.svg)
+<!-- ![Package Health](https://snyk.io/advisor/python/microEye/badge.svg) -->
 ![Python Version](https://img.shields.io/badge/Python-3.11-blue)
 ![Package Version](https://img.shields.io/pypi/v/microEye.svg)
 ![Package Version](https://img.shields.io/badge/GUI_Platform-PySide6|PyQt6|PyQt5-navy)
@@ -33,7 +33,7 @@ This toolkit is compatible with the [hardware](#hardware) used in our microscope
 
 ![Contributors](https://img.shields.io/github/contributors/samhitech/microEye.svg)
 ![GitHub Last Commit](https://img.shields.io/github/last-commit/samhitech/microEye.svg)
-![Maintenance](https://img.shields.io/maintenance/yes/2025.svg)
+![Maintenance](https://img.shields.io/maintenance/yes/2026.svg)
 
 ![GitHub Issues](https://img.shields.io/github/issues/samhitech/microEye.svg)
 ![GitHub Bugs](https://img.shields.io/github/issues/samhitech/microEye/bug.svg)

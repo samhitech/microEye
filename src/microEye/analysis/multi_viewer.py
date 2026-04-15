@@ -11,6 +11,8 @@ import cv2
 
 from microEye import __version__
 from microEye.analysis.fitting.results import FittingResults
+from microEye.analysis.tools.dark_cal import DarkCalibration
+from microEye.analysis.tools.photon_cal import PhotonTransfer
 from microEye.analysis.tools.registration import RegistrationWidget
 from microEye.analysis.viewer import LocalizationsView, PSFView, StackView
 from microEye.qt import (
@@ -385,6 +387,18 @@ class multi_viewer(QMainWindow):
         registration_tool = QAction('Registration Tool', self)
         registration_tool.triggered.connect(show_registration_tool)
         tools_menu.addAction(registration_tool)
+
+        # Add Dark Calibration Tool
+        dark_cal_tool = QAction('Dark Calibration Tool', self)
+        dark_cal_tool.triggered.connect(
+            lambda: self.mdi_area.addSubWindow(DarkCalibration()).show())
+        tools_menu.addAction(dark_cal_tool)
+
+        # Add PTC Calibration Tool
+        ptc_cal_tool = QAction('PTC Calibration Tool', self)
+        ptc_cal_tool.triggered.connect(
+            lambda: self.mdi_area.addSubWindow(PhotonTransfer()).show())
+        tools_menu.addAction(ptc_cal_tool)
 
         help_menu.addAction(github)
         help_menu.addAction(pypi)

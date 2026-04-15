@@ -128,8 +128,6 @@ def getExistingDirectory(
     parent: QtWidgets.QWidget = None,
     caption='Save File',
     directory='',
-    filter='All Files (*)',
-    initial_filter='',
     options: QtWidgets.QFileDialog.Option =None,
 ):
     options = checkDialogOptions(options)
@@ -138,8 +136,8 @@ def getExistingDirectory(
             parent,
             caption,
             dir=directory,
-            filter=filter,
-            selectedFilter=initial_filter,
+            # filter=filter,
+            # selectedFilter=initial_filter,
             options=options,
         )
     elif QT_API == 'PyQt6' or QT_API == 'PyQt5':
@@ -147,7 +145,7 @@ def getExistingDirectory(
             parent,
             caption,
             directory=directory,
-            filter=filter,
-            initialFilter=initial_filter,
+            # filter=filter,
+            # initialFilter=initial_filter,
             options=options,
         )

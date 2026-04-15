@@ -19,6 +19,7 @@ from microEye.hardware.stages.stabilization.methods import (
     CalibrationManager,
     DataLogger,
     FiducialStrategy,
+    HybridStrategy,
     PositionTracker,
     ReflectionStrategy,
     ROIManager,
@@ -47,15 +48,17 @@ class FocusStabilizerParams(Enum):
     LOAD = 'Load'
 
     FOCUS_TRACKING = 'Focus Stabilization'
-    STABILIZATION_METHOD = 'Method'
-    FOCUS_PARAMETER = 'Focus Parameter [pixel]'
-    USE_CAL = 'Use Calibration'
+    FOCUS_PARAMETER = 'Focus Parameter'
     Z_STABILIZATION = 'Stabilization (Z)'
     XY_STABILIZATION = 'Stabilization (XY)'
 
-    X_CALIBRATION = 'Calibration (X) [pixel/nm]'
-    Y_CALIBRATION = 'Calibration (Y) [pixel/nm]'
-    Z_CALIBRATION = 'Calibration (Z) [pixel/nm]'
+    STABILIZATION_METHOD = 'Method'
+    METHOD_PARAMS = 'Method Parameters'
+
+    USE_CAL = 'Use Calibration'
+    X_CALIBRATION = 'Calibration (X) [nm/pixel]'
+    Y_CALIBRATION = 'Calibration (Y) [nm/pixel]'
+    Z_CALIBRATION = 'Calibration (Z) [nm/pixel]'
 
     XY_OUTLIER_REJECTION = 'XY Outlier Rejection'
     XY_OUTLIER_REJECTION_METHOD = 'XY Outlier Rejection.Method'
@@ -189,6 +192,7 @@ class FocusStabilizer(QtCore.QObject):
             StabilizationMethods.REFLECTION: ReflectionStrategy(),
             StabilizationMethods.BEADS: FiducialStrategy(False),
             StabilizationMethods.BEADS_ASTIGMATIC: FiducialStrategy(True),
+            StabilizationMethods.HYBRID: HybridStrategy(),
         }
 
         self.exit_event = Event()
@@ -200,6 +204,32 @@ class FocusStabilizer(QtCore.QObject):
     @property
     def buffer(self):
         return self.__buffer
+
+    @property
+    def tracker_snapshot(self):
+        return self.__tracker.snapshot()
+
+    def get_current_strategy(self) -> Optional[StabilizationStrategy]:
+        return self._strategies.get(self.__method, None)
+
+    def get_current_strategy_param_defs(self) -> list[dict]:
+        strategy = self.get_current_strategy()
+        return [] if strategy is None else strategy.get_tunable_params()
+
+    def get_current_strategy_param_values(self) -> dict:
+        strategy = self.get_current_strategy()
+        return {} if strategy is None else strategy.get_param_values()
+
+    def set_current_strategy_param(self, name: str, value) -> bool:
+        strategy = self.get_current_strategy()
+        if strategy is None:
+            return False
+        return bool(strategy.set_param(name, value))
+
+    def set_current_strategy_params(self, values: dict):
+        strategy = self.get_current_strategy()
+        if strategy is not None:
+            strategy.set_param_values(values)
 
     def method(self):
         '''
@@ -556,6 +586,7 @@ class FocusStabilizer(QtCore.QObject):
             'use_cal': self.__use_cal,
             'inverted': self.__inverted.tolist(),
             'method': str(self.__method),
+            'strategy_params': self.get_current_strategy_param_values(),
             'rejection_method': str(self.__controller.rejection_method),
             'rejection_threshold': self.__controller.outlier_threshold,
             'rejection_min_points': self.__controller.outlier_min_points,
@@ -843,12 +874,6 @@ class FocusStabilizerView(Tree):
                 'children': [],
             },
             {
-                'name': str(FocusStabilizerParams.STABILIZATION_METHOD),
-                'type': 'list',
-                'value': StabilizationMethods.REFLECTION.value,
-                'limits': [method.value for method in StabilizationMethods],
-            },
-            {
                 'name': str(FocusStabilizerParams.FOCUS_PARAMETER),
                 'type': 'float',
                 'value': 0.0,
@@ -857,17 +882,28 @@ class FocusStabilizerView(Tree):
                 'decimals': 6,
             },
             {
-                'name': str(FocusStabilizerParams.USE_CAL),
-                'type': 'bool',
-                'value': False,
-            },
-            {
                 'name': str(FocusStabilizerParams.XY_STABILIZATION),
                 'type': 'bool',
                 'value': False,
             },
             {
                 'name': str(FocusStabilizerParams.Z_STABILIZATION),
+                'type': 'bool',
+                'value': False,
+            },
+            {
+                'name': str(FocusStabilizerParams.STABILIZATION_METHOD),
+                'type': 'list',
+                'value': StabilizationMethods.REFLECTION.value,
+                'limits': [method.value for method in StabilizationMethods],
+            },
+            {
+                'name': str(FocusStabilizerParams.METHOD_PARAMS),
+                'type': 'group',
+                'children': [],
+            },
+            {
+                'name': str(FocusStabilizerParams.USE_CAL),
                 'type': 'bool',
                 'value': False,
             },
@@ -1068,6 +1104,38 @@ class FocusStabilizerView(Tree):
             self.stop_IR
         )
 
+        # Build method-specific params on first UI creation.
+        self.rebuild_method_params()
+
+    def rebuild_method_params(self):
+        group = self.get_param(FocusStabilizerParams.METHOD_PARAMS)
+        if group is None:
+            return
+
+        self.param_tree.blockSignals(True)
+        try:
+            for child in list(group.children()):
+                group.removeChild(child)
+
+            for (
+                child_def
+            ) in FocusStabilizer.instance().get_current_strategy_param_defs():
+                group.addChild(child_def)
+        finally:
+            self.param_tree.blockSignals(False)
+
+    def apply_method_params(self, values: dict):
+        if not isinstance(values, dict):
+            return
+
+        FocusStabilizer.instance().set_current_strategy_params(values)
+
+        current = FocusStabilizer.instance().get_current_strategy_param_values()
+        for name, value in current.items():
+            p = self.get_param(f'{FocusStabilizerParams.METHOD_PARAMS.value}.{name}')
+            if p is not None:
+                p.setValue(value)
+
     def change(self, param: Parameter, changes: list):
         '''
         Handle parameter changes as needed.
@@ -1089,8 +1157,18 @@ class FocusStabilizerView(Tree):
         # Handle parameter changes as needed
         for p, _, data in changes:
             path = self.param_tree.childPath(p)
+            if not path:
+                continue
 
-            fsParam = FocusStabilizerParams('.'.join(path))
+            if path[0] == FocusStabilizerParams.METHOD_PARAMS.value:
+                if len(path) > 1:
+                    FocusStabilizer.instance().set_current_strategy_param(path[1], data)
+                continue
+
+            try:
+                fsParam = FocusStabilizerParams('.'.join(path))
+            except ValueError:
+                continue
 
             if fsParam == FocusStabilizerParams.Z_STABILIZATION:
                 FocusStabilizer.instance().toggleFocusStabilization(Axis.Z, data)
@@ -1125,6 +1203,7 @@ class FocusStabilizerView(Tree):
             if fsParam == FocusStabilizerParams.STABILIZATION_METHOD:
                 method = StabilizationMethods(data)
                 FocusStabilizer.instance().setMethod(method)
+                self.rebuild_method_params()
                 self.methodChanged.emit(method)
 
             if fsParam == FocusStabilizerParams.XY_OUTLIER_REJECTION_METHOD:
@@ -1269,6 +1348,12 @@ class FocusStabilizerView(Tree):
             cal_coeff = stabilizer.get('cal_coeff', (1.0,) * 3)
             inverted = stabilizer.get('inverted', (False,) * 3)
 
+            cal_params = {
+                Axis.X: FocusStabilizerParams.X_CALIBRATION,
+                Axis.Y: FocusStabilizerParams.Y_CALIBRATION,
+                Axis.Z: FocusStabilizerParams.Z_CALIBRATION,
+            }
+
             for axis in Axis:
                 self.set_param_value(
                     FocusStabilizerParams(f'{axis.name}.K_P'),
@@ -1283,7 +1368,7 @@ class FocusStabilizerView(Tree):
                     float(Kd[axis.axis_index()]),
                 )
                 self.set_param_value(
-                    FocusStabilizerParams(f'Calibration ({axis.name}) [pixel/nm]'),
+                    cal_params[axis],
                     float(cal_coeff[axis.axis_index()]),
                 )
                 self.set_param_value(
@@ -1292,6 +1377,7 @@ class FocusStabilizerView(Tree):
                 )
 
             method = stabilizer.get('method', StabilizationMethods.REFLECTION.value)
+
             rejection_method = stabilizer.get(
                 'rejection_method', RejectionMethod.NONE.value
             )
@@ -1304,6 +1390,10 @@ class FocusStabilizerView(Tree):
             self.set_param_value(FocusStabilizerParams.FT_TAU, float(tau))
             self.set_param_value(FocusStabilizerParams.FT_ERROR_TH, float(error_th))
             self.set_param_value(FocusStabilizerParams.STABILIZATION_METHOD, method)
+            # Ensure params group exists even when method stays unchanged.
+            self.rebuild_method_params()
+            strategy_params = stabilizer.get('strategy_params', {})
+            self.apply_method_params(strategy_params)
             self.set_param_value(
                 FocusStabilizerParams.XY_OUTLIER_REJECTION_METHOD,
                 rejection_method,

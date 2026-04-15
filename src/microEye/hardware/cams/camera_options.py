@@ -53,6 +53,7 @@ class CamParams(Enum):
     PREVIEW = 'Display.Preview'
     DISPLAY_STATS_OPTION = 'Display.Display Stats'
     AUTO_STRETCH = 'Display.Auto Stretch'
+    CROSSHAIR = 'Display.Crosshair'
     PLOT_TYPE = 'Display.Plot Type'
     VIEW_OPTIONS = 'Display.View Options'
     SINGLE_VIEW = 'Display.View Options.Single View'
@@ -213,6 +214,11 @@ class CameraOptions(Tree):
                         'name': str(CamParams.AUTO_STRETCH),
                         'type': 'bool',
                         'value': True,
+                    },
+                    {
+                        'name': str(CamParams.CROSSHAIR),
+                        'type': 'bool',
+                        'value': False,
                     },
                     {
                         'name': str(CamParams.PLOT_TYPE),
@@ -661,6 +667,23 @@ class CameraOptions(Tree):
 
     def toggleAutostretch(self):
         param = self.get_param(CamParams.AUTO_STRETCH)
+        if param:
+            param.setValue(not param.value())
+
+    @property
+    def isCrosshair(self):
+        '''
+        Check if the crosshair option is set.
+
+        Returns
+        -------
+        bool
+            True if the crosshair option is set, False otherwise.
+        '''
+        return self.get_param_value(CamParams.CROSSHAIR)
+
+    def toggleCrosshair(self):
+        param = self.get_param(CamParams.CROSSHAIR)
         if param:
             param.setValue(not param.value())
 

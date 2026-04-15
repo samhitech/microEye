@@ -35,4 +35,4 @@ tables==3.10.2
 tabulate==0.9.0
 tqdm>=4.66.4
 tifffile==2025.10.4
-zarr>=2,<4
+zarr>=3.1.3

@@ -188,6 +188,16 @@ class PyQtGraphDisplay(QtWidgets.QWidget):
         )
         self.plot_widget.addItem(self.text_item)
 
+        # add crosshair lines to the viewbox
+        self.h_line = pg.InfiniteLine(
+            angle=0, pen=pg.mkPen(color='y', style=QtCore.Qt.PenStyle.DotLine)
+        )
+        self.v_line = pg.InfiniteLine(
+            angle=90, pen=pg.mkPen(color='y', style=QtCore.Qt.PenStyle.DotLine)
+        )
+        self.view_box.addItem(self.h_line)
+        self.view_box.addItem(self.v_line)
+
         # Create a timer to update the FPS
         self.frame_counter = FrameCounter()
         self.frame_counter.sigFpsUpdate.connect(self.update_fps)
@@ -313,16 +323,34 @@ class PyQtGraphDisplay(QtWidgets.QWidget):
                 # autoLevels = False, set levels to the region of interest
                 kwargs['levels'] = self.get_regions()
 
-            self.image_item.setImage(
+            self.set_image(
                 image,
                 autoLevels=False,
                 levels=kwargs.get('levels'),
-                _callSync='off'
+                show_crosshair=kwargs.get('show_crosshair', False),
+                _callSync='off',
                 # lut=useLut,
                 # autoDownsample=True,
             )
         finally:
             self._updating = False
+
+    def set_image(self, image: np.ndarray, **kwargs):
+        self.image_item.setImage(image, **kwargs)
+
+        if kwargs.get('show_crosshair'):
+            center_y, center_x = image.shape[0] // 2, image.shape[1] // 2
+            if self.h_line.y() != center_y:
+                self.h_line.setY(center_y)
+            if self.v_line.x() != center_x:
+                self.v_line.setX(center_x)
+            if not self.h_line.isVisible():
+                self.h_line.setVisible(True)
+            if not self.v_line.isVisible():
+                self.v_line.setVisible(True)
+        else:
+            self.h_line.setVisible(False)
+            self.v_line.setVisible(False)
 
     def adjust_widget_aspect_ratio(self, event: QtGui.QResizeEvent):
         """Adjust the widget's size to maintain the image's aspect ratio."""

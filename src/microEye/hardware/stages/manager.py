@@ -175,8 +175,11 @@ class StageManager(QtCore.QObject):
             and interface
         ):
             sign = 1 if dir else -1
+            step_nm = Units.convert(
+                step_arg, self.z_stage().get_unit(Axis.Z), Units.NANOMETERS
+            )
             focusStabilizer.setParameter(
-                focusStabilizer.calCoeff(Axis.Z) * step_arg * sign, True
+                step_nm * sign, True
             )
         else:
             self.z_stage().move_higher(step_arg) if dir else self.z_stage().move_lower(

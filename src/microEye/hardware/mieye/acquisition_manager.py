@@ -86,7 +86,14 @@ class AcquisitionManager(QtCore.QObject):
 
         if data is not None:
             coeff = np.polyfit(data[:, 0], data[:, 1], 1)
-            FocusStabilizer.instance().setCalCoeff(coeff[0])
+            slope_px_per_nm = float(coeff[0])
+            if np.isfinite(slope_px_per_nm) and abs(slope_px_per_nm) > 1e-12:
+                coeff_nm_per_px = 1.0 / slope_px_per_nm
+                FocusStabilizer.instance().setCalCoeff(coeff_nm_per_px, axis=Axis.Z)
+            else:
+                logger.warning(
+                    'Z calibration slope is invalid; keeping existing Z calibration.'
+                )
             plot_z_cal(data, coeff)
 
     def result_scan_export(self, data: list[TileImage]):
@@ -455,8 +462,9 @@ def z_calibration(
                     acquisition_manager.acquisitionWidget.moveZ.emit(reverse, step_size)
                 QtCore.QThread.msleep(delay * nFrames)
                 positions[x, 0] = x * step_size
+                _, snapshot = FocusStabilizer.instance().tracker_snapshot
                 positions[x, 1] = np.mean(
-                    FocusStabilizer.instance().parameter_buffer[-nFrames:]
+                    snapshot[-nFrames:, 2]
                 )
         else:
             logger.warning('Z-calibration failed!')

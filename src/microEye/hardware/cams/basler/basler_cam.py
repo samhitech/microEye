@@ -378,6 +378,8 @@ class BaslerParams(Enum):
     BINNING_VERTICAL_MODE = 'Acquisition Settings.BinningVerticalMode'
 
     BLACK_LEVEL = 'Acquisition Settings.BlackLevel'
+    BLACK_LEVEL_SELECTOR = 'Acquisition Settings.BlackLevelSelector'
+    BLACK_LEVEL_COMPENSATION = 'Acquisition Settings.BslBlackLevelCompensationMode'
     CONVERSION_GAIN_MODE = 'Acquisition Settings.BslConversionGainMode'
     DEFECT_PIXEL_CORRECTION_MODE = (
         'Acquisition Settings.BslStaticDefectPixelCorrectionMode'
@@ -545,6 +547,7 @@ class basler_cam(miCamera):
                     continue
 
                 attr = getattr(self.cam, name, None)
+
                 # if attribute is IValue subcalss
                 if not isinstance(attr, genicam.IValue):
                     continue

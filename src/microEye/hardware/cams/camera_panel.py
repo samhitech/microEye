@@ -769,6 +769,23 @@ class Camera_Panel(QtWidgets.QGroupBox):
                     'value': f'{x}, {y}, {w}, {h}',
                 },
             )
+        elif not single and software:
+            rois = [
+                (x, y, h, h),
+                (h + 3 * x, y, h, h),
+            ]
+
+            for roi in rois:
+                self.camera_options.add_param_child(
+                    CamParams.EXPORTED_ROIS,
+                    {
+                        'name': 'ROI 1',
+                        'type': 'str',
+                        'readonly': True,
+                        'removable': True,
+                        'value': f'{roi[0]}, {roi[1]}, {roi[2]}, {roi[3]}',
+                    },
+                )
 
     def get_meta(self):
         return self.camera_options.get_json()
@@ -1049,6 +1066,7 @@ def display_frame(
             'height': frame.shape[0],
             'show_stats': camp.camera_options.isDisplayStats,
             'autoLevels': camp.camera_options.isAutostretch,
+            'show_crosshair': camp.camera_options.isCrosshair,
             'isSingleView': camp.camera_options.isSingleView,
             'isROIsView': camp.camera_options.isROIsView,
             'isOverlaidView': camp.camera_options.isOverlaidView,

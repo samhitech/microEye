@@ -263,23 +263,26 @@ class focusWidget(QtWidgets.QDockWidget):
         }
 
     def _update_plot_visibility(self, method: StabilizationMethods):
-        self._line_profile.setVisible(method == StabilizationMethods.REFLECTION)
-
-        self._xy_scatter.setVisible(method != StabilizationMethods.REFLECTION)
-        self._x_shift.setVisible(method != StabilizationMethods.REFLECTION)
-        self._y_shift.setVisible(method != StabilizationMethods.REFLECTION)
-
+        is_line = method in [
+            StabilizationMethods.REFLECTION,
+            StabilizationMethods.HYBRID,
+        ]
         # Update ROI display according to method
-        self.line_roi.setVisible(method == StabilizationMethods.REFLECTION)
-        self.rect_roi_xy.setVisible(
-            method
-            in [
-                StabilizationMethods.BEADS,
-                StabilizationMethods.BEADS_ASTIGMATIC,
-                StabilizationMethods.HYBRID,
-            ]
-        )
-        self.rect_roi_z.setVisible(method == StabilizationMethods.HYBRID)
+        self.line_roi.setVisible(is_line)
+        self._line_profile.setVisible(is_line)
+
+        is_xy = method in [
+            StabilizationMethods.BEADS,
+            StabilizationMethods.BEADS_ASTIGMATIC,
+            StabilizationMethods.HYBRID,
+        ]
+
+        self._xy_scatter.setVisible(is_xy)
+        self._x_shift.setVisible(is_xy)
+        self._y_shift.setVisible(is_xy)
+        self.rect_roi_xy.setVisible(is_xy)
+
+        self.rect_roi_z.setVisible(False)  # Always hide the Z ROI as it's not used
 
     def connectUpdateGui(self):
         FocusStabilizer.instance().updateViewBox.connect(self.updateViewBox)
