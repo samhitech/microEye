@@ -484,8 +484,9 @@ class ParameterAdjustmentDialog(QtWidgets.QDialog):
         )
         self.expression_mode_checkbox.stateChanged.connect(self.toggle_expression_mode)
 
-        # Initialize
-        self.target_object_combo.addItems(WeakObjects.getObjectNames())
+        # Initialize with sorted object names
+        names = sorted(WeakObjects.getObjectNames())
+        self.target_object_combo.addItems(names)
         self.update_parameter_names()
 
     def update_parameter_names(self):
@@ -532,18 +533,24 @@ class ParameterAdjustmentDialog(QtWidgets.QDialog):
     def _get_value_editor(self, param: Parameter):
         param_type = param.opts.get('type', None)
         param_limits = param.opts.get('limits', [])
-        if param_type in ['int', 'float']:
-            editor = (
-                QtWidgets.QDoubleSpinBox()
-                if param_type == 'float'
-                else QtWidgets.QSpinBox()
-            )
+        if param_type == 'int':
+            editor = QtWidgets.QSpinBox()
             if param_limits:
                 editor.setMinimum(int(param_limits[0]))
                 editor.setMaximum(int(param_limits[1]))
             else:
                 editor.setMinimum(0)
                 editor.setMaximum(int(1e9))
+            editor.setValue(param.value())
+            return editor
+        elif param_type == 'float':
+            editor = QtWidgets.QDoubleSpinBox()
+            if param_limits:
+                editor.setMinimum(float(param_limits[0]))
+                editor.setMaximum(float(param_limits[1]))
+            else:
+                editor.setMinimum(0.0)
+                editor.setMaximum(1e9)
             editor.setValue(param.value())
             return editor
         elif param_type == 'bool':
@@ -640,8 +647,10 @@ class ParameterAdjustmentDialog(QtWidgets.QDialog):
             self.expression_editor.setText(value)
         else:
             editor = self.value_editor_stack.currentWidget()
-            if isinstance(editor, (QtWidgets.QSpinBox, QtWidgets.QDoubleSpinBox)):
+            if isinstance(editor, QtWidgets.QDoubleSpinBox):
                 editor.setValue(float(value))
+            elif isinstance(editor, QtWidgets.QSpinBox):
+                editor.setValue(int(value))
             elif isinstance(editor, QtWidgets.QCheckBox):
                 editor.setChecked(bool(value))
             elif isinstance(editor, QtWidgets.QLineEdit):

@@ -1,4 +1,5 @@
 import ast
+import logging
 import threading
 import time
 import weakref
@@ -9,6 +10,8 @@ from pyqtgraph.parametertree.parameterTypes import ActionParameter
 
 from microEye.hardware.cams.camera_panel import Camera_Panel
 from microEye.utils.parameter_tree import Tree
+
+logger = logging.getLogger(__name__)
 
 
 class WeakObjects:
@@ -326,7 +329,8 @@ class ListLoop(ActionGroup):
                 break
             self.output(
                 f'{self.__class__.NAME} {self.id}: '
-                f'{element} ({index + 1}/{len(self.iterable_values)})', **kwargs
+                f'{element} ({index + 1}/{len(self.iterable_values)})',
+                **kwargs,
             )
             new_kwargs[f'i{self.id}'] = index
             new_kwargs[f'item{self.id}'] = element
@@ -340,9 +344,11 @@ class ListLoop(ActionGroup):
         return f'{self.__class__.NAME} {self.id}: {display}'
 
     def toHTML(self) -> str:
-        display = (self.iterable_expression or repr(self.iterable_values)).replace(
-            '<', '&lt;'
-        ).replace('>', '&gt;')
+        display = (
+            (self.iterable_expression or repr(self.iterable_values))
+            .replace('<', '&lt;')
+            .replace('>', '&gt;')
+        )
         return (
             f'<span style="color:#c586c0;">for</span> '
             f'<span style="color:#9cdcfe;">i{self.id}, item{self.id}</span> '
@@ -459,6 +465,7 @@ class ParameterAdjustmentAction(BaseAction):
     def toHTML(self) -> str:
         param_name = self.parameter_name.replace('.', ' → ')
         target_object = self.get_paramtree()
+
         param_type = (
             target_object.get_param(self.parameter_name).type()
             if target_object
@@ -492,7 +499,7 @@ class ParameterAdjustmentAction(BaseAction):
             # '<span style="color:#0f0;">'
             # f'<b>{self.__class__.NAME} {self.id}</b></span>:<br>'
             '<span style="color:#9cdcfe;">'
-            f'<i>{target_object.__class__.__name__}</i> {self.id}</span>:<br>'
+            f'<i>{str(target_object)}</i> {self.id}</span>:<br>'
             f'<span style="font-size: 0.8em; color:#4ec9b0;">{param_name}</span> '
             + value_label
             + f'<br><span style="font-size: 0.8em; color:#9cdcfe;">Type</span>'

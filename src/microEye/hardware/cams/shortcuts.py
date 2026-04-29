@@ -98,7 +98,7 @@ class DiscreteSlider(QtWidgets.QSlider):
             option.sliderPosition = i
 
             if i == 0:
-                label = 'min'
+                label = f'{label:.3f}'  # Format the first label with 2 decimal places
 
             # Get the handle rect for that position
             handle_rect = self.style().subControlRect(
@@ -178,7 +178,7 @@ class CameraShortcutsWidget(QtWidgets.QWidget):
         camera : miCamera, optional
             Camera object for accessing properties like exposure range
         exposure_range : tuple, optional
-            Min and max exposure values as (min, max)
+            Min and max exposure values as (min, max) in milliseconds
         exposure_shortcuts : list, optional
             List of exposure shortcut values
         parent : QWidget, optional
@@ -190,7 +190,9 @@ class CameraShortcutsWidget(QtWidgets.QWidget):
 
         # If camera is provided, use its exposure range
         if camera is not None and hasattr(camera, 'exposure_range'):
-            self.min_exposure = camera.exposure_range[0]
+            unit = getattr(camera, 'exposure_unit', 'ms')
+            factor_to_ms = {'us': 1/1000, 'ms': 1, 's': 1000}.get(unit, 1)
+            self.min_exposure = camera.exposure_range[0] * factor_to_ms
         elif exposure_range is not None:
             self.min_exposure = exposure_range[0]
         else:

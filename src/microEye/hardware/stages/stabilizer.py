@@ -37,12 +37,16 @@ from microEye.qt import (
 from microEye.utils.parameter_tree import Tree
 from microEye.utils.thread_worker import QThreadWorker
 
+FRAME_STATS = ['mean', 'median']
+
 
 class FocusStabilizerParams(Enum):
     '''
     Enum class defining FocusStabilizer parameters.
     '''
 
+    N_FRAMES = 'Number of Frames'
+    FRAMES_STATS = 'Frames Statistics'
     LINE_WIDTH = 'Line ROI Width'
     SAVE = 'Save'
     LOAD = 'Load'
@@ -165,6 +169,9 @@ class FocusStabilizer(QtCore.QObject):
 
         self.__use_cal = False
         self.__inverted = np.zeros((3,), dtype=bool)
+
+        self.__n_frames = 1
+        self.__frames_stats_method = 'mean'
 
         # Stabilization flags
         self.__z_stabilization = False
@@ -361,6 +368,28 @@ class FocusStabilizer(QtCore.QObject):
         '''
         self.__inverted[axis.axis_index()] = inverted
 
+    def set_n_frames(self, n_frames: int):
+        '''
+        Set the number of frames to be used for statistics.
+
+        Parameters
+        ----------
+        n_frames : int
+            The number of frames.
+        '''
+        self.__n_frames = max(1, n_frames)
+
+    def set_frames_stats_method(self, method: str):
+        """
+        Set the method to calculate the statistics of frames.
+
+        Parameters
+        ----------
+        method : str
+            The method name. Options: 'mean', 'median'.
+        """
+        self.__frames_stats_method = method if method in FRAME_STATS else 'mean'
+
     def __len__(self):
         return len(self.__buffer.queue)
 
@@ -373,6 +402,9 @@ class FocusStabilizer(QtCore.QObject):
     def isEmpty(self):
         return self.__buffer.empty()
 
+    def hasFrames(self):
+        return self.bufferSize() >= self.__n_frames
+
     def getImage(self) -> np.ndarray:
         '''Gets image from frames Queue in LIFO manner.
 
@@ -382,9 +414,20 @@ class FocusStabilizer(QtCore.QObject):
             The image last in buffer.
         '''
         res = None
-        if not self.__buffer.empty():
-            res = self.__buffer.get()
-            self.__buffer.queue.clear()
+
+        frames = []
+        for _ in range(self.__n_frames):
+            if not self.__buffer.empty():
+                frames.append(self.__buffer.get())
+        if len(frames) > 1:
+            methods = {'mean': np.mean, 'median': np.median}
+            res = methods.get(self.__frames_stats_method, np.mean)(
+                np.stack(frames), axis=0
+            )
+        elif frames and len(frames) == 1:
+            res = frames[0]
+        self.__buffer.queue.clear()
+
         return res
 
     def setP(self, P: float, axis: Axis):
@@ -590,6 +633,8 @@ class FocusStabilizer(QtCore.QObject):
             'rejection_method': str(self.__controller.rejection_method),
             'rejection_threshold': self.__controller.outlier_threshold,
             'rejection_min_points': self.__controller.outlier_min_points,
+            'n_frames': self.__n_frames,
+            'frames_stats_method': str(self.__frames_stats_method),
         }
 
     def startWorker(self):
@@ -609,7 +654,7 @@ class FocusStabilizer(QtCore.QObject):
         while not self.exit_event.is_set():
             try:
                 # proceed only if the buffer is not empty
-                if not self.isEmpty():
+                if not self.isEmpty() and self.hasFrames():
                     self.__tracker.advance_time(time.monotonic_ns() / 1e9)
 
                     self._exec_time = self.__tracker.last_interval * 1e3  # in ms
@@ -836,6 +881,9 @@ class FocusStabilizerView(Tree):
 
         self.setMinimumWidth(325)
 
+    def __str__(self):
+        return f'Focus Stabilization View'
+
     def create_parameters(self):
         '''
         Create the parameter tree structure.
@@ -858,6 +906,18 @@ class FocusStabilizerView(Tree):
                 'name': str(FocusStabilizerParams.PREVIEW_IMAGE),
                 'type': 'bool',
                 'value': True,
+            },
+            {
+                'name': str(FocusStabilizerParams.N_FRAMES),
+                'type': 'int',
+                'value': 1,
+                'limits': [1, 100],
+            },
+            {
+                'name': str(FocusStabilizerParams.FRAMES_STATS),
+                'type': 'list',
+                'value': 'mean',
+                'limits': FRAME_STATS,
             },
             {
                 'name': str(FocusStabilizerParams.LINE_WIDTH),
@@ -1197,6 +1257,11 @@ class FocusStabilizerView(Tree):
             if fsParam == FocusStabilizerParams.FT_ERROR_TH:
                 FocusStabilizer.instance().setErrorTh(data)
 
+            if fsParam == FocusStabilizerParams.N_FRAMES:
+                FocusStabilizer.instance().set_n_frames(data)
+            if fsParam == FocusStabilizerParams.FRAMES_STATS:
+                FocusStabilizer.instance().set_frames_stats_method(data)
+
             if fsParam == FocusStabilizerParams.LINE_WIDTH:
                 FocusStabilizer.instance().roi_manager.set_linewidth(data)
 
@@ -1405,6 +1470,13 @@ class FocusStabilizerView(Tree):
             self.set_param_value(
                 FocusStabilizerParams.XY_OUTLIER_REJECTION_MIN_POINTS,
                 int(rejection_min_points),
+            )
+
+            n_frames = stabilizer.get('n_frames', 1)
+            frames_stats_method = stabilizer.get('frames_stats_method', 'mean')
+            self.set_param_value(FocusStabilizerParams.N_FRAMES, int(n_frames))
+            self.set_param_value(
+                FocusStabilizerParams.FRAMES_STATS, frames_stats_method
             )
 
     def export_config(self):

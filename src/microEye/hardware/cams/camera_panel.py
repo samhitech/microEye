@@ -142,7 +142,7 @@ class Camera_Panel(QtWidgets.QGroupBox):
         # tab widgets
         self.first_tab = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
 
-        self.OME_tab = MetadataEditorTree()
+        self.OME_tab = MetadataEditorTree(cam_name=str(self))
 
         # add tabs
         self.main_tab_view.addTab(self.first_tab, 'Main')
@@ -216,19 +216,19 @@ class Camera_Panel(QtWidgets.QGroupBox):
                 match = re.search(
                     r'(\d+)(?:_ms|ms)', name
                 )  # find any number of format '000_ms' or '00ms'
+
+                unit = getattr(self._cam, 'exposure_unit', 'ms')
+                exposure = self._cam.getExposure()
+                if unit == 's':
+                    exposure *= 1000
+                elif unit == 'us':
+                    exposure /= 1000
+
                 if match:
-                    unit = self.camera_options.get_param(CamParams.EXPOSURE).opts[
-                        'suffix'
-                    ]
-                    exposure = self._cam.getExposure()
-                    if unit == 's':
-                        exposure *= 1000
-                    elif unit == 'us':
-                        exposure /= 1000
                     # update the exposure time in the name
-                    name = name.replace(match.group(0), f'{exposure:03.0f}ms')
+                    name = name.replace(match.group(0), f'{exposure:03.0f}_ms')
                 else:
-                    name = f'{name}_{self._cam.getExposure():03.0f}ms'
+                    name = f'{name}_{exposure:03.0f}_ms'
 
             elif mode == 'index':
                 # only from the start of the name
@@ -297,9 +297,18 @@ class Camera_Panel(QtWidgets.QGroupBox):
 
         def show_shortcuts(pos):
             self.cam_shortcuts.blockSignals(True)
+
+            unit = getattr(self._cam, 'exposure_unit', 'ms')
+            exposure = self._cam.getExposure()
+            if unit == 's':
+                exposure *= 1000
+            elif unit == 'us':
+                exposure /= 1000
+
             self.cam_shortcuts.set_exposure(
-                self.camera_options.get_param_value(CamParams.EXPOSURE)
+                exposure
             )
+
             self.cam_shortcuts.set_zoom(
                 self.camera_options.get_param_value(CamParams.RESIZE_DISPLAY)
             )

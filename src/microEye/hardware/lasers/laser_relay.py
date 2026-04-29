@@ -219,6 +219,9 @@ class LaserRelayView(Tree):
 
         super().__init__(parent=parent)
 
+    def __str__(self):
+        return 'Laser Relay View'
+
     def create_parameters(self):
         '''
         Create the parameter tree structure.

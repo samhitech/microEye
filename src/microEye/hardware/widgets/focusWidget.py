@@ -313,6 +313,9 @@ class focusWidget(QtWidgets.QDockWidget):
         positions: np.ndarray = kwargs.get('positions')
         X, Y, Z = positions[:, 0], positions[:, 1], positions[:, 2]
 
+        if FocusStabilizer.instance().isFocusStabilized(Axis.Z):
+            Z = Z - FocusStabilizer.instance().getParameter()
+
         Localizations: dict = kwargs.get('localizations')
         line_profile: dict = kwargs.get('line_profile')
 

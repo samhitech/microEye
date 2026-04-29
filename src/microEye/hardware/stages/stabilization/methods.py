@@ -814,7 +814,7 @@ class FiducialStrategy(StabilizationStrategy):
                 0,
             )
 
-            if Params is None and len(Params) < 1:
+            if Params is None or len(Params) < 1:
                 return None
             elif Params.ndim == 1:
                 Params = Params[np.newaxis, :]
@@ -851,6 +851,35 @@ class HybridStrategy(StabilizationStrategy):
         self.xy_strategy = (
             xy_strategy if xy_strategy is not None else FiducialStrategy(xy_fit_method)
         )
+        self._z_param_names = set(ReflectionStrategy.PARAMS.keys())
+        self._xy_param_names = set(FiducialStrategy.PARAMS.keys())
+        self._sync_from_children()
+
+    def _sync_from_children(self):
+        for n, v in self.z_strategy.get_param_values().items():
+            super().set_param(n, v)
+        for n, v in self.xy_strategy.get_param_values().items():
+            super().set_param(n, v)
+
+    def set_param(self, name: str, value) -> bool:
+        changed = super().set_param(name, value)
+        if name in self._z_param_names:
+            changed = self.z_strategy.set_param(name, value) or changed
+        if name in self._xy_param_names:
+            changed = self.xy_strategy.set_param(name, value) or changed
+        return changed
+
+    def set_param_values(self, values: dict):
+        if not isinstance(values, dict):
+            return
+        for n, v in values.items():
+            self.set_param(n, v)
+
+    def get_param_values(self) -> dict:
+        values = {}
+        values.update(self.z_strategy.get_param_values())
+        values.update(self.xy_strategy.get_param_values())
+        return values
 
     def fit(
         self,
@@ -859,6 +888,7 @@ class HybridStrategy(StabilizationStrategy):
         calibration_manager: CalibrationManager,
         controller: BaseController,
     ) -> dict:
+
         z_res = self.z_strategy.fit(image, roi_manager, calibration_manager, controller)
         xy_res = self.xy_strategy.fit(
             image, roi_manager, calibration_manager, controller

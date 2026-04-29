@@ -370,17 +370,20 @@ class DeviceManager(QtCore.QObject):
             widget._frames = FocusStabilizer.instance().buffer
 
             self.widgetAdded.emit(DEVICES.IR_CAM, widget)
-
         else:
             widget.setWindowTitle(widget.title())
             widget.show()
 
+            WeakObjects.addObject(widget.OME_tab)
+
         WeakObjects.addObject(widget)
 
-    def _remove_camera(self, widget: QtWidgets.QWidget, ir: bool):
+    def _remove_camera(self, widget: Camera_Panel, ir: bool):
         WeakObjects.removeObject(widget)
         if ir:
             self.widgetRemoved.emit(DEVICES.IR_CAM, widget)
+        else:
+            WeakObjects.removeObject(widget.OME_tab)
 
     def _set_ir_array_detector(self, value: str):
         if self.camList.autofocusCam:

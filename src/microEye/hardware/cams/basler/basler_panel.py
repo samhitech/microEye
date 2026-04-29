@@ -177,30 +177,40 @@ class Basler_Panel(Camera_Panel):
             Fetches the current readings and settings from the laser device.
             '''
             for prop in self.cam.property_tree():
-                if prop['type'] == 'action':
-                    continue
+                try:
+                    if prop['type'] == 'action':
+                        continue
 
-                parent = prop.pop('parent', CamParams.ACQ_SETTINGS)
-                name = prop.pop('name', None)
-                value = prop.pop('value', None)
-                limits = prop.pop('limits', None)
-                enabled = prop.pop('enabled', False)
+                    parent = prop.pop('parent', CamParams.ACQ_SETTINGS)
+                    name = prop.pop('name', None)
+                    value = prop.pop('value', None)
+                    limits = prop.pop('limits', None)
+                    enabled = prop.pop('enabled', False)
 
-                param = self.camera_options.get_param('.'.join([parent.value, name]))
+                    param = self.camera_options.get_param(
+                        '.'.join([parent.value, name])
+                    )
 
-                with param.treeChangeBlocker():
-                    if value != param.value():
-                        param.setValue(value)
-                    if enabled != param.opts.get('enabled', True):
-                        param.setOpts(enabled=enabled)
-                    if limits and (
-                        len(limits) != len(param.opts.get('limits', []))
-                        or any(
-                            old != new
-                            for old, new in zip(param.opts.get('limits', []), limits)
-                        )
-                    ):
-                        param.setLimits(limits)
+                    with param.treeChangeBlocker():
+                        if value != param.value():
+                            param.setValue(value)
+                        if enabled != param.opts.get('enabled', True):
+                            param.setOpts(enabled=enabled)
+                        if limits and (
+                            len(limits) != len(param.opts.get('limits', []))
+                            or any(
+                                old != new
+                                for old, new in zip(
+                                    param.opts.get('limits', []), limits
+                                )
+                            )
+                        ):
+                            param.setLimits(limits)
+                except Exception as e:
+                    logging.getLogger(__name__).error(
+                        f"Error updating parameter {prop.get('name', 'unknown')}: {e}"
+                    )
+                    traceback.print_exc()
 
             self.refresh_exposure()
 
@@ -255,16 +265,18 @@ class Basler_Panel(Camera_Panel):
 
     def refresh_exposure(self):
         param = self.camera_options.get_param(CamParams.EXPOSURE)
-        with param.treeChangeBlocker():
-            param.setValue(self._cam.exposure_current)
+        if param.value() != self._cam.exposure_current:
+            with param.treeChangeBlocker():
+                param.setValue(self._cam.exposure_current)
 
     def refresh_framerate(self, value=None):
         if value is not None:
             self.cam.framerate = value
 
         framerate = self.camera_options.get_param(BaslerParams.ACQUISITION_FRAMERATE)
-        framerate.setLimits((self.cam.min_framerate, self.cam.max_framerate))
-        framerate.setValue(self.cam.framerate, self.framerate_changed)
+        with framerate.treeChangeBlocker():
+            framerate.setLimits((self.cam.min_framerate, self.cam.max_framerate))
+            framerate.setValue(self.cam.framerate, self.framerate_changed)
 
     def framerate_enabled(self, value):
         self.camera_options.get_param(BaslerParams.ACQUISITION_FRAMERATE).setOpts(

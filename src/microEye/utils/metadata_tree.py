@@ -12,6 +12,7 @@ from microEye.utils.parameter_tree import Tree
 
 logger = logging.getLogger(__name__)
 
+
 class MetaParams(Enum):
     '''
     Enum class defining metadata parameters.
@@ -143,7 +144,11 @@ class MetadataEditorTree(Tree):
     Suggestions for excitation filters that can be used.
     '''
 
-    def __init__(self, parent: Optional['QtWidgets.QWidget'] = None):
+    def __init__(
+        self,
+        parent: Optional['QtWidgets.QWidget'] = None,
+        cam_name: Optional[str] = None,
+    ):
         '''
         Initialize the MetadataEditorTree.
 
@@ -153,6 +158,13 @@ class MetadataEditorTree(Tree):
             The parent widget, by default None.
         '''
         super().__init__(parent=parent)
+
+        self.__name = (
+            'Metadata Editor' if cam_name is None else f'{cam_name} | Metadata Editor'
+        )
+
+    def __str__(self):
+        return self.__name
 
     def create_parameters(self):
         '''
