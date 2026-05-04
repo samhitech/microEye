@@ -1,10 +1,16 @@
 import logging
 import traceback
 from time import perf_counter_ns
+from typing import Optional
 
 from microEye.hardware.cams.basler.basler_cam import BaslerParams, basler_cam, pylon
 from microEye.hardware.cams.camera_options import CamParams
-from microEye.hardware.cams.camera_panel import AcquisitionJob, Camera_Panel, Queue
+from microEye.hardware.cams.camera_panel import (
+    AcquisitionJob,
+    Camera_Panel,
+    Parameter,
+    Queue,
+)
 from microEye.qt import (
     QDateTime,
     QtCore,
@@ -164,7 +170,7 @@ class Basler_Panel(Camera_Panel):
         # start a timer to update the camera params
         self.timer = QtCore.QTimer(self)
         self.timer.setSingleShot(True)
-        self.timer.setInterval(1000)
+        self.timer.setInterval(200)  # Update every 200 ms after a change
         self.timer.timeout.connect(self.update_params)
         self.timer.start()
 
@@ -215,11 +221,20 @@ class Basler_Panel(Camera_Panel):
             self.refresh_exposure()
 
         worker = QThreadWorker(update)
-        worker.signals.finished.connect(
-            self.timer.start
-        )  # Restart the timer after fetching stats
+        # worker.signals.finished.connect(
+        #     self.timer.start
+        # )  # Restart the timer after fetching stats
 
         QtCore.QThreadPool.globalInstance().start(worker)
+
+    def update_cam(self, param: Optional[Parameter], param_value):
+        path = super().update_cam(param, param_value)
+
+        if path is None:
+            return
+
+        # Restart the timer to update the camera params after a change
+        self.timer.start()
 
     @property
     def cam(self):

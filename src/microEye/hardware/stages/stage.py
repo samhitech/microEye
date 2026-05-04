@@ -152,10 +152,13 @@ class StageParams(Enum):
     Y_POSITION = 'Y Position'
     Z_POSITION = 'Z Position'
 
+    POLL_POSITION = 'Poll Position'
+
     GET_POSITION = 'Get Position'
 
     MOVE = 'Move'
 
+    CALIBRATE = 'Calibrate'
     HOME = 'Home'
     REFRESH = 'Refresh'
     CENTER = 'Center'
@@ -173,6 +176,10 @@ class StageParams(Enum):
     X_MAX = 'Options.X Max'
     Y_MAX = 'Options.Y Max'
     Z_MAX = 'Options.Z Max'
+
+    X_MIN = 'Options.X Min'
+    Y_MIN = 'Options.Y Min'
+    Z_MIN = 'Options.Z Min'
 
     X_CENTER = 'Options.X Center'
     Y_CENTER = 'Options.Y Center'
@@ -250,6 +257,7 @@ class AbstractStage(ABC):
         axes: Optional[Union[tuple[Axis], list[Axis]]] = None,
         readyRead: Callable = None,
         center: Optional[Union[float, list, tuple]] = None,
+        min_factor: int = 0,
     ):
         """
         Initialize the stage object.
@@ -269,6 +277,9 @@ class AbstractStage(ABC):
             data (default is None).
         center : Optional[Union[float, list, tuple]], optional
             The center position of the stage. If None, it is set to half of max_range.
+        min_factor : int, optional
+            The minimum factor for clamping stage positions (default is 0,
+            meaning the stage can only move to positive positions up to max_range).
         """
         self._name = name
 
@@ -279,6 +290,8 @@ class AbstractStage(ABC):
             raise ValueError('At least one axis must be specified.')
 
         self._axes = tuple(sorted(self._axes, key=lambda axis: axis.value))
+
+        self._min_factor = min_factor
 
         def get_dict(
             props: Union[tuple, list, Any], factor: float = 1.0
@@ -294,6 +307,9 @@ class AbstractStage(ABC):
                 'max': max_range[i]
                 if isinstance(max_range, (tuple, list))
                 else max_range,
+                'min': max_range[i] * self._min_factor
+                if isinstance(max_range, (tuple, list))
+                else max_range * self._min_factor,
                 'unit': units[i] if isinstance(units, (tuple, list)) else units,
             }
             if center is not None:
@@ -318,6 +334,12 @@ class AbstractStage(ABC):
             self._driver = StageDriver.OTHER
 
         self._busy = False
+
+
+    def _clamp(self, axis: Axis, value: float) -> float:
+        max_range = self.get_max(axis)
+        min_range = max_range * self._min_factor
+        return max(min_range, min(value, max_range))
 
     def __str__(self):
         return self._name
@@ -419,10 +441,8 @@ class AbstractStage(ABC):
         if incremental:
             position = self._position[axis] + position
 
-        if position < 0 or position > self._metadata[axis]['max']:
-            return
-
-        self._position[axis] = max(0, min(position, self._metadata[axis]['max']))
+        # self._position[axis] = self._clamp(axis, position)
+        self._position[axis] = position
 
     @abstractmethod
     def home(self) -> None:
@@ -567,6 +587,22 @@ class AbstractStage(ABC):
             raise ValueError(f'Axis {axis} not supported by this stage')
 
         self._metadata[axis]['max'] = max_range
+
+    def set_min_range(self, axis: Axis, min_range: float) -> None:
+        '''
+        Set the minimum range of the stage along a specific axis.
+
+        Parameters
+        ----------
+        axis : Axis
+            The axis to set.
+        min_range : float
+            The minimum range.
+        '''
+        if axis not in self._metadata:
+            raise ValueError(f'Axis {axis} not supported by this stage')
+
+        self._metadata[axis]['min'] = min_range
 
     def is_busy(self) -> bool:
         '''Return True if the stage is currently busy.'''
@@ -761,6 +797,25 @@ class AbstractStage(ABC):
 
         return self._metadata[axis]['max']
 
+    def get_min(self, axis: Axis) -> float:
+        '''
+        Get the minimum position of the stage along a specific axis.
+
+        Parameters
+        ----------
+        axis : Axis
+            The axis to query.
+
+        Returns
+        -------
+        float
+            The minimum position of the stage.
+        '''
+        if axis not in self._metadata:
+            raise ValueError(f'Axis {axis} not supported by this stage')
+
+        return self._metadata[axis]['min']
+
     def convert_units(self, x, y, z, from_unit: Optional[Units]):
         '''
         Convert stage coordinates from one unit to another.
@@ -869,6 +924,7 @@ class AbstractStage(ABC):
         for axis in self._axes:
             config[axis.value] = {
                 'max': self._metadata[axis]['max'],
+                'min': self._metadata[axis]['min'],
                 'center': self._metadata[axis]['center'],
             }
 
@@ -906,3 +962,5 @@ class AbstractStage(ABC):
                     self.set_max_range(axis, axis_config['max'])
                 if 'center' in axis_config:
                     self.set_center(axis, axis_config['center'])
+                if 'min' in axis_config:
+                    self.set_min_range(axis, axis_config['min'])

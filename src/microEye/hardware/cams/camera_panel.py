@@ -4,7 +4,7 @@ import re
 import threading
 import traceback
 from queue import Queue
-from typing import Union
+from typing import Optional, Union
 
 import numpy as np
 from pyqtgraph.parametertree import Parameter
@@ -520,13 +520,15 @@ class Camera_Panel(QtWidgets.QGroupBox):
 
         self.camera_options.set_roi_info(x, y, w, h)
 
-    def update_cam(self, param: Union[Parameter, None], param_value):
+    def update_cam(self, param: Optional[Parameter], param_value):
         path = self.camera_options.param_tree.childPath(param)
 
         if path is None:
-            return
+            return None
 
         self.cam.update_cam(param, path, param_value)
+
+        return path
 
     def refresh_framerate(self, value=None):
         pass

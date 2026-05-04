@@ -310,11 +310,16 @@ class SlideWidget(QtWidgets.QGraphicsView):
         if stage is None:
             stage_info = 'No XY Stage'
         else:
+            # convert stage position to micrometers
+            x_um = Units.convert(stage.x, stage.get_unit(Axis.X), Units.MICROMETERS)
+            y_um = Units.convert(stage.y, stage.get_unit(Axis.Y), Units.MICROMETERS)
+            dx_um = Units.convert(stage.dx, stage.get_unit(Axis.X), Units.MICROMETERS)
+            dy_um = Units.convert(stage.dy, stage.get_unit(Axis.Y), Units.MICROMETERS)
             stage_info = (
-                f'X: {stage.x:.2f} {stage.get_unit(Axis.X).suffix()} '
-                f'Y: {stage.y:.2f} {stage.get_unit(Axis.Y).suffix()} | '
-                f'(dX: {stage.dx:.2f} {stage.get_unit(Axis.X).suffix()}, '
-                f'dY: {stage.dy:.2f} {stage.get_unit(Axis.Y).suffix()})'
+                f'X: {x_um:.6f} μm '
+                f'Y: {y_um:.6f} μm | '
+                f'(dX: {dx_um:.6f} μm, '
+                f'dY: {dy_um:.6f} μm)'
             )
 
         self._label.setPlainText(stage_info)

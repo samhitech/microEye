@@ -14,21 +14,15 @@ class PiezoConceptFOC(AbstractStage):
 
     NAME = 'PiezoConcept FOC 1-axis'
 
-    def __init__(self, max_um: int = 100):
-        '''
-        Initializes a PiezoConcept FOC 1-axis stage adapter.
-
-        Parameters
-        ----------
-        max_um : int, optional
-            Maximum stage position in micrometers (default is 100 um).
-        '''
+    def __init__(self, **kwargs):
         super().__init__(
-            name=PiezoConceptFOC.NAME,
-            max_range=(max_um * 1000,),
+            name=kwargs.get('name', PiezoConceptFOC.NAME),
+            max_range=kwargs.get('max_range', 100) * 1000,
             units=Units.NANOMETERS,
             axes=(Axis.Z,),
             readyRead=self.read_serial_data,
+            center=kwargs.get('center'),
+            min_factor=0,
         )
 
         self.z = self.z_max // 2

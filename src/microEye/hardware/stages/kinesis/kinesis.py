@@ -30,6 +30,7 @@ class KinesisXY(AbstractStage):
             axes=(Axis.X, Axis.Y),
             readyRead=None,
             center=kwargs.get('center', [17, 13]),
+            min_factor=kwargs.get('min_factor', 0),
         )
 
         self.X = KDC101Controller(portName=x_port)
@@ -58,8 +59,11 @@ class KinesisXY(AbstractStage):
         force = kwargs.get('force', False)
         is_async = kwargs.get('is_async', True)
 
-        x = round(max(0, min(self.x_max, x)), self.prec)
-        y = round(max(0, min(self.y_max, y)), self.prec)
+        x = self._clamp(Axis.X, x, min_factor=0)
+        y = self._clamp(Axis.Y, y, min_factor=0)
+
+        x = round(x, self.prec)
+        y = round(y, self.prec)
         if x != self.X.position or force:
             self.run_async(self.X.move_absolute, x, is_async=is_async)
         if y != self.Y.position or force:
@@ -71,6 +75,7 @@ class KinesisXY(AbstractStage):
 
         x = round(x, self.prec)
         y = round(y, self.prec)
+
         if x != 0:
             self.run_async(self.X.move_relative, x, is_async=is_async)
         if y != 0:

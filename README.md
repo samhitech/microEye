@@ -7,14 +7,15 @@ The **`microEye`** is a Python toolkit for fluorescence microscopy that supports
 This toolkit is compatible with the [hardware](#hardware) used in our microscope. For further details, refer to the [miEye microscope paper](https://doi.org/10.1016/j.ohx.2022.e00368) and [OSF project](http://doi.org/10.17605/osf.io/j2fqy).
 
 ```bash
-   __  ____              ____                ___  ____  ___          ___ 
-  /  |/  (_)__________  / __/_ _____   _  __|_  |/ / / / _ \________|_  |
- / /|_/ / / __/ __/ _ \/ _// // / -_) | |/ / __//_  _// // / __/ __/ __/ 
-/_/  /_/_/\__/_/  \___/___/\_, /\__/  |___/____(_)_/(_)___/_/  \__/____/ 
-                          /___/                                          
+   __  ____              ____                ___  ____  ___
+  /  |/  (_)__________  / __/_ _____   _  __|_  |/ / / / _ \
+ / /|_/ / / __/ __/ _ \/ _// // / -_) | |/ / __//_  _// // /
+/_/  /_/_/\__/_/  \___/___/\_, /\__/  |___/____(_)_/(_)___/
+                          /___/
 ```
 
 <!-- ![Package Health](https://snyk.io/advisor/python/microEye/badge.svg) -->
+
 ![Python Version](https://img.shields.io/badge/Python-3.11-blue)
 ![Package Version](https://img.shields.io/pypi/v/microEye.svg)
 ![Package Version](https://img.shields.io/badge/GUI_Platform-PySide6|PyQt6|PyQt5-navy)
@@ -38,9 +39,132 @@ This toolkit is compatible with the [hardware](#hardware) used in our microscope
 ![GitHub Forks](https://img.shields.io/github/forks/samhitech/microEye.svg)
 ![GitHub Stars](https://img.shields.io/github/stars/samhitech/microEye.svg)
 
+## What's New in microEye
+
+- **Stage Control Overhaul**
+
+  Stage management has been completely redesigned with a unified controller
+  that handles all stage types through a single, consistent interface. A new
+  Stage Manager lets you add, remove, and assign stages to axes on the fly.
+  Per-axis soft limits, configurable center positions, and a new Calibrate
+  action make setup safer and more repeatable. Dedicated **XY and Z Center
+  buttons** in the Controller dock move stages to their configured center
+  positions in one click.
+
+- **SmarAct MCS2 Support**
+
+  Full support for SmarAct MCS2 multi-channel controllers, including guided
+  setup, calibration, homing, and soft-limit configuration for reliable
+  multi-axis motion.
+
+- **Slides Widget**
+
+  A new Slides dock lets you visualize and navigate multi-channel slide
+  layouts (Sticky-Slide VI, µ-Slide VI, 8/18 Well, and more). Click any
+  channel to move the stage to its center, with live position and delta
+  readouts, position overlays, and context menu options for axis orientation
+  and inversion. Layout settings persist across sessions.
+
+- **Focus Stabilization Improvements**
+
+  The focus stabilizer has been thoroughly refactored. Each axis now has
+  independent PID gains and calibration. New stabilization methods are
+  supported — including Reflection peak fitting, Fiducial/Fourier, and a
+  Hybrid XYZ mode. Frame statistics (count, mean, median) are now tracked
+  and the stabilizer waits for a sufficient number of frames before locking,
+  reducing false engagements. Plots dynamically show only the data relevant
+  to the active method, and all settings persist across sessions.
+
+- **New Analysis & Calibration Tools**
+
+  Three new calibration workflows are available from the Multi-Viewer Tools
+  menu:
+  - **Dark Calibration** — directory-based mean/variance analysis with
+    results cache, import/export, and dataset comparison.
+  - **Photon Transfer Curve (PTC)** — dataset import, run/cache workflows,
+    cache comparison, and Dark-Cal JSON export.
+  - **Sphere Power Calibration** — calibration utilities integrated into
+    the PTC workflow.
+
+  A new **Image Registration** tool for aligning and merging multi-channel
+  stacks (with transformation export/import) is also available in the
+  Multi-Viewer Tools menu.
+
+- **Expanded Camera Support**
+
+  Cameras from Basler, Allied Vision (Vimba X SDK), IDS Peak, Thorlabs,
+  PCO, and PycroManager now share unified ROI, exposure, and framerate
+  handling. Notable additions:
+  - **IDS Peak** is newly supported with binning, flash, and full ROI and
+    acquisition flow.
+  - **Basler** is newly supported.
+  - **Vimba X** gains black level, gain, correction, and binning controls,
+    plus CTI auto-discovery via `VIMBA_X_HOME` / `VIMBA_X_CTI`.
+  - All camera configurations are **automatically saved and restored** on
+    next launch when detected.
+
+- **Laser & Device Controls**
+
+  The Controller dock now shows color-coded, wavelength-aware indicators
+  for each laser and relay. Clicking an indicator toggles the laser state
+  directly from the main UI. Relay mode labels (ON/F1/F2) are shown
+  alongside each laser.
+
+- **Experiment Protocol Designer**
+
+  The protocol action list gains a new **ListLoop** action type for
+  repeating sequences of steps. The parameter adjustment UI now sorts
+  target objects, shows readable labels, and correctly handles integer and
+  float editors.
+
+- **Program-Wide Logging**
+
+  Structured logging replaces scattered print statements across the entire
+  codebase. Log level, file output, and console output are configurable via
+  the launcher UI or CLI flags (`--log-level`, `--no-log-file`,
+  `--no-log-console`). Logs are written per session under `./logs` for
+  easier troubleshooting.
+
+- **Image I/O & Data Handling**
+
+  Image handling has been refactored into a dedicated `microEye.images`
+  package. Zarr V3 is now fully supported for streaming and saving
+  acquisition data, with both zipped and directory store support.
+
+- **Multi-Viewer Improvements**
+
+  The Multi-Viewer gains an **"Opened Files" dock** for quick switching
+  between open datasets, a **Registration Tool** for stack alignment, and
+  new menu entries for the Dark Calibration and PTC tools — all accessible
+  as MDI subwindows.
+
+- **Display & Performance**
+
+  Focus widget plots have been rewritten to eliminate GUI freezes at high
+  framerates (tested at ~165 Hz). A new optional **crosshair overlay** can
+  be enabled on any camera display. OpenGL rendering is now used for image
+  display. Application startup is faster thanks to deferred initialization
+  of heavy components.
+
+- **Stability & Compatibility**
+  - GPU imports are safely guarded on CPU-only systems.
+  - Qt binding selection is configurable at launch via CLI or environment
+    variable.
+  - Spatial filters (DoG, PointGaussFilter, Fourier) are faster via FFT
+    convolution and Numba acceleration.
+  - Qt6 compatibility fixes for mouse event handling.
+  - `PiezoConcept FOC` stage adapter fixes a float/int mismatch that caused
+    random Z jumps.
+
+---
+
+> ⚠️ **Breaking Change:** Zarr V3 support requires **Python 3.11 or
+> newer**. Python 3.9 and 3.10 are no longer supported.
+
 ## Table of Contents
 
 - [The microEye](#the-microeye)
+  - [What's New in microEye](#whats-new-in-microeye)
   - [Table of Contents](#table-of-contents)
   - [How to Install microEye](#how-to-install-microeye)
     - [Troubleshooting Installation](#troubleshooting-installation)
@@ -86,7 +210,6 @@ This toolkit is compatible with the [hardware](#hardware) used in our microscope
    ```
 
 3. **Install specific hardware drivers: (Optional)**
-
    - Allied Vision CMOS cameras:
 
      Install the [`Vimba X SDK`](https://www.alliedvision.com/en/products/software/vimba-x-sdk/) (_avoid installing it inside the Program Files directory_). After installation, navigate to the `Python API` directory (e.g., `C:\Allied Vision\Vimba X\api\python`) where the `vmbpy` wheel file (`.whl`) is located, and install it using:
@@ -100,7 +223,6 @@ This toolkit is compatible with the [hardware](#hardware) used in our microscope
      It has been observed that `vmbpy` can hang when initializing `GenICAM` transport layers (TLs) if the `GENICAM_GENTL64_PATH` environment variable contains `.cti` folders from other providers (e.g., `IDS Peak` or `pylon`). To avoid this, restrict `Vimba X` to load only its own TLs by explicitly specifying the `Vimba X` `.cti` directory in `VmbC.xml`.
 
      **Steps**
-
      1. **Auto (recommended)**
 
         Set the `VIMBA_X_HOME` environment variable to your `Vimba X` installation directory. `microEye` will read `VIMBA_X_HOME` at startup and use it to point the Vimba X transport-layer (`.cti`) configuration (e.g., `VIMBA_X_HOME/cti`).
@@ -113,7 +235,6 @@ This toolkit is compatible with the [hardware](#hardware) used in our microscope
 
    - Basler CMOS cameras: Install [`pylon`](https://www.baslerweb.com/en/downloads/software/?srsltid=AfmBOoqsMrbQT24hcWiCw-0ptD9PR7nCrPMBZSzi0YlI1CVItNQikMKW&downloadCategory.values.label.data=pylon) (_avoid installing it inside the Program Files directory_).
    - IDS CMOS cameras:
-
      - Install [`IDS Software Suite 4.96.1`](https://en.ids-imaging.com/download-details/AB00604.html?os=windows&version=win10&bus=64&floatcalc=) for Windows 32/64-bit.
      - Alternatively, [`IDS Peak Extended Setup`](https://en.ids-imaging.com/download-peak.html) is prefered as it support old uEye models and the new uEye+ ones.
 
@@ -324,14 +445,12 @@ The following table lists the hardware devices that are integrated and supported
 ### How to Use
 
 1. **Headless Manager**:
-
    - Open the `miEye_module` and navigate to `Tools -> Micro-Manager Headless Manager` in the main menu.
    - Start a new headless instance using a specific configuration file.
    - Stop individual running instances or terminate all instances simultaneously.
    - Save configurations for future use or load previously saved configurations for headless instances.
 
 2. **Core Instances**:
-
    - Open the `miEye_module` and navigate to `Tools -> Micro-Manager Core Bridges` in the main menu.
    - Click on `Add Core Bridge` and provide the port address in the dialog box.
    - A list of connected devices will be displayed, allowing you to view each device's properties.

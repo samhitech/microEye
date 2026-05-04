@@ -80,7 +80,16 @@ class StageView(Tree):
             },
             *self._get_postions(),
             {
+                'name': str(StageParams.POLL_POSITION),
+                'type': 'bool',
+                'value': False,
+            },
+            {
                 'name': str(StageParams.MOVE),
+                'type': 'action',
+            },
+            {
+                'name': str(StageParams.CALIBRATE),
                 'type': 'action',
             },
             {'name': str(StageParams.HOME), 'type': 'action'},
@@ -116,9 +125,9 @@ class StageView(Tree):
             'children': [],
         }
         mapping = {
-            Axis.X: (StageParams.X_MAX, StageParams.X_CENTER),
-            Axis.Y: (StageParams.Y_MAX, StageParams.Y_CENTER),
-            Axis.Z: (StageParams.Z_MAX, StageParams.Z_CENTER),
+            Axis.X: (StageParams.X_MAX, StageParams.X_MIN, StageParams.X_CENTER),
+            Axis.Y: (StageParams.Y_MAX, StageParams.Y_MIN, StageParams.Y_CENTER),
+            Axis.Z: (StageParams.Z_MAX, StageParams.Z_MIN, StageParams.Z_CENTER),
         }
 
         def get_float_param(name, value, axis):
@@ -131,10 +140,13 @@ class StageView(Tree):
                 'decimals': 8,
             }
 
-        for axis, (max_param, center_param) in mapping.items():
+        for axis, (max_param, min_param, center_param) in mapping.items():
             if axis in self.stage.axes:
                 options['children'].append(
                     get_float_param(str(max_param), self.stage.get_max(axis), axis)
+                )
+                options['children'].append(
+                    get_float_param(str(min_param), self.stage.get_min(axis), axis)
                 )
                 options['children'].append(
                     get_float_param(
@@ -251,6 +263,7 @@ class StageView(Tree):
             StageParams.OPEN,
             StageParams.CLOSE,
             StageParams.MOVE,
+            StageParams.CALIBRATE,
             StageParams.HOME,
             StageParams.CENTER,
             StageParams.REFRESH,
@@ -283,6 +296,8 @@ class StageView(Tree):
             self.stage.home()
         elif param == StageParams.CENTER:
             self.stage.center()
+        elif param == StageParams.CALIBRATE:
+            self.stage.calibrate()
         elif param == StageParams.REFRESH:
             self.stage.refresh_position()
         elif param == StageParams.STOP:
@@ -361,6 +376,12 @@ class StageView(Tree):
                 self.stage.set_max_range(Axis.Y, data)
             elif path == StageParams.get_path(StageParams.Z_MAX):
                 self.stage.set_max_range(Axis.Z, data)
+            elif path == StageParams.get_path(StageParams.X_MIN):
+                self.stage.set_min_range(Axis.X, data)
+            elif path == StageParams.get_path(StageParams.Y_MIN):
+                self.stage.set_min_range(Axis.Y, data)
+            elif path == StageParams.get_path(StageParams.Z_MIN):
+                self.stage.set_min_range(Axis.Z, data)
             elif path == StageParams.get_path(StageParams.X_CENTER):
                 self.stage.set_center(Axis.X, data)
             elif path == StageParams.get_path(StageParams.Y_CENTER):
@@ -391,7 +412,8 @@ class StageView(Tree):
         if port_state is not None:
             port_state.setValue('open' if self.stage.is_open() else 'closed')
 
-        # self._update_positions()
+        if self.get_param_value(StageParams.POLL_POSITION):
+            self._update_positions()
 
     def _remove_widget(self):
         '''
