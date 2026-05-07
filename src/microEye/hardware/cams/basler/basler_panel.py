@@ -170,7 +170,7 @@ class Basler_Panel(Camera_Panel):
         # start a timer to update the camera params
         self.timer = QtCore.QTimer(self)
         self.timer.setSingleShot(True)
-        self.timer.setInterval(200)  # Update every 200 ms after a change
+        self.timer.setInterval(250)  # Update every 250 ms after a change
         self.timer.timeout.connect(self.update_params)
         self.timer.start()
 
@@ -198,10 +198,6 @@ class Basler_Panel(Camera_Panel):
                     )
 
                     with param.treeChangeBlocker():
-                        if value != param.value():
-                            param.setValue(value)
-                        if enabled != param.opts.get('enabled', True):
-                            param.setOpts(enabled=enabled)
                         if limits and (
                             len(limits) != len(param.opts.get('limits', []))
                             or any(
@@ -212,6 +208,10 @@ class Basler_Panel(Camera_Panel):
                             )
                         ):
                             param.setLimits(limits)
+                        if value != param.value():
+                            param.setValue(value)
+                        if enabled != param.opts.get('enabled', True):
+                            param.setOpts(enabled=enabled)
                 except Exception as e:
                     logging.getLogger(__name__).error(
                         f"Error updating parameter {prop.get('name', 'unknown')}: {e}"
@@ -230,11 +230,12 @@ class Basler_Panel(Camera_Panel):
     def update_cam(self, param: Optional[Parameter], param_value):
         path = super().update_cam(param, param_value)
 
+        # Restart the timer to update the camera params after a change
+        if hasattr(self, 'timer') and self.timer is not None:
+            self.timer.start()
+
         if path is None:
             return
-
-        # Restart the timer to update the camera params after a change
-        self.timer.start()
 
     @property
     def cam(self):

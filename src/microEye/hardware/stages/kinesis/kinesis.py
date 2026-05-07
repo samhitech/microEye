@@ -59,8 +59,8 @@ class KinesisXY(AbstractStage):
         force = kwargs.get('force', False)
         is_async = kwargs.get('is_async', True)
 
-        x = self._clamp(Axis.X, x, min_factor=0)
-        y = self._clamp(Axis.Y, y, min_factor=0)
+        x = self._clamp(Axis.X, x)
+        y = self._clamp(Axis.Y, y)
 
         x = round(x, self.prec)
         y = round(y, self.prec)

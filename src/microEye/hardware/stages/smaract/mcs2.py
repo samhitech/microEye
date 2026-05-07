@@ -34,13 +34,24 @@ def assert_lib_compatibility():
 
 
 class MCS2Stage(AbstractStage):
+    '''
+    Class for controlling SmarAct MCS2 stages using the SmarActCTL library.
+
+    **Notes**
+        - The MCS2 stage can be configured with different types of channels,
+          such as stick-slip piezo drivers, piezo scanner drivers, and magnetic drivers.
+        - This class assumes a default configuration of 3 channels (X, Y, Z)
+          with stick-slip piezo drivers.
+        - Should work out of the box, but it can be adapted to other configurations by
+          modifying the channel initialization and movement methods accordingly.
+    '''
     NAME = 'SmarAct MCS2'
 
     CTL_LOCK = threading.RLock()
 
     DEFAULT_MAX_RANGE_PM = {
         Axis.X: 40_000_000_000,
-        Axis.Y: 25_000_000_000,
+        Axis.Y: 21_000_000_000,
         Axis.Z: 10_000_000_000,
     }
 
@@ -48,17 +59,17 @@ class MCS2Stage(AbstractStage):
         ctl.ChannelState.CALIBRATING
         | ctl.ChannelState.ACTIVELY_MOVING
         # | ctl.ChannelState.CLOSED_LOOP_ACTIVE
-    )
+    ) if ctl is not None else 0
 
     REFERNCING_STATE_MASK = (
         ctl.ChannelState.CLOSED_LOOP_ACTIVE
         | ctl.ChannelState.REFERENCING
         | ctl.ChannelState.ACTIVELY_MOVING
-    )
+    ) if ctl is not None else 0
 
     MOVE_STATE_MASK = (
         ctl.ChannelState.ACTIVELY_MOVING | ctl.ChannelState.CLOSED_LOOP_ACTIVE
-    )
+    ) if ctl is not None else 0
 
     def _ctl_call(self, func: Callable, *args):
         with MCS2Stage.CTL_LOCK:
@@ -537,26 +548,32 @@ class MCS2Stage(AbstractStage):
                 'has_sensor': (state & ctl.ChannelState.SENSOR_PRESENT) != 0,
             }
 
-            # Set move velocity to 5 mm/s.
-            ctl.SetProperty_i64(
-                self.__handle,
-                channel,
-                ctl.Property.MOVE_VELOCITY,
-                int(info[channel]['velocity']),
-            )
-            # Set move acceleration to 5 mm/s2.
-            ctl.SetProperty_i64(
-                self.__handle,
-                channel,
-                ctl.Property.MOVE_ACCELERATION,
-                int(info[channel]['acceleration']),
-            )
-            ctl.SetProperty_i32(
-                self.__handle,
-                channel,
-                ctl.Property.ACTUATOR_MODE,
-                ctl.ActuatorMode.QUIET,
-            )
+            # Leave default velocity and acceleration for now,
+            # to the values set in the volatile memory of the controller
+            # for best performance, but we can set them here if needed.
+            # ctl.SetProperty_i64(
+            #     self.__handle,
+            #     channel,
+            #     ctl.Property.MOVE_VELOCITY,
+            #     int(info[channel]['velocity']),
+            # )
+            # ctl.SetProperty_i64(
+            #     self.__handle,
+            #     channel,
+            #     ctl.Property.MOVE_ACCELERATION,
+            #     int(info[channel]['acceleration']),
+            # )
+
+            # According to SmarAct support, setting the actuator mode to quiet
+            # on a stick-slip piezo driver can reduce its lifetime and is just for demo
+            # purposes, so I commented it out.
+
+            # ctl.SetProperty_i32(
+            #     self.__handle,
+            #     channel,
+            #     ctl.Property.ACTUATOR_MODE,
+            #     ctl.ActuatorMode.QUIET,
+            # )
 
             if type == ctl.ChannelModuleType.STICK_SLIP_PIEZO_DRIVER:
                 # Set move mode to closed-loop relative movement.
@@ -566,9 +583,9 @@ class MCS2Stage(AbstractStage):
                     ctl.Property.MOVE_MODE,
                     ctl.MoveMode.CL_RELATIVE,
                 )
-                ctl.SetProperty_i32(
-                    self.__handle, channel, ctl.Property.MAX_CL_FREQUENCY, 6000
-                )
+                # ctl.SetProperty_i32(
+                #     self.__handle, channel, ctl.Property.MAX_CL_FREQUENCY, 6000
+                # ) # valid range from 5-7 KHz, setting it to 6 KHz.
             elif type == ctl.ChannelModuleType.PIEZO_SCANNER_DRIVER:
                 # Enable the amplifier for each channel to allow movement.
                 ctl.SetProperty_i32(
@@ -644,8 +661,11 @@ class MCS2Stage(AbstractStage):
         self._move_channel(channel, delta, move_mode=move_mode)
 
     def _move_channel(
-        self, channel: int, target: int, move_mode=ctl.MoveMode.CL_RELATIVE
+        self, channel: int, target: int, move_mode=None
     ):
+        if move_mode is None:
+            move_mode = ctl.MoveMode.CL_RELATIVE
+
         if not self._has_sensor(channel):
             logger.warning(f'MCS2 channel {channel} has no sensor, skipping movement.')
             return
@@ -700,7 +720,7 @@ class MCS2Stage(AbstractStage):
 if __name__ == '__main__':
     import sys
 
-    def print_position(stage):
+    def print_position(stage: AbstractStage):
         time.sleep(0.5)
 
         for axis in stage.axes:

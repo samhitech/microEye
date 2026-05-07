@@ -8,9 +8,9 @@ This toolkit is compatible with the [hardware](#hardware) used in our microscope
 
 ```bash
    __  ____              ____                ___  ____  ___
-  /  |/  (_)__________  / __/_ _____   _  __|_  |/ / / / _ \
- / /|_/ / / __/ __/ _ \/ _// // / -_) | |/ / __//_  _// // /
-/_/  /_/_/\__/_/  \___/___/\_, /\__/  |___/____(_)_/(_)___/
+  /  |/  (_)__________  / __/_ _____   _  __|_  |/ / / <  /
+ / /|_/ / / __/ __/ _ \/ _// // / -_) | |/ / __//_  _/ / /
+/_/  /_/_/\__/_/  \___/___/\_, /\__/  |___/____(_)_/(_)_/
                           /___/
 ```
 
@@ -39,7 +39,7 @@ This toolkit is compatible with the [hardware](#hardware) used in our microscope
 ![GitHub Forks](https://img.shields.io/github/forks/samhitech/microEye.svg)
 ![GitHub Stars](https://img.shields.io/github/stars/samhitech/microEye.svg)
 
-## What's New in microEye
+## What's New in microEye 2.4
 
 - **Stage Control Overhaul**
 
@@ -164,7 +164,7 @@ This toolkit is compatible with the [hardware](#hardware) used in our microscope
 ## Table of Contents
 
 - [The microEye](#the-microeye)
-  - [What's New in microEye](#whats-new-in-microeye)
+  - [What's New in microEye 2.4](#whats-new-in-microeye-24)
   - [Table of Contents](#table-of-contents)
   - [How to Install microEye](#how-to-install-microeye)
     - [Troubleshooting Installation](#troubleshooting-installation)
