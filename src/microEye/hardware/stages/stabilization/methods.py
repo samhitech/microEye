@@ -149,6 +149,16 @@ class CalibrationManager:
     def __init__(self):
         self.__cal_coeffs = np.ones((3,))  # nm/pixel
 
+        self.__use_calibration = False
+
+    def enable_calibration(self, enable: bool = True):
+        '''Enable or disable calibration'''
+        self.__use_calibration = enable
+
+    def is_calibration_enabled(self) -> bool:
+        '''Check if calibration is enabled'''
+        return self.__use_calibration
+
     def get_coefficient(self, axis: Axis = None) -> Union[float, np.ndarray]:
         '''Get calibration coefficient for axis'''
         if axis is None:
@@ -162,7 +172,9 @@ class CalibrationManager:
 
     def convert_to_physical(self, pixels: float, axis: Axis) -> float:
         '''Convert pixel measurement to physical units'''
-        return pixels * self.get_coefficient(axis)
+        if self.is_calibration_enabled():
+            return pixels * self.get_coefficient(axis)
+        return pixels
 
 
 class PositionTracker:
@@ -256,7 +268,7 @@ class StabilizationMethods(Enum):
 class StabilizationStrategy(ABC):
     '''Base class for stabilization method strategies'''
 
-    PARAMS : dict[str, dict] = {}
+    PARAMS: dict[str, dict] = {}
 
     def __init__(self):
         # Isolate mutable nested defaults between strategy instances.
@@ -388,7 +400,7 @@ class ReflectionStrategy(StabilizationStrategy):
         params = {'xy': None, 'z': None}
         if fit_params is not None:
             z_center = fit_params[1]  # x0 from GaussianOffSet
-            z_physical = z_center * calibration_manager.get_coefficient(Axis.Z)
+            z_physical = calibration_manager.convert_to_physical(z_center, Axis.Z)
             params['z'] = z_physical
 
         return {
@@ -697,7 +709,9 @@ class FiducialStrategy(StabilizationStrategy):
                 fit_params[:, 4] ** 2 - fit_params[:, 5] ** 2
                 if self.fit_method
                 else fit_params[:, 4]
-            ) * calibration_manager.get_coefficient(Axis.Z)
+            )
+
+            z_param = calibration_manager.convert_to_physical(z_param, Axis.Z)
 
             z_param = np.nanmean(controller.outlier_rejection(z_param))
 
@@ -734,12 +748,11 @@ class FiducialStrategy(StabilizationStrategy):
         if xy_shift is not None:
             x_shifts, y_shifts = xy_shift
 
-            x_shift = np.nanmean(
-                controller.outlier_rejection(x_shifts)
-            ) * calibration_manager.get_coefficient(Axis.X)
-            y_shift = np.nanmean(
-                controller.outlier_rejection(y_shifts)
-            ) * calibration_manager.get_coefficient(Axis.Y)
+            x_shift = np.nanmean(controller.outlier_rejection(x_shifts))
+            y_shift = np.nanmean(controller.outlier_rejection(y_shifts))
+
+            x_shift = calibration_manager.convert_to_physical(x_shift, Axis.X)
+            y_shift = calibration_manager.convert_to_physical(y_shift, Axis.Y)
 
             shifts[Axis.X] = x_shift
             shifts[Axis.Y] = y_shift
@@ -835,6 +848,7 @@ class HybridStrategy(StabilizationStrategy):
     - Z from ReflectionStrategy
     - XY from FiducialStrategy
     '''
+
     PARAMS = {
         **ReflectionStrategy.PARAMS,
         **FiducialStrategy.PARAMS,

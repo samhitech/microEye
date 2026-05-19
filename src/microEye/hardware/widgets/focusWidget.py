@@ -13,6 +13,7 @@ from microEye.hardware.stages.stabilizer import (
     StabilizationMethods,
 )
 from microEye.qt import Qt, QtCore, QtWidgets
+from microEye.utils.display import DisplayManager, fast_autolevels_opencv
 from microEye.utils.gui_helper import GaussianOffSet
 from microEye.utils.thread_worker import QThreadWorker
 
@@ -71,6 +72,8 @@ class focusWidget(QtWidgets.QDockWidget):
         self.image_widget = pg.GraphicsView()
         # remove margins from the plot widget
         self.image_widget.setContentsMargins(0, 0, 0, 0)
+        # transparent background for the image widget
+        self.image_widget.setBackground(None)
 
         # IR Camera GraphView
         self.view_box = pg.ViewBox()
@@ -82,7 +85,12 @@ class focusWidget(QtWidgets.QDockWidget):
         self.view_box.invertY(True)
 
         self._image_item = pg.ImageItem(axisOrder='row-major')
-        self._image_item.setImage(np.random.normal(size=(512, 512)))
+
+        # rand 12 bit uint image for testing around 10 ADU +- 5
+        random_image = (np.random.normal(size=(512, 512)) + 20).astype(
+            np.uint16
+        )
+        self._image_item.setImage(random_image)
 
         # --- ROI Items ---
         # Line ROI for REFLECTION
@@ -289,6 +297,38 @@ class focusWidget(QtWidgets.QDockWidget):
         FocusStabilizer.instance().updatePlots.connect(self._update_event)
         self.focusStabilizerView.methodChanged.connect(self._update_plot_visibility)
         self.focusStabilizerView.setRoiActivated.connect(self.set_rois)
+
+        self.focusStabilizerView.actionActivated.connect(self._on_action_activated)
+
+    def _on_action_activated(self, action: str):
+        if action == FocusStabilizerParams.EXTERNAL_PREVIEW.value:
+            thresholds, hist, cdf = fast_autolevels_opencv(
+                self._image_item.image, levels=True
+            )
+
+            name = 'Focus Stabilizer Preview'
+
+            autoLevels = not DisplayManager.has_display(name)
+
+            DisplayManager.instance().image_update_signal.emit(
+                name,
+                self._image_item.image,
+                {
+                    'aspect_ratio': 1.0,
+                    'width': self._image_item.image.shape[1],
+                    'height': self._image_item.image.shape[0],
+                    'show_stats': True,
+                    'autoLevels': autoLevels,
+                    'show_crosshair': True,
+                    'isSingleView': True,
+                    'isROIsView': False,
+                    'isOverlaidView': False,
+                    'plot_type': True,
+                    'threshold': thresholds,
+                    'plot': hist,
+                    'force_plot_update': True,
+                },
+            )
 
     def updateViewBox(self, data: np.ndarray):
         self._image_item.setImage(data, _callSync='off')

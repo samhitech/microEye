@@ -366,9 +366,13 @@ def z_stack_acquisition(
 
                     if (
                         FocusStabilizer.instance().isFocusStabilized(Axis.Z)
-                        and FocusStabilizer.instance().useCal()
+                        and FocusStabilizer.instance().isAdjustSetPoint()
                     ):
-                        value = FocusStabilizer.instance().calCoeff(Axis.Z) * step_size
+                        value = step_size
+                        if not FocusStabilizer.instance().useCal():
+                            value /= FocusStabilizer.instance().calCoeff(
+                                Axis.Z
+                            )
                         if reverse:
                             value *= -1
                         FocusStabilizer.instance().setParameter(value, True)
@@ -463,9 +467,7 @@ def z_calibration(
                 QtCore.QThread.msleep(delay * nFrames)
                 positions[x, 0] = x * step_size
                 _, snapshot = FocusStabilizer.instance().tracker_snapshot
-                positions[x, 1] = np.mean(
-                    snapshot[-nFrames:, 2]
-                )
+                positions[x, 1] = np.mean(snapshot[-nFrames:, 2])
         else:
             logger.warning('Z-calibration failed!')
             info = [{'Z-Stage Open': stage_manager.z_stage().is_open()}]

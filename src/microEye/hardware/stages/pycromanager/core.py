@@ -1,3 +1,4 @@
+import logging
 import time
 import traceback
 
@@ -7,6 +8,8 @@ from microEye.hardware.pycromanager.enums import DeviceType
 from microEye.hardware.stages.stage import AbstractStage, Axis, Units, emit_after_signal
 from microEye.qt import QtCore, QtWidgets
 from microEye.utils.thread_worker import QThreadWorker
+
+logger = logging.getLogger(__name__)
 
 
 class PycroStageZ(PycroDevice, AbstractStage):
@@ -105,13 +108,18 @@ class PycroStageZ(PycroDevice, AbstractStage):
         if not isinstance(config, dict):
             raise ValueError('Config must be a dictionary.')
 
-        super().load_config(config)
+        try:
+            pycromanager_config = config.get('pycromanager', {})
 
-        pycromanager_config = config.get('pycromanager', {})
-
-        if isinstance(pycromanager_config, dict):
-            self._label = pycromanager_config.get('label', self.label)
-            self._port = pycromanager_config.get('port', self._port)
+            if isinstance(pycromanager_config, dict):
+                self._label = pycromanager_config.get('label', self.label)
+                self._port = pycromanager_config.get('port', self._port)
+        except Exception as e:
+            logger.error(
+                f'Error loading PycroManager config: {e}\n{traceback.format_exc()}'
+            )
+        finally:
+            super().load_config(config)
 
 
 class PycroStageXY(PycroDevice, AbstractStage):
@@ -170,16 +178,24 @@ class PycroStageXY(PycroDevice, AbstractStage):
     def move_relative(self, x: float, y: float, z: float = 0, **kwargs):
         is_async = kwargs.get('is_async', True)
         self.run_async(
-            self._core.set_relative_xy_position, x, y, self.label, is_async=is_async,
-            wait_func=self.wait
+            self._core.set_relative_xy_position,
+            x,
+            y,
+            self.label,
+            is_async=is_async,
+            wait_func=self.wait,
         )
 
     @emit_after_signal('moveFinished')
     def move_absolute(self, x: float, y: float, z: float = 0, **kwargs):
         is_async = kwargs.get('is_async', True)
         self.run_async(
-            self._core.set_xy_position, x, y, self.label, is_async=is_async,
-            wait_func=self.wait
+            self._core.set_xy_position,
+            x,
+            y,
+            self.label,
+            is_async=is_async,
+            wait_func=self.wait,
         )
 
     def wait(self, timeout: float = 5.0):
@@ -243,10 +259,13 @@ class PycroStageXY(PycroDevice, AbstractStage):
         if not isinstance(config, dict):
             raise ValueError('Config must be a dictionary.')
 
-        super().load_config(config)
+        try:
+            pycromanager_config = config.get('pycromanager', {})
 
-        pycromanager_config = config.get('pycromanager', {})
-
-        if isinstance(pycromanager_config, dict):
-            self._label = pycromanager_config.get('label', self.label)
-            self._port = pycromanager_config.get('port', self._port)
+            if isinstance(pycromanager_config, dict):
+                self._label = pycromanager_config.get('label', self.label)
+                self._port = pycromanager_config.get('port', self._port)
+        except Exception as e:
+            logger.error(f'Error loading PycroManager config: {e}')
+        finally:
+            super().load_config(config)

@@ -256,6 +256,8 @@ class StageView(Tree):
         self.stage.signals.asyncFinished.connect(self._update_positions)
         self.stage.signals.stageRemoved.connect(self._remove_widget)
 
+        self.stage.signals.configChanged.connect(self._update_config)
+
         self._connect_signals()
 
     def _connect_signals(self):
@@ -414,6 +416,29 @@ class StageView(Tree):
 
         if self.get_param_value(StageParams.POLL_POSITION):
             self._update_positions()
+
+    def _update_config(self):
+        # update tree from metadata
+        mapping = {
+            Axis.X: (StageParams.X_MAX, StageParams.X_MIN, StageParams.X_CENTER),
+            Axis.Y: (StageParams.Y_MAX, StageParams.Y_MIN, StageParams.Y_CENTER),
+            Axis.Z: (StageParams.Z_MAX, StageParams.Z_MIN, StageParams.Z_CENTER),
+        }
+
+        for axis, (max_param, min_param, center_param) in mapping.items():
+            max_param = self.get_param(max_param)
+            min_param = self.get_param(min_param)
+            center_param = self.get_param(center_param)
+
+            if max_param is not None:
+                with max_param.treeChangeBlocker():
+                    max_param.setValue(self.stage.get_max(axis))
+            if min_param is not None:
+                with min_param.treeChangeBlocker():
+                    min_param.setValue(self.stage.get_min(axis))
+            if center_param is not None:
+                with center_param.treeChangeBlocker():
+                    center_param.setValue(self.stage.get_center(axis))
 
     def _remove_widget(self):
         '''

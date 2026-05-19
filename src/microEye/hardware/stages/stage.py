@@ -1,3 +1,4 @@
+import logging
 import traceback
 from abc import ABC, abstractmethod
 from enum import Enum
@@ -6,6 +7,7 @@ from typing import Any, Callable, Optional, Union
 from microEye.qt import QtCore, QtSerialPort, Signal
 from microEye.utils.thread_worker import QThreadWorker
 
+logger = logging.getLogger(__name__)
 
 class Axis(Enum):
     '''
@@ -227,6 +229,8 @@ class StageSignals(QtCore.QObject):
     asyncStarted = Signal()
     asyncFinished = Signal()
     stageRemoved = Signal()
+
+    configChanged = Signal()
 
 
 def emit_after_signal(signal_name):
@@ -942,25 +946,30 @@ class AbstractStage(ABC):
         if not isinstance(config, dict):
             raise ValueError('Config must be a dictionary.')
 
-        if (
-            self.driver.is_serial()
-            and not self.driver.is_dual_serial
-            and self.serial is not None
-        ):
-            serial_config = config.get('serial', {})
-            if isinstance(serial_config, dict):
-                self.setBaudRate(serial_config.get('baudrate', 115200))
-                self.setPortName(serial_config.get('port', 'COM5'))
+        try:
+            if (
+                self.driver.is_serial()
+                and not self.driver.is_dual_serial
+                and self.serial is not None
+            ):
+                serial_config = config.get('serial', {})
+                if isinstance(serial_config, dict):
+                    self.setBaudRate(serial_config.get('baudrate', 115200))
+                    self.setPortName(serial_config.get('port', 'COM5'))
 
-        for axis in self._axes:
-            if axis.value in config:
-                axis_config = config[axis.value]
-                if not isinstance(axis_config, dict):
-                    continue
+            for axis in self._axes:
+                if axis.value in config:
+                    axis_config = config[axis.value]
+                    if not isinstance(axis_config, dict):
+                        continue
 
-                if 'max' in axis_config:
-                    self.set_max_range(axis, axis_config['max'])
-                if 'center' in axis_config:
-                    self.set_center(axis, axis_config['center'])
-                if 'min' in axis_config:
-                    self.set_min_range(axis, axis_config['min'])
+                    if 'max' in axis_config:
+                        self.set_max_range(axis, axis_config['max'])
+                    if 'center' in axis_config:
+                        self.set_center(axis, axis_config['center'])
+                    if 'min' in axis_config:
+                        self.set_min_range(axis, axis_config['min'])
+        except Exception as e:
+            logger.error(f'Error loading stage config: {e}\n{traceback.format_exc()}')
+        finally:
+            self.signals.configChanged.emit()

@@ -307,7 +307,7 @@ class PyQtGraphDisplay(QtWidgets.QWidget):
             plot_data: np.ndarray = kwargs.get('plot')
 
             # Update histogram and CDF plots each 100 ms
-            if elapsed >= 1.0:
+            if elapsed >= 1.0 or kwargs.get('force_plot_update', False):
                 self._last_update = now
                 for idx in range(plot_data.shape[1]):
                     self._plot_refs[idx].setData(plot_data[:, idx])
@@ -414,6 +414,11 @@ class DisplayManager(QtCore.QObject):
         super().__init__(parent=parent)
 
         self.image_update_signal.connect(self.im_show)
+
+    @classmethod
+    def has_display(cls, window_name: str) -> bool:
+        '''Check if a display with the given name exists.'''
+        return window_name in cls.DISPLAYS
 
     @classmethod
     def instance(cls):

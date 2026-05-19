@@ -48,6 +48,7 @@ class FocusStabilizerParams(Enum):
     N_FRAMES = 'Number of Frames'
     FRAMES_STATS = 'Frames Statistics'
     LINE_WIDTH = 'Line ROI Width'
+    EXTERNAL_PREVIEW = 'External Preview'
     SAVE = 'Save'
     LOAD = 'Load'
 
@@ -59,10 +60,13 @@ class FocusStabilizerParams(Enum):
     STABILIZATION_METHOD = 'Method'
     METHOD_PARAMS = 'Method Parameters'
 
-    USE_CAL = 'Use Calibration'
-    X_CALIBRATION = 'Calibration (X) [nm/pixel]'
-    Y_CALIBRATION = 'Calibration (Y) [nm/pixel]'
-    Z_CALIBRATION = 'Calibration (Z) [nm/pixel]'
+    CALIBRATION = 'Calibration'
+
+    USE_CAL = 'Calibration.Active'
+    X_CALIBRATION = 'Calibration.(X) [nm/pixel]'
+    Y_CALIBRATION = 'Calibration.(Y) [nm/pixel]'
+    Z_CALIBRATION = 'Calibration.(Z) [nm/pixel]'
+    ADJUST_SET_POINT = 'Calibration.Adjust Set Point'
 
     XY_OUTLIER_REJECTION = 'XY Outlier Rejection'
     XY_OUTLIER_REJECTION_METHOD = 'XY Outlier Rejection.Method'
@@ -167,7 +171,9 @@ class FocusStabilizer(QtCore.QObject):
         # Calibration manager
         self.__cal_manager = CalibrationManager()
 
-        self.__use_cal = False
+        # Adjust set point flag
+        self.__adjust_set_point = False
+
         self.__inverted = np.zeros((3,), dtype=bool)
 
         self.__n_frames = 1
@@ -330,7 +336,7 @@ class FocusStabilizer(QtCore.QObject):
         bool
             True if pixel calibration coefficient is used, False otherwise.
         '''
-        return self.__use_cal
+        return self.__cal_manager.is_calibration_enabled()
 
     def setUseCal(self, use_cal: bool):
         '''
@@ -341,7 +347,29 @@ class FocusStabilizer(QtCore.QObject):
         use_cal : bool
             The flag value.
         '''
-        self.__use_cal = use_cal
+        self.__cal_manager.enable_calibration(use_cal)
+
+    def isAdjustSetPoint(self):
+        '''
+        Check if adjust set point option is enabled.
+
+        Returns
+        -------
+        bool
+            True if adjust set point option is enabled, False otherwise.
+        '''
+        return self.__adjust_set_point
+
+    def setAdjustSetPoint(self, adjust: bool):
+        '''
+        Set the flag indicating whether to adjust the set point.
+
+        Parameters
+        ----------
+        adjust : bool
+            The flag value.
+        '''
+        self.__adjust_set_point = adjust
 
     def isInverted(self, axis: Optional[Axis]):
         '''
@@ -626,7 +654,8 @@ class FocusStabilizer(QtCore.QObject):
             'tau': self.__tau,
             'error_th': self.__err_th,
             'cal_coeff': self.__cal_manager.get_coefficient().tolist(),
-            'use_cal': self.__use_cal,
+            'use_cal': self.useCal(),
+            'adjust_set_point': self.isAdjustSetPoint(),
             'inverted': self.__inverted.tolist(),
             'method': str(self.__method),
             'strategy_params': self.get_current_strategy_param_values(),
@@ -848,6 +877,7 @@ class FocusStabilizer(QtCore.QObject):
 class FocusStabilizerView(Tree):
     PARAMS = FocusStabilizerParams
     setRoiActivated = Signal()
+    actionActivated = Signal(str)
     saveActivated = Signal()
     loadActivated = Signal()
     methodChanged = Signal(StabilizationMethods)
@@ -926,6 +956,7 @@ class FocusStabilizerView(Tree):
                 'limits': [1, 100],
                 'step': 1,
             },
+            {'name': str(FocusStabilizerParams.EXTERNAL_PREVIEW), 'type': 'action'},
             {'name': str(FocusStabilizerParams.SAVE), 'type': 'action'},
             {'name': str(FocusStabilizerParams.LOAD), 'type': 'action'},
             {
@@ -960,40 +991,54 @@ class FocusStabilizerView(Tree):
             {
                 'name': str(FocusStabilizerParams.METHOD_PARAMS),
                 'type': 'group',
+                'expanded': False,
                 'children': [],
             },
             {
-                'name': str(FocusStabilizerParams.USE_CAL),
-                'type': 'bool',
-                'value': False,
-            },
-            {
-                'name': str(FocusStabilizerParams.X_CALIBRATION),
-                'type': 'float',
-                'value': 1.0,
-                'step': 0.01,
-                'dec': False,
-                'decimals': 6,
-            },
-            {
-                'name': str(FocusStabilizerParams.Y_CALIBRATION),
-                'type': 'float',
-                'value': 1.0,
-                'step': 0.01,
-                'dec': False,
-                'decimals': 6,
-            },
-            {
-                'name': str(FocusStabilizerParams.Z_CALIBRATION),
-                'type': 'float',
-                'value': 1.0,
-                'step': 0.01,
-                'dec': False,
-                'decimals': 6,
+                'name': str(FocusStabilizerParams.CALIBRATION),
+                'type': 'group',
+                'expanded': False,
+                'children': [
+                    {
+                        'name': str(FocusStabilizerParams.USE_CAL),
+                        'type': 'bool',
+                        'value': False,
+                    },
+                    {
+                        'name': str(FocusStabilizerParams.X_CALIBRATION),
+                        'type': 'float',
+                        'value': 1.0,
+                        'step': 0.01,
+                        'dec': False,
+                        'decimals': 6,
+                    },
+                    {
+                        'name': str(FocusStabilizerParams.Y_CALIBRATION),
+                        'type': 'float',
+                        'value': 1.0,
+                        'step': 0.01,
+                        'dec': False,
+                        'decimals': 6,
+                    },
+                    {
+                        'name': str(FocusStabilizerParams.Z_CALIBRATION),
+                        'type': 'float',
+                        'value': 1.0,
+                        'step': 0.01,
+                        'dec': False,
+                        'decimals': 6,
+                    },
+                    {
+                        'name': str(FocusStabilizerParams.ADJUST_SET_POINT),
+                        'type': 'bool',
+                        'value': False,
+                    },
+                ],
             },
             {
                 'name': str(FocusStabilizerParams.XY_OUTLIER_REJECTION),
                 'type': 'group',
+                'expanded': False,
                 'children': [
                     {
                         'name': str(FocusStabilizerParams.XY_OUTLIER_REJECTION_METHOD),
@@ -1022,6 +1067,7 @@ class FocusStabilizerView(Tree):
             {
                 'name': str(FocusStabilizerParams.X),
                 'type': 'group',
+                'expanded': False,
                 'children': [
                     {
                         'name': str(FocusStabilizerParams.X_INVERTED),
@@ -1057,6 +1103,7 @@ class FocusStabilizerView(Tree):
             {
                 'name': str(FocusStabilizerParams.Y),
                 'type': 'group',
+                'expanded': False,
                 'children': [
                     {
                         'name': str(FocusStabilizerParams.Y_INVERTED),
@@ -1092,6 +1139,7 @@ class FocusStabilizerView(Tree):
             {
                 'name': str(FocusStabilizerParams.Z),
                 'type': 'group',
+                'expanded': False,
                 'children': [
                     {
                         'name': str(FocusStabilizerParams.Z_INVERTED),
@@ -1150,6 +1198,11 @@ class FocusStabilizerView(Tree):
             QtWidgets.QHeaderView.ResizeMode.ResizeToContents
         )
 
+        self.get_param(FocusStabilizerParams.EXTERNAL_PREVIEW).sigActivated.connect(
+            lambda: self.actionActivated.emit(
+                FocusStabilizerParams.EXTERNAL_PREVIEW.value
+            )
+        )
         self.get_param(FocusStabilizerParams.SAVE).sigActivated.connect(
             self.export_config
         )
@@ -1286,6 +1339,8 @@ class FocusStabilizerView(Tree):
                 FocusStabilizer.instance().setInverted(data, Axis.Z)
             if fsParam == FocusStabilizerParams.USE_CAL:
                 FocusStabilizer.instance().setUseCal(data)
+            if fsParam == FocusStabilizerParams.ADJUST_SET_POINT:
+                FocusStabilizer.instance().setAdjustSetPoint(data)
             if fsParam == FocusStabilizerParams.FOCUS_PARAMETER:
                 FocusStabilizer.instance().setParameter(data)
 
@@ -1451,6 +1506,10 @@ class FocusStabilizerView(Tree):
 
             self.set_param_value(
                 FocusStabilizerParams.USE_CAL, bool(stabilizer.get('use_cal'))
+            )
+            self.set_param_value(
+                FocusStabilizerParams.ADJUST_SET_POINT,
+                bool(stabilizer.get('adjust_set_point')),
             )
             self.set_param_value(FocusStabilizerParams.FT_TAU, float(tau))
             self.set_param_value(FocusStabilizerParams.FT_ERROR_TH, float(error_th))

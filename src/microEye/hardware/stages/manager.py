@@ -137,7 +137,7 @@ class StageManager(QtCore.QObject):
         Move the stage in a specified direction by a specified
         number of steps in nanometers. Optional boolean argument
         to specify jump or step move. If FocusStabilizer is stabilizing
-        and use calibration is set to True, moves the center pixel value
+        and adjust set point is set to True, moves the center pixel value
         instead of the Z position when `interface` is True.
 
         Parameters
@@ -171,13 +171,17 @@ class StageManager(QtCore.QObject):
         if (
             focusStabilizer is not None
             and focusStabilizer.isFocusStabilized(Axis.Z)
-            and focusStabilizer.useCal()
+            and focusStabilizer.isAdjustSetPoint()
             and interface
         ):
             sign = 1 if dir else -1
             step_nm = Units.convert(
                 step_arg, self.z_stage().get_unit(Axis.Z), Units.NANOMETERS
             )
+            if not FocusStabilizer.instance().useCal():
+                step_nm /= FocusStabilizer.instance().calCoeff(
+                    Axis.Z
+                )
             focusStabilizer.setParameter(
                 step_nm * sign, True
             )

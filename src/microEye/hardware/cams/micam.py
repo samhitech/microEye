@@ -781,32 +781,48 @@ class miDummy(miCamera):
         '''
         noise = kwargs.get('noise', 0)  # noise to add to fiducial positions
         drift = kwargs.get('drift', [0, 0, 0])  # drift in x, y, z
+        psf_model = kwargs.get('psf_model', 'airy').lower()
+        airy_scale = kwargs.get('airy_scale', 1.22)
         kernel_size = int(6 * max(sigma_x, sigma_y)) | 1  # odd size, covers >99% of PSF
 
-        x = np.arange(self.width)
-        y = np.arange(self.height)
-        X, Y = np.meshgrid(x, y)
+        pattern = np.zeros((self.height, self.width), dtype=np.float64)
 
-        pattern = np.zeros((self.width, self.height), dtype=np.float64)
-
-        ax, ay = 1 / (2 * sigma_x**2), 1 / (2 * sigma_y**2)
+        eps = np.finfo(np.float64).eps
+        ax, ay = 1 / (2 * sigma_x**2 + eps), 1 / (2 * sigma_y**2 + eps)
         for fid in fiducials:
             x = fid[0]
             y = fid[1]
 
             x += drift[0] + (np.random.random_sample() - 0.5) * noise
             y += drift[1] + (np.random.random_sample() - 0.5) * noise
-            x_slice = slice(
-                int(max(x - kernel_size, 0)), int(min(x + kernel_size, self.width))
-            )
-            y_slice = slice(
-                int(max(y - kernel_size, 0)), int(min(y + kernel_size, self.height))
-            )
+            x0 = int(max(x - kernel_size, 0))
+            x1 = int(min(x + kernel_size, self.width))
+            y0 = int(max(y - kernel_size, 0))
+            y1 = int(min(y + kernel_size, self.height))
 
-            pattern[y_slice, x_slice] += self.drift_amplitude * np.exp(
-                -((X[y_slice, x_slice] - x) ** 2) * ax
-                - ((Y[y_slice, x_slice] - y) ** 2) * ay
-            )
+            if x1 <= x0 or y1 <= y0:
+                continue
+
+            x_local = np.arange(x0, x1, dtype=np.float64) - x
+            y_local = np.arange(y0, y1, dtype=np.float64) - y
+
+            if psf_model == 'airy':
+                # Airy-like approximation using sinc^2 radial profile.
+                r = np.sqrt(
+                    np.add.outer(
+                        (y_local / (sigma_y + np.random.random_sample() * 0.1 + eps))
+                        ** 2,
+                        (x_local / (sigma_x + np.random.random_sample() * 0.1 + eps))
+                        ** 2,
+                    )
+                )
+                patch = np.sinc(r / (airy_scale + eps)) ** 2
+            else:
+                gx = np.exp(-(x_local**2) * ax)
+                gy = np.exp(-(y_local**2) * ay)
+                patch = np.multiply.outer(gy, gx)
+
+            pattern[y0:y1, x0:x1] += self.drift_amplitude * patch
 
         if pattern.min() < 0:
             pattern += abs(pattern.min())

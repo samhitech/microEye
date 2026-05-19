@@ -506,12 +506,15 @@ class MCS2Stage(AbstractStage):
         if not isinstance(config, dict):
             raise ValueError('Config must be a dictionary.')
 
-        super().load_config(config)
-
-        locator = config.get('locator')
-        if locator is not None:
-            self.close()
-            self.locator = locator
+        try:
+            locator = config.get('locator')
+            if locator is not None:
+                self.close()
+                self.locator = locator
+        except Exception as e:
+            logger.error(f'Error loading MCS2 config: {e}')
+        finally:
+            super().load_config(config)
 
     def _initialize_channels(self):
         if not self.is_open():

@@ -1,3 +1,4 @@
+import logging
 import traceback
 from typing import Optional
 
@@ -15,6 +16,8 @@ from microEye.hardware.stages.stage import (
 from microEye.qt import QtCore, QtSerialPort, QtWidgets, Signal
 from microEye.utils.parameter_tree import Tree
 from microEye.utils.thread_worker import QThreadWorker
+
+logger = logging.getLogger(__name__)
 
 
 class KinesisXY(AbstractStage):
@@ -125,18 +128,23 @@ class KinesisXY(AbstractStage):
         if not isinstance(config, dict):
             raise ValueError('Config must be a dictionary.')
 
-        super().load_config(config)
+        try:
+            x_config = config.get('X', {})
+            y_config = config.get('Y', {})
 
-        x_config = config.get('X', {})
-        y_config = config.get('Y', {})
+            if isinstance(x_config, dict):
+                self.X.setBaudRate(x_config.get('baudrate', 115200))
+                self.X.setPortName(x_config.get('port', 'COM12'))
 
-        if isinstance(x_config, dict):
-            self.X.setBaudRate(x_config.get('baudrate', 115200))
-            self.X.setPortName(x_config.get('port', 'COM12'))
-
-        if isinstance(y_config, dict):
-            self.Y.setBaudRate(y_config.get('baudrate', 115200))
-            self.Y.setPortName(y_config.get('port', 'COM13'))
+            if isinstance(y_config, dict):
+                self.Y.setBaudRate(y_config.get('baudrate', 115200))
+                self.Y.setPortName(y_config.get('port', 'COM13'))
+        except Exception as e:
+            logger.error(
+                f'Error loading KinesisXY config: {e}\n{traceback.format_exc()}'
+            )
+        finally:
+            super().load_config(config)
 
 
 if __name__ == '__main__':
