@@ -1,9 +1,13 @@
+import logging
 from enum import Enum
+from typing import Optional
 
 import numba
 import numpy as np
 
 from microEye.analysis.rendering.core import model
+
+logger = logging.getLogger(__name__)
 
 
 @numba.njit()
@@ -62,7 +66,12 @@ class BaseRenderer:
     from single molecule localizations.
     '''
 
-    def __init__(self, pixel_size=10, z_pixel_size=None, mode=RenderModes.HISTOGRAM):
+    def __init__(
+        self,
+        pixel_size: float = 10,
+        z_pixel_size: Optional[float] = None,
+        mode: RenderModes = RenderModes.HISTOGRAM,
+    ):
         '''
         Initializes the renderer.
 
@@ -188,13 +197,25 @@ class BaseRenderer:
             Rendered image
         '''
         if projection == Projection.XY:
+            if X is None or Y is None:
+                logger.warning('None Error X(%s); Y(%s);', X is None, Y is None)
+                return
+
             return self.render_xy(X, Y, Intensity, shape)
         elif projection == Projection.XZ:
+            if X is None or Z is None:
+                logger.warning('None Error X(%s); Z(%s);', X is None, Z is None)
+                return
+
             return self.render_xz(X, Z, Intensity, shape)
         elif projection == Projection.YZ:
+            if X is None or Y is None:
+                logger.warning('None Error Y(%s); Z(%s);', Y is None, Z is None)
+                return
+
             return self.render_yz(Y, Z, Intensity, shape)
         else:
-            raise ValueError('Invalid projection type.')
+            logger.error('Invalid projection type.')
 
     def render_xy(self, X, Y, Intensity, shape=None):
         '''
@@ -373,8 +394,15 @@ class BaseRenderer:
             Rendered XY slice at specified Z position
         '''
         # Validate inputs
+        if X is None or Y is None or Z is None:
+            logger.warning(
+                'None Error X(%s); Y(%s); Z(%s)', X is None, Y is None, Z is None
+            )
+            return
+
         if not len(X) == len(Y) == len(Z) == len(Intensity):
-            raise Exception('The supplied arguments are of different lengths.')
+            logger.error('The supplied arguments are of different lengths.')
+            return
 
         # Set slice width
         if width is None:

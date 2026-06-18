@@ -2,6 +2,7 @@ import json
 import logging
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from enum import Enum
 from typing import Any, Optional, Union
 
 import cv2
@@ -14,7 +15,7 @@ from scipy.signal import find_peaks, peak_prominences
 from tqdm import tqdm
 
 from microEye.analysis.fitting.psf.stats import *
-from microEye.analysis.fitting.results import PARAMETER_HEADERS
+from microEye.analysis.fitting.results import PARAMETER_HEADERS, FittingMethod
 from microEye.images import TiffSeqHandler, ZarrImageSequence, uImage
 
 
@@ -72,7 +73,7 @@ class PSFdata:
         return self._data.get('zslices')
 
     @property
-    def fitting_method(self) -> float:
+    def fitting_method(self) -> FittingMethod:
         return self._data.get('fit_method')
 
     @property
@@ -815,7 +816,11 @@ class PSFdata:
 
             hdf.attrs['shape'] = json.dumps(self.shape)
             hdf.attrs['stack'] = self.path
-            hdf.attrs['fit_method'] = self.fitting_method
+            hdf.attrs['fit_method'] = (
+                self.fitting_method.value
+                if isinstance(self.fitting_method, Enum)
+                else self.fitting_method
+            )
             hdf.attrs['zero_plane'] = self.zero_plane
             hdf.attrs['roi_info'] = json.dumps(self.roi_info)
             hdf.attrs['params_headers'] = json.dumps(self.headers)
@@ -853,10 +858,16 @@ class PSFdata:
                 'roi_size',
                 'upsample',
                 'stack',
-                'fit_method',
                 'zero_plane',
             ]:
                 data[key] = hdf.attrs.get(key, None)
+
+            fit_method = hdf.attrs.get('fit_method', None)
+            if fit_method is not None:
+                try:
+                    data['fit_method'] = FittingMethod(int(fit_method))
+                except ValueError:
+                    data['fit_method'] = FittingMethod.External
 
             for key in ['shape', 'roi_info', 'params_headers']:
                 data[key] = json.loads(hdf.attrs.get(key, '[]'))
@@ -996,7 +1007,7 @@ def get_psf_rois(
     params,
     crlbs,
     loglike,
-    fit_method: int,
+    fit_method: FittingMethod,
     pixel_size: float = 114.17,
     z_step: float = 10,
     roi_size: int = 13,

@@ -120,10 +120,12 @@ class PhotonTransfer(QtWidgets.QDialog):
         self.run_button = QtWidgets.QPushButton('Run Analysis')
         self.load_cache_button = QtWidgets.QPushButton('Load Analysis Cache')
         self.save_cache_button = QtWidgets.QPushButton('Save Analysis Cache')
-        self.export_dark_cal_json_button = QtWidgets.QPushButton(
-            'Export Dark Cal JSON'
-        )
+        self.export_dark_cal_json_button = QtWidgets.QPushButton('Export Dark Cal JSON')
         self.compare_cache_button = QtWidgets.QPushButton('Compare Two Caches')
+
+        self.matplotlib_plots = QtWidgets.QCheckBox('Use Matplotlib for Plots')
+        self.matplotlib_plots.setChecked(False)
+        options_layout.addRow('Plotting Library:', self.matplotlib_plots)
 
         options_layout.addWidget(self.run_button)
         options_layout.addWidget(self.load_cache_button)
@@ -167,6 +169,31 @@ class PhotonTransfer(QtWidgets.QDialog):
         self.gain_variance_source.setCurrentIndex(
             1 if str(source).lower() == 'total' else 0
         )
+
+    @staticmethod
+    def _normalize_output_path(file_path: str, extension: str) -> str:
+        if file_path.lower().endswith(extension):
+            return file_path
+        return f'{file_path}{extension}'
+
+    @staticmethod
+    def _load_analysis_cache_or_log(file_path: str, label: str):
+        try:
+            return load_analysis_cache(file_path)
+        except Exception as e:
+            logger.error(f'Failed to load cache {label}: {e}')
+            return None
+
+    @staticmethod
+    def _write_json_payload(file_path: str, payload: dict, success_message: str):
+        try:
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(payload, f, indent=2)
+            logger.info(success_message)
+            return True
+        except Exception as e:
+            logger.error(f'Failed to export dark calibration mapping JSON: {e}')
+            return False
 
     def _set_controls_enabled(self, enabled: bool):
         self.add_button.setEnabled(enabled)
@@ -431,6 +458,7 @@ class PhotonTransfer(QtWidgets.QDialog):
                 self._datasets,
                 self._returned_data,
                 self._exposure_times_s,
+                self.matplotlib_plots.isChecked(),
             )
             self._results_table = results_to_dataframe(
                 self._datasets,
@@ -470,8 +498,7 @@ class PhotonTransfer(QtWidgets.QDialog):
         if not file_path:
             return
 
-        if not file_path.lower().endswith('.npz'):
-            file_path = f'{file_path}.npz'
+        file_path = self._normalize_output_path(file_path, '.npz')
 
         try:
             count = save_analysis_cache(
@@ -532,6 +559,7 @@ class PhotonTransfer(QtWidgets.QDialog):
             self._datasets,
             self._returned_data,
             self._exposure_times_s,
+            self.matplotlib_plots.isChecked(),
         )
         self._results_table = results_to_dataframe(
             self._datasets,
@@ -568,8 +596,7 @@ class PhotonTransfer(QtWidgets.QDialog):
         if not file_path:
             return
 
-        if not file_path.lower().endswith('.json'):
-            file_path = f'{file_path}.json'
+        file_path = self._normalize_output_path(file_path, '.json')
 
         payload = {}
         for name, ds in self._datasets.items():
@@ -599,15 +626,14 @@ class PhotonTransfer(QtWidgets.QDialog):
                 'quantum_efficiency': quantum_efficiency,
             }
 
-        try:
-            with open(file_path, 'w', encoding='utf-8') as f:
-                json.dump(payload, f, indent=2)
-            logger.info(
+        self._write_json_payload(
+            file_path,
+            payload,
+            (
                 f'Exported dark calibration mapping JSON for '
                 f'{len(payload)} dataset(s) to {file_path}'
-            )
-        except Exception as e:
-            logger.error(f'Failed to export dark calibration mapping JSON: {e}')
+            ),
+        )
 
     def compare_caches(self):
         left_path, _ = getOpenFileName(
@@ -628,27 +654,15 @@ class PhotonTransfer(QtWidgets.QDialog):
         if not right_path:
             return
 
-        try:
-            (
-                _left_datasets,
-                left_data,
-                _left_exposures,
-                left_options,
-            ) = load_analysis_cache(left_path)
-        except Exception as e:
-            logger.error(f'Failed to load cache A: {e}')
+        left_cache = self._load_analysis_cache_or_log(left_path, 'A')
+        if left_cache is None:
             return
+        (_left_datasets, left_data, _left_exposures, left_options) = left_cache
 
-        try:
-            (
-                _right_datasets,
-                right_data,
-                _right_exposures,
-                right_options,
-            ) = load_analysis_cache(right_path)
-        except Exception as e:
-            logger.error(f'Failed to load cache B: {e}')
+        right_cache = self._load_analysis_cache_or_log(right_path, 'B')
+        if right_cache is None:
             return
+        (_right_datasets, right_data, _right_exposures, right_options) = right_cache
 
         dialog = CacheComparisonDialog(
             left_label=os.path.basename(left_path),

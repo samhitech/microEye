@@ -5,7 +5,7 @@ from typing import Callable, Optional, Union
 import numpy as np
 from scipy import stats
 
-from microEye.analysis.fitting.results import PARAMETER_HEADERS
+from microEye.analysis.fitting.results import PARAMETER_HEADERS, FittingMethod
 
 
 class ConfidenceMethod(Enum):
@@ -28,7 +28,7 @@ class StatConfig:
 
 
 class StatsCalculator:
-    def __init__(self, zero_plane: int, z_step: float, fitting_method: str):
+    def __init__(self, zero_plane: int, z_step: float, fitting_method: FittingMethod):
         self.zero_plane = zero_plane
         self.z_step = z_step
         self.fitting_method = fitting_method

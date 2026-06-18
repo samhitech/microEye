@@ -420,11 +420,11 @@ def fit_points(
     tuple[np.ndarray, Optional[np.ndarray], Optional[np.ndarray]]
         Fitted parameters, CRLBs, and log-likelihood values.
     '''
-    method: FittingMethod = options.get('method', FittingMethod._2D_Phasor_CPU)
+    method: FittingMethod = options.get('method', FittingMethod.Phasor_2D_CPU)
     roi_size = options.get('roi_size', 13)
     PSFparam = options.get('PSFparam', np.array([1]))
 
-    if method == FittingMethod._2D_Phasor_CPU:
+    if method == FittingMethod.Phasor_2D_CPU:
         params = phasor_fit(image, points, roi_size=roi_size)
         return params, None, None
 

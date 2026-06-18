@@ -12,9 +12,8 @@ from pyqtgraph import functions as fn
 from tabulate import tabulate
 
 from microEye.analysis.fitting.psf import ConfidenceMethod, PSFdata, stats
-from microEye.analysis.fitting.results import PARAMETER_HEADERS, FittingMethod
+from microEye.analysis.fitting.results import FittingMethod
 from microEye.qt import QtCore, QtWidgets, getOpenFileName, getSaveFileName
-from microEye.utils.enum_encoder import EnumEncoder
 
 logger = logging.getLogger(__name__)
 

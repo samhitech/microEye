@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import pyqtgraph as pg
 
+from microEye.analysis.fitting.results import DataColumns
 from microEye.qt import QApplication, QtWidgets, Signal
 
 
@@ -57,9 +58,10 @@ class resultsStatsWidget(QtWidgets.QWidget):
                 lr.sigRegionChangeFinished.connect(self.update)
 
     def _derive_tracking_df(self):
-        if self._df['trackID'].max() > 0 and self._extended:
-            track_ids = self._df[self._df['trackID'] > 0]['trackID'].to_numpy()
-            distances = self._df[self._df['trackID'] > 0][
+        tr_id_col = str(DataColumns.TRACK_ID)
+        if self._df[tr_id_col].max() > 0 and self._extended:
+            track_ids = self._df[self._df[tr_id_col] > 0][tr_id_col].to_numpy()
+            distances = self._df[self._df[tr_id_col] > 0][
                 'neighbour_distance'
             ].to_numpy()
 
@@ -210,6 +212,8 @@ class resultsStatsWidget(QtWidgets.QWidget):
         self._clearLayout()
 
     def update(self):
+        tr_id_col = str(DataColumns.TRACK_ID)
+
         mask = np.ones(self._df.count().max(), dtype=bool)
         for idx, column in enumerate(self._df.columns):
             Rmin, Rmax = self.plot_lr[idx].getRegion()
@@ -232,11 +236,11 @@ class resultsStatsWidget(QtWidgets.QWidget):
                 tr_mask &= (column_data >= Rmin) & (column_data <= Rmax)
 
             # Create lookup array for track filtering
-            track_lookup = np.zeros(int(self._df['trackID'].max()) + 1, dtype=bool)
+            track_lookup = np.zeros(int(self._df[tr_id_col].max()) + 1, dtype=bool)
             track_lookup[self._tracking_df.index[tr_mask].astype(int)] = True
 
             # Apply track filter to main mask
-            track_ids = self._df['trackID'].to_numpy()
+            track_ids = self._df[tr_id_col].to_numpy()
             valid_tracks = (track_ids > 0) & track_lookup[track_ids.astype(int)]
             mask &= valid_tracks
 

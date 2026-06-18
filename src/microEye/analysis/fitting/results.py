@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 from scipy.interpolate import interp1d
 
+from microEye.analysis.fitting.clustering import perform_dbscan_clustering
 from microEye.analysis.fitting.processing import *
 from microEye.analysis.fitting.rcc import (
     dcc_shift_estimation,
@@ -16,45 +17,19 @@ from microEye.analysis.rendering import BaseRenderer, Projection, RenderModes
 
 logger = logging.getLogger(__name__)
 
-UNIQUE_COLUMNS = [
-    'frame',
-    'channel',
-    'x',
-    'y',
-    'z',
-    'background',
-    'intensity',
-    'sigmax',
-    'sigmay',
-    'ratio',
-    'loglike',
-    'iteration',
-    'trackID',
-    'neighbour_distance',
-    'n_merged',
-    'CRLB x',
-    'CRLB y',
-    'CRLB z',
-    'CRLB background',
-    'CRLB intensity',
-    'CRLB sigmax',
-    'CRLB sigmay',
-    'CRLB sigmaz',
-]
-
 
 class DataColumns(Enum):
     FRAME = 1
-    C = 2
+    CHANNEL = 2
     X = 3
     Y = 4
     Z = 5
     BACKGROUND = 6
     INTENSITY = 7
-    X_SIGMA = 8
-    Y_SIGMA = 9
+    SIGMA_X = 8
+    SIGMA_Y = 9
     XY_RATIO = 10
-    LOG_LIKE = 11
+    LOGLIKE = 11
     ITERATION = 12
     TRACK_ID = 13
     NEIGHBOUR_DISTANCE = 14
@@ -62,14 +37,19 @@ class DataColumns(Enum):
     CRLB_X = 16
     CRLB_Y = 17
     CRLB_Z = 18
-    CRLB_I = 19
-    CRLB_BG = 20
-    CRLB_SIG_X = 21
-    CRLB_SIG_Y = 22
-    CRLB_SIG_Z = 23
+    CRLB_INTENSITY = 19
+    CRLB_BACKGROUND = 20
+    CRLB_SIGMA_X = 21
+    CRLB_SIGMA_Y = 22
+    CRLB_SIGMA_Z = 23
+    CLUSTER_ID = 24
+
+    @classmethod
+    def unique_columns(cls) -> list[str]:
+        return [column.name.replace('_', ' ').lower() for column in cls]
 
     def __str__(self):
-        return UNIQUE_COLUMNS[self.value - 1]
+        return self.name.replace('_', ' ').lower()
 
     @classmethod
     def from_string(cls, s):
@@ -89,35 +69,35 @@ class ResultsUnits:
 
 
 class FittingMethod(Enum):
-    _External = -1
-    _2D_Phasor_CPU = 0
-    _2D_Gauss_MLE_fixed_sigma = 1
-    _2D_Gauss_MLE_free_sigma = 2
-    _not_used = 3
-    _2D_Gauss_MLE_elliptical_sigma = 4
-    _3D_Gauss_MLE_cspline_sigma = 5
+    External = -1
+    Phasor_2D_CPU = 0
+    MLE_2D_fixed_sigma = 1
+    MLE_2D_free_sigma = 2
+    not_used = 3
+    MLE_2D_elliptical_sigma = 4
+    MLE_3D_cspline_sigma = 5
 
     def __str__(self):
         '''
         Return the string representation of method.
         '''
-        return [
-            'External',
-            '2D Phasor-Fit (CPU)',
-            '2D MLE Gauss-Fit fixed sigma (GPU/CPU)',
-            '2D MLE Gauss-Fit free sigma (GPU/CPU)',
-            'Not Available',
-            '2D MLE Gauss-Fit elliptical sigma (GPU/CPU)',
-            '3D MLE cSpline (GPU/CPU)',
-        ][self.value + 1]
+        return {
+            FittingMethod.External: 'External',
+            FittingMethod.Phasor_2D_CPU: '2D Phasor-Fit',
+            FittingMethod.MLE_2D_fixed_sigma: '2D MLE fixed sigma',
+            FittingMethod.MLE_2D_free_sigma: '2D MLE free sigma',
+            FittingMethod.not_used: 'Not Available',
+            FittingMethod.MLE_2D_elliptical_sigma: '2D MLE elliptical sigma',
+            FittingMethod.MLE_3D_cspline_sigma: '3D MLE cSpline',
+        }.get(self, 'External')
 
     @staticmethod
     def get_strings():
         return [
-            '2D Phasor-Fit (CPU)',
-            '2D MLE Gauss-Fit free sigma (GPU/CPU)',
-            '2D MLE Gauss-Fit elliptical sigma (GPU/CPU)',
-            '3D MLE cSpline (GPU/CPU)',
+            '2D Phasor-Fit',
+            '2D MLE free sigma',
+            '2D MLE elliptical sigma',
+            '3D MLE cSpline',
         ]
 
     @staticmethod
@@ -172,66 +152,117 @@ class FittingMethod(Enum):
             )
         return NotImplemented
 
+    def __hash__(self):
+        return super().__hash__()
+
 
 PARAMETER_HEADERS = {
-    0: ['x', 'y', 'intensity', 'background', 'ratio'],
-    1: ['x', 'y', 'intensity', 'background', 'iteration'],
-    2: ['x', 'y', 'intensity', 'background', 'sigmax', 'iteration'],
-    4: ['x', 'y', 'intensity', 'background', 'sigmax', 'sigmay', 'iteration'],
-    5: ['x', 'y', 'intensity', 'background', 'z', 'iteration'],
+    FittingMethod.Phasor_2D_CPU: ['x', 'y', 'intensity', 'background', 'ratio'],
+    FittingMethod.MLE_2D_fixed_sigma: [
+        'x',
+        'y',
+        'intensity',
+        'background',
+        'iteration',
+    ],
+    FittingMethod.MLE_2D_free_sigma: [
+        'x',
+        'y',
+        'intensity',
+        'background',
+        'sigmax',
+        'iteration',
+    ],
+    FittingMethod.MLE_2D_elliptical_sigma: [
+        'x',
+        'y',
+        'intensity',
+        'background',
+        'sigmax',
+        'sigmay',
+        'iteration',
+    ],
+    FittingMethod.MLE_3D_cspline_sigma: [
+        'x',
+        'y',
+        'intensity',
+        'background',
+        'z',
+        'iteration',
+    ],
+}
+
+ALIASES = {
+    'frame': DataColumns.FRAME,
+    'frames': DataColumns.FRAME,
+    't': DataColumns.FRAME,
+    'time': DataColumns.FRAME,
+    'channel': DataColumns.CHANNEL,
+    'c': DataColumns.CHANNEL,
+    'x': DataColumns.X,
+    'x [nm]': DataColumns.X,
+    'locx': DataColumns.X,
+    'y': DataColumns.Y,
+    'y [nm]': DataColumns.Y,
+    'locy': DataColumns.Y,
+    'z': DataColumns.Z,
+    'z [nm]': DataColumns.Z,
+    'locz': DataColumns.Z,
+    'bg': DataColumns.BACKGROUND,
+    'background': DataColumns.BACKGROUND,
+    'i': DataColumns.INTENSITY,
+    'intensity': DataColumns.INTENSITY,
+    'sigma': DataColumns.SIGMA_X,
+    'sigmax': DataColumns.SIGMA_X,
+    'sigma x': DataColumns.SIGMA_X,
+    'x_sigma': DataColumns.SIGMA_X,
+    'sigmay': DataColumns.SIGMA_Y,
+    'sigma y': DataColumns.SIGMA_Y,
+    'y_sigma': DataColumns.SIGMA_Y,
+    'ratio': DataColumns.XY_RATIO,
+    'xy_ratio': DataColumns.XY_RATIO,
+    'xy ratio': DataColumns.XY_RATIO,
+    'ratio x/y': DataColumns.XY_RATIO,
+    'loglike': DataColumns.LOGLIKE,
+    'iteration': DataColumns.ITERATION,
+    'trackid': DataColumns.TRACK_ID,
+    'track id': DataColumns.TRACK_ID,
+    'neighbour_distance': DataColumns.NEIGHBOUR_DISTANCE,
+    'neighbour_dist': DataColumns.NEIGHBOUR_DISTANCE,
+    'neighbour distance': DataColumns.NEIGHBOUR_DISTANCE,
+    'n_merged': DataColumns.N_MERGED,
+    'crlb_x': DataColumns.CRLB_X,
+    'crlb x': DataColumns.CRLB_X,
+    'crlb_y': DataColumns.CRLB_Y,
+    'crlb y': DataColumns.CRLB_Y,
+    'crlb_z': DataColumns.CRLB_Z,
+    'crlb z': DataColumns.CRLB_Z,
+    'crlb_i': DataColumns.CRLB_INTENSITY,
+    'crlb i': DataColumns.CRLB_INTENSITY,
+    'crlb intensity': DataColumns.CRLB_INTENSITY,
+    'crlb_bg': DataColumns.CRLB_BACKGROUND,
+    'crlb bg': DataColumns.CRLB_BACKGROUND,
+    'crlb background': DataColumns.CRLB_BACKGROUND,
+    'crlb_sigx': DataColumns.CRLB_SIGMA_X,
+    'crlb sigma': DataColumns.CRLB_SIGMA_X,
+    'crlb sigmax': DataColumns.CRLB_SIGMA_X,
+    'crlb sigma x': DataColumns.CRLB_SIGMA_X,
+    'crlb_sigy': DataColumns.CRLB_SIGMA_Y,
+    'crlb sigmay': DataColumns.CRLB_SIGMA_Y,
+    'crlb sigma y': DataColumns.CRLB_SIGMA_Y,
+    'crlb_sigz': DataColumns.CRLB_SIGMA_Z,
+    'crlb sigmaz': DataColumns.CRLB_SIGMA_Z,
+    'crlb sigma z': DataColumns.CRLB_SIGMA_Z,
+    'clusterid': DataColumns.CLUSTER_ID,
+    'cluster id': DataColumns.CLUSTER_ID,
 }
 
 
 def map_column_alias(alias: str) -> DataColumns:
     alias_lower = alias.lower()
-    if alias_lower in ('frame', 'frames', 't', 'time'):
-        return DataColumns.FRAME
-    elif alias_lower in ('channel', 'c'):
-        return DataColumns.C
-    elif alias_lower in ('x', 'x [nm]', 'locx'):
-        return DataColumns.X
-    elif alias_lower in ('y', 'y [nm]', 'locy'):
-        return DataColumns.Y
-    elif alias_lower in ('z', 'z [nm]', 'locz'):
-        return DataColumns.Z
-    elif alias_lower in ('bg', 'background'):
-        return DataColumns.BACKGROUND
-    elif alias_lower in ('i', 'intensity'):
-        return DataColumns.INTENSITY
-    elif alias_lower in ('sigma', 'sigmax', 'sigma x', 'x_sigma'):
-        return DataColumns.X_SIGMA
-    elif alias_lower in ('sigmay', 'sigma y', 'y_sigma'):
-        return DataColumns.Y_SIGMA
-    elif alias_lower in ('ratio', 'xy_ratio', 'ratio x/y'):
-        return DataColumns.XY_RATIO
-    elif alias_lower in ('loglike',):
-        return DataColumns.LOG_LIKE
-    elif alias_lower in ('iteration',):
-        return DataColumns.ITERATION
-    elif alias_lower in ('trackid', 'track id'):
-        return DataColumns.TRACK_ID
-    elif alias_lower in ('neighbour_distance', 'neighbour_dist', 'neighbour distance'):
-        return DataColumns.NEIGHBOUR_DISTANCE
-    elif alias_lower in ('n_merged',):
-        return DataColumns.N_MERGED
-    elif alias_lower in ('crlb_x', 'crlb x'):
-        return DataColumns.CRLB_X
-    elif alias_lower in ('crlb_y', 'crlb y'):
-        return DataColumns.CRLB_Y
-    elif alias_lower in ('crlb_z', 'crlb z'):
-        return DataColumns.CRLB_Z
-    elif alias_lower in ('crlb_i', 'crlb i', 'crlb intensity'):
-        return DataColumns.CRLB_I
-    elif alias_lower in ('crlb_bg', 'crlb bg', 'crlb background'):
-        return DataColumns.CRLB_BG
-    elif alias_lower in ('crlb_sigx', 'crlb sigmax', 'crlb sigmax'):
-        return DataColumns.CRLB_SIG_X
-    elif alias_lower in ('crlb_sigy', 'crlb sigmay'):
-        return DataColumns.CRLB_SIG_Y
-    elif alias_lower in ('crlb_sigz', 'crlb sigmaz'):
-        return DataColumns.CRLB_SIG_Z
+    if alias_lower in ALIASES:
+        return ALIASES[alias_lower]
     else:
-        # raise ValueError(f'Unrecognized column alias: {alias}')
         return None
 
 
@@ -240,7 +271,7 @@ class FittingResults:
         self,
         unit=ResultsUnits.Pixel,
         pixelSize=130.0,
-        fittingMethod=FittingMethod._2D_Phasor_CPU,
+        fittingMethod=FittingMethod.Phasor_2D_CPU,
         path=None,
     ):
         '''Fitting Results
@@ -263,7 +294,7 @@ class FittingResults:
         self.colormap = None
         self.intensity_range = None
         if fittingMethod > -1:
-            self.parameterHeader = PARAMETER_HEADERS[fittingMethod.value]
+            self.parameterHeader = PARAMETER_HEADERS[fittingMethod]
         else:
             self.parameterHeader = []
 
@@ -309,11 +340,11 @@ class FittingResults:
         if array is not None:
             array[:, :2] *= self.pixel_size
             if (
-                self.fitting_method == FittingMethod._2D_Gauss_MLE_free_sigma
-                or self.fitting_method == FittingMethod._3D_Gauss_MLE_cspline_sigma
+                self.fitting_method == FittingMethod.MLE_2D_free_sigma
+                or self.fitting_method == FittingMethod.MLE_3D_cspline_sigma
             ):
                 array[:, 4] *= self.pixel_size
-            elif self.fitting_method == FittingMethod._2D_Gauss_MLE_elliptical_sigma:
+            elif self.fitting_method == FittingMethod.MLE_2D_elliptical_sigma:
                 array[:, 4:6] *= self.pixel_size
 
     def get_column(self, key: DataColumns):
@@ -357,34 +388,34 @@ class FittingResults:
 
         self.extend_column(DataColumns.FRAME, frames)
 
-        if self.fitting_method == FittingMethod._2D_Phasor_CPU:
+        if self.fitting_method == FittingMethod.Phasor_2D_CPU:
             self.extend_column(DataColumns.XY_RATIO, params[:, -1])
         else:
             self.extend_column(DataColumns.ITERATION, params[:, -1])
 
         # Extend last column based on FittingMethod
-        if self.fitting_method != FittingMethod._2D_Phasor_CPU:
-            self.extend_column(DataColumns.LOG_LIKE, loglike)
+        if self.fitting_method != FittingMethod.Phasor_2D_CPU:
+            self.extend_column(DataColumns.LOGLIKE, loglike)
 
             for idx, var in enumerate(
                 [
                     DataColumns.CRLB_X,
                     DataColumns.CRLB_Y,
-                    DataColumns.CRLB_I,
-                    DataColumns.CRLB_BG,
+                    DataColumns.CRLB_INTENSITY,
+                    DataColumns.CRLB_BACKGROUND,
                 ]
             ):
                 self.extend_column(var, crlbs[:, idx])
 
-            if self.fitting_method == FittingMethod._2D_Gauss_MLE_free_sigma:
-                self.extend_column(DataColumns.X_SIGMA, params[:, 4])
-                self.extend_column(DataColumns.CRLB_SIG_X, crlbs[:, 4])
-            elif self.fitting_method == FittingMethod._2D_Gauss_MLE_elliptical_sigma:
-                self.extend_column(DataColumns.X_SIGMA, params[:, 4])
-                self.extend_column(DataColumns.Y_SIGMA, params[:, 5])
-                self.extend_column(DataColumns.CRLB_SIG_X, crlbs[:, 4])
-                self.extend_column(DataColumns.CRLB_SIG_Y, crlbs[:, 5])
-            elif self.fitting_method == FittingMethod._3D_Gauss_MLE_cspline_sigma:
+            if self.fitting_method == FittingMethod.MLE_2D_free_sigma:
+                self.extend_column(DataColumns.SIGMA_X, params[:, 4])
+                self.extend_column(DataColumns.CRLB_SIGMA_X, crlbs[:, 4])
+            elif self.fitting_method == FittingMethod.MLE_2D_elliptical_sigma:
+                self.extend_column(DataColumns.SIGMA_X, params[:, 4])
+                self.extend_column(DataColumns.SIGMA_Y, params[:, 5])
+                self.extend_column(DataColumns.CRLB_SIGMA_X, crlbs[:, 4])
+                self.extend_column(DataColumns.CRLB_SIGMA_Y, crlbs[:, 5])
+            elif self.fitting_method == FittingMethod.MLE_3D_cspline_sigma:
                 self.extend_column(DataColumns.Z, params[:, 4])
                 self.extend_column(DataColumns.CRLB_Z, crlbs[:, 4])
 
@@ -398,7 +429,7 @@ class FittingResults:
         '''
         keys = self.uniqueKeys()
 
-        if self.fitting_method == FittingMethod._2D_Phasor_CPU:
+        if self.fitting_method == FittingMethod.Phasor_2D_CPU:
             loc = np.c_[
                 self.data[DataColumns.FRAME],
                 self.data[DataColumns.X],
@@ -409,6 +440,7 @@ class FittingResults:
                 self.get_column(DataColumns.TRACK_ID),
                 self.get_column(DataColumns.NEIGHBOUR_DISTANCE),
                 self.get_column(DataColumns.N_MERGED),
+                self.get_column(DataColumns.CLUSTER_ID),
             ]
 
             columns = (
@@ -420,6 +452,7 @@ class FittingResults:
                     str(DataColumns.TRACK_ID),
                     str(DataColumns.NEIGHBOUR_DISTANCE),
                     str(DataColumns.N_MERGED),
+                    str(DataColumns.CLUSTER_ID),
                 ]
             )
         elif self.fitting_method == -1:
@@ -438,57 +471,58 @@ class FittingResults:
                 self.data[DataColumns.INTENSITY],
             ]
 
-            if self.fitting_method == FittingMethod._2D_Gauss_MLE_fixed_sigma:
+            if self.fitting_method == FittingMethod.MLE_2D_fixed_sigma:
                 loc = np.c_[
                     loc,
                     self.data[DataColumns.ITERATION],
                     self.data[DataColumns.CRLB_X],
                     self.data[DataColumns.CRLB_Y],
-                    self.data[DataColumns.CRLB_BG],
-                    self.data[DataColumns.CRLB_I],
+                    self.data[DataColumns.CRLB_BACKGROUND],
+                    self.data[DataColumns.CRLB_INTENSITY],
                 ]
-            elif self.fitting_method == FittingMethod._2D_Gauss_MLE_free_sigma:
+            elif self.fitting_method == FittingMethod.MLE_2D_free_sigma:
                 loc = np.c_[
                     loc,
-                    self.data[DataColumns.X_SIGMA],
+                    self.data[DataColumns.SIGMA_X],
                     self.data[DataColumns.ITERATION],
                     self.data[DataColumns.CRLB_X],
                     self.data[DataColumns.CRLB_Y],
-                    self.data[DataColumns.CRLB_BG],
-                    self.data[DataColumns.CRLB_I],
-                    self.data[DataColumns.CRLB_SIG_X],
+                    self.data[DataColumns.CRLB_BACKGROUND],
+                    self.data[DataColumns.CRLB_INTENSITY],
+                    self.data[DataColumns.CRLB_SIGMA_X],
                 ]
-            elif self.fitting_method == FittingMethod._2D_Gauss_MLE_elliptical_sigma:
+            elif self.fitting_method == FittingMethod.MLE_2D_elliptical_sigma:
                 loc = np.c_[
                     loc,
-                    self.data[DataColumns.X_SIGMA],
-                    self.data[DataColumns.Y_SIGMA],
+                    self.data[DataColumns.SIGMA_X],
+                    self.data[DataColumns.SIGMA_Y],
                     self.data[DataColumns.ITERATION],
                     self.data[DataColumns.CRLB_X],
                     self.data[DataColumns.CRLB_Y],
-                    self.data[DataColumns.CRLB_BG],
-                    self.data[DataColumns.CRLB_I],
-                    self.data[DataColumns.CRLB_SIG_X],
-                    self.data[DataColumns.CRLB_SIG_Y],
+                    self.data[DataColumns.CRLB_BACKGROUND],
+                    self.data[DataColumns.CRLB_INTENSITY],
+                    self.data[DataColumns.CRLB_SIGMA_X],
+                    self.data[DataColumns.CRLB_SIGMA_Y],
                 ]
-            elif self.fitting_method == FittingMethod._3D_Gauss_MLE_cspline_sigma:
+            elif self.fitting_method == FittingMethod.MLE_3D_cspline_sigma:
                 loc = np.c_[
                     loc,
                     self.data[DataColumns.Z],
                     self.data[DataColumns.ITERATION],
                     self.data[DataColumns.CRLB_X],
                     self.data[DataColumns.CRLB_Y],
-                    self.data[DataColumns.CRLB_BG],
-                    self.data[DataColumns.CRLB_I],
+                    self.data[DataColumns.CRLB_BACKGROUND],
+                    self.data[DataColumns.CRLB_INTENSITY],
                     self.data[DataColumns.CRLB_Z],
                 ]
 
             loc = np.c_[
                 loc,
-                self.data[DataColumns.LOG_LIKE],
+                self.data[DataColumns.LOGLIKE],
                 self.get_column(DataColumns.TRACK_ID),
                 self.get_column(DataColumns.NEIGHBOUR_DISTANCE),
                 self.get_column(DataColumns.N_MERGED),
+                self.get_column(DataColumns.CLUSTER_ID),
             ]
 
             columns = (
@@ -502,6 +536,7 @@ class FittingResults:
                     str(DataColumns.TRACK_ID),
                     str(DataColumns.NEIGHBOUR_DISTANCE),
                     str(DataColumns.N_MERGED),
+                    str(DataColumns.CLUSTER_ID),
                 ]
             )
 
@@ -924,6 +959,32 @@ class FittingResults:
 
         return self, (unique_frames, drift_x, drift_y, error_bar_x, error_bar_y)
 
+    def cluster_dbscan(self, **kwargs):
+        logger.info('DBSCAN clustering ...')
+
+        eps = kwargs.get('eps', 50)
+        min_samples = kwargs.get('min_samples', 5)
+        metric = kwargs.get('metric', 'euclidean')
+        algorithm = kwargs.get('algorithm', 'auto')
+        leaf_size = kwargs.get('leaf_size', 30)
+        n_jobs = kwargs.get('n_jobs', -1)
+        scale_data = kwargs.get('scale_data', False)
+
+        labels = perform_dbscan_clustering(
+            self.data[DataColumns.X],
+            self.data[DataColumns.Y],
+            self.data[DataColumns.Z],
+            eps,
+            min_samples,
+            metric=metric,
+            algorithm=algorithm,
+            leaf_size=leaf_size,
+            n_jobs=n_jobs,
+            scale_data=scale_data
+        )
+
+        self.data[DataColumns.CLUSTER_ID] = labels
+
     def zero_coordinates(self):
         # Use vectorized operations with optional masking
         for coord in (DataColumns.X, DataColumns.Y, DataColumns.Z):
@@ -964,7 +1025,7 @@ class FittingResults:
         fittingResults = FittingResults(
             ResultsUnits.Nanometer,
             pixelSize,
-            FittingMethod._External,
+            FittingMethod.External,
             kwargs.get('path'),
         )
 

@@ -93,6 +93,36 @@ class DataTypes(Enum):
     DARK_NOISE = 'dark_noise'
     THERMAL_NOISE = 'thermal_noise'
 
+    DARK_VARIANCE = 'dark_variance'
+    THERMAL_VARIANCE = 'thermal_variance'
+
+    def to_symbol(self) -> str:
+        symbols = {
+            DataTypes.MEAN: '$\\mu_d$',
+            DataTypes.VARIANCE: '$\\sigma_d^2$',
+            DataTypes.BASELINE: 'Baseline',
+            DataTypes.DARK_CURRENT: 'Dark Current',
+            DataTypes.DARK_NOISE: '$\\sigma_{d,~0}$',
+            DataTypes.THERMAL_NOISE: '$\\sigma_{{thermal}}$',
+            DataTypes.DARK_VARIANCE: '$\\sigma_{{d,~0}}^2$',
+            DataTypes.THERMAL_VARIANCE: '$\\sigma_{{thermal}}^2$',
+        }
+        return symbols.get(self, self.value.replace('_', ' ').title())
+
+    def to_unit(self, gain: float) -> str:
+        unit = 'ADU' if gain == 1.0 else 'e-'
+        units = {
+            DataTypes.MEAN: unit,
+            DataTypes.VARIANCE: f'{unit}$^2$',
+            DataTypes.BASELINE: unit,
+            DataTypes.DARK_CURRENT: f'{unit}/s',
+            DataTypes.DARK_NOISE: unit,
+            DataTypes.THERMAL_NOISE: f'{unit}/s$^{{0.5}}$',
+            DataTypes.DARK_VARIANCE: f'{unit}$^2$',
+            DataTypes.THERMAL_VARIANCE: f'{unit}$^2$/s',
+        }
+        return units.get(self, '')
+
 
 FILE_NAMES = {
     DataTypes.MEAN: 'mean.npy',

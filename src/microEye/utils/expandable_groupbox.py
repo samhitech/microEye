@@ -1,93 +1,171 @@
-from microEye.qt import QApplication, QtWidgets
+from weakref import WeakValueDictionary
+
+from microEye.qt import QApplication, QtCore, QtGui, QtWidgets, Slot
 
 
-class ExpandableGroupBox(QtWidgets.QGroupBox):
-    """
-    Custom QGroupBox with expandable functionality.
-
-    Parameters
-    ----------
-    title : str
-        The title of the group box.
-    parent : QWidget, optional
-        The parent widget.
-
-    Attributes
-    ----------
-    None
-
-    Signals
-    -------
-    toggled : bool
-        Emitted when the group box is toggled (expanded or collapsed).
-
-    Methods
-    -------
-    init_ui()
-        Initialize the user interface.
-    mouseDoubleClickEvent(event)
-        Handle the mouse press event to toggle the expansion state.
-    setFlat(flat)
-        Override the setFlat method to adjust the visibility of child widgets.
-
-    Example
-    -------
-    >>> app = QApplication([])
-    >>> main_widget = QWidget()
-    >>> main_layout = QVBoxLayout(main_widget)
-    >>> expandable_group = ExpandableGroupBox('Expandable Group')
-    >>> button1 = QPushButton('Button 1')
-    >>> button2 = QPushButton('Button 2')
-    >>> expandable_group.layout().addWidget(button1)
-    >>> expandable_group.layout().addWidget(button2)
-    >>> main_layout.addWidget(expandable_group)
-    >>> main_widget.show()
-    >>> app.exec()
-    """
-
-    def __init__(self, title: str, parent=None):
+class CollapsibleWidget(QtWidgets.QWidget):
+    OPEN_STYLE = '''
+            QToolButton {
+                padding: 5px;
+                spacing: 5px;
+                text-align: center;
+            }
         '''
-        Parameters
-        ----------
-        title : str
-            The title of the group box.
-        parent : QWidget, optional
-            The parent widget.
+
+    CLOSED_STYLE = '''
+            QToolButton {
+                padding: 5px;
+                spacing: 5px;
+                text-align: center;
+                font-weight: 700;
+            }
         '''
-        super().__init__(title, parent)
-        self.init_ui()
 
-    def init_ui(self):
-        '''Initialize the user interface.'''
-        group_layout = QtWidgets.QVBoxLayout()
-        self.setLayout(group_layout)
-        self.expanded = True
+    def __init__(self, title='', parent=None):
+        super().__init__(parent)
 
-    def mouseDoubleClickEvent(self, event):
-        '''Handle the mouse press event to toggle the expansion state.'''
-        self.expanded = not self.expanded
-        self.setFlat(not self.expanded)
-        # Hide or show child widgets based on the expansion state
-        for i in range(self.layout().count()):
-            item = self.layout().itemAt(i)
-            if item.widget():
-                item.widget().setVisible(self.expanded)
-                # Set the minimum height dynamically based on the expansion state
-                if self.expanded:
-                    item.widget().setMinimumHeight(125)
-                else:
-                    item.widget().setMinimumHeight(0)
+        self.toggle_button = QtWidgets.QToolButton(
+            text=title, checkable=True, checked=False
+        )
+        self.toggle_button.setToolButtonStyle(
+            QtCore.Qt.ToolButtonStyle.ToolButtonTextOnly
+        )
+        self.toggle_button.setArrowType(QtCore.Qt.ArrowType.RightArrow)
+        self.toggle_button.setIconSize(QtCore.QSize(6, 6))
+        self.toggle_button.toggled.connect(self.on_toggled)
+
+        self.toggle_button.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
+
+        self.toggle_button.setStyleSheet(CollapsibleWidget.CLOSED_STYLE)
+
+        self.toggle_animation = QtCore.QParallelAnimationGroup(self)
+
+        self.content_area = QtWidgets.QScrollArea(maximumHeight=0, minimumHeight=0)
+        self.content_area.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed
+        )
+        self.content_area.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.setSpacing(0)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.addWidget(self.toggle_button)
+        lay.addWidget(self.content_area)
+
+        self.toggle_animation.addAnimation(
+            QtCore.QPropertyAnimation(self, b'minimumHeight')
+        )
+        self.toggle_animation.addAnimation(
+            QtCore.QPropertyAnimation(self, b'maximumHeight')
+        )
+        self.toggle_animation.addAnimation(
+            QtCore.QPropertyAnimation(self.content_area, b'maximumHeight')
+        )
+
+    @Slot()
+    def on_toggled(self):
+        checked = self.toggle_button.isChecked()
+
+        # animate when user toggles; the heavy lifting is in setExpanded
+        self.setExpanded(checked, animate=True)
+
+    def setExpanded(self, expanded: bool, animate: bool = False):
+        self.toggle_button.setArrowType(
+            QtCore.Qt.ArrowType.DownArrow
+            if expanded
+            else QtCore.Qt.ArrowType.RightArrow
+        )
+        self.toggle_animation.setDirection(
+            QtCore.QAbstractAnimation.Direction.Forward
+            if expanded
+            else QtCore.QAbstractAnimation.Direction.Backward
+        )
+        self.toggle_button.setStyleSheet(
+            CollapsibleWidget.OPEN_STYLE
+            if expanded
+            else CollapsibleWidget.CLOSED_STYLE
+        )
+        self.toggle_animation.start()
+
+    def setContentLayout(self, layout: QtWidgets.QLayout):
+        lay = self.content_area.layout()
+        del lay
+        self.content_area.setLayout(layout)
+        collapsed_height = self.sizeHint().height() - self.content_area.maximumHeight()
+        content_height = layout.sizeHint().height()
+        for i in range(self.toggle_animation.animationCount()):
+            animation = self.toggle_animation.animationAt(i)
+            animation.setDuration(100)
+            animation.setStartValue(collapsed_height)
+            animation.setEndValue(collapsed_height + content_height)
+
+        content_animation = self.toggle_animation.animationAt(
+            self.toggle_animation.animationCount() - 1
+        )
+        content_animation.setDuration(100)
+        content_animation.setStartValue(0)
+        content_animation.setEndValue(content_height)
+
+
+class SideBar(QtWidgets.QScrollArea):
+    __INDEX = 0
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self._sections = {}
+
+        self.__content = QtWidgets.QWidget()
+        self.setWidget(self.__content)
+        self.setWidgetResizable(True)
+        self._layout = QtWidgets.QVBoxLayout(self.__content)
+
+    def addSection(self, title: str, layout: QtWidgets.QLayout, checked=False):
+        section = CollapsibleWidget(title=title)
+        self._layout.addWidget(section)
+        section.setContentLayout(layout)
+        self._sections[SideBar.__INDEX] = section
+
+        section.toggle_button.setChecked(checked)
+
+        SideBar.__INDEX += 1
+
+        return layout
+
+    def addLayout(self, layout: QtWidgets.QLayout):
+        self._layout.addLayout(layout)
+
+    def addStretch(self):
+        self._layout.addStretch()
 
 
 if __name__ == '__main__':
-    app = QApplication([])
-    main_widget = QtWidgets.QWidget()
-    main_layout = QtWidgets.QVBoxLayout(main_widget)
-    expandable_group = ExpandableGroupBox('Expandable Group')
-    button1 = QtWidgets.QPushButton('Button 1')
-    button2 = QtWidgets.QPushButton('Button 2')
-    expandable_group.layout().addWidget(button1)
-    expandable_group.layout().addWidget(button2)
-    main_layout.addWidget(expandable_group)
-    main_widget.show()
-    app.exec()
+    import random
+    import sys
+
+    app = QApplication(sys.argv)
+
+    win = QtWidgets.QMainWindow()
+    win.setCentralWidget(QtWidgets.QWidget())
+    dock = QtWidgets.QDockWidget('Collapsible Demo')
+    win.addDockWidget(QtCore.Qt.DockWidgetArea.LeftDockWidgetArea, dock)
+    side_bar = SideBar()
+    dock.setWidget(side_bar)
+
+    for i in range(10):
+        lay = QtWidgets.QVBoxLayout()
+        for j in range(8):
+            label = QtWidgets.QLabel(f'{j}')
+            color = QtGui.QColor(*[random.randint(0, 255) for _ in range(3)])
+            label.setStyleSheet(f'background-color: {color.name()}; color : white;')
+            label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+            lay.addWidget(label)
+        side_bar.addSection(f'Collapsible Box Header-{i}', lay)
+
+    side_bar.addStretch()
+    win.resize(720, 480)
+    win.show()
+    sys.exit(app.exec())

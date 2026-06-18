@@ -13,7 +13,10 @@ from microEye.analysis.tools.dark_cal.analysis import (
 from microEye.analysis.tools.dark_cal.compare import DarkDatasetComparisonDialog
 from microEye.analysis.tools.dark_cal.constants import ABOUT_HTML, FILE_NAMES, DataTypes
 from microEye.analysis.tools.dark_cal.io import load_results_npz, save_results_npz
-from microEye.analysis.tools.dark_cal.plotting import plot_results
+from microEye.analysis.tools.dark_cal.plotting import (
+    plot_results,
+    plot_results_matplotlib,
+)
 from microEye.qt import (
     QtCore,
     QtWidgets,
@@ -84,9 +87,13 @@ class DarkCalibration(QtWidgets.QDialog):
         button_layout = QtWidgets.QHBoxLayout()
         self.add_button = QtWidgets.QPushButton('Add Directory')
         self.import_button = QtWidgets.QPushButton('Import Datasets')
+        self.import_button.setToolTip('Import datasets and metadata from JSON file')
+        self.export_button = QtWidgets.QPushButton('Export Datasets')
+        self.export_button.setToolTip('Export dataset list and metadata to JSON file')
         self.remove_button = QtWidgets.QPushButton('Remove Selected')
         button_layout.addWidget(self.add_button)
         button_layout.addWidget(self.import_button)
+        button_layout.addWidget(self.export_button)
         button_layout.addWidget(self.remove_button)
         directories_layout.addLayout(button_layout)
 
@@ -102,8 +109,10 @@ class DarkCalibration(QtWidgets.QDialog):
 
         self.run_button = QtWidgets.QPushButton('Run Analysis')
         self.compare_button = QtWidgets.QPushButton('Compare Datasets')
+        self.matplot_button = QtWidgets.QPushButton('Open plotter')
         options_layout.addWidget(self.run_button)
         options_layout.addWidget(self.compare_button)
+        options_layout.addWidget(self.matplot_button)
 
         cache_buttons_widget = QtWidgets.QWidget()
         cache_buttons_layout = QtWidgets.QHBoxLayout(cache_buttons_widget)
@@ -130,11 +139,13 @@ class DarkCalibration(QtWidgets.QDialog):
 
         self.add_button.clicked.connect(self.add_directory_clicked)
         self.import_button.clicked.connect(self.import_datasets_clicked)
+        self.export_button.clicked.connect(self.export_datasets_clicked)
         self.remove_button.clicked.connect(self.remove_selected_directories)
         self.run_button.clicked.connect(self.run_analysis)
         self.compare_button.clicked.connect(self.compare_datasets)
         self.load_results_button.clicked.connect(self.import_results)
         self.save_results_button.clicked.connect(self.export_results)
+        self.matplot_button.clicked.connect(self.open_plotter)
 
     def _setup_about(self):
         about_widget = QtWidgets.QTextEdit()
@@ -145,11 +156,13 @@ class DarkCalibration(QtWidgets.QDialog):
     def _set_controls_enabled(self, enabled: bool):
         self.add_button.setEnabled(enabled)
         self.import_button.setEnabled(enabled)
+        self.export_button.setEnabled(enabled)
         self.remove_button.setEnabled(enabled)
         self.run_button.setEnabled(enabled)
         self.compare_button.setEnabled(enabled)
         self.load_results_button.setEnabled(enabled)
         self.save_results_button.setEnabled(enabled)
+        self.matplot_button.setEnabled(enabled)
 
     def _default_dataset_meta(self, directory: str) -> dict:
         base_name = os.path.basename(os.path.normpath(str(directory))) or str(directory)
@@ -295,6 +308,42 @@ class DarkCalibration(QtWidgets.QDialog):
             f'skipped {skipped}; defaulted gain for {defaulted_gain} dataset(s).'
         )
 
+    def export_datasets_clicked(self):
+        if not self._directories:
+            logger.info('No datasets to export.')
+            return
+
+        json_path, _ = getSaveFileName(
+            self, 'Export Datasets JSON', '', 'JSON (*.json)'
+        )
+        if not json_path:
+            return
+
+        if not json_path.lower().endswith('.json'):
+            json_path = f'{json_path}.json'
+
+        payload = {
+            'dark_cal_root': os.path.dirname(json_path),
+            'datasets': {
+                meta.get('name', os.path.basename(directory)): {
+                    'name': meta.get('name'),
+                    'dark_calibration_directory': directory,
+                    'gain': meta.get('gain'),
+                    'gain_defaulted': meta.get('gain_defaulted'),
+                    'responsivity': meta.get('responsivity'),
+                    'quantum_efficiency': meta.get('quantum_efficiency'),
+                }
+                for directory, meta in self._dataset_meta.items()
+            },
+        }
+
+        try:
+            with open(json_path, 'w', encoding='utf-8') as f:
+                json.dump(payload, f, indent=4)
+            logger.info(f'Exported {len(self._directories)} dataset(s) to {json_path}')
+        except Exception as e:
+            logger.error(f'Failed to write JSON: {e}')
+
     def add_directory_clicked(self):
         directory = getExistingDirectory(self, 'Select Directory')
         self._add_directory(directory)
@@ -354,9 +403,7 @@ class DarkCalibration(QtWidgets.QDialog):
             responsivity = meta.get('responsivity')
             responsivity_value = to_float_or_none(responsivity)
             responsivity_text = (
-                'N/A'
-                if responsivity_value is None
-                else f'{responsivity_value:.6g}'
+                'N/A' if responsivity_value is None else f'{responsivity_value:.6g}'
             )
             self.datasets_table.setItem(
                 row,
@@ -457,7 +504,7 @@ class DarkCalibration(QtWidgets.QDialog):
         if mode_index >= 0:
             self.mode.setCurrentIndex(mode_index)
 
-        self._plot_widgets = plot_results(self._directories, mode)
+        self._plot_widgets = plot_results(self._directories, self._dataset_meta, mode)
         self.update_plots(self._plot_widgets)
         self.progress_bar.setValue(100)
 
@@ -517,7 +564,7 @@ class DarkCalibration(QtWidgets.QDialog):
             self._set_controls_enabled(True)
 
             self._plot_widgets = plot_results(
-                self._directories, self.mode.currentText()
+                self._directories, self._dataset_meta, self.mode.currentText()
             )
             self.update_plots(self._plot_widgets)
 
@@ -537,6 +584,27 @@ class DarkCalibration(QtWidgets.QDialog):
         worker.signals.finished.connect(analysis_finished)
 
         QtCore.QThreadPool.globalInstance().start(worker)
+
+    def open_plotter(self):
+        plot_ready = self._plot_ready_directories()
+        if not plot_ready:
+            logger.info('No analysis results to plot. Run analysis first.')
+            return
+
+        try:
+            mode = resolve_results_mode(plot_ready)
+        except Exception as e:
+            logger.error(f'Failed to determine plot mode: {e}')
+            return
+
+        if not mode:
+            logger.info('No plot-ready results to display.')
+            return
+
+        self._plotter = plot_results_matplotlib(
+            plot_ready, self._dataset_meta, mode
+        )
+        self._plotter.show()
 
 
 if __name__ == '__main__':

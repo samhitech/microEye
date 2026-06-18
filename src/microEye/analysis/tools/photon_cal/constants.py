@@ -233,9 +233,9 @@ PLOTS_META = {
         'legend': True,
     },
     PlotType.QE: {
-        'title': 'Mean Signal [e] vs Photon Flux [photons/cm²/s]',
+        'title': 'Mean Signal [e-] vs Photon Flux [photons/cm²/s]',
         'xlabel': 'Photon Flux [photons/cm²/s]',
-        'ylabel': 'Mean Signal [e]',
+        'ylabel': 'Mean Signal [e-]',
         'legend': True,
     },
     PlotType.QE_BAR: {

@@ -46,6 +46,7 @@ class CamParams(Enum):
     SELECT_ROI = 'Region of Interest (ROI).Select ROI'
     EXPORT_ROIS = 'Region of Interest (ROI).Export ROIs'
     SELECT_EXPORT_ROIS = 'Region of Interest (ROI).Export ROIs.Select ROIs'
+    REMOVE_EXPORT_ROIS = 'Region of Interest (ROI).Export ROIs.Remove ROIs'
     EXPORTED_ROIS = 'Region of Interest (ROI).Export ROIs.ROIs'
     EXPORT_ROIS_SEPERATE = 'Region of Interest (ROI).Export ROIs.Seperate Files'
     EXPORT_ROIS_FLIPPED = 'Region of Interest (ROI).Export ROIs.Flip Horizontally'
@@ -102,6 +103,7 @@ class CameraOptions(Tree):
     centerROI: Signal = Signal()
     selectROI: Signal = Signal()
     selectROIs: Signal = Signal()
+    removeROIs: Signal = Signal()
     directoryChanged: Signal = Signal(str)
     viewOptionChanged: Signal = Signal()
 
@@ -319,6 +321,10 @@ class CameraOptions(Tree):
                                 'type': 'action',
                             },
                             {
+                                'name': str(CamParams.REMOVE_EXPORT_ROIS),
+                                'type': 'action',
+                            },
+                            {
                                 'name': str(CamParams.EXPORTED_ROIS),
                                 'type': 'group',
                                 'children': [],
@@ -379,6 +385,9 @@ class CameraOptions(Tree):
         )
         self.get_param(CamParams.SELECT_EXPORT_ROIS).sigActivated.connect(
             lambda: self.selectROIs.emit()
+        )
+        self.get_param(CamParams.REMOVE_EXPORT_ROIS).sigActivated.connect(
+            lambda: self.removeROIs.emit()
         )
         self.get_param(CamParams.VIEW_OPTIONS).sigValueChanged.connect(
             lambda: self.viewOptionChanged.emit()

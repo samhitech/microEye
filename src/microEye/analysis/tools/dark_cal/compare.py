@@ -7,6 +7,12 @@ import pyqtgraph as pg
 from microEye.analysis.tools.common import normalize_positive_float, to_bool
 from microEye.analysis.tools.dark_cal.constants import HISTOGRAM_DATA_TYPES, DataTypes
 from microEye.qt import Qt, QtCore, QtWidgets
+from microEye.utils.pyqt2mplt import (
+    FigurePayload,
+    MatplotlibPlotterDialog,
+    PlotSeriesPayload,
+    SubplotPayload,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +22,7 @@ METRICS = [
     ('Dark Current [e-/s]', 'dark_current_e_per_s'),
     ('Noise Intercept [e-^2]', 'noise_intercept_e2'),
     ('Noise Slope [e-^2/s]', 'noise_slope_e2_per_s'),
+    ('Read Noise [e-]', 'read_noise_e'),
 ]
 
 
@@ -82,8 +89,9 @@ def _histogram_metrics(data: dict) -> dict[str, float] | None:
         return {
             'baseline_adu': float(data[DataTypes.BASELINE]['median']),
             'dark_current_adu_per_s': float(data[DataTypes.DARK_CURRENT]['median']),
-            'noise_intercept_adu2': float(data[DataTypes.DARK_NOISE]['median']),
-            'noise_slope_adu2_per_s': float(data[DataTypes.THERMAL_NOISE]['median']),
+            'noise_intercept_adu2': float(data[DataTypes.DARK_VARIANCE]['median']),
+            'noise_slope_adu2_per_s': float(data[DataTypes.THERMAL_VARIANCE]['median']),
+            'read_noise_adu': float(data[DataTypes.DARK_NOISE]['median']),
         }
     except Exception:
         return None
@@ -153,6 +161,9 @@ def build_comparison_dataframe(
                 'Dark Current [e-/s]': metrics['dark_current_adu_per_s'] * gain,
                 'Noise Intercept [e-^2]': metrics['noise_intercept_adu2'] * (gain**2),
                 'Noise Slope [e-^2/s]': metrics['noise_slope_adu2_per_s'] * (gain**2),
+                'Read Noise [e-]': np.sqrt(
+                    metrics.get('noise_intercept_adu2', np.nan) * gain**2
+                ),
             }
         )
 
@@ -205,18 +216,40 @@ class DarkDatasetComparisonDialog(QtWidgets.QDialog):
         self._mode = mode
         self._frame = build_comparison_dataframe(directories, mode, dataset_meta)
 
+        self._mpl_plotter_dialog: MatplotlibPlotterDialog | None = None
+
         self._setup_ui()
         self._update_plots()
 
     def _setup_ui(self):
-        layout = QtWidgets.QVBoxLayout(self)
-        tabs = QtWidgets.QTabWidget()
-        layout.addWidget(tabs)
+        layout = QtWidgets.QHBoxLayout(self)
 
-        summary = QtWidgets.QTextEdit()
-        summary.setReadOnly(True)
-        summary.setPlainText(self._build_summary_text())
-        tabs.addTab(summary, 'Summary')
+        compare_box = QtWidgets.QGroupBox('Comparison Settings')
+        form_layout = QtWidgets.QFormLayout(compare_box)
+
+        layout.addWidget(compare_box, 1)
+
+        tabs = QtWidgets.QTabWidget()
+        layout.addWidget(tabs, 2)
+
+        self.open_mpl_plotter_button = QtWidgets.QPushButton('Open Plotter')
+        self.open_mpl_plotter_button.setToolTip('Open the Matplotlib dialog')
+        self.open_mpl_plotter_button.clicked.connect(self._open_matplotlib_plotter)
+
+        self.export_hdf_table_button = QtWidgets.QPushButton('Export Table')
+        self.export_hdf_table_button.setToolTip(
+            'Export the comparison table to an HDF file'
+        )
+        self.export_hdf_table_button.clicked.connect(self._export_hdf_table)
+
+        form_layout.addRow(QtWidgets.QLabel('Summary:'))
+
+        summary_widget = QtWidgets.QTextEdit()
+        summary_widget.setReadOnly(True)
+        summary_widget.setPlainText(self._build_summary_text())
+        form_layout.addRow(summary_widget)
+        form_layout.addRow(self.open_mpl_plotter_button)
+        form_layout.addRow(self.export_hdf_table_button)
 
         table_tab = QtWidgets.QWidget()
         table_layout = QtWidgets.QVBoxLayout(table_tab)
@@ -389,3 +422,93 @@ class DarkDatasetComparisonDialog(QtWidgets.QDialog):
             [0.0, 0.0],
             pen=pg.mkPen((160, 160, 160), style=Qt.PenStyle.DashLine),
         )
+
+        if (
+            self._mpl_plotter_dialog is not None
+            and self._mpl_plotter_dialog.isVisible()
+        ):
+            # make payload with current plot data and send to matplotlib dialog
+            payload = FigurePayload(
+                title=f'{metric_column} Comparison',
+                subplots=[
+                    SubplotPayload(
+                        row=0,
+                        col=0,
+                        title='Metric Values',
+                        xlabel='Dataset',
+                        ylabel=metric_column,
+                        series=[
+                            PlotSeriesPayload(
+                                x=idx,
+                                y=values,
+                                plot_type='bar',
+                                label=metric_column,
+                                dataset='Values',
+                                style={
+                                    'color': 'blue',
+                                },
+                            )
+                        ],
+                        metadata={'dataset_names': labels},
+                    ),
+                    SubplotPayload(
+                        row=0,
+                        col=1,
+                        title='Difference To Reference',
+                        xlabel='Dataset',
+                        ylabel=delta_label,
+                        series=[
+                            PlotSeriesPayload(
+                                x=idx,
+                                y=delta,
+                                plot_type='bar',
+                                label=delta_label,
+                                dataset='Delta',
+                                style={
+                                    'color': [
+                                        'red' if v > 0 else 'green' for v in delta
+                                    ],
+                                },
+                            )
+                        ],
+                        metadata={'dataset_names': labels},
+                    ),
+                ],
+                metadata={
+                    'layout': {
+                        'rows': 1,
+                        'cols': 2,
+                    }
+                },
+            )
+            self._mpl_plotter_dialog.set_payload(payload)
+
+    def _export_hdf_table(self):
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self,
+            'Export Comparison Table',
+            filter='HDF5 Files (*.h5);;All Files (*)',
+        )
+        if not path:
+            return
+
+        try:
+            self._frame.to_hdf(path, key='comparison', mode='w')
+            QtWidgets.QMessageBox.information(
+                self,
+                'Export Successful',
+                f'Comparison table exported to:\n{path}',
+            )
+        except Exception as e:
+            logger.exception('Failed to export comparison table')
+            QtWidgets.QMessageBox.critical(
+                self,
+                'Export Failed',
+                f'An error occurred while exporting the table:\n{str(e)}',
+            )
+
+    def _open_matplotlib_plotter(self):
+        if self._mpl_plotter_dialog is None or not self._mpl_plotter_dialog.isVisible():
+            self._mpl_plotter_dialog = MatplotlibPlotterDialog(self)
+            self._mpl_plotter_dialog.show()
+            self._update_plots()  # ensure current plot data is sent to the dialog

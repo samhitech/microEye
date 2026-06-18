@@ -6,6 +6,12 @@ import pyqtgraph as pg
 from microEye.analysis.tools.photon_cal.constants import PLOTS_META, PlotType
 from microEye.analysis.tools.photon_cal.models import CalibrationDatasetMeta
 from microEye.qt import Qt
+from microEye.utils.pyqt2mplt import (
+    FigurePayload,
+    MatplotlibPlotterDialog,
+    PlotSeriesPayload,
+    SubplotPayload,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -14,9 +20,12 @@ def plot_results(
     datasets: dict[str, CalibrationDatasetMeta],
     returned_data: dict,
     exposure_times_s: np.ndarray,
+    use_matplotlib: bool = False,
+    use_one_mpl_dialog: bool = True,
 ) -> list[pg.GraphicsLayoutWidget]:
     plot_widgets: dict[PlotType, pg.PlotWidget] = {}
-
+    # Collect series payloads for optional Matplotlib dialogs (one dialog per plot)
+    series_map: dict[PlotType, list[PlotSeriesPayload]] = {pt: [] for pt in PlotType}
     names = [name for name in datasets]
     idx = np.arange(len(names))
 
@@ -46,6 +55,20 @@ def plot_results(
             )
             plot.plotItem.addItem(qe_bars)
             plot.plotItem.getAxis('bottom').setTicks([list(zip(idx, names))])
+            # Prepare a Matplotlib series for the bar chart
+            series_map[plot_type].append(
+                PlotSeriesPayload(
+                    x=idx,
+                    y=[
+                        params['responsivity'] * params['gain_e_per_dn'] * 100
+                        for params in returned_data.values()
+                    ],
+                    plot_type='bar',
+                    label='QE [%]',
+                    dataset='QE',
+                    extras={'width': 0.6},
+                )
+            )
 
     for i, (name, _dataset) in enumerate(datasets.items()):
         try:
@@ -69,10 +92,36 @@ def plot_results(
                 symbolBrush=color,
                 symbolPen=None,
             )
+            series_map[PlotType.GAIN].append(
+                PlotSeriesPayload(
+                    x=params['mean_dn'],
+                    y=gain_variance,
+                    plot_type='scatter',
+                    label=name,
+                    dataset=name,
+                    style={'color': color.name()},
+                )
+            )
             plot_widgets[PlotType.GAIN].plotItem.plot(
                 params['mean_dn'],
                 params['mean_dn'] / params['gain_e_per_dn'] + params['read_noise_dn'],
                 pen=pg.mkPen(color=complement_color, style=Qt.PenStyle.DashLine),
+            )
+            series_map[PlotType.GAIN].append(
+                PlotSeriesPayload(
+                    x=params['mean_dn'],
+                    y=(
+                        params['mean_dn'] / params['gain_e_per_dn']
+                        + params['read_noise_dn']
+                    ),
+                    plot_type='line',
+                    label=f'{name} fit',
+                    dataset=f'{name} fit',
+                    style={
+                        'color': complement_color.name(),
+                        'linestyle': 'dashed',
+                    },
+                )
             )
 
             plot_widgets[PlotType.RESPONSE].plotItem.plot(
@@ -84,11 +133,35 @@ def plot_results(
                 symbolBrush=color,
                 symbolPen=None,
             )
+            series_map[PlotType.RESPONSE].append(
+                PlotSeriesPayload(
+                    x=params['photons_per_pixel'],
+                    y=params['mean_dn'][1:],
+                    plot_type='scatter',
+                    label=name,
+                    dataset=name,
+                    style={'color': color.name()},
+                )
+            )
             plot_widgets[PlotType.RESPONSE].plotItem.plot(
                 params['photons_per_pixel'],
                 params['responsivity'] * params['photons_per_pixel']
                 + params['responsivity_intercept'],
                 pen=pg.mkPen(color=complement_color, style=Qt.PenStyle.DashLine),
+            )
+            series_map[PlotType.RESPONSE].append(
+                PlotSeriesPayload(
+                    x=params['photons_per_pixel'],
+                    y=params['responsivity'] * params['photons_per_pixel']
+                    + params['responsivity_intercept'],
+                    plot_type='line',
+                    label=f'{name} fit',
+                    dataset=f'{name} fit',
+                    style={
+                        'color': complement_color.name(),
+                        'linestyle': 'dashed',
+                    },
+                )
             )
 
             plot_widgets[PlotType.QE].plotItem.plot(
@@ -100,10 +173,36 @@ def plot_results(
                 symbolBrush=color,
                 symbolPen=None,
             )
+            series_map[PlotType.QE].append(
+                PlotSeriesPayload(
+                    x=params['photons_per_pixel'],
+                    y=params['mean_e'][1:],
+                    plot_type='scatter',
+                    label=name,
+                    dataset=name,
+                    style={'color': color.name()},
+                )
+            )
             plot_widgets[PlotType.QE].plotItem.plot(
                 params['photons_per_pixel'],
                 params['qe'] * params['photons_per_pixel'] + params['qe_intercept'],
                 pen=pg.mkPen(color=complement_color, style=Qt.PenStyle.DashLine),
+            )
+            series_map[PlotType.QE].append(
+                PlotSeriesPayload(
+                    x=params['photons_per_pixel'],
+                    y=(
+                        params['qe'] * params['photons_per_pixel']
+                        + params['qe_intercept']
+                    ),
+                    plot_type='line',
+                    label=f'{name} fit',
+                    dataset=f'{name} fit',
+                    style={
+                        'color': complement_color.name(),
+                        'linestyle': 'dashed',
+                    },
+                )
             )
 
             var_e = params['var_total_dn2'][1:] * (params['gain_e_per_dn'] ** 2)
@@ -131,7 +230,70 @@ def plot_results(
                 symbolBrush=color,
                 symbolPen=None,
             )
+            series_map[PlotType.SNR].append(
+                PlotSeriesPayload(
+                    x=photons_valid,
+                    y=snr_db,
+                    plot_type='scatter',
+                    label=name,
+                    dataset=name,
+                    style={'color': color.name()},
+                )
+            )
         except Exception as e:
             logger.error(f'Error plotting results for {name}: {e}')
+
+    # Optionally spawn one Matplotlib dialog per plot and attach it to the
+    # corresponding PlotWidget so the dialog isn't garbage-collected.
+    if use_matplotlib:
+        subplots = []
+        for idx, (plot_type, plot) in enumerate(plot_widgets.items()):
+            series_list = series_map.get(plot_type, [])
+            if not series_list:
+                continue
+            meta = PLOTS_META[plot_type]
+            subplot = SubplotPayload(
+                row=0 if not use_one_mpl_dialog else idx // 3,
+                col=0 if not use_one_mpl_dialog else idx % 3,
+                title=meta.get('title', ''),
+                xlabel=meta.get('xlabel', ''),
+                ylabel=meta.get('ylabel', ''),
+                series=series_list,
+                metadata={
+                    'dataset_names': names if plot_type == PlotType.QE_BAR else [],
+                    'title_alignment': 'left',
+                    'title_bold': True,
+                    'legend': False,
+                },
+            )
+            if use_one_mpl_dialog:
+                subplots.append(subplot)
+                continue
+
+            fig = FigurePayload(
+                title=meta.get('title', ''),
+                subplots=[subplot],
+                metadata={'layout': {'rows': 1, 'cols': 1}},
+            )
+            dlg = MatplotlibPlotterDialog()
+            dlg.set_payload(fig)
+            dlg.show()
+            # Keep a reference on the originating widget to prevent GC.
+            plot.mpl_dialog = dlg
+
+        if use_one_mpl_dialog and subplots:
+            fig = FigurePayload(
+                title='',
+                subplots=subplots,
+                metadata={
+                    'layout': {'rows': 2, 'cols': 3, 'width_in': 15, 'height_in': 10}
+                },
+            )
+            dlg = MatplotlibPlotterDialog()
+            dlg.set_payload(fig)
+            dlg.show()
+            # Attach the dialog to the first plot widget to prevent GC.
+            first_plot = next(iter(plot_widgets.values()))
+            first_plot.mpl_dialog = dlg
 
     return list(plot_widgets.values())

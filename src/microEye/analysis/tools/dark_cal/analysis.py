@@ -61,9 +61,30 @@ def resolve_results_mode(directories: dict) -> str:
 
 
 def get_centered_data(data: np.ndarray) -> tuple[np.ndarray, float, float]:
-    median = np.nanmedian(data)
-    mad = 1.4826 * np.nanmedian(np.abs(data - median))
-    return data - median, median, mad
+    finite_data = data[np.isfinite(data)]
+    median = np.nanmedian(finite_data)
+    mad = 1.4826 * np.nanmedian(np.abs(finite_data - median))
+    return finite_data - median, median, mad
+
+
+def get_robust_hist_range(
+    centered_data: np.ndarray, median: float, mad: float
+) -> tuple[float, float]:
+    finite_data = centered_data[np.isfinite(centered_data)]
+
+    if finite_data.size == 0:
+        return -1.0, 1.0
+
+    if np.isfinite(mad) and mad > 0:
+        # Robust, symmetric range around the median.
+        span = 6.0 * mad
+        return -span, span
+
+    # Fallback for near-constant or degenerate data.
+    return (
+        np.percentile(finite_data, 0.5),
+        np.percentile(finite_data, 99.5),
+    )
 
 
 def get_maps(data: dict[DataTypes, np.ndarray]):
@@ -88,15 +109,16 @@ def get_maps(data: dict[DataTypes, np.ndarray]):
 
 def get_histogram(data: np.ndarray, bins=600):
     centered_data, median, mad = get_centered_data(data)
-    hist_range = (
-        np.percentile(centered_data, 0.01),
-        np.percentile(centered_data, 99.99),
-    )
+    hist_range = get_robust_hist_range(centered_data, median, mad)
+
     hist, bin_edges = np.histogram(centered_data.flatten(), bins=bins, range=hist_range)
+
+    mode = bin_edges[np.argmax(hist)] + (bin_edges[1] - bin_edges[0]) / 2.0
+
     return {
         'hist': hist,
-        'bin_edges': bin_edges,
-        'median': median,
+        'bin_edges': bin_edges - mode,
+        'median': median - mode,
         'mad': mad,
     }
 
@@ -135,7 +157,7 @@ def perform_analysis(directories, mode, progress_callback, event):
             logger.info('No temperature data found.')
 
         if mode == 'Histograms':
-            baseline, darkcurrent, dark_noise, thermal_noise = get_maps(
+            baseline, darkcurrent, dark_var, thermal_var = get_maps(
                 {
                     DataTypes.MEAN: mean,
                     DataTypes.VARIANCE: variance,
@@ -146,8 +168,11 @@ def perform_analysis(directories, mode, progress_callback, event):
             directories[directory] = {
                 DataTypes.BASELINE: get_histogram(baseline),
                 DataTypes.DARK_CURRENT: get_histogram(darkcurrent),
-                DataTypes.DARK_NOISE: get_histogram(dark_noise),
-                DataTypes.THERMAL_NOISE: get_histogram(thermal_noise),
+                DataTypes.DARK_VARIANCE: get_histogram(dark_var),
+                DataTypes.THERMAL_VARIANCE: get_histogram(thermal_var),
+                DataTypes.DARK_NOISE: get_histogram(np.sqrt(dark_var)),
+                DataTypes.THERMAL_NOISE: get_histogram(np.sqrt(thermal_var)),
+
             }
         else:
             directories[directory] = {

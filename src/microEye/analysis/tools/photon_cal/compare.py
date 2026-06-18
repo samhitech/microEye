@@ -7,6 +7,12 @@ import pyqtgraph as pg
 
 from microEye.analysis.tools.photon_cal.table import PandasModel
 from microEye.qt import Qt, QtWidgets
+from microEye.utils.pyqt2mplt import (
+    FigurePayload,
+    MatplotlibPlotterDialog,
+    PlotSeriesPayload,
+    SubplotPayload,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +29,65 @@ CURVE_TYPES = [
     'QE Curve',
     'SNR Curve',
 ]
+
+MPL_PLOT_SPECS = (
+    ('parity', 'Parity scatter'),
+    ('bars', 'Metric bars'),
+    ('delta', 'Delta bars'),
+    ('comparison', 'Curve comparison'),
+)
+
+
+class PlotSelectionDialog(QtWidgets.QDialog):
+    def __init__(self, selected_keys: list[str], parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('Select Matplotlib Plots')
+
+        self._checkboxes: dict[str, QtWidgets.QCheckBox] = {}
+
+        layout = QtWidgets.QFormLayout(self)
+        layout.addRow(
+            QtWidgets.QLabel('Choose the comparison plots that should be exported:')
+        )
+
+        for key, label in MPL_PLOT_SPECS:
+            checkbox = QtWidgets.QCheckBox(label)
+            checkbox.setChecked(key in selected_keys)
+            checkbox.setToolTip(f'Include {label.lower()} in the Matplotlib view')
+            self._checkboxes[key] = checkbox
+            layout.addWidget(checkbox)
+
+        button_row = QtWidgets.QHBoxLayout()
+        layout.addRow(button_row)
+
+        self.select_all_button = QtWidgets.QPushButton('All')
+        self.select_none_button = QtWidgets.QPushButton('None')
+        self.select_all_button.clicked.connect(self._select_all)
+        self.select_none_button.clicked.connect(self._select_none)
+        button_row.addWidget(self.select_all_button)
+        button_row.addWidget(self.select_none_button)
+        button_row.addStretch(1)
+
+        self.button_box = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.StandardButton.Ok
+            | QtWidgets.QDialogButtonBox.StandardButton.Cancel
+        )
+        self.button_box.accepted.connect(self.accept)
+        self.button_box.rejected.connect(self.reject)
+        layout.addRow(self.button_box)
+
+    def _select_all(self):
+        for checkbox in self._checkboxes.values():
+            checkbox.setChecked(True)
+
+    def _select_none(self):
+        for checkbox in self._checkboxes.values():
+            checkbox.setChecked(False)
+
+    def selected_keys(self) -> list[str]:
+        return [
+            key for key, checkbox in self._checkboxes.items() if checkbox.isChecked()
+        ]
 
 
 def _as_scalar(value: Any) -> float | None:
@@ -168,6 +233,10 @@ class CacheComparisonDialog(QtWidgets.QDialog):
         self._right_data = right_data
         self._left_options = left_options or {}
         self._right_options = right_options or {}
+        self._mpl_plotter_dialog: MatplotlibPlotterDialog | None = None
+        self._mpl_selected_plot_keys: list[str] = [
+            key for key, _label in MPL_PLOT_SPECS
+        ]
 
         (
             self._comparison_df,
@@ -178,7 +247,7 @@ class CacheComparisonDialog(QtWidgets.QDialog):
 
         self._setup_ui()
         self._update_scalar_plots()
-        self._update_curve_overlay()
+        self._update_curve_comparison()
 
     def _comparison_labels(self) -> tuple[str, str]:
         a_label = (
@@ -197,28 +266,52 @@ class CacheComparisonDialog(QtWidgets.QDialog):
             plot_item.addLegend()
 
     def _setup_ui(self):
-        layout = QtWidgets.QVBoxLayout(self)
+        layout = QtWidgets.QHBoxLayout(self)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(10)
 
-        label_controls = QtWidgets.QHBoxLayout()
-        layout.addLayout(label_controls)
-        label_controls.addWidget(QtWidgets.QLabel('A label:'))
+        compare_box = QtWidgets.QGroupBox('Comparison Settings')
+        form_layout = QtWidgets.QFormLayout(compare_box)
+
+        layout.addWidget(compare_box, 2)
+
         self.a_label_edit = QtWidgets.QLineEdit('A')
         self.a_label_edit.setToolTip('Legend label for cache A')
-        label_controls.addWidget(self.a_label_edit)
-        label_controls.addSpacing(12)
-        label_controls.addWidget(QtWidgets.QLabel('B label:'))
+        form_layout.addRow(QtWidgets.QLabel('A label:'), self.a_label_edit)
+
         self.b_label_edit = QtWidgets.QLineEdit('B')
         self.b_label_edit.setToolTip('Legend label for cache B')
-        label_controls.addWidget(self.b_label_edit)
-        label_controls.addStretch(1)
+        form_layout.addRow(QtWidgets.QLabel('B label:'), self.b_label_edit)
 
-        tabs = QtWidgets.QTabWidget()
-        layout.addWidget(tabs)
+        self.choose_mpl_plots_button = QtWidgets.QPushButton('Select Plots...')
+        self.choose_mpl_plots_button.setToolTip(
+            'Pick which comparison plots are sent to the Matplotlib dialog'
+        )
+        self.choose_mpl_plots_button.clicked.connect(self._choose_matplotlib_plots)
+
+        self.open_mpl_plotter_button = QtWidgets.QPushButton('Open Plotter')
+        self.open_mpl_plotter_button.setToolTip('Open the Matplotlib dialog')
+        self.open_mpl_plotter_button.clicked.connect(self._open_matplotlib_plotter)
+
+        self.export_hdf_table_button = QtWidgets.QPushButton('Export Table')
+        self.export_hdf_table_button.setToolTip(
+            'Export the comparison table to an HDF file'
+        )
+        self.export_hdf_table_button.clicked.connect(self._export_hdf_table)
+
+        form_layout.addWidget(self.choose_mpl_plots_button)
+        form_layout.addWidget(self.open_mpl_plotter_button)
+        form_layout.addWidget(self.export_hdf_table_button)
+
+        form_layout.addRow(QtWidgets.QLabel('Summary:'))
 
         summary_widget = QtWidgets.QTextEdit()
         summary_widget.setReadOnly(True)
         summary_widget.setPlainText(self._build_summary_text())
-        tabs.addTab(summary_widget, 'Summary')
+        form_layout.addRow(summary_widget)
+
+        tabs = QtWidgets.QTabWidget()
+        layout.addWidget(tabs, 4)
 
         table_widget = QtWidgets.QWidget()
         table_layout = QtWidgets.QVBoxLayout(table_widget)
@@ -260,9 +353,7 @@ class CacheComparisonDialog(QtWidgets.QDialog):
 
         self.metric_bars_plot = pg.PlotWidget()
         self.metric_bars_plot.setWindowTitle('Metric Bars')
-        self.metric_bars_plot.plotItem.setTitle(
-            'Metric by Dataset (Blue=A, Orange=B)'
-        )
+        self.metric_bars_plot.plotItem.setTitle('Metric by Dataset (Blue=A, Orange=B)')
         self.metric_bars_plot.plotItem.setLabel('bottom', 'Dataset')
         self.metric_bars_plot.plotItem.addLegend()
         self.metric_bars_plot.plotItem.showGrid(x=True, y=True)
@@ -296,23 +387,23 @@ class CacheComparisonDialog(QtWidgets.QDialog):
         curve_controls.addWidget(self.curve_combo)
         curve_controls.addStretch(1)
 
-        self.overlay_plot = pg.PlotWidget()
-        self.overlay_plot.setWindowTitle('Curve Overlay')
-        self.overlay_plot.plotItem.setTitle('Curve Overlay')
-        self.overlay_plot.plotItem.addLegend()
-        self.overlay_plot.plotItem.showGrid(x=True, y=True)
-        curves_layout.addWidget(self.overlay_plot, 1)
+        self.compare_plot = pg.PlotWidget()
+        self.compare_plot.setWindowTitle('Curve Comparison')
+        self.compare_plot.plotItem.setTitle('Curve Comparison')
+        self.compare_plot.plotItem.addLegend()
+        self.compare_plot.plotItem.showGrid(x=True, y=True)
+        curves_layout.addWidget(self.compare_plot, 1)
 
         tabs.addTab(curves_widget, 'Dataset Curves')
 
         self.metric_combo.currentTextChanged.connect(self._update_scalar_plots)
         self.delta_mode_combo.currentTextChanged.connect(self._update_scalar_plots)
-        self.dataset_combo.currentTextChanged.connect(self._update_curve_overlay)
-        self.curve_combo.currentTextChanged.connect(self._update_curve_overlay)
+        self.dataset_combo.currentTextChanged.connect(self._update_curve_comparison)
+        self.curve_combo.currentTextChanged.connect(self._update_curve_comparison)
         self.a_label_edit.textChanged.connect(self._update_scalar_plots)
         self.b_label_edit.textChanged.connect(self._update_scalar_plots)
-        self.a_label_edit.textChanged.connect(self._update_curve_overlay)
-        self.b_label_edit.textChanged.connect(self._update_curve_overlay)
+        self.a_label_edit.textChanged.connect(self._update_curve_comparison)
+        self.b_label_edit.textChanged.connect(self._update_curve_comparison)
 
     def _build_summary_text(self) -> str:
         left_source = self._left_options.get('gain_variance_source', 'unknown')
@@ -340,15 +431,6 @@ class CacheComparisonDialog(QtWidgets.QDialog):
             return '\n'.join(lines)
 
         lines.append('')
-        lines.append('Median absolute percent deltas:')
-        grouped = self._comparison_df.groupby('Metric', dropna=False)
-        for metric, frame in grouped:
-            values = np.abs(frame['Delta %'].to_numpy(dtype=float))
-            finite = values[np.isfinite(values)]
-            if len(finite) == 0:
-                lines.append(f'  {metric}: n/a')
-            else:
-                lines.append(f'  {metric}: {np.median(finite):.3g}%')
 
         return '\n'.join(lines)
 
@@ -429,9 +511,7 @@ class CacheComparisonDialog(QtWidgets.QDialog):
                 )
 
         self._clear_and_ensure_legend(self.metric_bars_plot)
-        self.metric_bars_plot.plotItem.setTitle(
-            f'{metric_label}: {a_label} and {b_label} by dataset'
-        )
+        self.metric_bars_plot.plotItem.setTitle(f'{metric_label}')
         self.metric_bars_plot.plotItem.setLabel('left', metric_label)
 
         if len(a_vals) > 0:
@@ -478,17 +558,11 @@ class CacheComparisonDialog(QtWidgets.QDialog):
         delta_values = pct_delta if show_percent else abs_delta
 
         if show_percent:
-            self.delta_plot.plotItem.setTitle(
-                f'{metric_label}: percent delta by dataset'
-            )
-            self.delta_plot.plotItem.setLabel(
-                'left', f'Delta % ({b_label}-{a_label})/{a_label}'
-            )
+            self.delta_plot.plotItem.setTitle(f'{metric_label}: percent delta')
+            self.delta_plot.plotItem.setLabel('left', 'Δ [%]')
         else:
-            self.delta_plot.plotItem.setTitle(
-                f'{metric_label}: absolute delta by dataset'
-            )
-            self.delta_plot.plotItem.setLabel('left', f'Delta ({b_label}-{a_label})')
+            self.delta_plot.plotItem.setTitle(f'{metric_label}: absolute delta')
+            self.delta_plot.plotItem.setLabel('left', f'Δ ({b_label}-{a_label})')
 
         if len(delta_values) > 0:
             idx = np.arange(len(delta_values), dtype=float)
@@ -516,15 +590,17 @@ class CacheComparisonDialog(QtWidgets.QDialog):
                 pen=pg.mkPen((160, 160, 160), style=Qt.PenStyle.DashLine),
             )
 
-    def _update_curve_overlay(self):
+        self._update_mpl_plotter_payload()
+
+    def _update_curve_comparison(self):
         a_label, b_label = self._comparison_labels()
         dataset_name = self.dataset_combo.currentText()
         curve_kind = self.curve_combo.currentText()
 
-        self._clear_and_ensure_legend(self.overlay_plot)
+        self._clear_and_ensure_legend(self.compare_plot)
 
         if not dataset_name:
-            self.overlay_plot.plotItem.setTitle(
+            self.compare_plot.plotItem.setTitle(
                 'Curve Overlay: no common dataset selected'
             )
             return
@@ -535,28 +611,28 @@ class CacheComparisonDialog(QtWidgets.QDialog):
         if curve_kind == 'Gain Curve':
             left_curve = _gain_curve(left_params)
             right_curve = _gain_curve(right_params)
-            self.overlay_plot.plotItem.setTitle(f'Gain curve overlay: {dataset_name}')
-            self.overlay_plot.plotItem.setLabel('bottom', 'Mean Signal [ADU]')
-            self.overlay_plot.plotItem.setLabel('left', 'Variance [ADU^2]')
+            self.compare_plot.plotItem.setTitle(f'Gain curve: {dataset_name}')
+            self.compare_plot.plotItem.setLabel('bottom', 'Mean Signal [ADU]')
+            self.compare_plot.plotItem.setLabel('left', 'Variance [ADU^2]')
         elif curve_kind == 'QE Curve':
             left_curve = _qe_curve(left_params)
             right_curve = _qe_curve(right_params)
-            self.overlay_plot.plotItem.setTitle(f'QE curve overlay: {dataset_name}')
-            self.overlay_plot.plotItem.setLabel(
+            self.compare_plot.plotItem.setTitle(f'QE curve: {dataset_name}')
+            self.compare_plot.plotItem.setLabel(
                 'bottom', 'Photon Flux [photons/cm^2/s]'
             )
-            self.overlay_plot.plotItem.setLabel('left', 'Mean Signal [e-]')
+            self.compare_plot.plotItem.setLabel('left', 'Mean Signal [e-]')
         else:
             left_curve = _snr_curve(left_params)
             right_curve = _snr_curve(right_params)
-            self.overlay_plot.plotItem.setTitle(f'SNR curve overlay: {dataset_name}')
-            self.overlay_plot.plotItem.setLabel(
+            self.compare_plot.plotItem.setTitle(f'SNR curve: {dataset_name}')
+            self.compare_plot.plotItem.setLabel(
                 'bottom', 'Photon Flux [photons/cm^2/s]'
             )
-            self.overlay_plot.plotItem.setLabel('left', 'SNR [dB]')
+            self.compare_plot.plotItem.setLabel('left', 'SNR [dB]')
 
         if left_curve is not None:
-            self.overlay_plot.plot(
+            self.compare_plot.plot(
                 left_curve[0],
                 left_curve[1],
                 pen=pg.mkPen((45, 125, 210), width=2),
@@ -568,7 +644,7 @@ class CacheComparisonDialog(QtWidgets.QDialog):
             )
 
         if right_curve is not None:
-            self.overlay_plot.plot(
+            self.compare_plot.plot(
                 right_curve[0],
                 right_curve[1],
                 pen=pg.mkPen((230, 145, 45), width=2),
@@ -578,3 +654,594 @@ class CacheComparisonDialog(QtWidgets.QDialog):
             logger.warning(
                 f'No plottable {curve_kind} data in B for dataset {dataset_name}.'
             )
+
+        self._update_mpl_plotter_payload()
+
+    def _export_hdf_table(self):
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self,
+            'Export Comparison Table',
+            filter='HDF5 Files (*.h5);;All Files (*)',
+        )
+        if not path:
+            return
+
+        try:
+            self._comparison_df.to_hdf(path, key='comparison', mode='w')
+            QtWidgets.QMessageBox.information(
+                self,
+                'Export Successful',
+                f'Comparison table successfully exported to:\n{path}',
+            )
+        except Exception as e:
+            logger.exception('Failed to export comparison table to HDF5')
+            QtWidgets.QMessageBox.critical(
+                self,
+                'Export Failed',
+                f'An error occurred while exporting the table:\n{str(e)}',
+            )
+
+    def _open_matplotlib_plotter(self):
+        if self._mpl_plotter_dialog is None:
+            self._mpl_plotter_dialog = MatplotlibPlotterDialog(self)
+            self._mpl_plotter_dialog.destroyed.connect(
+                lambda *_: setattr(self, '_mpl_plotter_dialog', None)
+            )
+
+        self._mpl_plotter_dialog.show()
+        self._mpl_plotter_dialog.raise_()
+        self._mpl_plotter_dialog.activateWindow()
+        self._update_mpl_plotter_payload()
+
+    def _choose_matplotlib_plots(self):
+        dialog = PlotSelectionDialog(self._mpl_selected_plot_keys, self)
+        if dialog.exec() != QtWidgets.QDialog.DialogCode.Accepted:
+            return
+
+        selected_keys = dialog.selected_keys()
+        if not selected_keys:
+            selected_keys = [key for key, _label in MPL_PLOT_SPECS]
+
+        self._mpl_selected_plot_keys = selected_keys
+        self._update_mpl_plotter_payload()
+
+    def _update_mpl_plotter_payload(self):
+        if self._mpl_plotter_dialog is None:
+            return
+
+        payload = self._build_mpl_payload()
+        self._mpl_plotter_dialog.set_payload(payload)
+
+    def _selected_plot_specs(self) -> list[tuple[str, str]]:
+        selected = set(self._mpl_selected_plot_keys)
+        return [spec for spec in MPL_PLOT_SPECS if spec[0] in selected]
+
+    @staticmethod
+    def _plot_position(index: int, layout_cols: int) -> tuple[int, int]:
+        return index // layout_cols, index % layout_cols
+
+    def _build_parity_subplot(
+        self,
+        *,
+        row: int,
+        col: int,
+        metric_label: str,
+        a_label: str,
+        b_label: str,
+        a_vals: np.ndarray,
+        b_vals: np.ndarray,
+    ) -> SubplotPayload:
+        series: list[PlotSeriesPayload] = []
+        if len(a_vals) > 0:
+            series.append(
+                PlotSeriesPayload(
+                    x=a_vals,
+                    y=b_vals,
+                    plot_type='scatter',
+                    label=f'{a_label} vs {b_label}',
+                    dataset='Parity',
+                    style={'color': '#2d7dd2', 'alpha': 0.9},
+                )
+            )
+
+            lo = float(np.nanmin(np.concatenate([a_vals, b_vals])))
+            hi = float(np.nanmax(np.concatenate([a_vals, b_vals])))
+            if np.isfinite(lo) and np.isfinite(hi) and lo != hi:
+                series.append(
+                    PlotSeriesPayload(
+                        x=np.asarray([lo, hi], dtype=float),
+                        y=np.asarray([lo, hi], dtype=float),
+                        plot_type='line',
+                        label='Parity line',
+                        dataset='Reference',
+                        style={
+                            'color': '#9c9c9c',
+                            'linestyle': '--',
+                            'linewidth': 1.4,
+                        },
+                    )
+                )
+
+        return self._subplot_payload(
+            row=row,
+            col=col,
+            title=f'{metric_label}: parity ({a_label} vs {b_label})',
+            xlabel=a_label,
+            ylabel=b_label,
+            series=series,
+        )
+
+    def _build_bar_subplot(
+        self,
+        *,
+        row: int,
+        col: int,
+        metric_label: str,
+        a_label: str,
+        b_label: str,
+        a_vals: np.ndarray,
+        b_vals: np.ndarray,
+        names: list[str],
+    ) -> SubplotPayload:
+        series: list[PlotSeriesPayload] = []
+        if len(a_vals) > 0:
+            idx = np.arange(len(a_vals), dtype=float)
+            width = 0.36
+            offset = width / 2.0
+            series.extend(
+                [
+                    PlotSeriesPayload(
+                        x=idx - offset,
+                        y=a_vals,
+                        plot_type='bar',
+                        label=a_label,
+                        dataset=a_label,
+                        style={
+                            'width': width,
+                            'color': '#2d7dd2',
+                            'edgecolor': '#235fa0',
+                        },
+                        extras={'width': width},
+                    ),
+                    PlotSeriesPayload(
+                        x=idx + offset,
+                        y=b_vals,
+                        plot_type='bar',
+                        label=b_label,
+                        dataset=b_label,
+                        style={
+                            'width': width,
+                            'color': '#e6912d',
+                            'edgecolor': '#be731e',
+                        },
+                        extras={'width': width},
+                    ),
+                ]
+            )
+
+        return self._subplot_payload(
+            row=row,
+            col=col,
+            title=f'{metric_label}: {a_label} and {b_label}',
+            xlabel='Dataset Index',
+            ylabel=metric_label,
+            series=series,
+            metadata={'dataset_names': names},
+        )
+
+    def _build_delta_subplot(
+        self,
+        *,
+        row: int,
+        col: int,
+        metric_label: str,
+        a_label: str,
+        b_label: str,
+        delta_values: np.ndarray,
+        show_percent: bool,
+        names: list[str],
+    ) -> SubplotPayload:
+        series: list[PlotSeriesPayload] = []
+        if len(delta_values) > 0:
+            idx = np.arange(len(delta_values), dtype=float)
+            delta_clean = np.nan_to_num(delta_values, nan=0.0)
+            series.append(
+                PlotSeriesPayload(
+                    x=idx,
+                    y=delta_clean,
+                    plot_type='bar',
+                    label=f'{b_label} - {a_label}',
+                    dataset='Δ',
+                    style={
+                        'width': 0.75,
+                        'color': [
+                            '#dc5050' if value > 0 else '#46a15a'
+                            for value in delta_clean
+                        ],
+                    },
+                    extras={'width': 0.75},
+                )
+            )
+            series.append(
+                PlotSeriesPayload(
+                    x=np.asarray([float(idx.min()) - 0.6, float(idx.max()) + 0.6]),
+                    y=np.asarray([0.0, 0.0]),
+                    plot_type='line',
+                    label='Baseline',
+                    dataset='Reference',
+                    style={
+                        'color': '#9c9c9c',
+                        'linestyle': '--',
+                        'linewidth': 1.4,
+                    },
+                )
+            )
+
+        delta_ylabel = 'Δ [%]' if show_percent else f'Δ ({b_label}-{a_label})'
+        delta_title = (
+            f'{metric_label}: percent delta'
+            if show_percent
+            else f'{metric_label}: absolute delta'
+        )
+        return self._subplot_payload(
+            row=row,
+            col=col,
+            title=delta_title,
+            xlabel='Dataset Index',
+            ylabel=delta_ylabel,
+            series=series,
+            metadata={'dataset_names': names},
+        )
+
+    def _build_comparison_subplot(
+        self,
+        *,
+        row: int,
+        col: int,
+        dataset_name: str,
+        curve_kind: str,
+        a_label: str,
+        b_label: str,
+    ) -> SubplotPayload:
+        series: list[PlotSeriesPayload] = []
+        if not dataset_name:
+            return self._subplot_payload(
+                row=row,
+                col=col,
+                title='Curve Overlay: no common dataset selected',
+                xlabel='',
+                ylabel='',
+                series=series,
+            )
+
+        left_params = self._left_data.get(dataset_name, {})
+        right_params = self._right_data.get(dataset_name, {})
+
+        if curve_kind == 'Gain Curve':
+            left_curve = _gain_curve(left_params)
+            right_curve = _gain_curve(right_params)
+            title = f'Gain curve: {dataset_name}'
+            xlabel = 'Mean Signal [ADU]'
+            ylabel = 'Variance [ADU^2]'
+        elif curve_kind == 'QE Curve':
+            left_curve = _qe_curve(left_params)
+            right_curve = _qe_curve(right_params)
+            title = f'QE curve: {dataset_name}'
+            xlabel = 'Photon Flux [photons/cm^2/s]'
+            ylabel = 'Mean Signal [e-]'
+        else:
+            left_curve = _snr_curve(left_params)
+            right_curve = _snr_curve(right_params)
+            title = f'SNR curve: {dataset_name}'
+            xlabel = 'Photon Flux [photons/cm^2/s]'
+            ylabel = 'SNR [dB]'
+
+        if left_curve is not None:
+            series.append(
+                PlotSeriesPayload(
+                    x=left_curve[0],
+                    y=left_curve[1],
+                    plot_type='line',
+                    label=f'{a_label}: {self._left_label}',
+                    dataset=a_label,
+                    style={'color': '#2d7dd2', 'linewidth': 2.0},
+                )
+            )
+        if right_curve is not None:
+            series.append(
+                PlotSeriesPayload(
+                    x=right_curve[0],
+                    y=right_curve[1],
+                    plot_type='line',
+                    label=f'{b_label}: {self._right_label}',
+                    dataset=b_label,
+                    style={'color': '#e6912d', 'linewidth': 2.0},
+                )
+            )
+
+        return self._subplot_payload(
+            row=row,
+            col=col,
+            title=title,
+            xlabel=xlabel,
+            ylabel=ylabel,
+            series=series,
+        )
+
+    def _build_mpl_payload(self) -> FigurePayload:
+        a_label, b_label = self._comparison_labels()
+        metric_label = self.metric_combo.currentText()
+        metric_key, scale = _metric_by_label(metric_label)
+        show_percent = self.delta_mode_combo.currentIndex() == 0
+        curve_kind = self.curve_combo.currentText()
+        dataset_name = self.dataset_combo.currentText()
+        selected_plot_specs = [
+            spec for spec in MPL_PLOT_SPECS if spec[0] in self._mpl_selected_plot_keys
+        ]
+        layout_rows, layout_cols = self._preferred_layout(len(selected_plot_specs))
+
+        a_vals, b_vals, abs_delta, pct_delta, names = self._collect_scalar_series(
+            metric_key,
+            scale,
+        )
+
+        subplots: list[SubplotPayload] = []
+        for subplot_index, (key, _label) in enumerate(selected_plot_specs):
+            row, col = divmod(subplot_index, layout_cols)
+
+            if key == 'parity':
+                series: list[PlotSeriesPayload] = []
+                if len(a_vals) > 0:
+                    series.append(
+                        PlotSeriesPayload(
+                            x=a_vals,
+                            y=b_vals,
+                            plot_type='scatter',
+                            label=f'{a_label} vs {b_label}',
+                            dataset='Parity',
+                            style={'color': '#2d7dd2', 'alpha': 0.9},
+                        )
+                    )
+
+                    lo = float(np.nanmin(np.concatenate([a_vals, b_vals])))
+                    hi = float(np.nanmax(np.concatenate([a_vals, b_vals])))
+                    if np.isfinite(lo) and np.isfinite(hi) and lo != hi:
+                        series.append(
+                            PlotSeriesPayload(
+                                x=np.asarray([lo, hi], dtype=float),
+                                y=np.asarray([lo, hi], dtype=float),
+                                plot_type='line',
+                                label='Parity line',
+                                dataset='Reference',
+                                style={
+                                    'color': '#9c9c9c',
+                                    'linestyle': '--',
+                                    'linewidth': 1.4,
+                                },
+                            )
+                        )
+
+                subplots.append(
+                    SubplotPayload(
+                        row=row,
+                        col=col,
+                        title=f'{metric_label}: parity ({a_label} vs {b_label})',
+                        xlabel=a_label,
+                        ylabel=b_label,
+                        series=series,
+                    )
+                )
+                continue
+
+            if key == 'bars':
+                series = []
+                if len(a_vals) > 0:
+                    idx = np.arange(len(a_vals), dtype=float)
+                    width = 0.36
+                    offset = width / 2.0
+                    series.extend(
+                        [
+                            PlotSeriesPayload(
+                                x=idx - offset,
+                                y=a_vals,
+                                plot_type='bar',
+                                label=a_label,
+                                dataset=a_label,
+                                style={
+                                    'width': width,
+                                    'color': '#2d7dd2',
+                                    'edgecolor': '#235fa0',
+                                },
+                                extras={'width': width},
+                            ),
+                            PlotSeriesPayload(
+                                x=idx + offset,
+                                y=b_vals,
+                                plot_type='bar',
+                                label=b_label,
+                                dataset=b_label,
+                                style={
+                                    'width': width,
+                                    'color': '#e6912d',
+                                    'edgecolor': '#be731e',
+                                },
+                                extras={'width': width},
+                            ),
+                        ]
+                    )
+
+                subplots.append(
+                    SubplotPayload(
+                        row=row,
+                        col=col,
+                        title=f'{metric_label}: {a_label} and {b_label}',
+                        xlabel='Dataset Index',
+                        ylabel=metric_label,
+                        series=series,
+                        metadata={'dataset_names': names},
+                    )
+                )
+                continue
+
+            if key == 'delta':
+                delta_values = pct_delta if show_percent else abs_delta
+                series = []
+                if len(delta_values) > 0:
+                    idx = np.arange(len(delta_values), dtype=float)
+                    delta_clean = np.nan_to_num(delta_values, nan=0.0)
+                    series.append(
+                        PlotSeriesPayload(
+                            x=idx,
+                            y=delta_clean,
+                            plot_type='bar',
+                            label=f'{b_label} - {a_label}',
+                            dataset='Δ',
+                            style={
+                                'width': 0.75,
+                                'color': [
+                                    '#dc5050' if value > 0 else '#46a15a'
+                                    for value in delta_clean
+                                ],
+                            },
+                            extras={'width': 0.75},
+                        )
+                    )
+                    series.append(
+                        PlotSeriesPayload(
+                            x=np.asarray(
+                                [float(idx.min()) - 0.6, float(idx.max()) + 0.6]
+                            ),
+                            y=np.asarray([0.0, 0.0]),
+                            plot_type='line',
+                            label='Baseline',
+                            dataset='Reference',
+                            style={
+                                'color': '#9c9c9c',
+                                'linestyle': '--',
+                                'linewidth': 1.4,
+                            },
+                        )
+                    )
+
+                delta_ylabel = 'Δ [%]' if show_percent else f'Δ ({b_label}-{a_label})'
+                delta_title = (
+                    f'{metric_label}: percent delta'
+                    if show_percent
+                    else f'{metric_label}: absolute delta'
+                )
+                subplots.append(
+                    SubplotPayload(
+                        row=row,
+                        col=col,
+                        title=delta_title,
+                        xlabel='Dataset Index',
+                        ylabel=delta_ylabel,
+                        series=series,
+                        metadata={'dataset_names': names},
+                    )
+                )
+                continue
+
+            if key == 'comparison':
+                series = []
+                if dataset_name:
+                    left_params = self._left_data.get(dataset_name, {})
+                    right_params = self._right_data.get(dataset_name, {})
+
+                    if curve_kind == 'Gain Curve':
+                        left_curve = _gain_curve(left_params)
+                        right_curve = _gain_curve(right_params)
+                        title = f'Gain curve: {dataset_name}'
+                        xlabel = 'Mean Signal [ADU]'
+                        ylabel = 'Variance [ADU^2]'
+                    elif curve_kind == 'QE Curve':
+                        left_curve = _qe_curve(left_params)
+                        right_curve = _qe_curve(right_params)
+                        title = f'QE curve: {dataset_name}'
+                        xlabel = 'Photon Flux [photons/cm^2/s]'
+                        ylabel = 'Mean Signal [e-]'
+                    else:
+                        left_curve = _snr_curve(left_params)
+                        right_curve = _snr_curve(right_params)
+                        title = f'SNR curve: {dataset_name}'
+                        xlabel = 'Photon Flux [photons/cm^2/s]'
+                        ylabel = 'SNR [dB]'
+
+                    if left_curve is not None:
+                        series.append(
+                            PlotSeriesPayload(
+                                x=left_curve[0],
+                                y=left_curve[1],
+                                plot_type='line',
+                                label=f'{a_label}: {self._left_label}',
+                                dataset=a_label,
+                                style={'color': '#2d7dd2', 'linewidth': 2.0},
+                            )
+                        )
+                    if right_curve is not None:
+                        series.append(
+                            PlotSeriesPayload(
+                                x=right_curve[0],
+                                y=right_curve[1],
+                                plot_type='line',
+                                label=f'{b_label}: {self._right_label}',
+                                dataset=b_label,
+                                style={'color': '#e6912d', 'linewidth': 2.0},
+                            )
+                        )
+                else:
+                    title = 'Curve Overlay: no common dataset selected'
+                    xlabel = ''
+                    ylabel = ''
+
+                subplots.append(
+                    SubplotPayload(
+                        row=row,
+                        col=col,
+                        title=title,
+                        xlabel=xlabel,
+                        ylabel=ylabel,
+                        series=series,
+                    )
+                )
+
+        return FigurePayload(
+            title=f'PTC Cache Comparison ({a_label} vs {b_label})',
+            subplots=subplots,
+            metadata={
+                'layout': {
+                    'rows': layout_rows,
+                    'cols': layout_cols,
+                }
+            },
+        )
+
+    @staticmethod
+    def _preferred_layout(count: int) -> tuple[int, int]:
+        if count <= 0:
+            return 1, 1
+
+        cols = int(np.ceil(np.sqrt(count)))
+        rows = int(np.ceil(count / cols))
+        return rows, cols
+
+    @staticmethod
+    def _subplot_payload(
+        *,
+        row: int,
+        col: int,
+        title: str,
+        xlabel: str,
+        ylabel: str,
+        series: list[PlotSeriesPayload],
+        metadata: dict[str, Any] | None = None,
+    ) -> SubplotPayload:
+        return SubplotPayload(
+            row=row,
+            col=col,
+            title=title,
+            xlabel=xlabel,
+            ylabel=ylabel,
+            series=series,
+            metadata=metadata or {},
+        )

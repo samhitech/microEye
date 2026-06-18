@@ -310,7 +310,7 @@ class StackView(QtWidgets.QWidget):
             [
                 'Super-res image',
             ]
-            + UNIQUE_COLUMNS,
+            + DataColumns.unique_columns(),
             checked=True,
             parent=self,
         )
@@ -692,7 +692,7 @@ class StackView(QtWidgets.QWidget):
         sz = self.get_param(Parameters.ROI_SIZE).value()
         fitted_coords = None
 
-        if method == FittingMethod._2D_Phasor_CPU:
+        if method == FittingMethod.Phasor_2D_CPU:
             fitted_coords = phasor_fit(image, points, True, sz)
         else:
             if varim is None:
@@ -706,19 +706,19 @@ class StackView(QtWidgets.QWidget):
 
             PSF_param = np.array([self.get_param(Parameters.INITIAL_SIGMA).value()])
 
-            if method == FittingMethod._2D_Gauss_MLE_fixed_sigma:
+            if method == FittingMethod.MLE_2D_fixed_sigma:
                 Params, CRLBs, LogLikelihood = pyfit3Dcspline.CPUmleFit_LM(
                     rois, 1, PSF_param, varims, 0
                 )
-            elif method == FittingMethod._2D_Gauss_MLE_free_sigma:
+            elif method == FittingMethod.MLE_2D_free_sigma:
                 Params, CRLBs, LogLikelihood = pyfit3Dcspline.CPUmleFit_LM(
                     rois, 2, PSF_param, varims, 0
                 )
-            elif method == FittingMethod._2D_Gauss_MLE_elliptical_sigma:
+            elif method == FittingMethod.MLE_2D_elliptical_sigma:
                 Params, CRLBs, LogLikelihood = pyfit3Dcspline.CPUmleFit_LM(
                     rois, 4, PSF_param, varims, 0
                 )
-            elif method == FittingMethod._3D_Gauss_MLE_cspline_sigma:
+            elif method == FittingMethod.MLE_3D_cspline_sigma:
                 Params, CRLBs, LogLikelihood = pyfit3Dcspline.CPUmleFit_LM(
                     rois, 5, np.ones((64, 4, 4, 4), dtype=np.float32), varims, 0
                 )
@@ -804,7 +804,7 @@ class StackView(QtWidgets.QWidget):
         loglike = None
 
         if (
-            method == FittingMethod._2D_Phasor_CPU
+            method == FittingMethod.Phasor_2D_CPU
             or not cuda.is_available()
             or not self.get_param(Parameters.LOCALIZE_GPU).value()
         ):
@@ -823,7 +823,7 @@ class StackView(QtWidgets.QWidget):
             params,
             crlbs,
             loglike,
-            method.value,
+            method,
             self.get_param(Parameters.PIXEL_SIZE).value(),
             self.get_param(Parameters.PSF_ZSTEP).value(),
             self.get_param(Parameters.ROI_SIZE).value(),
@@ -867,7 +867,7 @@ class StackView(QtWidgets.QWidget):
                     self.localizedData.emit(filename)
 
             if (
-                method == FittingMethod._2D_Phasor_CPU
+                method == FittingMethod.Phasor_2D_CPU
                 or not cuda.is_available()
                 or not self.get_param(Parameters.LOCALIZE_GPU).value()
             ):
@@ -1006,13 +1006,13 @@ class StackView(QtWidgets.QWidget):
             time_string_ms(start.msecsTo(QDateTime.currentDateTime())),
         )
 
-        if options['method'] == FittingMethod._2D_Gauss_MLE_fixed_sigma:
+        if options['method'] == FittingMethod.MLE_2D_fixed_sigma:
             params, crlbs, loglike = GPUmleFit_LM(roi_list, 1, PSFparam, varim_list, 0)
-        elif options['method'] == FittingMethod._2D_Gauss_MLE_free_sigma:
+        elif options['method'] == FittingMethod.MLE_2D_free_sigma:
             params, crlbs, loglike = GPUmleFit_LM(roi_list, 2, PSFparam, varim_list, 0)
-        elif options['method'] == FittingMethod._2D_Gauss_MLE_elliptical_sigma:
+        elif options['method'] == FittingMethod.MLE_2D_elliptical_sigma:
             params, crlbs, loglike = GPUmleFit_LM(roi_list, 4, PSFparam, varim_list, 0)
-        elif options['method'] == FittingMethod._3D_Gauss_MLE_cspline_sigma:
+        elif options['method'] == FittingMethod.MLE_3D_cspline_sigma:
             params, crlbs, loglike = GPUmleFit_LM(roi_list, 5, PSFparam, varim_list, 0)
 
         params = params.astype(np.float64, copy=False)

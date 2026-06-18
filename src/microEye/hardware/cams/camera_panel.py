@@ -200,6 +200,7 @@ class Camera_Panel(QtWidgets.QGroupBox):
         self.camera_options.centerROI.connect(lambda: self.center_ROI())
         self.camera_options.selectROI.connect(lambda: self.select_ROI())
         self.camera_options.selectROIs.connect(lambda: self.select_ROIs())
+        self.camera_options.removeROIs.connect(lambda: self.remove_ROIs())
         # update params
         self.camera_options.paramsChanged.connect(self.update_cam)
 
@@ -693,6 +694,16 @@ class Camera_Panel(QtWidgets.QGroupBox):
                 self._threadpool.start(self.worker)
             except Exception:
                 traceback.print_exc()
+
+    def remove_ROIs(self):
+        if self.cam.acquisition:
+            QtWidgets.QMessageBox.warning(
+                self, 'Warning', 'Cannot set ROI while acquiring images!'
+            )
+            return
+
+        rois_param = self.camera_options.get_param(CamParams.EXPORTED_ROIS)
+        rois_param.clearChildren()
 
     def get_ROI(self) -> tuple[int, int, int, int]:
         '''Gets the ROI for the selected camera.
