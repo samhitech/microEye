@@ -158,7 +158,8 @@ This toolkit is compatible with the [hardware](#hardware) used in our microscope
 
 ---
 
-> [!important] Breaking Change
+> [!CAUTION]
+> **Breaking Change**
 >
 > - _Zarr V3 support requires Python 3.11 or
 >   newer._
@@ -221,42 +222,43 @@ This toolkit is compatible with the [hardware](#hardware) used in our microscope
      python -m pip install vmbpy-1.1.1-py3-none-win_amd64.whl
      ```
 
-     **Important note**
-
-     It has been observed that `vmbpy` can hang when initializing `GenICAM` transport layers (TLs) if the `GENICAM_GENTL64_PATH` environment variable contains `.cti` folders from other providers (e.g., `IDS Peak` or `pylon`). To avoid this, restrict `Vimba X` to load only its own TLs by explicitly specifying the `Vimba X` `.cti` directory in `VmbC.xml`.
-
      **Steps**
      1. **Auto (recommended)**
 
         Set the `VIMBA_X_HOME` environment variable to your `Vimba X` installation directory. `microEye` will read `VIMBA_X_HOME` at startup and use it to point the Vimba X transport-layer (`.cti`) configuration (e.g., `VIMBA_X_HOME/cti`).
 
-        > [!tip]
-        >
-        > _On Windows the `Vimba X installer` typically creates this variable automatically — verify it before manually setting it._
-
      2. **Manual**
 
         If the automatic method is not prefered, create the environment variable `VIMBA_X_CTI` and point it to the directory (or directories) that contain the `Vimba X` `.cti` transport-layer files. Use directory paths (not individual `.cti` files). Multiple directories are allowed — separate them with the platform-specific path separator.
 
-   - Basler CMOS cameras: Install [`pylon`](https://www.baslerweb.com/en/downloads/software/?srsltid=AfmBOoqsMrbQT24hcWiCw-0ptD9PR7nCrPMBZSzi0YlI1CVItNQikMKW&downloadCategory.values.label.data=pylon) (_avoid installing it inside the Program Files directory_).
-   - IDS CMOS cameras:
-     - Install [`IDS Software Suite 4.96.1`](https://en.ids-imaging.com/download-details/AB00604.html?os=windows&version=win10&bus=64&floatcalc=) for Windows 32/64-bit.
-     - Alternatively, [`IDS Peak Extended Setup`](https://en.ids-imaging.com/download-peak.html) is prefered as it support old uEye models and the new uEye+ ones.
+> [!CAUTION]
+>
+> It has been observed that `vmbpy` can hang when initializing `GenICAM` transport layers (TLs) if the `GENICAM_GENTL64_PATH` environment variable contains `.cti` folders from other providers (e.g., `IDS Peak` or `pylon`). To avoid this, restrict `Vimba X` to load only its own TLs by explicitly specifying the `Vimba X` `.cti` directory in `VmbC.xml`.
 
-       > [!tip] Tips
-       >
-       > - _The installation package also includes the uEye camera drivers for UI models in addition to the standard setup. Therefore, no installation of the IDS Software Suite is required for the operation of UI models._
-       > - _If the process cannot read the system-wide `GENICAM_GENTL_PATH`/`GENICAM_GENTL64_PATH`, add the same variable to your User environment variables (not just System) and restart any open terminals or applications for the change to take effect._
+> [!TIP]
+>
+> _On Windows the `Vimba X installer` typically creates the `VIMBA_X_HOME` variable automatically — verify it before manually setting it._
 
-   - Integrated Optics Lasers: Install [`Laser control software`](https://integratedoptics.com/downloads).
+- Basler CMOS cameras: Install [`pylon`](https://www.baslerweb.com/en/downloads/software/?srsltid=AfmBOoqsMrbQT24hcWiCw-0ptD9PR7nCrPMBZSzi0YlI1CVItNQikMKW&downloadCategory.values.label.data=pylon) (_avoid installing it inside the Program Files directory_).
+- IDS CMOS cameras:
+  - Install [`IDS Software Suite 4.96.1`](https://en.ids-imaging.com/download-details/AB00604.html?os=windows&version=win10&bus=64&floatcalc=) for Windows 32/64-bit.
+  - Alternatively, [`IDS Peak Extended Setup`](https://en.ids-imaging.com/download-peak.html) is prefered as it support old uEye models and the new uEye+ ones.
 
-   - PCO cameras: Install [`pco.sdk`, `pco.runtime`](https://www.excelitas.com/product/pco-software-development-kits).
+> [!TIP]
+>
+> - _The installation package also includes the uEye camera drivers for UI models in addition to the standard setup. Therefore, no installation of the IDS Software Suite is required for the operation of UI models._
+> - _If the process cannot read the system-wide `GENICAM_GENTL_PATH`/`GENICAM_GENTL64_PATH`, add the same variable to your User environment variables (not just System) and restart any open terminals or applications for the change to take effect._
 
-     > [!Note] Support is under development.
+- Integrated Optics Lasers: Install [`Laser control software`](https://integratedoptics.com/downloads).
 
-   - Thorlabs CMOS cameras: Install [`Thorcam`](https://www.thorlabs.com/software_pages/ViewSoftwarePage.cfm?Code=ThorCam) in its default directory. Note: Some Thorlabs cameras may be identified as IDS uEye cameras by Windows and may run without Thorcam.
+- PCO cameras: Install [`pco.sdk`, `pco.runtime`](https://www.excelitas.com/product/pco-software-development-kits).
 
-   - Thorlabs hardware, install [`Kinesis® Software`](https://www.thorlabs.com/newgrouppage9.cfm?objectgroup_id=10285) and [`Elliptec™ Software`](https://www.thorlabs.com/software_pages/ViewSoftwarePage.cfm?Code=ELL).
+> [!NOTE]
+> **Support is under development.**
+
+- Thorlabs CMOS cameras: Install [`Thorcam`](https://www.thorlabs.com/software_pages/ViewSoftwarePage.cfm?Code=ThorCam) in its default directory. Note: Some Thorlabs cameras may be identified as IDS uEye cameras by Windows and may run without Thorcam.
+
+- Thorlabs hardware, install [`Kinesis® Software`](https://www.thorlabs.com/newgrouppage9.cfm?objectgroup_id=10285) and [`Elliptec™ Software`](https://www.thorlabs.com/software_pages/ViewSoftwarePage.cfm?Code=ELL).
 
 4. **Open a terminal and execute microEye:** :partying_face:
 
@@ -278,7 +280,8 @@ This toolkit is compatible with the [hardware](#hardware) used in our microscope
      --no-log-console      Disable logging to console.
    ```
 
-   > [!warning] Ensure all necessary drivers are installed for microEye to function properly.
+> [!WARNING]
+> _Ensure all necessary drivers are installed for microEye to function properly._
 
 ### Troubleshooting Installation
 
@@ -289,9 +292,9 @@ If you encounter any issues during the installation process, please check the fo
 - Check the system requirements for specific hardware drivers and follow the installation instructions provided by the manufacturers.
 - Refer to the project's issue tracker on GitHub for any known installation issues and solutions.
 
-  > [!note]
-  >
-  > _If the issue persists, feel free to open a new issue on the project's GitHub repository, providing detailed information about the problem and any error messages you encountered._
+> [!NOTE]
+>
+> _If the issue persists, feel free to open a new issue on the project's GitHub repository, providing detailed information about the problem and any error messages you encountered._
 
 ## microEye Launcher
 
@@ -386,7 +389,7 @@ The `microEye` uses the following Python packages:
 |                             |          scikit_learn           |                       |         QScintilla          |                            |              |      tqdm       |
 |                             |              scipy              |                       |                             |                            |              |                 |
 
-> [!Important]
+> [!IMPORTANT]
 >
 > - _The VimbaPython package is bundled with the Vimba SDK and must be installed manually._
 > - _Starting from microEye v2.4.0, the legacy Vimba SDK is no longer supported. Please use the Vimba X SDK and its accompanying **vmbpy** Python package instead._
@@ -468,8 +471,8 @@ The following table lists the hardware devices that are integrated and supported
 
      _Accessing other types of devices is under development!_
 
-     > [!Note]
-     > _Currently, only acquisition and focus stabilization features are implemented. Support for additional hardware and stage-related controls is under active development._
+> [!NOTE]
+> _Currently, only acquisition and focus stabilization features are implemented. Support for additional hardware and stage-related controls is under active development._
 
 ### Step-by-step Instructions
 
@@ -508,25 +511,22 @@ Special thanks to the following projects and libraries that make this work possi
 
 - **ACCéNT**: a partial implementation of the photon free calibration within the acquisition pipeline which generates pixel-wise mean and variance images.
 
-  > [!Note] Citation
   > _Robin Diekmann, Joran Deschamps, Yiming Li, Aline Tschanz, Maurice Kahnwald, Ulf Matti, Jonas Ries, "Photon-free (s)CMOS camera characterization for artifact reduction in high- and super-resolution microscopy", bioRxiv 2021.04.16.440125. [doi: 2021.04.16.440125](https://doi.org/10.1101/2021.04.16.440125)_
 
 - **Phasor Fit**: We have implemented the 2D phasor fitting algorithm in Python for fast pre-fitting visualization of localizations.
 
-  > [!Note] Citation
   > _K.J.A. Martens, A.N. Bader, S. Baas, B. Rieger, J. Hohlbein. "Phasor based single-molecule localization microscopy in 3D (pSMLM-3D): an algorithm for MHz localization rates using standard CPUs," bioRxiv, 2017. [DOI: 10.1101/191957](https://doi.org/10.1101/191957)._
 
 - **Endesfelder Lab/SMLMComputational**: A numba accelerated adaptation of Drift Correction, Fourier Ring Correlation (FRC) structural resolution and Nearest Neighbour Analysis (NeNA) for localization precision from [Endesfelder Lab](https://github.com/Endesfelder-Lab/SMLMComputational).
 
-  > [!Note] Citation
   > _Raw data to results: a hands-on introduction and overview of computational analysis for single-molecule localization microscopy", Martens et al., (2022), Frontiers in Bioinformatics. [Paper](https://www.frontiersin.org/articles/10.3389/fbinf.2021.817254)_
 
 - **TARDIS (Temporal Analysis of Relative Distances)**: We have developed a partial Python implementation of TARDIS without fitting for now. For more information, refer to the [`TARDIS` software releases](https://github.com/kjamartens/TARDIS-public). The underlying algorithms and scientific details of TARDIS are detailed in the manuscript:
-  
-  > [!Note] Citation
+
   > _Martens et al., “Temporal analysis of relative distances (TARDIS) is a robust, parameter-free alternative to single-particle tracking”, Nature Methods (2024). [Article](https://rdcu.be/dv1sr)_
 
-> [!Important] Disclaimer
+> [!IMPORTANT]
+> **Disclaimer**
 > _I'm committed to maintaining an accurate acknowledgment list for our project. However, if I inadvertently miss acknowledging your work, please don't hesitate to reach out to us. I appreciate your understanding, and I'm doing my best to manage all acknowledgments amidst my other responsibilities._
 >
 > _I make it a standard practice to cite and provide credit within a function's docstring whenever I draw inspiration from any external reference._
@@ -535,12 +535,14 @@ Special thanks to the following projects and libraries that make this work possi
 
 If you find our work or software helpful in your research or project, we kindly request that you cite it appropriately. Here is the suggested citation format:
 
-> [!Note] miEye (2022) HardwareX
+> **miEye (2022) HardwareX**
+>
 > _M.N. Alsamsam, A. Kopūstas, M. Jurevičiūtė, and M. Tutkus, “The miEye: Bench-top super-resolution microscope with cost-effective equipment,” HardwareX 12, e00368 (2022). [Paper](https://doi.org/10.1016/j.ohx.2022.e00368)_
 
 Additionally, we would appreciate it if you could provide a link to our GitHub repository or any relevant publication associated with the software.
 
-> [!Note] Software Citation
+> **Software Citation**
+>
 > _Alsamsam, M. N. microEye, <https://github.com/samhitech/microEye> [Computer software]_
 
 Thank you for your support!

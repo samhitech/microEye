@@ -105,15 +105,15 @@ To start from the `Shortcuts` folder:
 
    ![Load_config](images/software/mieye_file_menu.png)
 
-   > [!Note]
-   > _The file `config.json` holds the last saved config, and should be located within the working directory where the `microEye` was launched._
+> [!NOTE]
+> _The file `config.json` holds the last saved config, and should be located within the working directory where the `microEye` was launched._
 
-   > [!Warning]
-   >
-   > _If any errors occur during loading or connecting it means some hardware is disconnected or not powered on most likely. Please check the hardware connections and power status before trying again._
+> [!WARNING]
+>
+> _If any errors occur during loading or connecting it means some hardware is disconnected or not powered on most likely. Please check the hardware connections and power status before trying again._
 
-   > [!IMPORTANT]
-   > _If by mistake you press the `Save Config.` option, PLEASE REPORT IT IMMEDIATELY._
+> [!IMPORTANT]
+> _If by mistake you press the `Save Config.` option, PLEASE REPORT IT IMMEDIATELY._
 
 3. Wait till the GUI will be configured to repopulate the screen according to the previous saved layout.
    In our case, afterwards, we have to manually drag the acquisition camera interface to the `Portrait Monitor` from the `Landscape` one.
@@ -144,11 +144,11 @@ To start from the `Shortcuts` folder:
 
    ![Protocols Acq](images/software/protocols_acq.png)
 
-   > [!Tip] Tips
-   > _For `Basler` camera, make sure:_
-   >
-   > - _That `Acquisition Settings -> binning` is set to `Sensor` and not `Region1` and `Acquisition Settings -> Horizontal` and `Acquisition Settings -> Vertical` binning are set to `2`. Otherwise, the camera will not be able to acquire images as intended to._
-   > - _For laser triggering make sure `GPIOs -> line3` is set as `output` and `GPIOs -> Acquisition Active` is selected as the source._
+> [!TIP]
+> **For `Basler` camera, make sure:**
+>
+> - _That `Acquisition Settings -> binning` is set to `Sensor` and not `Region1` and `Acquisition Settings -> Horizontal` and `Acquisition Settings -> Vertical` binning are set to `2`. Otherwise, the camera will not be able to acquire images as intended to._
+> - _For laser triggering make sure `GPIOs -> line3` is set as `output` and `GPIOs -> Acquisition Active` is selected as the source._
 
 3. Navigate to the acquisition camera window and right click to view the camera shortcuts popup menu:
    - Set the `Display Mode` to `Export ROIs`.
@@ -159,10 +159,10 @@ To start from the `Shortcuts` folder:
 
    ![Acq camera shortcuts](images/software/camera_shortcuts.png)
 
-   > [!Tip] Tips
-   >
-   > - _`Start Acquisition` free-runs the camera till the specified number for frames._
-   > - _Press `Tile Windows` to tile the acquisition ROI windows for better visualization, as by default they instantiate over each other._
+> [!TIP]
+>
+> - _`Start Acquisition` free-runs the camera till the specified number for frames._
+> - _Press `Tile Windows` to tile the acquisition ROI windows for better visualization, as by default they instantiate over each other._
 
 4. Finally, the both screens should look something like this:
 
@@ -170,7 +170,7 @@ To start from the `Shortcuts` folder:
 
 ### 5. Microscope stages
 
-> [!Warning]
+> [!WARNING]
 > _Before homing/centering the XY stage, ensure the manual or motorized Z sample holder is fully retracted vertically to avoid any potential collisions with the objective lens._
 
 1. Navigate to the `Stages` > `PiezoConcept FOC 1-axis` tab and click on the `Home` or `Center` button to home the objective `Z Stage`. The position should be 50000 nm after homing/centering.
@@ -189,17 +189,17 @@ To start from the `Shortcuts` folder:
 
    ![Elliptec Devices](images/software/elliptec.png)
 
-   > [!Tip]
-   >
-   > _Expand all Ell6 and press `Home`._
+> [!TIP]
+>
+> _Expand all Ell6 and press `Home`._
 
-   > [!Note] Information
-   >
-   > _**ELL6 - 1**: Bertrand lens to see the back focal plane;_
-   >
-   > _**ELL6 - 2**: filter stage for `channel 1` or `ROI 1`;_
-   >
-   > _**ELL6 - 3**: filter stage for `channel 2` or `ROI 2`._
+> [!NOTE]
+>
+> _**ELL6 - 1**: Bertrand lens to see the back focal plane;_
+>
+> _**ELL6 - 2**: filter stage for `channel 1` or `ROI 1`;_
+>
+> _**ELL6 - 3**: filter stage for `channel 2` or `ROI 2`._
 
 ## Laser Excitation Guide
 
@@ -210,14 +210,15 @@ The `miEye` setup features two modes of excitation:
 
   ![Fibers](images/setup/fibers.png)
 
-  > [!Warning]
-  > _Before continuing, ensure all lasers are turned `OFF` or that camera acquisition is halted since its `GPIO` controls laser triggering._
+> [!WARNING]
+>
+> _Before continuing, ensure all lasers are turned `OFF` or that camera acquisition is halted since its `GPIO` controls laser triggering._
 
-  > [!Important]
-  >
-  > - _Switching between modes involves manually attaching or detaching a pair of mirrors from their magnetic mounts. Remember to wear gloves and avoid touching the optical surfaces._
-  > - **_DO NOT CHANGE OR ADJUST ANY OPTICAL OR OPTOMECHANICAL ELEMENT IN THE SETUP NOT SPECIFIED IN THE GUIDE._**
-  > - **_DO NOT LOOK STRAIGHT INTO THE LASERS, OBJECTIVE, OR ANY BEAM SOURCE (EVEN IF WEARING SAFETY GLASSES), AND AVOID ALIGNING YOUR EYES WITH THEM._**
+> [!IMPORTANT]
+>
+> - _Switching between modes involves manually attaching or detaching a pair of mirrors from their magnetic mounts. Remember to wear gloves and avoid touching the optical surfaces._
+> - **_DO NOT CHANGE OR ADJUST ANY OPTICAL OR OPTOMECHANICAL ELEMENT IN THE SETUP NOT SPECIFIED IN THE GUIDE._**
+> - **_DO NOT LOOK STRAIGHT INTO THE LASERS, OBJECTIVE, OR ANY BEAM SOURCE (EVEN IF WEARING SAFETY GLASSES), AND AVOID ALIGNING YOUR EYES WITH THEM._**
 
 ### Switching SMF to MMF
 
@@ -233,12 +234,12 @@ The `miEye` setup features two modes of excitation:
 
    ![Agitation](images/setup/agitation.png)
 
-> [!TIP] Tips
+> [!TIP]
 >
 > - _The mirrors are typically left in the periphery of their respective mounting location._
 > - _Trace back these steps in reverse to switch from MMF to SMF._
 
-> [!Warning] Warnings
+> [!WARNING]
 >
 > - _Avoid mixing up the mirrors since they look the same._
 > - _Handle optics wearing gloves._
@@ -250,7 +251,7 @@ To switch between `Epi`, `HiLo`, and `TIRF` modes, manually rotate the kinematic
 
 ![Laser Engine Coupling](images/setup/tirf.png)
 
-> [!Warning] Warnings
+> [!WARNING]
 >
 > - _When switching between `Epi` and `TIRF`, make sure the beam tilts toward the wall and back, but not toward the user._
 > - _Whenever unsure, consult a more experienced colleague to clarify any ambiguities the guide might have missed._
@@ -269,7 +270,7 @@ To switch between `Epi`, `HiLo`, and `TIRF` modes, manually rotate the kinematic
 1. Remove the magnetically mounted high expansion lens, marked `A` in the photo above, into the telescope.
 2. Install the magnetically mounted low expansion lens, marked `B` in the photo above, into the telescope.
 
-> [!warning]
+> [!CAUTION]
 >
 > _Always ensure at least one lens (`A` or `B`) is attached to the telescope. Failing to do so could damage your eyes, camera, or bleach your sample, though the latter is less of a concern._
 >
@@ -303,13 +304,14 @@ The `Laser Relay` (LR) is an Arduino device that relays camera trigger signals t
 
 The `Send Command` is persisted in the laser relay's non-volatile memory, and has to be updated for the desired laser control behavior.
 
-> [!note]
-> _The `Send Command` is highlighted in:_
+> [!NOTE]
+>
+> **The `Send Command` is highlighted in:**
 >
 > - _`Blue` when the interface and relay settings are matching._
 > - _`Black` when the interface and relay settings are mismatching._
 
-> [!note]
+> [!NOTE]
 >
 > :x: - _Laser OFF_
 >
@@ -321,13 +323,16 @@ The `Send Command` is persisted in the laser relay's non-volatile memory, and ha
 >
 > _Since we have one camera, `F2` TTL signal is always LOW/OFF._
 
-> [!important] 561 nm (Laser # 3)
+> [!IMPORTANT]
+> **561 nm (Laser # 3)**
 >
 > - _Requires at least one hour of being `ON` to reach good stability_.
 > - _Since it must always be enabled, we switch it off during acquisition by selecting `F2`_.
 > - _Do not adjust or set the laser POWER! It will make the laser destabilize or shutdown._
 
-> [!Warning] 638 nm (Laser # 1)
+> [!WARNING]
+> **638 nm (Laser # 1)**
+>
 > _Only use `638 nm` and avoid using the other wavelengths (`520 nm`, `488 nm`, `405 nm`) as they are not coupled into the system._
 
 ## Sample Handling
@@ -338,7 +343,7 @@ This control displays the `XY stage` position on the mounted sample slide. The c
 
 ![Slides](images/software/slides_menu.png)
 
-> [!note]
+> [!NOTE]
 >
 > _The inversion and axis swap options in the context menu are intended for specific cases and setup with the microscope configuration, and the end user does not need to modify them._
 
@@ -347,10 +352,10 @@ This control displays the `XY stage` position on the mounted sample slide. The c
 1. Raise the sample stage to its mid-range or highest point.
 2. Add immersion oil or top it up if needed.
 
-   > [!warning]
-   >
-   > - _Insufficient oil can result in sample breaks or a collision with the objective (See [Objective Care](#microscope-objective-care))._
-   > - _Using excessive oil is generally discouraged, but it may be necessary for large-area scans._
+> [!WARNING]
+>
+> - _Insufficient oil can result in sample breaks or a collision with the objective (See [Objective Care](#microscope-objective-care))._
+> - _Using excessive oil is generally discouraged, but it may be necessary for large-area scans._
 
 3. Add your sample and secures it with four magnet cubes as illustrated below.
 
@@ -362,10 +367,11 @@ This control displays the `XY stage` position on the mounted sample slide. The c
 
 5. Carefully lower your sample till it makes contact with the immersion oil meniscus, then stop.
 
-   > [!Warning] STOP & READ ME !!!
-   >
-   > - _If you are imaging a fluidic channel or well that is **DRY/EMPTY**, you have only a glass-air interface, so you won't see the back reflection in the next step._
-   > - _Stop here, add media to your sample according to your protocol, then proceed._
+> [!CAUTION]
+> **STOP & READ ME !!!**
+>
+> - _If you are imaging a fluidic channel or well that is **DRY/EMPTY**, you have only a glass-air interface, so you won't see the back reflection in the next step._
+> - _Stop here, add media to your sample according to your protocol, then proceed._
 
 6. Look at the `Focus Stabilization` tab and slowly lower the sample with fine increments till you see the NIR peak on the line profile like show below.
 
@@ -379,8 +385,8 @@ This control displays the `XY stage` position on the mounted sample slide. The c
 
 2. Raise the sample stage to its highest point to break the oil contact with the objective.
 
-   > [!important]
-   > _This prevents collisions when the XY stage moves to its homing position in the next steps._
+> [!IMPORTANT]
+> _This prevents collisions when the XY stage moves to its homing position in the next steps._
 
 3. Take out the magnets holding the sample and place them back in their designated spot where you found them.
 
@@ -392,19 +398,23 @@ This control displays the `XY stage` position on the mounted sample slide. The c
 
 ## Focus Stabilization
 
-> [!note] TBA
+> [!NOTE]
+> **TBA**
 >
 > _Ask your colleagues for help._
 
 ## Scan Acquisition
 
-> [!note] TBA
+> [!NOTE]
+> **TBA**
 >
 > _Ask your colleagues for help._
 
 ## Microscope Objective Care
 
-> [!warning] Dry Immersion Media
+> [!WARNING]
+> **Dry Immersion Media**
+>
 > _How to clean objectives?_
 >
 > [![IMAGE ALT TEXT HERE](https://i.ytimg.com/vi/Tz4Dy5D6kdw/sddefault.jpg)](https://www.youtube.com/watch?v=Tz4Dy5D6kdw)
@@ -415,10 +425,13 @@ This control displays the `XY stage` position on the mounted sample slide. The c
 >
 > - _First optical tissue is used to remove the oil without a solvent drop._
 
-> [!warning] Collisions & Scratches
+> [!WARNING]
+> **Collisions & Scratches**
+>
 > ![Objective damage](images/setup/objective_damage.png)
 
-> [!warning] Sample Breaks and/or Leaks ...
+> [!WARNING]
+> **Sample Breaks and/or Leaks ...**
 >
 > _Immediately remove the sample then dry and clean the objective with optical tissue!_
 
@@ -434,8 +447,8 @@ The Oil immersion objective must be cleaned after use.
 3. Use the first strip, without adding a solvent drop, to wipe away the oil.
 4. Have more 3-4 additional strips to clean the objective in a sliding motion, applying a solvent drop only at the start.
 
-   > [!tip]
-   > _Refer to the video above for a visual demonstration, or ask a colleague._
+> [!TIP]
+> _Refer to the video above for a visual demonstration, or ask a colleague._
 
 5. Raise the sample stage back to its highest point.
 
@@ -455,10 +468,10 @@ The Oil immersion objective must be cleaned after use.
 
    ![Exit Soft](images/software/mieye_exit.png)
 
-   > [!tip]
-   > _All of these windows should be closed manually if present after the `Exit Disconnect Devices` button is pressed._
-   >
-   > ![Exit CMD](images/software/mieye_exit_cmd.png)
+> [!TIP]
+> _All of these windows should be closed manually if present after the `Exit Disconnect Devices` button is pressed._
+>
+> ![Exit CMD](images/software/mieye_exit_cmd.png)
 
 6. To turn off the multimode fiber agitation module, rotate the knob counter-clockwise till it shows `800`, and then unplug it from the power socket.
 
@@ -489,13 +502,15 @@ The Oil immersion objective must be cleaned after use.
 
 ## Troubleshooting & FAQs
 
-> [!warning] Basler's Camera -> Field of View Looks Weird
+> [!WARNING]
+> **Basler's Camera -> Field of View Looks Weird**
 >
 > - _Make sure that `Acquisition Settings -> binning` is set to `Sensor` and not `Region1` and `Acquisition Settings -> Horizontal` and `Acquisition Settings -> Vertical` binning are set to `2`._
 > - _You may need to remove the exported ROIs (`ROI -> Export ROIs -> Remove ROIs`) and reset the general ROI (`ROI -> Reset ROI`)._
 > - _Please reset the field of view (FOV) for dual view, just as described in the initial instructions._
 
-> [!warning] Basler's Camera -> Camera is Running / Lasers OFF
+> [!WARNING]
+> **Basler's Camera -> Camera is Running / Lasers OFF**
 >
 > - _First, make sure your laser states are correct and been sent to the laser relay._
 > - _Next, make sure `GPIOs -> line3` is set as `output` and `GPIOs -> Acquisition Active` is selected as the source._
