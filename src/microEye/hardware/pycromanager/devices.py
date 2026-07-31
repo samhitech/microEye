@@ -3,6 +3,7 @@ import logging
 from microEye.hardware.pycromanager.core import DEFAULT_BRIDGE_PORT, PycroCore
 from microEye.hardware.pycromanager.enums import DeviceType, PropertyType
 
+logger = logging.getLogger(__name__)
 
 class PycroDevice:
     def __init__(

@@ -5,7 +5,8 @@ from typing import Optional
 
 from pyqtgraph.parametertree import Parameter
 
-from microEye.qt import QApplication, QtWidgets, Signal
+from microEye.analysis.file_system import FileSystem
+from microEye.qt import QApplication, QtCore, QtWidgets, Signal
 from microEye.utils.parameter_tree import Tree
 
 
@@ -24,6 +25,7 @@ class CamParams(Enum):
     EXPOSURE = 'Acquisition Settings.Exposure Time'
     EXPORTS = 'Exports'
     SAVE_DIRECTORY = 'Exports.Save Directory'
+    REVEAL_DIRECTORY = 'Exports.Reveal Directory'
     DARK_CALIBRATION = 'Exports.Dark Calibration'
     IMAGE_FORMAT = 'Exports.Image Format'
     TIFF_FORMAT = 'Exports.Tiff Format'
@@ -180,6 +182,7 @@ class CameraOptions(Tree):
                         'directory': os.path.join(os.path.expanduser('~'), 'Desktop'),
                         'fileMode': 'Directory',
                     },
+                    {'name': str(CamParams.REVEAL_DIRECTORY), 'type': 'action'},
                     {
                         'name': str(CamParams.DARK_CALIBRATION),
                         'type': 'bool',
@@ -395,6 +398,17 @@ class CameraOptions(Tree):
 
         self.get_param(CamParams.IMPORT_STATE).sigActivated.connect(self.load_json)
         self.get_param(CamParams.EXPORT_STATE).sigActivated.connect(self.export_json)
+
+        self.get_param(CamParams.REVEAL_DIRECTORY).sigActivated.connect(self.reveal_dir)
+
+    def reveal_dir(self):
+        path = self.get_param_value(CamParams.SAVE_DIRECTORY)
+        self.__file_system = FileSystem(path, standalone=True)
+        self.__file_system.destroyed.connect(lambda: self._onfile_system_close())
+        self.__file_system.show()
+
+    def _onfile_system_close(self):
+        self.__file_system = None
 
     def get_roi_info(self):
         '''

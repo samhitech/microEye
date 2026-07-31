@@ -1,3 +1,4 @@
+import logging
 import math
 import time
 
@@ -7,6 +8,7 @@ import pyqtgraph as pg
 from skimage.registration import phase_cross_correlation
 from sklearn.neighbors import NearestNeighbors
 
+logger = logging.getLogger(__name__)
 
 @nb.njit(
     nb.types.Tuple((nb.int64, nb.int64[:], nb.int64[:], nb.float64[:]))(
@@ -253,13 +255,16 @@ def shift_correction(interpx, interpy, frame_bins, datax, datay):
 
 def plot_drift(
     frames_new,
-    interpx,
-    interpy,
+    x,
+    y,
+    z = None,
     error_x=None,
     error_y=None,
-    title='Drift Cross-Correlation',
+    error_z=None,
+    title='Drift Estimation',
+    subtitle='',
 ):
-    print('Shift Plot ...', end='\r')
+    logger.info('Plotting drift ...')
 
     # plot results
     plt = pg.plot()
@@ -275,6 +280,10 @@ def plot_drift(
 
     plt.setWindowTitle(title)
 
+    # plot subtitle
+    if subtitle:
+        plt.getPlotItem().setTitle(subtitle)
+
     # setting horizontal range
     plt.setXRange(0, np.max(frames_new))
 
@@ -282,44 +291,61 @@ def plot_drift(
     # plt.setYRange(0, 1)
 
     # Plot x-drift with error bars
+    errors = []
+    error_pens = []
     if error_x is not None:
-        err_x = pg.ErrorBarItem(
-            x=frames_new,
-            y=interpx,
-            top=error_x,
-            bottom=error_x,
-            beam=0.5,
-            pen=pg.mkPen(color=(255, 0, 0, 24)),  # red color with transparency
-        )
-        plt.addItem(err_x)
-
-    # Plot y-drift with error bars
+        errors.append(error_x)
+        error_pens.append(pg.mkPen(color=(255, 0, 0, 24)))
     if error_y is not None:
-        err_y = pg.ErrorBarItem(
-            x=frames_new,
-            y=interpy,
-            top=error_y,
-            bottom=error_y,
-            beam=0.5,
-            pen=pg.mkPen(color=(255, 255, 0, 24)),  # yellow color with transparency
+        errors.append(error_y)
+        error_pens.append(pg.mkPen(color=(255, 255, 0, 24)))
+    if error_z is not None:
+        errors.append(error_z)
+        error_pens.append(pg.mkPen(color=(0, 0, 255, 24)))
+
+    # Plot x-drift with error bars
+    for error, pen in zip(errors, error_pens):
+        if error is not None:
+            err = pg.ErrorBarItem(
+                x=frames_new,
+                y=x if error is error_x else y if error is error_y else z,
+                top=error,
+                bottom=error,
+                beam=0.5,
+                pen=pen
+            )
+            plt.addItem(err)
+
+
+    # Plot drift curves
+    plot = []
+    plot_pens = []
+    plot_names = []
+    if x is not None:
+        plot.append(x)
+        plot_pens.append(pg.mkPen(color='r', width=2))
+        plot_names.append('x-drift')
+    if y is not None:
+        plot.append(y)
+        plot_pens.append(pg.mkPen(color='y', width=2))
+        plot_names.append('y-drift')
+    if z is not None:
+        plot.append(z)
+        plot_pens.append(pg.mkPen(color='g', width=2))
+        plot_names.append('z-drift')
+
+    for curve, pen, name in zip(plot, plot_pens, plot_names):
+        plt.plot(
+            frames_new, curve, pen=pen, symbol=None, symbolBrush=0.2, name=name
         )
-        plt.addItem(err_y)
 
-    # Plot x and y drift curves
-    x_curve = plt.plot(
-        frames_new, interpx, pen='r', symbol=None, symbolBrush=0.2, name='x-drift'
-    )
-    y_curve = plt.plot(
-        frames_new, interpy, pen='y', symbol=None, symbolBrush=0.2, name='y-drift'
-    )
-
-    print('Done ...', end='\r')
+    logger.info('Done ...')
 
 
 def plot_animation_stats(
     frame_bin_centers, locs_per_bin, title='Localizations per Frames Bin'
 ):
-    print('Plotting Stats ...', end='\r')
+    logger.info('Plotting Stats ...')
 
     # Calculate bin edges from centers
     bin_width = frame_bin_centers[1] - frame_bin_centers[0]
@@ -351,4 +377,4 @@ def plot_animation_stats(
         brush=(0, 0, 255, 150),
     )
 
-    print('Done ...', end='\r')
+    logger.info('Done ...')

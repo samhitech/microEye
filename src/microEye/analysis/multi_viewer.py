@@ -10,7 +10,9 @@ from weakref import ref
 import cv2
 
 from microEye import __version__
+from microEye.analysis.file_system import FileSystem, _compact_display_name
 from microEye.analysis.fitting.results import FittingResults
+from microEye.analysis.tools.batch import BatchLocalizations
 from microEye.analysis.tools.dark_cal import DarkCalibration
 from microEye.analysis.tools.photon_cal import PhotonTransfer
 from microEye.analysis.tools.registration import RegistrationWidget
@@ -26,74 +28,19 @@ from microEye.qt import (
     Qt,
     QtCore,
     QtWidgets,
+    Signal,
     Slot,
 )
 from microEye.utils import StartGUI
 
 logger = logging.getLogger(__name__)
 
+
 class DockKeys(Enum):
     FILE_SYSTEM = 'File System'
     FILES_LIST = 'Files List'
     SMLM_ANALYSIS = 'SMLM Analysis'
     DATA_FILTERS = 'Data Filters'
-
-
-class CustomFileSystemModel(QFileSystemModel):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-
-    def filterAcceptsRow(self, source_row, source_parent):
-        index = self.index(source_row, 0, source_parent)
-        if not index.isValid():
-            return False
-
-        # Get the file/folder name and path
-        file_info = self.fileInfo(index)
-        file_name = file_info.fileName()
-        parent_path = file_info.absolutePath()
-
-        # Check if the parent directory is a .zarr folder
-        if parent_path.endswith('.zarr'):
-            return False  # Do not show any files within a .zarr folder
-
-        # Check if the current directory is a .zarr folder
-        if file_name.endswith('.zarr'):
-            return True  # Always accept .zarr folders themselves
-
-        # Use the default filtering behavior for other files/folders
-        return super().filterAcceptsRow(source_row, source_parent)
-
-    def isDir(self, index):
-        # Override the isDir method to treat .zarr folders as files
-        file_info = self.fileInfo(index)
-        if file_info.isDir() and file_info.fileName().endswith('.zarr'):
-            return False  # Treat .zarr folders as files
-        return super().isDir(index)
-
-    def data(self, index, role):
-        # Optionally, customize the display role to show the .zarr folders as files
-        file_info = self.fileInfo(index)
-        if (
-            role == QFileSystemModel.Roles.FileIconRole
-            and file_info.fileName().endswith('.zarr')
-        ):
-            # Get the icon for a ZIP file (or any compressed file)
-            zip_icon = QIcon.fromTheme('application-zip')  # On Linux
-            if zip_icon.isNull():
-                zip_icon = self.iconProvider().icon(
-                    QtCore.QFileInfo('dummy.zip')
-                )  # Fallback for Windows/Mac
-            return zip_icon  # Return ZIP icon for .zarr folders
-
-        return super().data(index, role)
-
-    def hasChildren(self, index):
-        # Ensure that .zarr folders don't expand by showing no children
-        file_info = self.fileInfo(index)
-        if file_info.isDir() and file_info.fileName().endswith('.zarr'):
-            return False  # Treat .zarr folders as files with no children
-        return super().hasChildren(index)
 
 
 class multi_viewer(QMainWindow):
@@ -105,9 +52,6 @@ class multi_viewer(QMainWindow):
         self.top = 0
         self._width = 1600
         self._height = 950
-
-        # {path: {'type': str, 'widget': QWidget}}
-        self._opened_files: dict[str, dict[str, QtWidgets.QWidget]] = {}
 
         # Threading
         self._threadpool = QtCore.QThreadPool.globalInstance()
@@ -142,9 +86,6 @@ class multi_viewer(QMainWindow):
         # Initialize the file system model / tree
         self.setupFileSystemTab(path)
 
-        # Setup opened files list
-        self.setup_files_list()
-
         # Tabify docks
         self.tabifyDocks()
 
@@ -177,18 +118,6 @@ class multi_viewer(QMainWindow):
         ] = {}  # Dictionary to store created docks
         self.layouts = {}
 
-    def setup_files_list(self):
-        self.opened_files_list = QtWidgets.QListWidget(self)
-        self.opened_files_list.setWindowTitle('Opened Files')
-        self.opened_files_list.itemClicked.connect(self._focus_opened_file)
-        self.create_tab(
-            DockKeys.FILES_LIST,
-            QtWidgets.QVBoxLayout,
-            'LeftDockWidgetArea',
-            widget=None,
-            visible=True,
-        ).addWidget(self.opened_files_list)
-
     def setupFileSystemTab(self, path):
         # Tiff File system tree viewer tab layout
         self.file_tree_layout = self.create_tab(
@@ -200,104 +129,14 @@ class multi_viewer(QMainWindow):
 
         self.path = path
 
-        # Create QFileSystemModel
-        self.model = CustomFileSystemModel()
-        self.model.setRootPath(path)
-        self.model.setFilter(
-            QtCore.QDir.Filter.AllDirs
-            | QtCore.QDir.Filter.Files
-            | QtCore.QDir.Filter.NoDotAndDotDot
-        )
-        self.model.setNameFilters(['*.tif', '*.tiff', '*.tsv', '*.h5', '*.zarr'])
-        self.model.setNameFilterDisables(False)
-
         # Create QTreeView
-        self.tree = QtWidgets.QTreeView()
-        self.tree.setModel(self.model)
-        self.tree.setRootIndex(self.model.index(path))
-        self.tree.setAnimated(False)
-        self.tree.setIndentation(20)
-        self.tree.setSortingEnabled(False)
-        self.tree.hideColumn(1)
-        self.tree.hideColumn(2)
-        self.tree.hideColumn(3)
-        self.tree.setWindowTitle('Dir View')
-        self.tree.setMinimumWidth(400)
-        self.tree.resize(512, 256)
+        self.file_system = FileSystem(path=self.path)
 
         # Connect double-click signal to a method that uses QTimer
-        self.tree.doubleClicked.connect(self._open_file)
+        self.file_system.openFile.connect(self._open_file)
+        self.file_system.focusItem.connect(self._focus_opened_file)
 
-        # Create Tree view context menu
-        self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.tree.customContextMenuRequested.connect(self._show_tree_context_menu)
-
-        # Add the File system tab contents
-        self.imsq_pattern = QtWidgets.QLineEdit('/image_0*.ome.tif')
-
-        self.file_tree_layout.addWidget(QtWidgets.QLabel('Image Sequence pattern:'))
-        self.file_tree_layout.addWidget(self.imsq_pattern)
-        self.file_tree_layout.addWidget(self.tree)
-
-    def _show_tree_context_menu(self, position):
-        index = self.tree.indexAt(position)
-        if not index.isValid():
-            return
-
-        menu = QtWidgets.QMenu()
-        reveal_action = menu.addAction('Reveal in Explorer')
-        new_folder_action = menu.addAction('New Folder')
-        menu.addSeparator()
-
-        # Root path shortcuts
-        root_action = menu.addAction('This PC (Root Path)')
-        home_action = menu.addAction('Home (User Directory)')
-        desktop_action = menu.addAction('Desktop')
-        initial_action = menu.addAction('Initial Path')
-        working_dir_action = menu.addAction('Working Directory')
-
-        action = menu.exec(self.tree.viewport().mapToGlobal(position))
-        if action == reveal_action:
-            path = self.model.filePath(index)
-            folder = path if os.path.isdir(path) else os.path.dirname(path)
-            os.startfile(folder)
-        elif action == new_folder_action:
-            self._create_new_folder()
-        elif action == home_action:
-            home = os.path.expanduser('~')
-            self.tree.setRootIndex(self.model.index(home))
-        elif action == desktop_action:
-            desktop = os.path.join(os.path.expanduser('~'), 'Desktop')
-            self.tree.setRootIndex(self.model.index(desktop))
-        elif action == root_action:
-            self.tree.setRootIndex(self.model.index(''))
-        elif action == initial_action:
-            self.tree.setRootIndex(self.model.index(self.path))
-        elif action == working_dir_action:
-            self.tree.setRootIndex(
-                self.model.index(os.path.dirname(os.path.abspath(__package__)))
-            )
-
-    def _create_new_folder(self):
-        index = self.tree.currentIndex()
-        if not index.isValid():
-            return
-
-        path = self.model.filePath(index)
-        if not os.path.isdir(path):
-            path = os.path.dirname(path)
-
-        new_folder_name, ok = QtWidgets.QInputDialog.getText(
-            self, 'New Folder', 'Enter folder name:'
-        )
-        if ok and new_folder_name:
-            new_folder_path = os.path.join(path, new_folder_name)
-            try:
-                os.makedirs(new_folder_path)
-            except OSError as e:
-                QtWidgets.QMessageBox.critical(
-                    self, 'Error', f'Could not create folder: {e}'
-                )
+        self.file_tree_layout.addWidget(self.file_system)
 
     def tabifyDocks(self):
         # Tabify docks
@@ -369,17 +208,20 @@ class multi_viewer(QMainWindow):
                 self.reg_window = None
 
             stacks = {}
-            for path, info in self._opened_files.items():
-                widget = info['widget']()
+            for path, info in self.file_system._opened_files.items():
+                widget = info['widget']
                 if info['type'] in ('TIFF', 'ZARR', 'ImageSeq') and isinstance(
                     widget, StackView
                 ):
                     channels = widget.stack_handler.shapeTCZYX()[1]
                     for c in range(channels):
-                        key = (
-                            self._compact_display_name(path, info['type']) + f' (C{c})'
-                        )
+                        key = _compact_display_name(path, info['type']) + f' (C{c})'
                         stacks[key.replace('\n', ' ')] = ref(widget.stack_handler)
+
+            if len(stacks) < 2:
+                logger.warning('Not enough stacks available for registration.')
+                return
+
             self.reg_window = RegistrationWidget(stacks=stacks)
             self.reg_window.show()
 
@@ -388,16 +230,54 @@ class multi_viewer(QMainWindow):
         registration_tool.triggered.connect(show_registration_tool)
         tools_menu.addAction(registration_tool)
 
+        # Add Localization Clustering Tool
+        self.batch_window = None
+
+        def show_batch_loc_tool():
+            if self.batch_window is not None:
+                self.batch_window.close()
+                self.batch_window = None
+
+            loc_tables = {}
+            for path, info in self.file_system._opened_files.items():
+                widget = info['widget']
+                if info['type'] in ('HDF5', 'TSV') and isinstance(
+                    widget, LocalizationsView
+                ):
+                    key = _compact_display_name(path, info['type'])
+                    for table in range(len(widget.fittingResults)):
+                        key = f'{key} (Table {table})'
+                        loc_tables[key.replace('\n', ' ')] = ref(
+                            widget.fittingResults[table]
+                        )
+
+            if len(loc_tables) < 1:
+                logger.warning(
+                    'No localization tables available for batch processing.'
+                )
+                return
+
+            self.batch_window = BatchLocalizations(
+                parent=self, loc_tables=loc_tables
+            )
+            self.batch_window.show()
+
+        loc_batch_tool = QAction('Localization Batch Tool', self)
+        loc_batch_tool.triggered.connect(show_batch_loc_tool)
+        tools_menu.addAction(loc_batch_tool)
+
         # Add Dark Calibration Tool
         dark_cal_tool = QAction('Dark Calibration Tool', self)
         dark_cal_tool.triggered.connect(
-            lambda: self.mdi_area.addSubWindow(DarkCalibration()).show())
+            lambda: self.mdi_area.addSubWindow(DarkCalibration()).show()
+        )
         tools_menu.addAction(dark_cal_tool)
 
         # Add PTC Calibration Tool
         ptc_cal_tool = QAction('PTC Calibration Tool', self)
         ptc_cal_tool.triggered.connect(
-            lambda: self.mdi_area.addSubWindow(PhotonTransfer()).show())
+            lambda: self.mdi_area.addSubWindow(PhotonTransfer()).show()
+        )
         tools_menu.addAction(ptc_cal_tool)
 
         help_menu.addAction(github)
@@ -483,122 +363,55 @@ class multi_viewer(QMainWindow):
             + QDateTime.currentDateTime().toString('hh:mm:ss,zzz')
         )
 
-    def _focus_opened_file(self, item):
-        if isinstance(item, str):
-            path = item
-        elif isinstance(item, QtWidgets.QListWidgetItem):
-            path = item.data(QtCore.Qt.ItemDataRole.UserRole)
+    def _focus_opened_file(self, reference: ref):
+        widget = reference()
 
-        widget = self._opened_files[path]['widget']()
+        if not widget:
+            return
+
         for subwin in self.mdi_area.subWindowList():
             if subwin.widget() is widget:
                 # subwin.raise_()
                 subwin.showMaximized()
                 break
 
-    @staticmethod
-    def _compact_display_name(path, type):
-        # extract drive if on windows
-        if os.name == 'nt':
-            drive, tail = os.path.splitdrive(path)
-            parts = tail.strip('/').split('/')
-            drive = f'[💻{drive}]'
-        else:
-            drive = '[💻ROOT]'
-            parts = path.strip('/').split('/')
-
-        parent = '' if len(parts) < 2 else f'\n[📁{parts[-2]}]'
-        basename = parts[-1]
-
-        # file name pattern 00__image_00000_roi_00.ome.tif
-        # extrat roi if exists regex
-        match = re.search(r'.*?(\d+)__image_(\d+)_roi_(\d+)', basename)
-        if match:
-            prefix = match.group(1)
-            image_num = match.group(2)
-            roi_num = match.group(3)
-            return (
-                f'{drive} [{type}]'
-                f'\n[{prefix}] [Image {image_num}] [ROI {roi_num}]{parent}'
-            )
-        elif len(basename) > 20:
-            return f'{drive} [{type}]\n...{basename[-20:]}{parent}'
-        else:
-            return f'{drive} [{type}]\n{basename}{parent}'
-
-    def _update_opened_files_list(self):
-        self.opened_files_list.clear()
-        for path, info in self._opened_files.items():
-            display_name = self._compact_display_name(path, type=info['type'])
-            item = QtWidgets.QListWidgetItem(f'{display_name}')
-            item.setData(QtCore.Qt.ItemDataRole.UserRole, path)
-            self.opened_files_list.addItem(item)
-
-    @Slot(QtCore.QModelIndex)
-    def _open_file(self, index: QtCore.QModelIndex):
+    @Slot(QtCore.QModelIndex, str)
+    def _open_file(self, index: QtCore.QModelIndex, file_type: str):
         # Set the Qt.WindowFlags for making the subwindow resizable
         view = None
 
-        path = self.model.filePath(index)
+        path = self.file_system.filePath(index)
 
-        if path in self._opened_files:
-            self._focus_opened_file(path)
+        if path in self.file_system._opened_files:
+            self.file_system._focus_opened_file(path)
             return
 
-        if not os.path.isdir(path):
-            if path.endswith('.tif') or path.endswith('.tiff'):
-                view = StackView(path, None)
-                view.localizedData.connect(self.localizedData)
-                file_type = 'TIFF'
-            elif path.endswith('.zarr'):
-                view = StackView(path)
-                view.localizedData.connect(self.localizedData)
-                file_type = 'ZARR'
-            elif (
-                path.endswith('.h5') and not path.endswith('.psf.h5')
-            ) or path.endswith('.tsv'):
-                results = FittingResults.fromFile(path, 1)
-                if results is not None:
-                    view = LocalizationsView(results)
-                    file_type = 'HDF5' if path.endswith('.h5') else 'TSV'
-                    logger.info('Done importing results.')
-                else:
-                    logger.error('Error importing results.')
-            elif path.endswith('.psf.h5'):
-                view = PSFView(path)
-                file_type = 'PSF'
-        else:
-            if path.endswith('.zarr'):
-                view = StackView(path)
-                file_type = 'ZARR'
-            else:
-                try:
-                    view = StackView(path, self.imsq_pattern.text())
-                    file_type = 'ImageSeq'
-                except Exception as e:
-                    logger.error(f'Error opening image sequence: {e}')
-                    return
+        if file_type in ['TIFF', 'ZARR', 'ImageSeq']:
+            pattern = self.file_system.file_pattern if file_type == 'ImageSeq' else None
 
-            view.localizedData.connect(self.localizedData)
+            try:
+                view = StackView(path, pattern)
+                view.localizedData.connect(self.file_system.localizedData)
+            except Exception as e:
+                view = None
+                logger.error(f'Error opening: {e}')
+
+        elif file_type in ['HDF5', 'TSV']:
+            view = LocalizationsView(path=path)
+        elif file_type == 'PSF':
+            view = PSFView(path)
 
         if view:
-            self._opened_files[path] = {'type': file_type, 'widget': ref(view)}
+            self.file_system._opened_files[path] = {
+                'type': file_type,
+                'widget': view,
+            }
             window = self.mdi_area.addSubWindow(view)
             # Install event filter
-            window.destroyed.connect(lambda _, p=path: self._on_subwindow_close(p))
+            window.destroyed.connect(lambda: self.file_system._on_subwindow_close(path))
             window.show()
 
-        self._update_opened_files_list()
-
-    def _on_subwindow_close(self, path):
-        # Remove file from opened files when subwindow closes
-        if path in self._opened_files:
-            del self._opened_files[path]
-            self._update_opened_files_list()
-
-    def localizedData(self, path):
-        index = self.model.index(path)
-        self._open_file(index)
+        self.file_system._update_opened_files_list()
 
     def StartGUI(path=None):
         '''

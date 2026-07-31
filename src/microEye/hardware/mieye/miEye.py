@@ -36,6 +36,7 @@ from microEye.utils.start_gui import StartGUI, __version__
 
 logger = logging.getLogger(__name__)
 
+
 class DOCKS(Enum):
     DEVICES = 0
     LASERS = 1
@@ -375,6 +376,13 @@ class miEye_module(QMainWindow):
             lambda: self.open_link('https://pypi.org/project/microEye/')
         )
 
+        guide = QAction('miEye Guide', self)
+        guide.triggered.connect(
+            lambda: self.open_link(
+                'https://github.com/samhitech/microEye/blob/main/guide/mieye/README.md'
+            )
+        )
+
         # Add exit action to file menu
         file_menu.addAction(save_config)
         file_menu.addAction(load_config)
@@ -415,6 +423,8 @@ class miEye_module(QMainWindow):
 
         help_menu.addAction(github)
         help_menu.addAction(pypi)
+        help_menu.addSeparator()
+        help_menu.addAction(guide)
 
     def tabifyDocks(self):
         self.setTabPosition(

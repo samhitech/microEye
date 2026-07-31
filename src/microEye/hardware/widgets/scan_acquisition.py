@@ -11,6 +11,7 @@ from microEye.images.uImage import uImage
 from microEye.qt import (
     QApplication,
     Qt,
+    QtGui,
     QtWidgets,
     Signal,
     getExistingDirectory,
@@ -40,10 +41,11 @@ class TiledImageSelector(QtWidgets.QWidget):
         imageWidget = pg.GraphicsLayoutWidget()
         imageWidget.ci.setContentsMargins(0, 0, 0, 0)
         imageWidget.ci.setSpacing(0)
-        imageWidget.sceneObj.sigMouseClicked.connect(self.clicked)
+
+        # add to imagewidget context menu
 
         for _idx, tImg in enumerate(images):
-            vb: pg.ViewBox = imageWidget.addViewBox(*tImg.index)
+            vb: pg.ViewBox = imageWidget.ci.addViewBox(*tImg.index)
             vb.setMouseEnabled(False, False)
             vb.setDefaultPadding(0.004)
             vb.setAspectLocked(True)
@@ -56,6 +58,9 @@ class TiledImageSelector(QtWidgets.QWidget):
             img = pg.ImageItem(tImg.uImage._view)
             vb.addItem(img)
             vb.item = tImg
+            img.item = tImg
+
+        imageWidget.sceneObj.sigMouseClicked.connect(self.clicked)
 
         self.imgView = pg.ImageView()
         self.setWindowTitle('Tiled Image Selector')
@@ -64,26 +69,37 @@ class TiledImageSelector(QtWidgets.QWidget):
         central_layout.addWidget(self.imgView, 4)
 
     def clicked(self, event):
+        current_item = getattr(event, 'currentItem', None)
+        tile = getattr(current_item, 'item', None)
+
+        if tile is None and hasattr(current_item, 'addedItems'):
+            added_items = getattr(current_item, 'addedItems', [])
+            if len(added_items) > 0:
+                tile = getattr(added_items[0], 'item', None)
+
+        if tile is None:
+            return
+
         if (
-            event.modifiers() == Qt.Modifier.SHIFT
+            event.modifiers() == Qt.KeyboardModifier.ShiftModifier
             and event.button() == Qt.MouseButton.LeftButton
         ):
-            self.save_raw_data(event.currentItem.item)
+            self.save_raw_data(tile)
         elif (
-            event.modifiers() == Qt.Modifier.CTRL
+            event.modifiers() == Qt.KeyboardModifier.ControlModifier
             and event.button() == Qt.MouseButton.LeftButton
         ):
             self.save_raw_data_all()
         else:
             if event.double():
-                self.positionSelected.emit(*event.currentItem.item.position)
+                self.positionSelected.emit(*tile.position)
             else:
                 self.setWindowTitle(
                     'Tiled Image Selector ({}, {}) ({}, {})'.format(
-                        *event.currentItem.item.index, *event.currentItem.item.position
+                        *tile.index, *tile.position
                     )
                 )
-                self.imgView.setImage(event.currentItem.addedItems[0].image)
+                self.imgView.setImage(tile.uImage._view)
 
     def save_raw_data(self, img: TileImage):
         filename = None

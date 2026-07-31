@@ -863,7 +863,7 @@ class Camera_Panel(QtWidgets.QGroupBox):
             **extra_kwargs,
         )
 
-    @Slot()
+    @Slot(str)
     def directory_changed(self, value: str):
         '''Slot for directory changed signal'''
         if len(value) > 0:

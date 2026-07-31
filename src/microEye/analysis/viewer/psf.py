@@ -63,6 +63,8 @@ class PSFView(QtWidgets.QWidget):
         if psf_data:
             self.update_all_views(False)
 
+        self.show()
+
     def setup_merged_view_tab(self):
         '''Set up the merged Slice/Field View tab with enhanced controls.'''
         merged_widget = QtWidgets.QWidget()

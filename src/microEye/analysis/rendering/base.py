@@ -10,7 +10,7 @@ from microEye.analysis.rendering.core import model
 logger = logging.getLogger(__name__)
 
 
-@numba.njit()
+@numba.njit(cache=True)
 def render_compute(data, step, gauss_2d, out_img):
     for x, y, Intensity in data:
         out_img[y - step : y + step + 1, x - step : x + step + 1] += (
@@ -18,7 +18,7 @@ def render_compute(data, step, gauss_2d, out_img):
         )
 
 
-@numba.njit()
+@numba.njit(cache=True)
 def render_compute_projection(data, step_lateral, step_axial, gauss_2d, out_img):
     for lateral, axial, Intensity in data:
         out_img[
@@ -27,7 +27,7 @@ def render_compute_projection(data, step_lateral, step_axial, gauss_2d, out_img)
         ] += Intensity * gauss_2d
 
 
-@numba.njit()
+@numba.njit(cache=True)
 def filter_points_in_range(coords, values, center, half_width):
     '''Filter points within a range along one dimension.'''
     mask = (coords >= center - half_width) & (coords <= center + half_width)
@@ -217,7 +217,7 @@ class BaseRenderer:
         else:
             logger.error('Invalid projection type.')
 
-    def render_xy(self, X, Y, Intensity, shape=None):
+    def render_xy(self, X, Y, Intensity, shape=None, **kwargs):
         '''
         Renders super resolution image (XY Projection) from single
         molecule localizations.
@@ -240,19 +240,26 @@ class BaseRenderer:
             the rendered 2D super-res image array
         '''
         self._validate_inputs(X, Y, Intensity)
-        X, Y = self._zero_origin(X, Y)
+
+        if kwargs.get('zero_origin', True):
+            X, Y = self._zero_origin(X, Y)
+
+        x_padding = kwargs.get('x_padding', 4)
+        y_padding = kwargs.get('y_padding', 4)
+        x_offset = kwargs.get('x_offset', 2)
+        y_offset = kwargs.get('y_offset', 2)
 
         if self._mode in [RenderModes.HISTOGRAM, RenderModes.EVENT_HISTOGRAM]:
             if shape is None:
-                x_max = int((np.max(X) / self._pixel_size) + 4)
-                y_max = int((np.max(Y) / self._pixel_size) + 4)
+                x_max = int((np.max(X) / self._pixel_size) + x_padding)
+                y_max = int((np.max(Y) / self._pixel_size) + y_padding)
             else:
                 x_max, y_max = shape[1], shape[0]
             n_max = max(x_max, y_max)
 
-            self._image = np.zeros([n_max, n_max])
-            X = np.round(X / self._pixel_size) + 2
-            Y = np.round(Y / self._pixel_size) + 2
+            self._image = np.zeros([y_max, x_max])
+            X = np.round(X / self._pixel_size) + x_offset
+            Y = np.round(Y / self._pixel_size) + y_offset
 
             if self._mode == RenderModes.EVENT_HISTOGRAM:
                 Intensity = np.ones_like(Intensity)
@@ -266,7 +273,7 @@ class BaseRenderer:
             n_max = max(x_max, y_max)
 
             step = int((self._gauss_len - 1) // 2)
-            self._image = np.zeros([n_max, n_max])
+            self._image = np.zeros([y_max, x_max])
             X = np.round(X / self._pixel_size) + 4 * step
             Y = np.round(Y / self._pixel_size) + 4 * step
 
@@ -461,7 +468,7 @@ class BaseRenderer:
         else:
             raise ValueError('Invalid projection type.')
 
-    def from_array(self, data: np.ndarray, shape=None):
+    def from_array(self, data: np.ndarray, shape=None, **kwargs):
         '''Renders as super resolution image from
         single molecule localizations.
 
@@ -477,4 +484,4 @@ class BaseRenderer:
         Image (np.ndarray)
             the rendered 2D super-res image array
         '''
-        return self.render_xy(data[:, 0], data[:, 1], data[:, 2], shape)
+        return self.render_xy(data[:, 0], data[:, 1], data[:, 2], shape, **kwargs)

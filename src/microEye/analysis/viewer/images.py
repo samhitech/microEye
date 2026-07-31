@@ -84,13 +84,40 @@ class StackView(QtWidgets.QWidget):
         self.setWindowTitle(path.split('/')[-1])
 
         self.path = path
-        self.stack_handler = self.getStackHandler(path, mask_pattern)
-        self.stack_handler.open()
+
         self._threadpool = QtCore.QThreadPool.globalInstance()
         self._lock = threading.Lock()
 
+        self.__init_gui()
+
+        def getStackHandler(event):
+            try:
+                stack_handler = self.getStackHandler(path, mask_pattern)
+                stack_handler.open()
+
+                shape = stack_handler.shapeTCZYX()
+
+                ome_metadata = None
+
+                if isinstance(stack_handler, TiffSeqHandler):
+                    with tf.TiffFile(stack_handler._tiff_seq.files[0]) as fl:
+                        if fl.is_ome:
+                            ome_metadata = OME.from_xml(fl.ome_metadata)
+
+                return stack_handler, shape, ome_metadata
+            except Exception as e:
+                return None, None, None
+
+        worker = QThreadWorker(getStackHandler)
+        worker.signals.result.connect(lambda results: self.on_stack_ready(*results))
+
+        self._threadpool.start(worker)
+
+    def __init_gui(self):
         self.main_layout = QtWidgets.QHBoxLayout()
         self.setLayout(self.main_layout)
+
+        self.setVisible(False)
 
         # Graphics layout
         self.initGraphics()
@@ -100,25 +127,41 @@ class StackView(QtWidgets.QWidget):
 
         self.main_layout.addWidget(self.tab_widget, 2)
 
-        # initialize the Prefit/Fitting Options tab
+    def on_stack_ready(
+        self,
+        stack_handler: TiffSeqHandler | ZarrImageSequence,
+        shape: tuple,
+        ome_metadata: Optional[OME],
+    ):
+        if stack_handler is None:
+            self.close()
+            return
+
+        self.stack_handler = stack_handler
+        self.shape = shape
+
+        self.empty_image = np.zeros(shape[-2:], dtype=np.uint8)
+        self.empty_alpha = np.zeros(shape[-2:] + (4,), dtype=np.uint8)
+
         self.setupOptionsTab()
 
-        # Layers tab
         self.setupLayersTab()
 
-        # Kymogram tab
         self.setupKymogramTab()
 
-        # CMOS maps tab
         self.setupCMOSMapsTab()
 
-        # Load Metadata
-        self.load_ome_metadata()
+        self.load_ome_metadata(ome_metadata=ome_metadata)
+
+        self.centerROI()
 
         self.addStackLayers()
 
         self.connnectSignals()
-        self.centerROI()
+
+        self.update_display()
+
+        self.show()
 
     def connnectSignals(self):
         self.roi.sigRegionChanged.connect(self.region_changed)
@@ -153,11 +196,6 @@ class StackView(QtWidgets.QWidget):
         self.view_box.enableAutoRange()
         self.view_box.invertY(True)
 
-        self.empty_image = np.zeros(self.stack_handler.shape[-2:], dtype=np.uint8)
-        self.empty_alpha = np.zeros(
-            self.stack_handler.shape[-2:] + (4,), dtype=np.uint8
-        )
-
         # histogram item
         self.histogram_item = pg.HistogramLUTItem(
             gradientPosition='bottom', orientation='horizontal'
@@ -165,15 +203,6 @@ class StackView(QtWidgets.QWidget):
         self.levels_maps = []
 
         self.image_widget.addItem(self.histogram_item, row=1, col=0)
-
-        # Add ROI
-        self.roi = pg.RectROI(
-            [-8, 14], [6, 5], scaleSnap=True, translateSnap=True, movable=False
-        )
-        self.roi.addTranslateHandle([0, 0], [0.5, 0.5])
-        self.roi.setZValue(1000)
-        self.roi.setVisible(False)
-        self.view_box.addItem(self.roi)
 
         # Add ScatterPlotItem for localizations
         self.scatter_locs = pg.ScatterPlotItem()
@@ -259,27 +288,17 @@ class StackView(QtWidgets.QWidget):
         self.image_control_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
 
         self.frames_label = QtWidgets.QLabel('Time Axis:')
-        self.frames_slider = LabelledSlider(
-            None, True, (0, self.stack_handler.shapeTCZYX()[0] - 1)
-        )
+        self.frames_slider = LabelledSlider(None, True, (0, self.shape[0] - 1))
         self.c_label = QtWidgets.QLabel('Channel Axis:')
-        self.c_slider = LabelledSlider(
-            None, True, (0, self.stack_handler.shapeTCZYX()[1] - 1)
-        )
+        self.c_slider = LabelledSlider(None, True, (0, self.shape[1] - 1))
         self.z_label = QtWidgets.QLabel('Z Axis:')
-        self.z_slider = LabelledSlider(
-            None, True, (0, self.stack_handler.shapeTCZYX()[2] - 1)
-        )
+        self.z_slider = LabelledSlider(None, True, (0, self.shape[2] - 1))
 
         # Hist plotWidget
         self.histogram = pg.PlotWidget()
         green_pen = pg.mkPen(color='g')
         self._bins = np.arange(WORD)
         green_brush = pg.mkBrush(0, 255, 0, 32)
-
-        self.plot_ref = self.histogram.plot(
-            self._bins, np.zeros_like(self._bins), pen=pg.mkPen(color='b')
-        )
 
         self.lr_0 = pg.LinearRegionItem(
             (0, WORD - 1),
@@ -300,9 +319,7 @@ class StackView(QtWidgets.QWidget):
             self.image_control_layout.addRow(self.z_label, self.z_slider)
         self.image_control_layout.addRow(self.histogram)
 
-        self.fitting_options_widget = FittingOptions(
-            shape=self.stack_handler.shapeTCZYX()
-        )
+        self.fitting_options_widget = FittingOptions(shape=self.shape)
 
         # Localization GroupBox
         self.export_options = ChecklistDialog(
@@ -420,11 +437,9 @@ class StackView(QtWidgets.QWidget):
 
     def setupKymogramTab(self):
         # Creating the kymogram tab layout
-        self.kymogram_widget = KymogramWidget(
-            max_window=self.stack_handler.shapeTCZYX()[0]
-        )
+        self.kymogram_widget = KymogramWidget(max_window=self.shape[0])
 
-        # self.kymogram_widget.setMaximum(self.stack_handler.shapeTCZYX()[0] - 1)
+        # self.kymogram_widget.setMaximum(self.shape[0] - 1)
         self.kymogram_widget.displayClicked.connect(self.kymogram_display_clicked)
         self.kymogram_widget.extractClicked.connect(self.kymogram_btn_clicked)
 
@@ -460,12 +475,22 @@ class StackView(QtWidgets.QWidget):
         '''
         Centers the region of interest (ROI) and fits it to the image.
         '''
-        x = self.stack_handler.shape[-1]
-        y = self.stack_handler.shape[-2]
+        x = self.shape[-1]
+        y = self.shape[-2]
 
-        self.roi.setSize([x, y])
-        self.roi.setPos([0, 0])
-        self.roi.maxBounds = QtCore.QRectF(0, 0, x, y)
+        # Add ROI
+        self.roi = pg.RectROI(
+            [0, 0],
+            [x, y],
+            scaleSnap=True,
+            translateSnap=True,
+            movable=False,
+            maxBounds=QtCore.QRectF(0, 0, x, y),
+        )
+        self.roi.addTranslateHandle([0, 0], [0.5, 0.5])
+        self.roi.setZValue(1000)
+        self.roi.setVisible(False)
+        self.view_box.addItem(self.roi)
 
     def get_roi_info(self):
         if self.get_param(Parameters.ENABLE_ROI).value():
@@ -476,7 +501,7 @@ class StackView(QtWidgets.QWidget):
             return None
 
     def set_roi_info(self, x: int, y: int, width: int, height: int):
-        shape = self.stack_handler.shapeTCZYX()
+        shape = self.shape
         x = min(max(0, x), shape[-1] - 1)
         y = min(max(0, y), shape[-2] - 1)
         width = min(max(1, width), shape[-1] - x)
@@ -516,19 +541,18 @@ class StackView(QtWidgets.QWidget):
         else:
             self.roi.setVisible(False)
 
-    def load_ome_metadata(self):
-        if isinstance(self.stack_handler, TiffSeqHandler):
-            with tf.TiffFile(self.stack_handler._tiff_seq.files[0]) as fl:
-                if fl.is_ome:
-                    ome_metadata = OME.from_xml(fl.ome_metadata)
+    def load_ome_metadata(self, ome_metadata: Optional[str | OME] = None):
+        if self.stack_handler is not None and ome_metadata is not None:
+            if isinstance(ome_metadata, str):
+                ome_metadata = OME.from_xml(ome_metadata)
 
-                    self.metadata_editor = MetadataEditorTree()
-                    self.metadata_editor.pop_OME_XML(ome_metadata)
+            self.metadata_editor = MetadataEditorTree()
+            self.metadata_editor.pop_OME_XML(ome_metadata)
 
-                    self.tab_widget.addTab(self.metadata_editor, 'OME Metadata')
-                    self.get_param(Parameters.PIXEL_SIZE).setValue(
-                        self.metadata_editor.get_param_value(MetaParams.PX_SIZE)
-                    )
+            self.tab_widget.addTab(self.metadata_editor, 'OME Metadata')
+            self.get_param(Parameters.PIXEL_SIZE).setValue(
+                self.metadata_editor.get_param_value(MetaParams.PX_SIZE)
+            )
 
     @Slot()
     def slider_changed(self):
@@ -545,13 +569,18 @@ class StackView(QtWidgets.QWidget):
         self.uImage.equalizeLUT(min_max, True)
 
         if self.uImage._hist.ndim == 1:
-            self.plot_ref.setData(self.uImage._hist)
+            if hasattr(self, 'plot_ref'):
+                self.plot_ref.setData(self.uImage._hist)
+            else:
+                self.plot_ref = self.histogram.plot(
+                    self._bins, self.uImage._hist, pen=pg.mkPen(color='b')
+                )
 
         if self.get_param(Parameters.AUTO_STRETCH).value():
-            self.lr_0.sigRegionChangeFinished.disconnect(self.slider_changed)
+            self.lr_0.blockSignals(True)
             self.lr_0.setRegion([self.uImage._min, self.uImage._max])
             self.histogram.setXRange(self.uImage._min, self.uImage._max)
-            self.lr_0.sigRegionChangeFinished.connect(self.slider_changed)
+            self.lr_0.blockSignals(False)
 
     def update_images(self):
         if self.uImage._view.ndim == 2:
@@ -585,30 +614,40 @@ class StackView(QtWidgets.QWidget):
         return image
 
     def update_display(self):
-        image = self.stack_handler.getSlice(
-            self.frames_slider.value(), self.c_slider.value(), self.z_slider.value()
-        )
+        if hasattr(self, '__updating') and self.__updating:
+            return
 
-        varim = self.apply_cmos_maps(image)
+        self.__updating = True
 
-        roiInfo = self.get_roi_info()
-
-        image = self.apply_temporal_median_filter(image, roiInfo)
-
-        self.uImage = uImage(image)
-
-        self.update_histogram()
-
-        self.update_images()
-
-        if self.get_param(Parameters.REALTIME_LOCALIZATION).value():
-            if image.ndim == 2:
-                self.apply_realtime_localization(image, varim, roiInfo)
-        else:
-            self.image_layers.getImageItemAt(-1).setImage(
-                self.empty_alpha, autoLevels=False
+        try:
+            image = self.stack_handler.getSlice(
+                self.frames_slider.value(), self.c_slider.value(), self.z_slider.value()
             )
-            self.scatter_locs.clear()
+
+            varim = self.apply_cmos_maps(image)
+
+            roiInfo = self.get_roi_info()
+
+            image = self.apply_temporal_median_filter(image, roiInfo)
+
+            self.uImage = uImage(image)
+
+            self.update_histogram()
+
+            self.update_images()
+
+            if self.get_param(Parameters.REALTIME_LOCALIZATION).value():
+                if image.ndim == 2:
+                    self.apply_realtime_localization(image, varim, roiInfo)
+            else:
+                self.image_layers.getImageItemAt(-1).setImage(
+                    self.empty_alpha, autoLevels=False
+                )
+                self.scatter_locs.clear()
+        except Exception as e:
+            logger.error('Error updating display: %s', e)
+
+        self.__updating = False
 
     def preprocess_image(self, image: uImage, roi_info):
         if roi_info is not None:

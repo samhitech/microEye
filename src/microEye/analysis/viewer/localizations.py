@@ -1,8 +1,8 @@
-import contextlib
 import logging
 import os
 import re
 import traceback
+import weakref
 
 import cv2
 import numpy as np
@@ -11,6 +11,13 @@ import pyqtgraph as pg
 import tifffile as tf
 
 from microEye.analysis.checklist_dialog import ChecklistDialog
+from microEye.analysis.clustering.plot import (
+    ClusterPlotOptionsDialog,
+    ClustersScatter,
+    PlotResult,
+    RulerPlotOptionsDialog,
+    add_plot_result,
+)
 from microEye.analysis.fitting.nena import NeNA_Widget
 from microEye.analysis.fitting.processing import plot_animation_stats, plot_drift
 from microEye.analysis.fitting.psf import stats
@@ -51,6 +58,7 @@ class LocalizationTab(SideBar):
 
     driftCrossActivated = Signal()
     driftFiducialsActivated = Signal()
+    aimDriftCorrectionActivated = Signal()
 
     frcActivated = Signal()
     nenaActivated = Signal()
@@ -62,6 +70,7 @@ class LocalizationTab(SideBar):
 
     dbscanActivated = Signal()
     renderClustersActivated = Signal()
+    renderRulersActivated = Signal()
 
     importActivated = Signal()
     exportActivated = Signal()
@@ -253,6 +262,27 @@ class LocalizationTab(SideBar):
             'Fiducial markers', clicked=lambda: self.driftFiducialsActivated.emit()
         )
 
+        # AIM Drift Correction
+        self.__aim_segment_size = create_spin_box(
+            min_value=1, max_value=10000, initial_value=100
+        )
+        self.__aim_intersect_d = create_double_spin_box(
+            min_value=1, max_value=1000, initial_value=20
+        )
+        self.__aim_z_scale = create_double_spin_box(
+            min_value=0.01, max_value=10.0, initial_value=1.0
+        )
+
+        aim_drift_args = QtWidgets.QHBoxLayout()
+        aim_drift_args.addWidget(self.__aim_segment_size)
+        aim_drift_args.addWidget(self.__aim_intersect_d)
+        aim_drift_args.addWidget(self.__aim_z_scale)
+
+        self.__aim_btn = QtWidgets.QPushButton(
+            'AIM Drift Correction',
+            clicked=lambda: self.aimDriftCorrectionActivated.emit(),
+        )
+
         # Drift GroupBox
         fdrift = QtWidgets.QFormLayout()
 
@@ -265,6 +295,14 @@ class LocalizationTab(SideBar):
                 self.__cross_method_cbox, self.__drift_cross_btn, self.__drift_fdm_btn
             )
         )
+
+        fdrift.addRow(
+            QtWidgets.QLabel(
+                'AIM Drift Correction (segment size, intersect d, z scale):'
+            )
+        )
+        fdrift.addRow(aim_drift_args)
+        fdrift.addRow(self.__aim_btn)
         # End Drift GroupBox
 
         self.addSection('Drift Correction', fdrift, True)
@@ -388,6 +426,10 @@ class LocalizationTab(SideBar):
             'Show Clusters',
             clicked=lambda: self.renderClustersActivated.emit(),
         )
+        self.__dbscan_ruler_btn = QtWidgets.QPushButton(
+            'Show Rulers',
+            clicked=lambda: self.renderRulersActivated.emit(),
+        )
 
         clustering.addRow(QtWidgets.QLabel('Epsilon'), self.__dbscan_eps)
         clustering.addRow(QtWidgets.QLabel('Min Samples'), self.__dbscan_min_samples)
@@ -397,7 +439,7 @@ class LocalizationTab(SideBar):
         clustering.addWidget(self.__dbscan_scale_data)
         clustering.addWidget(self.__dbscan_btn)
         clustering.addWidget(self.__dbscan_render_btn)
-
+        clustering.addWidget(self.__dbscan_ruler_btn)
         self.addSection('DBSCAN Clustering', clustering, False)
 
     def __init_buttons(self):
@@ -580,6 +622,18 @@ class LocalizationTab(SideBar):
         return self.__drift_rmax.value()
 
     @property
+    def aimSegmentSize(self) -> int:
+        return self.__aim_segment_size.value()
+
+    @property
+    def aimIntersectD(self) -> float:
+        return self.__aim_intersect_d.value()
+
+    @property
+    def aimZScale(self) -> float:
+        return self.__aim_z_scale.value()
+
+    @property
     def nnMinDistance(self):
         return self.__nn_min_distance.value()
 
@@ -636,76 +690,44 @@ class LocalizationTab(SideBar):
         return self.__dbscan_scale_data.isChecked()
 
     def setButtonsEnabled(self, enabled=True):
-        self.__refresh_btn.setEnabled(enabled)
-        self.__display_3d_btn.setEnabled(enabled)
-        self.__extract_z_btn.setEnabled(enabled)
-        self.__load_cal_btn.setEnabled(enabled)
-        self.__plot_cal_btn.setEnabled(enabled)
-        self.__drift_cross_btn.setEnabled(enabled)
-        self.__drift_fdm_btn.setEnabled(enabled)
-        self.__nneigh_btn.setEnabled(enabled)
-        self.__merge_btn.setEnabled(enabled)
-        self.__nneigh_merge_btn.setEnabled(enabled)
-        self.__frc_res_btn.setEnabled(enabled)
-        self.__NeNA_btn.setEnabled(enabled)
-        self.__tardis_btn.setEnabled(enabled)
-        self.__animation_btn.setEnabled(enabled)
-        self.__dbscan_btn.setEnabled(enabled)
-        self.__dbscan_render_btn.setEnabled(enabled)
-        self.import_loc_btn.setEnabled(enabled)
-        self.export_loc_btn.setEnabled(enabled)
+        # check attributes of type QPushButton and set their enabled state
+        for attr_name in dir(self):
+            attr = getattr(self, attr_name)
+            if isinstance(attr, QtWidgets.QPushButton):
+                attr.setEnabled(enabled)
 
-
-class ClusterPlotOptionsDialog(QtWidgets.QDialog):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle('Cluster Plot Options')
-
-        self.mode_box = QtWidgets.QComboBox()
-        self.mode_box.addItem('Full FOV', 'fov')
-        self.mode_box.addItem('Superimposed', 'superimposed')
-        self.mode_box.setCurrentIndex(1)
-
-        self.is_rasterized = QtWidgets.QCheckBox('Rasterize?')
-        self.is_rasterized.setChecked(True)
-
-        self.render_box = QtWidgets.QComboBox()
-        self.render_box.addItem('Histogram', RenderModes.HISTOGRAM)
-        self.render_box.addItem('Event Histogram', RenderModes.EVENT_HISTOGRAM)
-        self.render_box.addItem('Gaussian', RenderModes.GAUSSIAN)
-
-        self.pixel_size = create_double_spin_box(
-            min_value=0.1, max_value=50, decimals=2, initial_value=0.5
-        )
-
-        layout = QtWidgets.QFormLayout(self)
-        layout.addRow('Mode:', self.mode_box)
-        layout.addWidget(self.is_rasterized)
-        layout.addRow('Render mode:', self.render_box)
-        layout.addRow('Pixel size:', self.pixel_size)
-
-        self.is_rasterized.checkStateChanged.connect(self.is_rasterized_toggled)
-
-        buttons = QtWidgets.QDialogButtonBox(
-            QtWidgets.QDialogButtonBox.StandardButton.Ok
-            | QtWidgets.QDialogButtonBox.StandardButton.Cancel
-        )
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        layout.addRow(buttons)
-
-    def is_rasterized_toggled(self):
-        layout: QtWidgets.QFormLayout = self.layout()
-
-        layout.setRowVisible(2, self.is_rasterized.isChecked())
-        layout.setRowVisible(3, self.is_rasterized.isChecked())
-
-    def values(self):
+    def toDict(self):
         return {
-            'mode': self.mode_box.currentData(),
-            'rasterized': self.is_rasterized.isChecked(),
-            'render_mode': self.render_box.currentData(),
-            'pixel_size': self.pixel_size.value(),
+            'renderMode': self.renderMode,
+            'projection': self.projection,
+            'binFrames': self.bin_frames,
+            'binXY': self.bin_xy,
+            'binZ': self.bin_z,
+            'slicePosition': self.slicePosition,
+            'autoStretch': self.autoStretch,
+            'frcMethod': self.frcMethod,
+            'crossMethod': self.crossMethod,
+            'crossBins': self.crossBins,
+            'crossPixelSize': self.crossPixelSize,
+            'crossUpSampling': self.crossUpSampling,
+            'crossRMAX': self.crossRMAX,
+            'aimSegmentSize': self.aimSegmentSize,
+            'aimIntersectD': self.aimIntersectD,
+            'aimZScale': self.aimZScale,
+            'nearestNeighbors': self.nearestNeighbors,
+            'nnMinDistance': self.nnMinDistance,
+            'nnMaxDistance': self.nnMaxDistance,
+            'nnMaxOff': self.nnMaxOff,
+            'nnMaxLength': self.nnMaxLength,
+            'curveFitMethod': self.curveFitMethod,
+            'zCalIntercept': self.zCalIntercept,
+            'zCalSlope': self.zCalSlope,
+            'dbscanEps': self.dbscanEps,
+            'dbscanMinSamples': self.dbscanMinSamples,
+            'dbscanLeafSize': self.dbscanLeafSize,
+            'dbscanMetric': self.dbscanMetric,
+            'dbscanAlgorithm': self.dbscanAlgorithm,
+            'dbscanScaleData': self.dbscanScaleData,
         }
 
 
@@ -716,7 +738,7 @@ class LocalizationsView(QtWidgets.QWidget):
 
     __INSTANCES = 0
 
-    def __init__(self, fittingResults: FittingResults = None):
+    def __init__(self, fittingResults: FittingResults = None, path=None):
         '''Initialize the StackView.
 
         Parameters
@@ -757,6 +779,41 @@ class LocalizationsView(QtWidgets.QWidget):
 
         if fittingResults:
             self.add_data_layer(fittingResults)
+
+        if path is not None and isinstance(path, str):
+
+            def get_data(event):
+                return FittingResults.fromFile(path, 1)
+
+            worker = QThreadWorker(get_data)
+            worker.signals.result.connect(self.on_stack_ready)
+
+            self._threadpool.start(worker)
+
+    def runAsync(self, func, *args, **kwargs):
+        done = kwargs.pop('done', lambda results: None)
+        error = kwargs.pop('error', lambda e: None)
+
+        def finished():
+            self.localization_widget.setButtonsEnabled(True)
+            logger.info(kwargs.pop('finished_message', 'Processing completed.'))
+
+        self.worker = QThreadWorker(func, *args, **kwargs)
+        self.worker.signals.result.connect(done)
+        self.worker.signals.error.connect(error)
+        self.worker.signals.finished.connect(finished)
+        # Execute
+        self.localization_widget.setButtonsEnabled(False)
+        self._threadpool.start(self.worker)
+
+    def on_stack_ready(self, results: FittingResults):
+        if results is not None and isinstance(results, FittingResults):
+            logger.info('Done importing results.')
+            self.add_data_layer(results)
+            self.show()
+        else:
+            logger.error('Error importing results.')
+            self.close()
 
     @property
     def currentResults(self) -> FittingResults:
@@ -977,7 +1034,6 @@ class LocalizationsView(QtWidgets.QWidget):
                 return None
 
         def done(results):
-            self.localization_widget.setButtonsEnabled(True)
             # results might be tuple of three nones
             if results is not None and all([r is not None for r in results]):
                 stack, frame_bins, locs_per_bin = results
@@ -993,13 +1049,11 @@ class LocalizationsView(QtWidgets.QWidget):
 
                 plot_animation_stats(frame_bins, locs_per_bin)
 
-        self.worker = QThreadWorker(work_func)
-        self.worker.signals.result.connect(done)
-        # Execute
-        self.localization_widget.setButtonsEnabled(False)
-        self._threadpool.start(self.worker)
+        self.runAsync(
+            work_func, done=done, finished_message='Animation rendering completed.'
+        )
 
-        self.currentResults.toAnimation()
+        # self.currentResults.toAnimation()
 
     def render_tracks(self):
         # self.trajectory_item.setData(
@@ -1045,6 +1099,9 @@ class LocalizationsView(QtWidgets.QWidget):
         self.localization_widget.driftFiducialsActivated.connect(
             lambda: LocalizationProcessing.drift_fdm(self)
         )
+        self.localization_widget.aimDriftCorrectionActivated.connect(
+            lambda: LocalizationProcessing.drift_aim(self)
+        )
 
         self.localization_widget.frcActivated.connect(
             lambda: LocalizationProcessing.FRC_estimate(self)
@@ -1071,6 +1128,9 @@ class LocalizationsView(QtWidgets.QWidget):
         )
         self.localization_widget.renderClustersActivated.connect(
             lambda: LocalizationRenderHelper.render_clusters(self)
+        )
+        self.localization_widget.renderRulersActivated.connect(
+            lambda: LocalizationRenderHelper.render_rulers(self)
         )
 
         self.localization_widget.importActivated.connect(
@@ -1195,9 +1255,7 @@ class LocalizationsView(QtWidgets.QWidget):
 
             if df.count().min() > 1:
                 render_mode = self.localization_widget.renderMode
-                renderClass = BaseRenderer(
-                    self.localization_widget.bin_xy, render_mode
-                )
+                renderClass = BaseRenderer(self.localization_widget.bin_xy, render_mode)
                 img = renderClass.render_xy(
                     df['x'].to_numpy(), df['y'].to_numpy(), df['intensity'].to_numpy()
                 )
@@ -1236,160 +1294,6 @@ class LocalizationsView(QtWidgets.QWidget):
 
 class LocalizationRenderHelper:
     '''Helper class for rendering localizations.'''
-
-    class ClustersScatter:
-        @classmethod
-        def scatter(
-            cls, x: np.ndarray, y: np.ndarray, labels: np.ndarray, **kwargs
-        ) -> list[pg.GraphicsObject]:
-            try:
-                # Filter out noise (label < 0) safely
-                valid_mask = labels >= 0
-                x = x[valid_mask]
-                y = y[valid_mask]
-                labels = labels[valid_mask]
-
-                if len(labels) == 0:
-                    return None
-
-                unique_labels = np.unique(labels)
-                max_label = unique_labels.max()
-
-                COLORS = 64
-
-                hues = np.linspace(0, 1, COLORS, endpoint=False)
-                color_lookup = np.zeros((COLORS, 3), dtype=np.uint8)
-                for idx, h in enumerate(hues):
-                    i = int(h * 6.0)
-                    f = (h * 6.0) - i
-                    t = int(229 * f)
-                    q = int(229 * (1.0 - f))
-                    i = i % 6
-                    if i == 0:
-                        r, g, b = 229, t, 0
-                    elif i == 1:
-                        r, g, b = q, 229, 0
-                    elif i == 2:
-                        r, g, b = 0, 229, t
-                    elif i == 3:
-                        r, g, b = 0, q, 229
-                    elif i == 4:
-                        r, g, b = t, 0, 229
-                    else:
-                        r, g, b = 229, 0, q
-                    color_lookup[idx] = [r, g, b]
-
-                scatter_layers = []
-                for color_idx in range(COLORS):
-                    mask = (labels % COLORS) == color_idx
-                    if not np.any(mask):
-                        continue
-
-                    scatter = pg.ScatterPlotItem(
-                        x=x[mask],
-                        y=y[mask],
-                        size=3,
-                        pen=None,
-                        brush=pg.mkBrush(
-                            color_lookup[color_idx]
-                        ),  # Single uniform brush per layer!
-                        pxMode=True,
-                    )
-                    scatter_layers.append(scatter)
-
-                return scatter_layers
-
-                # Map colors dynamically
-                # mapped_colors = color_lookup[labels % 256]
-                # brushes = [pg.mkColor(tuple(c)) for c in mapped_colors]
-
-                # return x, y, brushes
-            except Exception:
-                traceback.print_exc()
-                return None
-
-        @classmethod
-        def superimposed(
-            cls,
-            x: np.ndarray,
-            y: np.ndarray,
-            intensity: np.ndarray,
-            labels: np.ndarray,
-            **kwargs,
-        ) -> list[pg.GraphicsObject]:
-            try:
-                # Filter out noise (label < 0) safely
-                valid_mask = labels >= 0
-                x = x[valid_mask]
-                y = y[valid_mask]
-                labels = labels[valid_mask]
-
-                if len(labels) == 0:
-                    return None
-
-                _arg_sort = np.argsort(labels)
-                x = x[_arg_sort]
-                y = y[_arg_sort]
-                intensity = intensity[_arg_sort]
-
-                label_ids = np.cumsum(np.bincount(labels.astype(np.int64)))
-
-                # min_label = int(np.min(labels))
-                max_label = int(np.max(labels))
-
-                for i in range(max_label + 1):
-                    _slice = slice(label_ids[i - 1] if i > 0 else 0, label_ids[i])
-
-                    mu_x = np.average(x[_slice], weights=intensity[_slice])
-                    mu_y = np.average(y[_slice], weights=intensity[_slice])
-
-                    x[_slice] -= mu_x
-                    y[_slice] -= mu_y
-
-                scatter_layers = []
-
-                if not kwargs.get('rasterized', True):
-                    scatter = pg.ScatterPlotItem(
-                        x=x,
-                        y=y,
-                        size=3,
-                        pen=None,
-                        brush=pg.mkBrush(pg.mkColor(255, 0, 0, 127)),
-                        pxMode=True,
-                    )
-                    scatter_layers.append(scatter)
-                else:
-                    renderer = BaseRenderer(
-                        kwargs.get('pixel_size', 0.5),
-                        None,
-                        kwargs.get('render_mode', RenderModes.HISTOGRAM),
-                    )
-
-                    mu_x = np.average(x, weights=intensity)
-                    mu_y = np.average(y, weights=intensity)
-
-                    var_x = np.average((x - mu_x) ** 2, weights=intensity)
-                    var_y = np.average((y - mu_y) ** 2, weights=intensity)
-
-                    std_x = np.sqrt(var_x)
-                    std_y = np.sqrt(var_y)
-
-                    radius = 2.0 * max(std_x, std_y)  # symmetric square crop
-
-                    mask = (np.abs(x - mu_x) <= radius) & (np.abs(y - mu_y) <= radius)
-
-                    x_crop = x[mask] - mu_x
-                    y_crop = y[mask] - mu_y
-                    image = renderer.render_xy(x_crop, y_crop, intensity[mask])
-
-                    image_item = pg.ImageItem(image, axisOrder='row-major')
-
-                    scatter_layers.append(image_item)
-
-                return scatter_layers
-            except Exception:
-                traceback.print_exc()
-                return None
 
     @classmethod
     def render_loc(cls, view: LocalizationsView):
@@ -1467,104 +1371,130 @@ class LocalizationRenderHelper:
         labels = np.asarray(labels, dtype=np.int32)
         x = np.asarray(view.currentResults.data[DataColumns.X], dtype=np.float64)
         y = np.asarray(view.currentResults.data[DataColumns.Y], dtype=np.float64)
+        z = (
+            view.currentResults.data[DataColumns.Z]
+            if view.currentResults.data[DataColumns.Z] is not None
+            else None
+        )
 
-        dlg = ClusterPlotOptionsDialog(view)
-        res = dlg.exec()
+        if (
+            not hasattr(view, '_cluster_options_dialog')
+            or view._cluster_options_dialog is None
+        ):
+            view._cluster_options_dialog = ClusterPlotOptionsDialog(view)
+
+        res = view._cluster_options_dialog.exec()
         if not res:
             return
 
-        options = dlg.values()
-        mode = options['mode']
-        rasterized = options['rasterized']
-        pixel_size = options['pixel_size']
-        render_mode = options['render_mode']
+        options = view._cluster_options_dialog.values()
 
-        if mode in [
+        if options['mode'] in [
             'fov',
         ]:
-            work_func = cls.ClustersScatter.scatter
+            work_func = ClustersScatter.scatter
 
-            args = [x, y, labels]
+            args = [x, y, z, labels]
             worker_kwargs = {}
-        elif mode == 'superimposed':
-            work_func = cls.ClustersScatter.superimposed
+        elif options['mode'] == 'superimposed':
+            work_func = ClustersScatter.superimposed
 
             intensity = np.asarray(
                 view.currentResults.data[DataColumns.INTENSITY], dtype=np.float64
             )
+            crlb_x = np.asarray(
+                view.currentResults.data[DataColumns.CRLB_X], dtype=np.float64
+            )
+            crlb_y = np.asarray(
+                view.currentResults.data[DataColumns.CRLB_Y], dtype=np.float64
+            )
 
-            args = [x, y, intensity, labels]
+            args = [x, y, z, intensity, labels, crlb_x, crlb_y]
+
             worker_kwargs = {
-                'rasterized': rasterized,
-                'pixel_size': pixel_size,
-                'render_mode': render_mode,
+                'rasterized': options['rasterized'],
+                'pixel_size': options['pixel_size'],
+                'render_mode': options['render_mode'],
+                'center_mode': options['center_mode'],
+                'extent': options['extent'],
+                'rejection_threshold': options['rejection_threshold'],
+                'min_points': options['min_points'],
             }
         else:
             logger.warning('Mode unavailable.')
             return
 
         def done(results):
-            view.localization_widget.setButtonsEnabled(True)
-
             if results is not None:
                 cluster_overlay_items = pg.GraphicsLayoutWidget(
                     show=True, title='DBSCAN'
                 )
                 cluster_overlay_items.setBackground(None)
 
-                if any([isinstance(r, pg.ScatterPlotItem) for r in results]):
-                    plot_item = cluster_overlay_items.ci.addPlot(
-                        title='DBSCAN Clusters'
-                    )
-                    plot_item.showGrid(x=True, y=True, alpha=0.3)
-                    plot_item.getViewBox().setAspectLocked(True, 1)
-                    plot_item.getViewBox().invertY(True)
-                    plot_item.setLabel('top', 'X [nm]')
-                    plot_item.setLabel('left', 'Y [nm]')
-
-                    for layer in results:
-                        plot_item.addItem(layer)
-                elif any([isinstance(r, pg.ImageItem) for r in results]):
-                    plot_item = cluster_overlay_items.ci.addViewBox(
-                        row=0, col=0, invertY=True
-                    )
-
-                    plot_item.setAspectLocked(True)
-                    plot_item.setAutoVisible(True)
-                    plot_item.enableAutoRange()
-
-                    image_item: pg.ImageItem = results[0]
-
-                    plot_item.addItem(image_item)
-
-                    histogram_item = pg.HistogramLUTItem(
-                        gradientPosition='bottom', orientation='horizontal'
-                    )
-                    histogram_item.setImageItem(image_item)
-
-                    h_line = pg.InfiniteLine(
-                        angle=0,
-                        pen=pg.mkPen(color='y', style=QtCore.Qt.PenStyle.DotLine),
-                    )
-                    v_line = pg.InfiniteLine(
-                        angle=90,
-                        pen=pg.mkPen(color='y', style=QtCore.Qt.PenStyle.DotLine),
-                    )
-                    h_line.setY(image_item.image.shape[0] // 2)
-                    v_line.setX(image_item.image.shape[1] // 2)
-
-                    plot_item.addItem(h_line)
-                    plot_item.addItem(v_line)
-
-                    cluster_overlay_items.addItem(histogram_item, row=1, col=0)
+                add_plot_result(cluster_overlay_items, results)
 
                 view.cluster_overlay_items = cluster_overlay_items
                 cluster_overlay_items.show()
 
-        view.worker = QThreadWorker(work_func, *args, **worker_kwargs)
-        view.worker.signals.result.connect(done)
-        view.localization_widget.setButtonsEnabled(False)
-        view._threadpool.start(view.worker)
+        view.runAsync(
+            work_func,
+            *args,
+            **worker_kwargs,
+            done=done,
+            finished_message='Cluster rendering completed.',
+        )
+
+    @classmethod
+    def render_rulers(cls, view: LocalizationsView):
+        if view.currentResults is None or len(view.currentResults) <= 0:
+            return
+
+        labels = view.currentResults.data.get(DataColumns.CLUSTER_ID)
+        if labels is None:
+            logger.warning('No cluster labels found. Run DBSCAN first.')
+            return None
+
+        if (
+            not hasattr(view, '_ruler_options_dialog')
+            or view._ruler_options_dialog is None
+        ):
+            view._ruler_options_dialog = RulerPlotOptionsDialog(view)
+        res = view._ruler_options_dialog.exec()
+        if not res:
+            return
+
+        options = view._ruler_options_dialog.values()
+
+        work_func = ClustersScatter.render_rulers_batch
+
+        args = [[view.currentResults]]
+        worker_kwargs = {
+            'leaf_size': view.localization_widget.dbscanLeafSize,
+            'algorithm': view.localization_widget.dbscanAlgorithm,
+            'scalebar_length': options['ruler_spacing'],
+        }
+        worker_kwargs.update(options)
+
+        def done(results):
+            if results is not None:
+                ruler_overlay_items = pg.GraphicsLayoutWidget(show=True, title='Rulers')
+                ruler_overlay_items.setBackground(None)
+
+                for i in range(len(results)):
+                    add_plot_result(
+                        ruler_overlay_items, results[i], 0, i, **worker_kwargs
+                    )
+
+                view.ruler_overlay_items = ruler_overlay_items
+                ruler_overlay_items.show()
+
+        view.runAsync(
+            work_func,
+            *args,
+            **worker_kwargs,
+            done=done,
+            finished_message='Ruler rendering completed.',
+        )
 
     @classmethod
     def render_3D(cls, view: LocalizationsView):
@@ -1620,15 +1550,12 @@ class LocalizationProcessing:
                 return None
 
         def done(results):
-            view.localization_widget.setButtonsEnabled(True)
             if results is not None:
                 plot_frc(*results)
 
-        view.worker = QThreadWorker(work_func)
-        view.worker.signals.result.connect(done)
-        # Execute
-        view.localization_widget.setButtonsEnabled(False)
-        view._threadpool.start(view.worker)
+        view.runAsync(
+            work_func, done=done, finished_message='FRC estimation completed.'
+        )
 
     @classmethod
     def NeNA_estimate(clas, view: LocalizationsView):
@@ -1647,7 +1574,6 @@ class LocalizationProcessing:
                 return None
 
         def done(results):
-            view.localization_widget.setButtonsEnabled(True)
             if results is not None:
                 view.currentResults = results
                 view.results_plot.setData(view.currentResults.dataFrame())
@@ -1658,11 +1584,9 @@ class LocalizationProcessing:
 
                 res = view.NeNA_widget.exec()
 
-        view.worker = QThreadWorker(work_func)
-        view.worker.signals.result.connect(done)
-        # Execute
-        view.localization_widget.setButtonsEnabled(False)
-        view._threadpool.start(view.worker)
+        view.runAsync(
+            work_func, done=done, finished_message='NeNA estimation completed.'
+        )
 
     @classmethod
     def TARDIS_analysis(cls, view: LocalizationsView):
@@ -1708,21 +1632,18 @@ class LocalizationProcessing:
                 return None
 
         def done(results):
-            view.localization_widget.setButtonsEnabled(True)
             if results is not None:
-                view.render_loc()
                 view.currentResults = results[0]
                 view.results_plot.setData(view.currentResults.dataFrame())
                 plot_drift(
                     *results[2],
                     title=f'{label} Cross-Correlation',
                 )
+                view.render_loc()
 
-        view.worker = QThreadWorker(work_func)
-        view.worker.signals.result.connect(done)
-        # Execute
-        view.localization_widget.setButtonsEnabled(False)
-        view._threadpool.start(view.worker)
+        view.runAsync(
+            work_func, done=done, finished_message='Drift cross-correlation completed.'
+        )
 
     @classmethod
     def drift_fdm(cls, view: LocalizationsView):
@@ -1741,18 +1662,48 @@ class LocalizationProcessing:
                 return None
 
         def done(results):
-            view.localization_widget.setButtonsEnabled(True)
             if results is not None:
                 view.currentResults = results[0]
                 view.results_plot.setData(view.currentResults.dataFrame())
                 plot_drift(*results[1], title='Fiducial Marker Drift Correction')
                 view.render_loc()
 
-        view.worker = QThreadWorker(work_func)
-        view.worker.signals.result.connect(done)
-        # Execute
-        view.localization_widget.setButtonsEnabled(False)
-        view._threadpool.start(view.worker)
+        view.runAsync(
+            work_func,
+            done=done,
+            finished_message='Fiducial marker drift correction completed.',
+        )
+
+    @classmethod
+    def drift_aim(cls, view: LocalizationsView):
+        '''Perform drift correction using AIM.'''
+        if view.currentResults is None:
+            return
+
+        if len(view.currentResults) <= 0:
+            return
+
+        def work_func(**kwargs):
+            try:
+                return view.currentResults.drift_aim(
+                    view.localization_widget.aimSegmentSize,
+                    view.localization_widget.aimIntersectD,
+                    view.localization_widget.aimZScale,
+                )
+            except Exception:
+                traceback.print_exc()
+                return None
+
+        def done(results):
+            if results is not None:
+                view.currentResults = results[0]
+                view.results_plot.setData(view.currentResults.dataFrame())
+                plot_drift(*results[1], title='AIM Drift Correction')
+                view.render_loc()
+
+        view.runAsync(
+            work_func, done=done, finished_message='AIM drift correction completed.'
+        )
 
     @classmethod
     def nneigh_merge(cls, view: LocalizationsView):
@@ -1777,16 +1728,13 @@ class LocalizationProcessing:
                 return None
 
         def done(results):
-            view.localization_widget.setButtonsEnabled(True)
             if results is not None:
                 view.currentResults = results
                 view.results_plot.setData(view.currentResults.dataFrame())
 
-        view.worker = QThreadWorker(work_func)
-        view.worker.signals.result.connect(done)
-        # Execute
-        view.localization_widget.setButtonsEnabled(False)
-        view._threadpool.start(view.worker)
+        view.runAsync(
+            work_func, done=done, finished_message='Nearest-neighbor merging completed.'
+        )
 
     @classmethod
     def nneigh(cls, view: LocalizationsView):
@@ -1810,16 +1758,15 @@ class LocalizationProcessing:
                 return None
 
         def done(results):
-            view.localization_widget.setButtonsEnabled(True)
             if results is not None:
                 view.currentResults = results
                 view.results_plot.setData(view.currentResults.dataFrame())
 
-        view.worker = QThreadWorker(work_func)
-        view.worker.signals.result.connect(done)
-        # Execute
-        view.localization_widget.setButtonsEnabled(False)
-        view._threadpool.start(view.worker)
+        view.runAsync(
+            work_func,
+            done=done,
+            finished_message='Nearest-neighbor analysis completed.',
+        )
 
     @classmethod
     def merge(cls, view: LocalizationsView):
@@ -1840,16 +1787,13 @@ class LocalizationProcessing:
                 return None
 
         def done(results):
-            view.localization_widget.setButtonsEnabled(True)
             if results is not None:
                 view.currentResults = results
                 view.results_plot.setData(view.currentResults.dataFrame())
 
-        view.worker = QThreadWorker(work_func)
-        view.worker.signals.result.connect(done)
-        # Execute
-        view.localization_widget.setButtonsEnabled(False)
-        view._threadpool.start(view.worker)
+        view.runAsync(
+            work_func, done=done, finished_message='Track merging completed.'
+        )
 
     @classmethod
     def extract_z(cls, view: LocalizationsView):
@@ -1947,17 +1891,10 @@ class LocalizationProcessing:
                 traceback.print_exc()
                 return None
 
-        def done(results):
-            view.localization_widget.setButtonsEnabled(True)
-            # if results is not None:
-            #     view.currentResults = results
-            #     view.results_plot.setData(view.currentResults.dataFrame())
-
-        view.worker = QThreadWorker(work_func)
-        view.worker.signals.result.connect(done)
-        # Execute
-        view.localization_widget.setButtonsEnabled(False)
-        view._threadpool.start(view.worker)
+        view.runAsync(
+            work_func,
+            finished_message='DBSCAN clustering completed.',
+        )
 
 
 class LocalizationIO:

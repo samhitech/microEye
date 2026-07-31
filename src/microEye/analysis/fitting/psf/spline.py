@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.interpolate import UnivariateSpline, interp1d
+from scipy.interpolate import UnivariateSpline
 
 from microEye.analysis.fitting.psf.rubost_mean import robust_mean
 

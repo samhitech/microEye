@@ -168,6 +168,17 @@ To start from the `Shortcuts` folder:
 
    ![Full Layout](images/software/full_layout.png)
 
+> [!CAUTION]
+> **Acquisition Camera Saturation**
+>
+> ![Camera Saturation](images/software/camera_saturation.png)
+> _Normal (left) vs Saturated (right) camera view._
+>
+> 1. _Stop acquisition immediately!_
+> 1. _Lower **laser power** or camera **exposure time**._
+>
+> **Note:** _for now the warning assumes the camera is acquiring at 12-bits._
+
 ### 5. Microscope stages
 
 > [!WARNING]
@@ -502,14 +513,24 @@ The Oil immersion objective must be cleaned after use.
 
 ## Troubleshooting & FAQs
 
-> [!WARNING]
+> [!IMPORTANT]
 > **Basler's Camera -> Field of View Looks Weird**
 >
-> - _Make sure that `Acquisition Settings -> binning` is set to `Sensor` and not `Region1` and `Acquisition Settings -> Horizontal` and `Acquisition Settings -> Vertical` binning are set to `2`._
-> - _You may need to remove the exported ROIs (`ROI -> Export ROIs -> Remove ROIs`) and reset the general ROI (`ROI -> Reset ROI`)._
-> - _Please reset the field of view (FOV) for dual view, just as described in the initial instructions._
+> ![Basler fov issue](images/software/basler_roi_issue.png)
+>
+> 1. _Remove the exported ROIs (`Region of Interest (ROI) -> Export ROIs -> Remove ROIs`)._
+> 2. _Reset the general ROI (`ROI -> Reset ROI`)._
+> 3. _Make sure that:_
+>    - _`Acquisition Settings -> binning` is set to `Sensor` and not `Region1`._
+>    - _`Acquisition Settings -> Horizontal` and `Acquisition Settings -> Vertical` binning are set to `2`._
+>
+>      **Note:** _`Region1` binning should show `1` for vertical and horizontal binning setting, we only bin using `Sensor` selector mode._
+>
+> 4. _Set the field of view (FOV) for dual view, just as described in the initial instructions._
+>
+>    ![dual FOV](images/software/camera_shortcuts.png)
 
-> [!WARNING]
+> [!CAUTION]
 > **Basler's Camera -> Camera is Running / Lasers OFF**
 >
 > - _First, make sure your laser states are correct and been sent to the laser relay._

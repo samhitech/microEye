@@ -343,10 +343,15 @@ class RegistrationWidget(QtWidgets.QDialog):
         match = re.search(r'\(C(\d+)\)', stack_name)
         return int(match.group(1)) if match else 0
 
-    def _get_slice(self, idx: int, reference: bool = True) -> np.ndarray | None:
+    def _get_slice(
+        self, idx: int, reference: bool = True, copy: bool = False
+    ) -> np.ndarray | None:
         stack = self._stack(reference)
+
         if stack is not None:
-            return stack.getSlice(idx, self._channel(reference))
+            res = stack.getSlice(idx, self._channel(reference))
+            return res.copy() if copy else res
+
         return None
 
     def update_display(self):
@@ -369,9 +374,16 @@ class RegistrationWidget(QtWidgets.QDialog):
         self._timer.start(self._timer_interval)
 
     def update_overlay(self, img2: np.ndarray = None):
-        img1: np.ndarray = self._get_slice(0).copy()
+        img1: np.ndarray = self._get_slice(0, copy=True)
         if not isinstance(img2, np.ndarray):
-            img2 = self._get_slice(0, reference=False).copy()
+            img2 = self._get_slice(0, reference=False, copy=True)
+
+        if img1 is None or img2 is None:
+            logger.error(
+                'Failed to retrieve images for overlay. '
+                'Please check the selected stacks.',
+            )
+            return
 
         if img1.shape != img2.shape:
             QtWidgets.QMessageBox.warning(
@@ -394,7 +406,7 @@ class RegistrationWidget(QtWidgets.QDialog):
             )
             return
 
-        img = self._get_slice(0, reference=False).squeeze().copy()
+        img = self._get_slice(0, reference=False, copy=True).squeeze()
 
         if self.open_cvt_checkbox.isChecked():
             # transform using cv2 and perserve range

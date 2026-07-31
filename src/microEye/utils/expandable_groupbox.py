@@ -127,11 +127,11 @@ class SideBar(QtWidgets.QScrollArea):
         section = CollapsibleWidget(title=title)
         self._layout.addWidget(section)
         section.setContentLayout(layout)
-        self._sections[SideBar.__INDEX] = section
+        self._sections[self.__INDEX] = section
 
         section.toggle_button.setChecked(checked)
 
-        SideBar.__INDEX += 1
+        self.__INDEX += 1
 
         return layout
 
@@ -140,6 +140,14 @@ class SideBar(QtWidgets.QScrollArea):
 
     def addStretch(self):
         self._layout.addStretch()
+
+    def setSectionVisible(self, index: int, visible: bool):
+        if index in self._sections:
+            self._sections[index].setVisible(visible)
+
+    def setSectionExpanded(self, index: int, expanded: bool):
+        if index in self._sections:
+            self._sections[index].setExpanded(expanded)
 
 
 if __name__ == '__main__':

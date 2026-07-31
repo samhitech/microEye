@@ -34,6 +34,7 @@ from microEye.qt import (
     QtCore,
     Signal,
 )
+from microEye.utils.display import DisplayManager, fast_autolevels_opencv
 from microEye.utils.thread_worker import QThreadWorker
 
 logger = logging.getLogger(__name__)
@@ -233,78 +234,92 @@ def scanAcquisition(steps, step_size, delay, average=1, **kwargs):
         stage_manager = StageManager.instance()
 
         data = []
-        vimba_cams = [cam for cam in CameraManager.CAMERAS['Vimba'] if not cam['IR']]
-        if stage_manager.is_open(Axis.X) and len(vimba_cams) > 0:
-            cam: vimba_cam = vimba_cams[0]['Camera']
-            for x in range(steps[0]):
-                stage_manager.move_relative(
-                    step_size[0], 0, 0, unit=Units.MICROMETERS, is_async=False
-                )
-                for y in range(steps[1]):
-                    if event and event.is_set():
-                        return
 
-                    if y > 0:
-                        stage_manager.move_relative(
-                            0,
-                            ((-1) ** x) * step_size[1],
-                            0,
-                            unit=Units.MICROMETERS,
-                            is_async=False,
-                        )
-                    frame = None
-                    with cam:
-                        QtCore.QThread.msleep(delay)
-                        if average > 1:
-                            frames_avg = []
-                            for _n in range(average):
-                                frames_avg.append(
-                                    cam.cam.get_frame().as_numpy_ndarray()[..., 0]
-                                )
-                            frame = uImage(
-                                np.array(frames_avg).mean(axis=0, dtype=np.uint16)
-                            )
-                        else:
-                            frame = uImage(
-                                cam.cam.get_frame().as_numpy_ndarray()[..., 0]
-                            )
-                        frame.equalizeLUT(None, True)
-                    frame._view = cv2.resize(
-                        frame._view,
-                        (0, 0),
-                        fx=0.5,
-                        fy=0.5,
-                        interpolation=cv2.INTER_NEAREST,
-                    )
-                    Y = (x % 2) * (steps[1] - 1) + ((-1) ** x) * y
-                    data.append(
-                        TileImage(
-                            frame,
-                            [Y, x],
-                            (stage_manager.xy_stage().x, stage_manager.xy_stage().y),
-                        )
-                    )
-                    cv2.imshow(cam.name, frame._view)
-                    cv2.waitKey(1)
+        cams = []
+        # any camera instead of vimba that is not IR
+        for _, cam_list in CameraManager.CAMERAS.items():
+            cams.extend([cam for cam in cam_list if not cam['IR']])
 
-            # device_manager.stage_xy.update()
-        else:
-            logger.warning('XY-scan failed!')
+        if not stage_manager.is_open(Axis.X) or len(cams) == 0:
+            data = []
             info = [
                 {
                     'XY-Stage Open': stage_manager.is_open(Axis.X),
-                    'Camera Available': len(vimba_cams) > 0,
+                    'Camera Available': len(cams) > 0,
                 }
             ]
-            print(tabulate.tabulate(info, headers='keys', tablefmt='rounded_grid'))
-            data = []
-    except Exception:
+            error_msg = tabulate.tabulate(info, headers='keys', tablefmt='rounded_grid')
+            raise RuntimeError(f'XY-scan failed!\n{error_msg}')
+
+        cam: miCamera = cams[0]['Camera']
+        panel: Camera_Panel = cams[0]['Panel']
+
+        for x in range(steps[0]):
+            stage_manager.move_relative(
+                step_size[0], 0, 0, unit=Units.MICROMETERS, is_async=False
+            )
+            for y in range(steps[1]):
+                if event and event.is_set():
+                    return
+
+                if y > 0:
+                    stage_manager.move_relative(
+                        0,
+                        ((-1) ** x) * step_size[1],
+                        0,
+                        unit=Units.MICROMETERS,
+                        is_async=False,
+                    )
+                frame = None
+
+                QtCore.QThread.msleep(delay)
+
+                if average > 1:
+                    frames_avg = []
+                    for _n in range(average):
+                        frames_avg.append(cam.snap_image())
+                    frame = uImage(np.array(frames_avg).mean(axis=0, dtype=np.uint16))
+                else:
+                    frame = uImage(cam.snap_image())
+
+                thresholds, hist, cdf = fast_autolevels_opencv(frame.image, levels=True)
+                frame.equalizeLUT(thresholds[0], True)
+
+                frame._view = cv2.resize(
+                    frame._view,
+                    (0, 0),
+                    fx=0.5,
+                    fy=0.5,
+                    interpolation=cv2.INTER_NEAREST,
+                )
+                Y = (x % 2) * (steps[1] - 1) + ((-1) ** x) * y
+                data.append(
+                    TileImage(
+                        frame,
+                        [Y, x],
+                        (stage_manager.xy_stage().x, stage_manager.xy_stage().y),
+                    )
+                )
+                DisplayManager.instance().image_update_signal.emit(
+                    cam.name,
+                    frame.image,
+                    {
+                        'aspect_ratio': 1.0,
+                        'width': frame.image.shape[1],
+                        'height': frame.image.shape[0],
+                        'show_stats': False,
+                        'autoLevels': True,
+                        'isSingleView': True,
+                        'isROIsView': False,
+                        'isOverlaidView': False,
+                        'plot_type': False,
+                        'threshold': thresholds,
+                        'plot': hist,
+                    },
+                )
+    except Exception as e:
+        logger.error('XY-scan failed: %s', e)
         traceback.print_exc()
-    finally:
-        try:
-            cv2.destroyAllWindows()
-        except Exception:
-            traceback.print_exc()
 
     return data
 
@@ -348,68 +363,67 @@ def z_stack_acquisition(
 
         data = []
         peak = None
-        vimba_cams = [cam for cam in CameraManager.CAMERAS['Vimba'] if not cam['IR']]
-        if stage_manager.z_stage().is_open() and len(vimba_cams) > 0 and nFrames > 0:
-            cam: miCamera = vimba_cams[0]['Camera']
-            cam_pan: Camera_Panel = vimba_cams[0]['Panel']
-            if cam.acquisition:
-                return
 
-            cam_pan.camera_options.set_param_value(CamParams.FRAMES, nFrames)
-            cam_pan.camera_options.set_param_value(CamParams.SAVE_DATA, True)
+        cams = []
+        # any camera instead of vimba that is not IR
+        for _, cam_list in CameraManager.CAMERAS.items():
+            cams.extend([cam for cam in cam_list if not cam['IR']])
 
-            peak = FocusStabilizer.instance().getParameter()
-            for x in range(n):
-                if x > 0:
-                    if event and event.is_set():
-                        return
-
-                    if (
-                        FocusStabilizer.instance().isFocusStabilized(Axis.Z)
-                        and FocusStabilizer.instance().isAdjustSetPoint()
-                    ):
-                        value = step_size
-                        if not FocusStabilizer.instance().useCal():
-                            value /= FocusStabilizer.instance().calCoeff(
-                                Axis.Z
-                            )
-                        if reverse:
-                            value *= -1
-                        FocusStabilizer.instance().setParameter(value, True)
-                        QtCore.QThread.msleep(delay)
-                    else:
-                        if FocusStabilizer.instance().isFocusStabilized(Axis.Z):
-                            FocusStabilizer.instance().toggleFocusStabilization(
-                                Axis.Z, False
-                            )
-                        acquisition_manager.acquisitionWidget.moveZ.emit(
-                            reverse, step_size
-                        )
-                        QtCore.QThread.msleep(delay)
-                        FocusStabilizer.instance().toggleFocusStabilization(
-                            Axis.Z, True
-                        )
-                frame = None
-                prefix = f'Z_{x:04d}_'
-
-                cam_event = threading.Event()
-
-                cam_pan.asyncFreerun.emit(prefix, cam_event)
-
-                cam_event.wait()
-                QtCore.QThread.msleep(100)
-        else:
-            logger.warning('Z-scan failed!')
+        if not stage_manager.is_open(Axis.Z) or len(cams) == 0 or nFrames <= 0:
             info = [
                 {
                     'Z-Stage Open': stage_manager.z_stage().is_open(),
-                    'Camera Available': len(vimba_cams) > 0,
+                    'Camera Available': len(cams) > 0,
                     'Frames > 0': nFrames > 0,
                 }
             ]
-            print(tabulate.tabulate(info, headers='keys', tablefmt='rounded_grid'))
-    except Exception:
-        traceback.print_exc()
+            error_msg = tabulate.tabulate(info, headers='keys', tablefmt='rounded_grid')
+            raise RuntimeError(f'Z-scan failed!\n{error_msg}')
+
+        cam: miCamera = cams[0]['Camera']
+        cam_pan: Camera_Panel = cams[0]['Panel']
+        if cam.acquisition:
+            return
+
+        cam_pan.camera_options.set_param_value(CamParams.FRAMES, nFrames)
+        cam_pan.camera_options.set_param_value(CamParams.SAVE_DATA, True)
+
+        peak = FocusStabilizer.instance().getParameter()
+        for x in range(n):
+            if x > 0:
+                if event and event.is_set():
+                    return
+
+                if (
+                    FocusStabilizer.instance().isFocusStabilized(Axis.Z)
+                    and FocusStabilizer.instance().isAdjustSetPoint()
+                ):
+                    value = step_size
+                    if not FocusStabilizer.instance().useCal():
+                        value /= FocusStabilizer.instance().calCoeff(Axis.Z)
+                    if reverse:
+                        value *= -1
+                    FocusStabilizer.instance().setParameter(value, True)
+                    QtCore.QThread.msleep(delay)
+                else:
+                    if FocusStabilizer.instance().isFocusStabilized(Axis.Z):
+                        FocusStabilizer.instance().toggleFocusStabilization(
+                            Axis.Z, False
+                        )
+                    acquisition_manager.acquisitionWidget.moveZ.emit(reverse, step_size)
+                    QtCore.QThread.msleep(delay)
+                    FocusStabilizer.instance().toggleFocusStabilization(Axis.Z, True)
+            frame = None
+            prefix = f'Z_{x:04d}_'
+
+            cam_event = threading.Event()
+
+            cam_pan.asyncFreerun.emit(prefix, cam_event)
+
+            cam_event.wait()
+            QtCore.QThread.msleep(100)
+    except Exception as e:
+        logger.error('Z-scan failed: %s', e)
     finally:
         if peak:
             FocusStabilizer.instance().setParameter(peak)

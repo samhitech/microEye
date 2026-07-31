@@ -5,7 +5,7 @@ import cv2
 import numpy as np
 import pyqtgraph as pg
 
-from microEye.qt import QtCore, QtGui, QtWidgets, Signal
+from microEye.qt import QApplication, QtCore, QtGui, QtWidgets, Signal
 
 
 def fast_autolevels_opencv(
@@ -198,6 +198,28 @@ class PyQtGraphDisplay(QtWidgets.QWidget):
         self.view_box.addItem(self.h_line)
         self.view_box.addItem(self.v_line)
 
+        # Add text item in viewbox for FPS display
+        self._saturation_warning = pg.LabelItem(
+            'Saturated | Max ≥ 90%% of 12-bit', color='w', size='16pt', bold=True
+        )
+        self._saturation_warning.setText(
+            '<div style="'
+            'color: white; '
+            'font-size: 14pt; '
+            'background-color: rgba(0, 0, 0, 0.5); '
+            '">'
+            '<spanstyle="font-weight: bold;">'
+            'SATURATED | Max ≥ 90% of 12-bit'
+            '</span>'
+            '</div>'
+        )
+        self._saturation_warning.setParentItem(self.view_box)
+        self._saturation_warning.anchor(
+            itemPos=(0, 1), parentPos=(0, 1), offset=(16, -16)
+        )
+        self._saturation_warning.setZValue(100)
+        self._saturation_warning.setVisible(False)
+
         # Create a timer to update the FPS
         self.frame_counter = FrameCounter()
         self.frame_counter.sigFpsUpdate.connect(self.update_fps)
@@ -271,6 +293,10 @@ class PyQtGraphDisplay(QtWidgets.QWidget):
                 f'Mean: {np.mean(self.image_item.image):.2f} | '
                 f'Std: {np.std(self.image_item.image):.2f}</span></div>'
             )
+
+        is_saturated = np.max(self.image_item.image) >= 0.9 * (2**12)
+        self._saturation_warning.setVisible(is_saturated)
+        self.plot_widget.setBackground('#990000' if is_saturated else 'default')
 
     def get_regions(self):
         '''Get the regions of interest from the histogram region items.'''

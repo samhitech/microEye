@@ -57,7 +57,7 @@ def FRC_resolution_binomial(data: np.ndarray, pixel_size=10, method='Binomial'):
     image_1 /= np.sum(image_1)
     image_2 /= np.sum(image_2)
 
-    window = hamming_2Dwindow(image_1.shape[0])
+    window = hamming_rect(image_1.shape[1], image_1.shape[0])
     image_1 *= window
     image_2 *= window
 

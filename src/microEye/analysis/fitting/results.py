@@ -3,9 +3,10 @@ from enum import Enum
 
 import numpy as np
 import pandas as pd
-from scipy.interpolate import interp1d
+from scipy.interpolate import PchipInterpolator
 
-from microEye.analysis.fitting.clustering import perform_dbscan_clustering
+from microEye.analysis.clustering.dbscan import perform_dbscan_clustering
+from microEye.analysis.fitting.aim import _shift_correction, aim_drift_correction
 from microEye.analysis.fitting.processing import *
 from microEye.analysis.fitting.rcc import (
     dcc_shift_estimation,
@@ -748,12 +749,13 @@ class FittingResults:
 
         # An one-dimensional interpolation is applied
         # to drift traces in X and Y dimensions separately.
-        interpy = interp1d(
-            frames_interp, drift_x, kind='cubic', fill_value='extrapolate'
-        )
-        interpx = interp1d(
-            frames_interp, drift_y, kind='cubic', fill_value='extrapolate'
-        )
+
+        # 2026-07-27: Use Piecewise Cubic Hermite Interpolating Polynomial
+        #             instead of CubicSpline to avoid overshooting and
+        #             negative values in drift correction.
+
+        interpy = PchipInterpolator(frames_interp, drift_x, axis=0, extrapolate=True)
+        interpx = PchipInterpolator(frames_interp, drift_y, axis=0, extrapolate=True)
         # And this interpolation is used to get the shift at every frame-point
         frames_new = np.arange(0, max_frame, 1)
         interpx = interpx(frames_new)
@@ -774,6 +776,136 @@ class FittingResults:
         )
 
         return self, drift_corrected_image, (frames_new, interpx, interpy)
+
+    def drift_fiducial_marker(self):
+        df = self.dataFrame()
+        columns = df.columns
+        data = df.to_numpy()
+
+        unique_frames, frame_counts = np.unique(
+            self.data[DataColumns.FRAME], return_counts=True
+        )
+        if len(unique_frames) < 2:
+            logger.error('Drift correction failed: no frame info.')
+            return
+
+        if self.data[DataColumns.TRACK_ID] is None:
+            logger.error('Drift correction failed: please perform NN, no trackIDs.')
+            return
+        if np.max(self.data[DataColumns.TRACK_ID]) < 1:
+            logger.error('Drift correction failed: please perform NN, no trackIDs.')
+            return
+
+        unique_tracks, track_counts = np.unique(
+            self.data[DataColumns.TRACK_ID], return_counts=True
+        )
+        fiducial_tracks_mask = np.logical_and(
+            unique_tracks > 0, track_counts == len(unique_frames)
+        )
+
+        fiducial_trackIDs = unique_tracks[fiducial_tracks_mask]
+
+        if len(fiducial_trackIDs) < 1:
+            logger.error(
+                'Drift correction failed: no ' + 'fiducial markers tracks detected.'
+            )
+            return
+        else:
+            logger.info(f'{len(fiducial_trackIDs):d} tracks detected.')
+
+        fiducial_markers = np.zeros((len(fiducial_trackIDs), len(unique_frames), 2))
+
+        logger.info('Fiducial markers ...')
+        for idx in np.arange(fiducial_markers.shape[0]):
+            mask = self.data[DataColumns.TRACK_ID] == fiducial_trackIDs[idx]
+            fiducial_markers[idx] = np.c_[
+                self.data[DataColumns.X][mask], self.data[DataColumns.Y][mask]
+            ]
+
+            fiducial_markers[idx, :, 0] -= fiducial_markers[idx, 0, 0]
+            fiducial_markers[idx, :, 1] -= fiducial_markers[idx, 0, 1]
+
+        logger.info('Drift estimate ...')
+        drift_x = np.mean(fiducial_markers[:, :, 0], axis=0)
+        drift_y = np.mean(fiducial_markers[:, :, 1], axis=0)
+
+        error_bar_x = np.std(fiducial_markers[:, :, 0], axis=0)
+        error_bar_y = np.std(fiducial_markers[:, :, 1], axis=0)
+
+        logger.info('Drift correction ...')
+        ids = np.cumsum(np.bincount(self.data[DataColumns.FRAME].astype(np.int64)))
+
+        for idx in np.arange(len(unique_frames)):
+            frame_id = int(unique_frames[idx])
+            mask = slice(ids[frame_id - 1] if frame_id > 0 else 0, ids[frame_id])
+            self.data[DataColumns.X][mask] -= drift_x[idx]
+            self.data[DataColumns.Y][mask] -= drift_y[idx]
+
+        # df = pd.DataFrame(
+        #     data,
+        #     columns=columns)
+
+        # drift_corrected = FittingResults.fromDataFrame(df, self.pixelSize)
+
+        return self, (unique_frames, drift_x, drift_y, None, error_bar_x, error_bar_y)
+
+    def drift_aim(
+        self,
+        segment_size: int = 100,
+        intersect_d: float = 20.0,
+        z_scale: float = 0.5,
+        mode: str = 'sequential',  # "sequential" or "joint"
+        max_search: float = 100.0,
+        interp_kind: str = 'pchip',
+    ):
+        frames = self.data[DataColumns.FRAME]
+        x = self.data[DataColumns.X]
+        y = self.data[DataColumns.Y]
+        z = self.data[DataColumns.Z] if self.data[DataColumns.Z] is not None else None
+
+        logger.info('Drift correction using AIM method ...')
+
+        res = aim_drift_correction(
+            frames=frames,
+            x=x,
+            y=y,
+            z=z,
+            segment_size=segment_size,
+            intersect_d=intersect_d,
+            z_scale=z_scale,
+            max_search=max_search,
+            interp_kind=interp_kind,
+        )
+
+        if res is None or not isinstance(res, dict):
+            logger.error(
+                'Drift correction failed: AIM method returned None or invalid result.'
+            )
+            return
+
+        frame_ids: np.ndarray = res['frame_ids']
+        frame_full: np.ndarray = res['frame_full']
+        frame_drift: np.ndarray = res['frame_drift']
+
+        logger.info('Applying drift correction ...')
+
+        # Apply drift correction
+        _shift_correction(
+            frame_ids,
+            self.data[DataColumns.X],
+            self.data[DataColumns.Y],
+            self.data[DataColumns.Z] if self.data[DataColumns.Z] is not None else None,
+            frame_drift,
+        )
+
+        logger.info('Drift correction using AIM method completed successfully.')
+
+        return self, (
+            frame_full,
+            frame_drift[:, 0],
+            frame_drift[:, 1],
+            frame_drift[:, 2] if z is not None else None,
+        )
 
     def nn_trajectories(
         self, minDistance: float = 0, maxDistance: float = 30, maxOff=1, neighbors=1
@@ -887,78 +1019,6 @@ class FittingResults:
         # Call merge_tracks
         return self.merge_tracks(maxLength)
 
-    def drift_fiducial_marker(self):
-        df = self.dataFrame()
-        columns = df.columns
-        data = df.to_numpy()
-
-        unique_frames, frame_counts = np.unique(
-            self.data[DataColumns.FRAME], return_counts=True
-        )
-        if len(unique_frames) < 2:
-            logger.error('Drift correction failed: no frame info.')
-            return
-
-        if self.data[DataColumns.TRACK_ID] is None:
-            logger.error('Drift correction failed: please perform NN, no trackIDs.')
-            return
-        if np.max(self.data[DataColumns.TRACK_ID]) < 1:
-            logger.error('Drift correction failed: please perform NN, no trackIDs.')
-            return
-
-        unique_tracks, track_counts = np.unique(
-            self.data[DataColumns.TRACK_ID], return_counts=True
-        )
-        fiducial_tracks_mask = np.logical_and(
-            unique_tracks > 0, track_counts == len(unique_frames)
-        )
-
-        fiducial_trackIDs = unique_tracks[fiducial_tracks_mask]
-
-        if len(fiducial_trackIDs) < 1:
-            logger.error(
-                'Drift correction failed: no ' + 'fiducial markers tracks detected.'
-            )
-            return
-        else:
-            logger.info(f'{len(fiducial_trackIDs):d} tracks detected.')
-
-        fiducial_markers = np.zeros((len(fiducial_trackIDs), len(unique_frames), 2))
-
-        logger.info('Fiducial markers ...')
-        for idx in np.arange(fiducial_markers.shape[0]):
-            mask = self.data[DataColumns.TRACK_ID] == fiducial_trackIDs[idx]
-            fiducial_markers[idx] = np.c_[
-                self.data[DataColumns.X][mask], self.data[DataColumns.Y][mask]
-            ]
-
-            fiducial_markers[idx, :, 0] -= fiducial_markers[idx, 0, 0]
-            fiducial_markers[idx, :, 1] -= fiducial_markers[idx, 0, 1]
-
-        logger.info('Drift estimate ...')
-        drift_x = np.mean(fiducial_markers[:, :, 0], axis=0)
-        drift_y = np.mean(fiducial_markers[:, :, 1], axis=0)
-
-        error_bar_x = np.std(fiducial_markers[:, :, 0], axis=0)
-        error_bar_y = np.std(fiducial_markers[:, :, 1], axis=0)
-
-        logger.info('Drift correction ...')
-        ids = np.cumsum(np.bincount(self.data[DataColumns.FRAME].astype(np.int64)))
-
-        for idx in np.arange(len(unique_frames)):
-            frame_id = int(unique_frames[idx])
-            mask = slice(ids[frame_id - 1] if frame_id > 0 else 0, ids[frame_id])
-            self.data[DataColumns.X][mask] -= drift_x[idx]
-            self.data[DataColumns.Y][mask] -= drift_y[idx]
-
-        # df = pd.DataFrame(
-        #     data,
-        #     columns=columns)
-
-        # drift_corrected = FittingResults.fromDataFrame(df, self.pixelSize)
-
-        return self, (unique_frames, drift_x, drift_y, error_bar_x, error_bar_y)
-
     def cluster_dbscan(self, **kwargs):
         logger.info('DBSCAN clustering ...')
 
@@ -980,7 +1040,7 @@ class FittingResults:
             algorithm=algorithm,
             leaf_size=leaf_size,
             n_jobs=n_jobs,
-            scale_data=scale_data
+            scale_data=scale_data,
         )
 
         self.data[DataColumns.CLUSTER_ID] = labels
