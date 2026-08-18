@@ -62,13 +62,17 @@ def clean_and_get_spline(curves, **kwargs):
     """
     Cleans the curves, fits splines, and returns the results.
 
-    Parameters:
-    - curves: List of curves containing 'sx', 'sy', and 'z'.
-    - p: Dictionary of parameters.
+    Parameters
+    ----------
+    curves : list
+        List of curves containing 'sx', 'sy', and 'z'.
+    **kwargs : dict
+        Dictionary of parameters.
 
-    Returns:
-    - spline_result: Dictionary with 'x', 'y', 'zrange', and 'maxmaxrange'.
-    - indgood_result: Boolean array indicating 'good' curves.
+    Returns
+    -------
+    spline_result : dict
+        Dictionary with 'x', 'y', 'zrange', and 'maxmaxrange'.
     """
     za = np.concatenate([curve['z'] for curve in curves])
     Sxa = np.concatenate([curve['sx'] for curve in curves])
@@ -109,14 +113,21 @@ def get_spline_interpolator(S, z, weights, smoothing_param=0.96):
     '''
     Returns a 1D cubic spline interpolator for given data.
 
-    Parameters:
-    - S: Values to be interpolated.
-    - z: Corresponding positions.
-    - weights: Weights for each data point.
-    - smoothing_param: Smoothing parameter for the spline.
+    Parameters
+    ----------
+    S : array-like
+        The dependent variable values (e.g., PSF sizes).
+    z : array-like
+        The independent variable values (e.g., z positions).
+    weights : array-like
+        Weights for each data point, influencing the spline fit.
+    smoothing_param : float, optional
+        Smoothing factor for the spline. Default is 0.96.
 
-    Returns:
-    - spline: Cubic spline interpolator.
+    Returns
+    -------
+    spline : UnivariateSpline
+        A callable spline interpolator for the input data.
     '''
     sorted_indices = np.argsort(z)
     sorted_z = np.sort(z)
@@ -132,12 +143,18 @@ def plot_curves_and_spline(curves, indgood2, spline_x, spline_y, z_range):
     """
     Plots the curves, distinguished between 'good' and 'bad', and the splines.
 
-    Parameters:
-    - curves: List of curves containing 'sx', 'sy', and 'z'.
-    - indgood2: Boolean array indicating whether each curve is 'good'.
-    - spline_x: Interpolator for the x-coordinate.
-    - spline_y: Interpolator for the y-coordinate.
-    - z_range: Range of z values for plotting.
+    Parameters
+    ----------
+    curves : list
+        List of curves containing 'sx', 'sy', and 'z'.
+    indgood2 : numpy.ndarray
+        Boolean array indicating whether each curve is 'good'.
+    spline_x : callable
+        Interpolator for the x-coordinate.
+    spline_y : callable
+        Interpolator for the y-coordinate.
+    z_range : numpy.ndarray
+        Range of z values for plotting.
     """
     z1a, z2a, x1a, x2a = [], [], [], []
 

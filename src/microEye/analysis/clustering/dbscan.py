@@ -4,7 +4,9 @@ from enum import Enum
 
 import numba as nb
 import numpy as np
-from sklearn.cluster import DBSCAN
+from hdbscan import HDBSCAN
+from scipy.spatial import ConvexHull, Delaunay, Voronoi
+from sklearn.cluster import DBSCAN, OPTICS, cluster_optics_dbscan
 from sklearn.preprocessing import StandardScaler
 
 logger = logging.getLogger(__name__)
@@ -417,11 +419,19 @@ def get_centers(
         return None
 
 
+def scale_data(x, y, z, sigma_xy=10.0, sigma_z=10.0):
+    if z is None:
+        return np.column_stack((x, y)), 1.0
+    else:
+        scale = sigma_xy / sigma_z
+        return np.column_stack((x, y, z * scale)), scale
+
+
 def perform_dbscan_clustering(X, Y, Z, eps=50, min_samples=2, **kwargs):
     '''
     Performs DBSCAN clustering on 3D localization data.
 
-    Parameters:
+    Parameters
     ------------
     X, Y, Z: array-like
         Arrays of x, y, z coordinates of localizations.
@@ -433,7 +443,10 @@ def perform_dbscan_clustering(X, Y, Z, eps=50, min_samples=2, **kwargs):
         a core point. Default is 2.
     **kwargs: additional keyword arguments for DBSCAN.
     '''
-    VECTORS = np.column_stack((X, Y, Z) if Z is not None else (X, Y))
+    sigma_xy = kwargs.pop('sigma_xy', 10.0)
+    sigma_z = kwargs.pop('sigma_z', 10.0)
+
+    VECTORS, scale = scale_data(X, Y, Z, sigma_xy, sigma_z)
 
     if kwargs.pop('scale_data', False):
         std = np.std(VECTORS)
@@ -443,13 +456,9 @@ def perform_dbscan_clustering(X, Y, Z, eps=50, min_samples=2, **kwargs):
         else:
             logger.warning('Standard deviation of data is zero. Skipping scaling.')
 
-    # 2. Initialize and fit DBSCAN
-    # eps: maximum distance between two samples
-    # min_samples: number of samples in a neighborhood for a point to be a core point
     dbscan_model = DBSCAN(eps=eps, min_samples=min_samples, **kwargs)
     dbscan_model.fit(VECTORS)
 
-    # 3. Retrieve labels (-1 indicates noise/outliers)
     labels = dbscan_model.labels_
     unique = np.unique(labels).shape[0] - 1
     logger.info(
@@ -457,3 +466,164 @@ def perform_dbscan_clustering(X, Y, Z, eps=50, min_samples=2, **kwargs):
     )  # Log only non-noise labels
 
     return labels
+
+
+def perform_hdbscan_clustering(X, Y, Z, **kwargs):
+    '''
+    Performs HDBSCAN clustering on 3D localization data.
+
+    Parameters
+    ------------
+    X, Y, Z: array-like
+        Arrays of x, y, z coordinates of localizations.
+    min_cluster_size: int, optional
+        The minimum size of clusters; single linkage splits that contain fewer
+        than this many samples are considered noise. Default is 5.
+    **kwargs: additional keyword arguments for HDBSCAN.
+    '''
+    sigma_xy = kwargs.pop('sigma_xy', 10.0)
+    sigma_z = kwargs.pop('sigma_z', 10.0)
+
+    VECTORS, scale = scale_data(X, Y, Z, sigma_xy, sigma_z)
+
+    if kwargs.pop('scale_data', False):
+        std = np.std(VECTORS)
+        if std > 0:
+            VECTORS /= std
+
+            kwargs['cluster_selection_epsilon'] = float(
+                kwargs.get('cluster_selection_epsilon', 0.0) / std
+            )
+            kwargs['cluster_selection_epsilon_max'] = float(
+                kwargs.get('cluster_selection_epsilon_max', 0.0) / std
+            )
+        else:
+            logger.warning('Standard deviation of data is zero. Skipping scaling.')
+
+    hdbscan_model = HDBSCAN(**kwargs)
+    hdbscan_model.fit(VECTORS)
+
+    labels = hdbscan_model.labels_
+    unique = np.unique(labels).shape[0] - 1
+    logger.info(
+        'Cluster labels: %d (%d Points)', unique, labels[labels != -1].shape[0]
+    )  # Log only non-noise labels
+
+    return labels
+
+
+def perform_optics_clustering(X, Y, Z, min_samples=10, xi=0.05, **kwargs):
+    '''
+    Performs OPTICS clustering on 3D localization data.
+
+    Parameters
+    -----------
+    X, Y, Z: array-like
+        Arrays of x, y, z coordinates of localizations.
+    min_samples: int, optional
+        The number of samples in a neighborhood for a point to be considered
+        a core point. Default is 10.
+    xi: float, optional
+        Steepness threshold (ξ) — smaller xi = more, finer-grained clusters.
+        Default is 0.05.
+    kwargs:
+        additional keyword arguments for OPTICS.
+
+        - scale_data: bool, optional
+            If True, scales the data to unit variance before clustering.
+        - sigma_xy: float, optional
+            Standard deviation for x and y coordinates (in nm). Default is 10.0.
+        - sigma_z: float, optional
+            Standard deviation for z coordinate (in nm). Default is 10.0.
+        - OPTICS parameters: any other parameters accepted by sklearn.cluster.OPTICS.
+
+    Returns
+    --------
+    labels: array of int
+        Per-point labels; -1 is noise, same convention as DBSCAN.
+    '''
+    sigma_xy = kwargs.pop('sigma_xy', 10.0)
+    sigma_z = kwargs.pop('sigma_z', 10.0)
+
+    VECTORS, scale = scale_data(X, Y, Z, sigma_xy, sigma_z)
+
+    if kwargs.pop('scale_data', False):
+        std = np.std(VECTORS)
+        if std > 0:
+            VECTORS /= std
+
+            kwargs['max_eps'] = kwargs.get('max_eps', np.inf) / std
+            kwargs['eps'] = (
+                kwargs.get('eps') / std if kwargs.get('eps') is not None else None
+            )
+        else:
+            logger.warning('Standard deviation of data is zero. Skipping scaling.')
+
+    optics = OPTICS(min_samples=min_samples, xi=xi, **kwargs)
+    optics.fit(VECTORS)
+
+    labels = optics.labels_
+    unique = np.unique(labels).shape[0] - 1
+    logger.info(
+        'Cluster labels: %d (%d Points)', unique, labels[labels != -1].shape[0]
+    )  # Log only non-noise labels
+
+    return labels
+
+
+def optics_then_dbscan_sweep(
+    X, Y, Z, min_samples=10, eps_values=(5, 10, 15, 20, 30, 50), **kwargs
+):
+    '''
+    Performs OPTICS clustering on 3D localization data, then sweeps through a range of
+    eps values for DBSCAN clustering on the reachability plot.
+
+    Parameters
+    -----------
+    X, Y, Z: array-like
+        Arrays of x, y, z coordinates of localizations.
+    min_samples: int, optional
+        The number of samples in a neighborhood for a point to be considered
+        a core point. Default is 10.
+    eps_values: iterable of float, optional
+        A list of eps values to sweep through for DBSCAN clustering.
+        Default is (5, 10, 15, 20, 30, 50).
+
+    Returns
+    --------
+    results: dict
+        A dictionary where keys are eps values and values are the corresponding
+        cluster labels from DBSCAN.
+    '''
+    sigma_xy = kwargs.pop('sigma_xy', 10.0)
+    sigma_z = kwargs.pop('sigma_z', 10.0)
+
+    VECTORS, scale = scale_data(X, Y, Z, sigma_xy, sigma_z)
+
+    std = 0.0
+
+    if kwargs.pop('scale_data', False):
+        std = np.std(VECTORS)
+        if std > 0:
+            VECTORS /= std
+        else:
+            logger.warning('Standard deviation of data is zero. Skipping scaling.')
+
+    optics = OPTICS(
+        min_samples=min_samples,
+        cluster_method=kwargs.pop('cluster_method', 'dbscan'),
+        **kwargs,
+    )
+    optics.fit(VECTORS)
+
+    results = {}
+    for eps in eps_values:
+        labels = cluster_optics_dbscan(
+            reachability=optics.reachability_,
+            core_distances=optics.core_distances_,
+            ordering=optics.ordering_,
+            eps=eps / std if std > 0 else eps,  # Scale eps if data was scaled
+        )
+        results[eps] = labels
+
+    return results

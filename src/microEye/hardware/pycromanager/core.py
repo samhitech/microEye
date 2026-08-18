@@ -378,14 +378,14 @@ class PycroCore:
         '''
         Get the allowed property values for a given device.
 
-        Parameters:
+        Parameters
         ----------
         label : str
             The label of the device.
         prop_name : str
             The name of the property.
 
-        Returns:
+        Returns
         -------
         list[str]
             A list of allowed property values.

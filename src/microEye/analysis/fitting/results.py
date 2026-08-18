@@ -5,7 +5,11 @@ import numpy as np
 import pandas as pd
 from scipy.interpolate import PchipInterpolator
 
-from microEye.analysis.clustering.dbscan import perform_dbscan_clustering
+from microEye.analysis.clustering.dbscan import (
+    perform_dbscan_clustering,
+    perform_hdbscan_clustering,
+    perform_optics_clustering,
+)
 from microEye.analysis.fitting.aim import _shift_correction, aim_drift_correction
 from microEye.analysis.fitting.processing import *
 from microEye.analysis.fitting.rcc import (
@@ -158,38 +162,44 @@ class FittingMethod(Enum):
 
 
 PARAMETER_HEADERS = {
-    FittingMethod.Phasor_2D_CPU: ['x', 'y', 'intensity', 'background', 'ratio'],
+    FittingMethod.Phasor_2D_CPU: [
+        str(DataColumns.X),
+        str(DataColumns.Y),
+        str(DataColumns.INTENSITY),
+        str(DataColumns.BACKGROUND),
+        str(DataColumns.XY_RATIO),
+    ],
     FittingMethod.MLE_2D_fixed_sigma: [
-        'x',
-        'y',
-        'intensity',
-        'background',
-        'iteration',
+        str(DataColumns.X),
+        str(DataColumns.Y),
+        str(DataColumns.INTENSITY),
+        str(DataColumns.BACKGROUND),
+        str(DataColumns.ITERATION),
     ],
     FittingMethod.MLE_2D_free_sigma: [
-        'x',
-        'y',
-        'intensity',
-        'background',
-        'sigmax',
-        'iteration',
+        str(DataColumns.X),
+        str(DataColumns.Y),
+        str(DataColumns.INTENSITY),
+        str(DataColumns.BACKGROUND),
+        str(DataColumns.SIGMA_X),
+        str(DataColumns.ITERATION),
     ],
     FittingMethod.MLE_2D_elliptical_sigma: [
-        'x',
-        'y',
-        'intensity',
-        'background',
-        'sigmax',
-        'sigmay',
-        'iteration',
+        str(DataColumns.X),
+        str(DataColumns.Y),
+        str(DataColumns.INTENSITY),
+        str(DataColumns.BACKGROUND),
+        str(DataColumns.SIGMA_X),
+        str(DataColumns.SIGMA_Y),
+        str(DataColumns.ITERATION),
     ],
     FittingMethod.MLE_3D_cspline_sigma: [
-        'x',
-        'y',
-        'intensity',
-        'background',
-        'z',
-        'iteration',
+        str(DataColumns.X),
+        str(DataColumns.Y),
+        str(DataColumns.INTENSITY),
+        str(DataColumns.BACKGROUND),
+        str(DataColumns.Z),
+        str(DataColumns.ITERATION),
     ],
 }
 
@@ -531,7 +541,7 @@ class FittingResults:
                     'frame',
                 ]
                 + self.parameterHeader
-                + ['CRLB ' + x for x in self.parameterHeader[:-1]]
+                + [f'crlb {x}' for x in self.parameterHeader[:-1]]
                 + [
                     'loglike',
                     str(DataColumns.TRACK_ID),
@@ -989,13 +999,13 @@ class FittingResults:
         columns = list(df.columns)
 
         column_ids = np.zeros(4, dtype=np.int32)
-        column_ids[0] = columns.index('frame')
-        column_ids[1] = columns.index('trackID')
-        column_ids[2] = columns.index('n_merged')
+        column_ids[0] = columns.index(str(DataColumns.FRAME))
+        column_ids[1] = columns.index(str(DataColumns.TRACK_ID))
+        column_ids[2] = columns.index(str(DataColumns.N_MERGED))
         if 'I' in columns:
             column_ids[3] = columns.index('I')
-        elif 'intensity' in columns:
-            column_ids[3] = columns.index('intensity')
+        elif str(DataColumns.INTENSITY) in columns:
+            column_ids[3] = columns.index(str(DataColumns.INTENSITY))
 
         data = df.to_numpy()
 
@@ -1022,13 +1032,11 @@ class FittingResults:
     def cluster_dbscan(self, **kwargs):
         logger.info('DBSCAN clustering ...')
 
-        eps = kwargs.get('eps', 50)
-        min_samples = kwargs.get('min_samples', 5)
-        metric = kwargs.get('metric', 'euclidean')
-        algorithm = kwargs.get('algorithm', 'auto')
-        leaf_size = kwargs.get('leaf_size', 30)
-        n_jobs = kwargs.get('n_jobs', -1)
-        scale_data = kwargs.get('scale_data', False)
+        eps = kwargs.pop('eps', 50)
+        min_samples = kwargs.pop('min_samples', 5)
+
+        kwargs['n_jobs'] = -1
+
 
         labels = perform_dbscan_clustering(
             self.data[DataColumns.X],
@@ -1036,11 +1044,38 @@ class FittingResults:
             self.data[DataColumns.Z],
             eps,
             min_samples,
-            metric=metric,
-            algorithm=algorithm,
-            leaf_size=leaf_size,
-            n_jobs=n_jobs,
-            scale_data=scale_data,
+            **kwargs
+        )
+
+        self.data[DataColumns.CLUSTER_ID] = labels
+
+    def cluster_hdbscan(self, **kwargs):
+        logger.info('HDBSCAN clustering ...')
+
+        labels = perform_hdbscan_clustering(
+            self.data[DataColumns.X],
+            self.data[DataColumns.Y],
+            self.data[DataColumns.Z],
+            **kwargs
+        )
+
+        self.data[DataColumns.CLUSTER_ID] = labels
+
+    def cluster_optics(self, **kwargs):
+        logger.info('OPTICS clustering ...')
+
+        min_samples = kwargs.pop('min_samples', 5)
+        xi = kwargs.pop('xi', 0.05)
+
+        kwargs['n_jobs'] = -1
+
+        labels = perform_optics_clustering(
+            self.data[DataColumns.X],
+            self.data[DataColumns.Y],
+            self.data[DataColumns.Z],
+            min_samples,
+            xi,
+            **kwargs
         )
 
         self.data[DataColumns.CLUSTER_ID] = labels

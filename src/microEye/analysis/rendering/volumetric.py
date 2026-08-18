@@ -22,7 +22,7 @@ class VolumeRenderer:
         '''
         Initialize the volume renderer.
 
-        Parameters:
+        Parameters
         -----------
         xy_voxel_size : float
             Size of each voxel in the lateral (XY) dimensions
@@ -130,14 +130,14 @@ class VolumeRenderer:
         '''
         Renders a volumetric histogram from an array of localizations.
 
-        Parameters:
+        Parameters
         -----------
         data : np.ndarray
             Array with columns (X, Y, Z, Intensity)
         shape : tuple[int, int, int], optional
             Volume dimensions (depth, height, width), by default None
 
-        Returns:
+        Returns
         --------
         np.ndarray
             3D volume array suitable for visualization
@@ -161,7 +161,7 @@ def create_rgba_volume(normalized_data, colors, opacity):
     '''
     Create RGBA volume with colormap using Numba acceleration.
 
-    Parameters:
+    Parameters
     -----------
     normalized_data : np.ndarray
         3D array of normalized data values (0-1)
@@ -170,7 +170,7 @@ def create_rgba_volume(normalized_data, colors, opacity):
     opacity : float
         Global opacity multiplier (0-1)
 
-    Returns:
+    Returns
     --------
     rgba_volume : np.ndarray
         4D array containing the RGBA volume

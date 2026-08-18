@@ -57,11 +57,14 @@ class PlotResult:
     '''
 
     raster: pg.ImageItem | None = None
-    scatter: list[pg.ScatterPlotItem] = field(default_factory=list)
+    scatter: list[pg.ScatterPlotItem | pg.PlotCurveItem] = field(default_factory=list)
     histogram_x: list[pg.GraphicsObject] = field(default_factory=list)
     histogram_y: list[pg.GraphicsObject] = field(default_factory=list)
     title: str = ''
     pixel_size: float = 1.0
+
+    histogram_angle: list[pg.GraphicsObject] = field(default_factory=list)
+    histogram_intensity: list[pg.GraphicsObject] = field(default_factory=list)
 
     @property
     def is_rasterized(self) -> bool:
@@ -69,7 +72,7 @@ class PlotResult:
 
     @property
     def has_histograms(self) -> bool:
-        return bool(self.histogram_x or self.histogram_y)
+        return bool(self.histogram_x or self.histogram_y or self.histogram_angle)
 
 
 class ClustersScatter:
@@ -693,10 +696,39 @@ class ClustersScatter:
             **kwargs,
         )
 
+        if kwargs.get('angle_hist', False):
+            # rad to deg conversion and conversion to range [-90, 90]
+            angles = np.degrees(ruler_concatenated['angle'])
+            min_angle = angles.min()
+            max_angle = angles.max()
+            angles = (angles + 90) % 180 - 90 if max_angle - min_angle > 180 else angles
+            hist_angle = cls.histogram(
+                angles,
+                bin_size=kwargs.get('angle_bin_size', 1),
+                detect_peaks=False,
+                axis_label='Angle [rad]',
+                **kwargs,
+            )
+        else:
+            hist_angle = None
+
+        if kwargs.get('intensity_hist', False):
+            hist_intensity = cls.histogram(
+                ruler_concatenated['intensity'],
+                bin_size=kwargs.get('intensity_bin_size', 1),
+                detect_peaks=False,
+                axis_label='Intensity [a.u.]',
+                **kwargs,
+            )
+        else:
+            hist_intensity = None
+
         return PlotResult(
             raster=item,
             histogram_x=hist_x,
             histogram_y=hist_y,
+            histogram_angle=hist_angle,
+            histogram_intensity=hist_intensity,
             title='Superimposed rulers',
             pixel_size=kwargs.get('pixel_size', 1.0),
         )
@@ -931,6 +963,12 @@ class RulerPlotOptionsDialog(ClusterPlotOptionsDialog):
             'Maximum distance between clusters to be considered part of the same ruler.'
         )
 
+        self.grouping_method = QtWidgets.QComboBox()
+        self.grouping_method.addItem('DBSCAN', 'dbscan')
+        self.grouping_method.addItem('HDBSCAN', 'hdbscan')
+        self.grouping_method.addItem('OPTICS', 'optics')
+
+
         self.ruler_spacing = create_double_spin_box(
             min_value=0.0, max_value=1000.0, decimals=2, initial_value=80.0
         )
@@ -956,27 +994,225 @@ class RulerPlotOptionsDialog(ClusterPlotOptionsDialog):
             'If checked, data will be scaled to fit within the plot area.'
         )
 
+        self.angle_hist = QtWidgets.QCheckBox('Show angle histogram?')
+        self.angle_hist.setChecked(False)
+        self.angle_hist.setToolTip(
+            'If checked, an angle histogram will be displayed for the rulers.'
+        )
+
+        self.intensity_hist = QtWidgets.QCheckBox('Show intensity histogram?')
+        self.intensity_hist.setChecked(False)
+        self.intensity_hist.setToolTip(
+            'If checked, an intensity histogram will be displayed for the rulers.'
+        )
+
         layout: QtWidgets.QFormLayout = self.layout()
         layout.insertRow(8, 'Number of Sites:', self.n_sites)
-        layout.insertRow(9, 'Distance Threshold:', self.distance_threshold)
-        layout.insertRow(10, 'Ruler Spacing:', self.ruler_spacing)
-        layout.insertRow(11, 'Spacing Tolerance:', self.spacing_tolerance)
-        layout.insertRow(12, 'Maximum Y Deviation:', self.max_y_dev)
-        layout.insertRow(13, self.scale_data)
+        layout.insertRow(9, 'Grouping Method:', self.grouping_method)
+        layout.insertRow(10, 'Distance Threshold:', self.distance_threshold)
+        layout.insertRow(11, 'Ruler Spacing:', self.ruler_spacing)
+        layout.insertRow(12, 'Spacing Tolerance:', self.spacing_tolerance)
+        layout.insertRow(13, 'Maximum Y Deviation:', self.max_y_dev)
+        layout.insertRow(15, self.scale_data)
+        layout.insertRow(16, self.angle_hist)
+        layout.insertRow(17, self.intensity_hist)
 
     def values(self):
         base_values = super().values()
         base_values.update(
             {
                 'n_sites': self.n_sites.value(),
+                'grouping_method': self.grouping_method.currentData(),
                 'distance_threshold': self.distance_threshold.value(),
                 'ruler_spacing': self.ruler_spacing.value(),
                 'spacing_tolerance': self.spacing_tolerance.value(),
                 'max_y_dev': self.max_y_dev.value(),
                 'scale_data': self.scale_data.isChecked(),
+                'angle_hist': self.angle_hist.isChecked(),
+                'intensity_hist': self.intensity_hist.isChecked(),
             }
         )
         return base_values
+
+
+class DBSCAN_OptionsDialog(QtWidgets.QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('DBSCAN Options')
+
+        self.sigma_xy = create_double_spin_box(
+            min_value=0.1, max_value=100, decimals=2, initial_value=15.0
+        )
+        self.sigma_z = create_double_spin_box(
+            min_value=0.1, max_value=100, decimals=2, initial_value=45.0
+        )
+
+        self.eps = create_double_spin_box(
+            min_value=0.1, max_value=5000, decimals=2, initial_value=5.0
+        )
+        self.min_samples = create_spin_box(min_value=2, max_value=1000, initial_value=5)
+        self.leaf_size = create_spin_box(min_value=0, max_value=1000, initial_value=30)
+
+        self.algorithm = QtWidgets.QComboBox()
+        algos = ['auto', 'ball_tree', 'kd_tree', 'brute']
+        for alg in algos:
+            self.algorithm.addItem(alg)
+
+        self.scale_data = QtWidgets.QCheckBox('Scale data?')
+        self.scale_data.setChecked(False)
+
+        layout = QtWidgets.QFormLayout(self)
+        layout.addRow('Sigma XY [nm]:', self.sigma_xy)
+        layout.addRow('Sigma Z [nm]:', self.sigma_z)
+        layout.addRow('Epsilon (eps):', self.eps)
+        layout.addRow('Minimum Samples:', self.min_samples)
+        layout.addRow('Leaf Size:', self.leaf_size)
+        layout.addRow('Algorithm:', self.algorithm)
+        layout.addWidget(self.scale_data)
+
+        buttons = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.StandardButton.Ok
+            | QtWidgets.QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addRow(buttons)
+
+    def toDict(self):
+        return {
+            'eps': self.eps.value(),
+            'metric': 'euclidean',
+            'min_samples': self.min_samples.value(),
+            'leaf_size': self.leaf_size.value(),
+            'algorithm': self.algorithm.currentText(),
+            'sigma_xy': self.sigma_xy.value(),
+            'sigma_z': self.sigma_z.value(),
+            'scale_data': self.scale_data.isChecked(),
+        }
+
+
+class HDBSCAN_OptionsDialog(QtWidgets.QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('HDBSCAN Options')
+
+        self.sigma_xy = create_double_spin_box(
+            min_value=0.1, max_value=100, decimals=2, initial_value=15.0
+        )
+        self.sigma_z = create_double_spin_box(
+            min_value=0.1, max_value=100, decimals=2, initial_value=45.0
+        )
+
+        self.min_samples = create_spin_box(min_value=0, max_value=1000, initial_value=0)
+        self.min_cluster_size = create_spin_box(
+            min_value=2, max_value=1000, initial_value=5
+        )
+        self.cluster_selection_epsilon = create_double_spin_box(
+            min_value=0.0, max_value=1000.0, decimals=2, initial_value=0.0
+        )
+
+        self.scale_data = QtWidgets.QCheckBox('Scale data?')
+        self.scale_data.setChecked(False)
+
+        layout = QtWidgets.QFormLayout(self)
+        layout.addRow('Sigma XY [nm]:', self.sigma_xy)
+        layout.addRow('Sigma Z [nm]:', self.sigma_z)
+        layout.addRow('Minimum Samples:', self.min_samples)
+        layout.addRow('Minimum Cluster Size:', self.min_cluster_size)
+        layout.addRow('Cluster Selection Epsilon:', self.cluster_selection_epsilon)
+        layout.addWidget(self.scale_data)
+
+        buttons = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.StandardButton.Ok
+            | QtWidgets.QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addRow(buttons)
+
+    def toDict(self):
+        return {
+            'min_samples': self.min_samples.value()
+            if self.min_samples.value() > 0
+            else None,
+            'min_cluster_size': self.min_cluster_size.value(),
+            'sigma_xy': self.sigma_xy.value(),
+            'sigma_z': self.sigma_z.value(),
+            'scale_data': self.scale_data.isChecked(),
+            'cluster_selection_epsilon_max': self.cluster_selection_epsilon.value(),
+        }
+
+
+class OPTICS_OptionsDialog(QtWidgets.QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('OPTICS Options')
+
+        self.sigma_xy = create_double_spin_box(
+            min_value=0.1, max_value=100, decimals=2, initial_value=15.0
+        )
+        self.sigma_z = create_double_spin_box(
+            min_value=0.1, max_value=100, decimals=2, initial_value=45.0
+        )
+
+        self.min_samples = create_spin_box(min_value=2, max_value=1000, initial_value=5)
+        self.max_eps = create_double_spin_box(
+            min_value=0.0, max_value=5000, decimals=2, initial_value=0.0
+        )
+
+        self.cluster_method = QtWidgets.QComboBox()
+        methods = ['xi', 'dbscan']
+        for method in methods:
+            self.cluster_method.addItem(method)
+
+        self.xi = create_double_spin_box(
+            min_value=0.0, max_value=1.0, decimals=2, initial_value=0.05
+        )
+
+        self.algorithm = QtWidgets.QComboBox()
+        algos = ['auto', 'ball_tree', 'kd_tree', 'brute']
+        for alg in algos:
+            self.algorithm.addItem(alg)
+
+        self.leaf_size = create_spin_box(min_value=0, max_value=1000, initial_value=30)
+
+        self.scale_data = QtWidgets.QCheckBox('Scale data?')
+        self.scale_data.setChecked(False)
+
+        layout = QtWidgets.QFormLayout(self)
+        layout.addRow('Sigma XY [nm]:', self.sigma_xy)
+        layout.addRow('Sigma Z [nm]:', self.sigma_z)
+        layout.addRow('Minimum Samples:', self.min_samples)
+        layout.addRow('Maximum Epsilon (max_eps):', self.max_eps)
+        layout.addRow('Metric:', QtWidgets.QLabel('minkowski (p=2)'))
+        layout.addRow('Cluster Method:', self.cluster_method)
+        layout.addRow('Xi:', self.xi)
+        layout.addRow('Algorithm:', self.algorithm)
+        layout.addRow('Leaf Size:', self.leaf_size)
+        layout.addWidget(self.scale_data)
+
+        buttons = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.StandardButton.Ok
+            | QtWidgets.QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addRow(buttons)
+
+    def toDict(self):
+        return {
+            'algorithm': self.algorithm.currentText(),
+            'min_samples': self.min_samples.value(),
+            'max_eps': self.max_eps.value() if self.max_eps.value() > 0 else np.inf,
+            'metric': 'minkowski',
+            'p': 2.0,
+            'cluster_method': self.cluster_method.currentText(),
+            'sigma_xy': self.sigma_xy.value(),
+            'sigma_z': self.sigma_z.value(),
+            'scale_data': self.scale_data.isChecked(),
+            'xi': self.xi.value(),
+            'leaf_size': self.leaf_size.value(),
+        }
 
 
 def add_plot_result(
@@ -1050,6 +1286,26 @@ def add_plot_result(
         py.showGrid(x=True, y=True, alpha=0.2)
         for item in result.histogram_y:
             py.addItem(item)
+        next_row += 1
+
+    if result.histogram_intensity:
+        pi = graphics_layout.ci.addPlot(
+            title='Intensity Histogram', row=next_row, col=col
+        )
+        pi.setLabel('bottom', 'Intensity (a.u.)')
+        pi.setLabel('left', 'Density')
+        pi.showGrid(x=True, y=True, alpha=0.2)
+        for item in result.histogram_intensity:
+            pi.addItem(item)
+        next_row += 1
+
+    if result.histogram_angle:
+        pa = graphics_layout.ci.addPlot(title='Angle Histogram', row=next_row, col=col)
+        pa.setLabel('bottom', 'Angle (degrees)')
+        pa.setLabel('left', 'Density')
+        pa.showGrid(x=True, y=True, alpha=0.2)
+        for item in result.histogram_angle:
+            pa.addItem(item)
         next_row += 1
 
     return next_row

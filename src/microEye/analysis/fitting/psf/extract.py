@@ -221,7 +221,7 @@ class PSFdata:
         """
         Get the XY slice for the given z-index.
 
-        Parameters:
+        Parameters
         -----------
         z_index : int
             The z-index of the slice
@@ -235,7 +235,7 @@ class PSFdata:
         normalize : bool, optional
             Whether to normalize the data, by default False
 
-        Returns:
+        Returns
         --------
         tuple[np.ndarray, np.ndarray]
             The data array and grid overlay

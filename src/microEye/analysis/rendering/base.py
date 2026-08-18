@@ -75,7 +75,7 @@ class BaseRenderer:
         '''
         Initializes the renderer.
 
-        Parameters:
+        Parameters
         -----------
         pixel_size : float
             Pixel size of the rendered image in lateral dimensions (XY).

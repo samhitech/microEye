@@ -48,7 +48,7 @@ class ZarrAcquisition:
         Finalize the acquisition by trimming unused frames and
         optionally adding sharding.
 
-        Parameters:
+        Parameters
         -----------
         trim_zeros : bool
             Remove surplus zero frames from pre-allocated array
@@ -121,7 +121,7 @@ def create_array(
     '''
     Create an empty zarr array.
 
-    Parameters:
+    Parameters
     -----------
     filename : str
         Output zarr filename (directory or .zip).
@@ -165,7 +165,7 @@ def store_zarr_array(
     '''
     Store a numpy array as a zarr file.
 
-    Parameters:
+    Parameters
     -----------
     array : np.ndarray
         Input array to store.

@@ -170,7 +170,8 @@ class DevicePort(QtCore.QObject):
         """
         Log a communication event.
 
-        Parameters:
+        Parameters
+        ----------
         direction (str): Either 'TX' for transmitted or 'RX' for received.
         message (str): The content of the message.
         """

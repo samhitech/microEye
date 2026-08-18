@@ -7,11 +7,11 @@ The **`microEye`** is a Python toolkit for fluorescence microscopy that supports
 This toolkit is compatible with the [hardware](#hardware) used in our microscope. For further details, refer to the [miEye microscope paper](https://doi.org/10.1016/j.ohx.2022.e00368) and [OSF project](http://doi.org/10.17605/osf.io/j2fqy).
 
 ```bash
-   __  ____              ____                ___  ____ ____
-  /  |/  (_)__________  / __/_ _____   _  __|_  |/ / // / /
- / /|_/ / / __/ __/ _ \/ _// // / -_) | |/ / __//_  _/_  _/
-/_/  /_/_/\__/_/  \___/___/\_, /\__/  |___/____(_)_/(_)_/  
-                          /___/   
+   __  ____              ____                ___  ____   ____
+  /  |/  (_)__________  / __/_ _____   _  __|_  |/ / /  / __/
+ / /|_/ / / __/ __/ _ \/ _// // / -_) | |/ / __//_  _/ /__ \
+/_/  /_/_/\__/_/  \___/___/\_, /\__/  |___/____(_)_/(_)____/ 
+                          /___/
 ```
 
 <!-- ![Package Health](https://snyk.io/advisor/python/microEye/badge.svg) -->
@@ -413,13 +413,14 @@ Schematic overview of the miEye instrument:
 
 ### Supported Cameras
 
-|          Camera           | Description                                                              |             Driver             |                                                     Link                                                      |
-| :-----------------------: | ------------------------------------------------------------------------ | :----------------------------: | :-----------------------------------------------------------------------------------------------------------: |
-| IDS uEye UI-3060CP Rev. 2 | IDS industrial-grade CMOS cameras                                        | `IDS uEye SDK 4.96.1` `pyueye` |            [Product Link](https://en.ids-imaging.com/store/products/cameras/ui-3060cp-rev-2.html)             |
-|     Thorlabs DCC1545M     | DCx camera using UC480 driver                                            |        `ThorCam 3.7.0`         |                 [Product Link](https://www.thorlabs.com/thorProduct.cfm?partNumber=DCC1545M)                  |
-| Allied Vision Alvium 1800 | Allied Vision industrial-grade CMOS cameras (U-158m, U-511m)             |     `Vimba X SDK` `vmbpy`      | [Product Link](https://www.alliedvision.com/en/products/alvium-configurator/alvium-1800-u/158/#_configurator) |
-|    Excelitas PCO sCMOS    | Excelitas pco.edge 4.2 LT USB sCMOS Camera                               |     `pco.sdk` `pco.python`     |               [Product Link](https://www.excelitas.com/product/pcoedge-42-lt-usb-scmos-camera)                |
-|       Pycro-camera        | Access to cameras via Micro-Manager drivers/adapters using Pycro-Manager |   `uManager` `Pycro-Manager`   |                                                       -                                                       |
+|          Camera           | Description                                                              |                  Driver                   |                                                     Link                                                      |
+| :-----------------------: | ------------------------------------------------------------------------ | :---------------------------------------: | :-----------------------------------------------------------------------------------------------------------: |
+| IDS uEye UI-3060CP Rev. 2 | IDS industrial-grade CMOS cameras                                        | `IDS uEye SDK 4.96.1` `IDS Peak` `pyueye` |            [Product Link](https://en.ids-imaging.com/store/products/cameras/ui-3060cp-rev-2.html)             |
+|     Thorlabs DCC1545M     | DCx camera using UC480 driver                                            |              `ThorCam 3.7.0`              |                 [Product Link](https://www.thorlabs.com/thorProduct.cfm?partNumber=DCC1545M)                  |
+| Allied Vision Alvium 1800 | Allied Vision industrial-grade CMOS cameras (U-158m, U-511m)             |           `Vimba X SDK` `vmbpy`           | [Product Link](https://www.alliedvision.com/en/products/alvium-configurator/alvium-1800-u/158/#_configurator) |
+|    Basler ace 2 R PRO     | Basler `pylon` supported cameras                                         |             `pylon` `pypylon`             |                                                       -                                                       |
+|    Excelitas PCO sCMOS    | Excelitas pco.edge 4.2 LT USB sCMOS Camera                               |          `pco.sdk` `pco.python`           |               [Product Link](https://www.excelitas.com/product/pcoedge-42-lt-usb-scmos-camera)                |
+|       Pycro-camera        | Access to cameras via Micro-Manager drivers/adapters using Pycro-Manager |        `uManager` `Pycro-Manager`         |                                                       -                                                       |
 
 ### Additional Hardware
 
@@ -427,6 +428,7 @@ Schematic overview of the miEye instrument:
 | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------: | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------: |
 | Integrated Optics MatchBox        | Multi-wavelength Laser Combiner, Single Laser MatchBox                                                                                                                | `Native` |                                                              [Products Link](https://integratedoptics.com/products/wavelength-combiners)                                                               |
 | Piezo Concept FOC                 | Nanopositioner for microscope objectives                                                                                                                              | `Native` |                                                              [Piezo Concept FOC](https://piezoconcept-store.squarespace.com/1-axis/p/foc)                                                              |
+| SmarAct MCS2                      | Support for SmarAct MCS2 multi-channel controllers                                                                                                                    | `Native` |                                                                                                   -                                                                                                    |
 | Thorlabs Elliptec ELL6/ELL9/ELL12 | Dual/Four/Six-Position Slider                                                                                                                                         | `Native` | [ELL6](https://www.thorlabs.com/thorproduct.cfm?partnumber=ELL6), [ELL9](https://www.thorlabs.com/thorproduct.cfm?partnumber=ELL9), [ELL12](https://www.thorlabs.com/thorproduct.cfm?partnumber=ELL12) |
 | Thorlabs Elliptec ELL14           | Rotation Mount: SM1 Threaded                                                                                                                                          | `Native` |                                                                   [ELL14](https://www.thorlabs.com/thorproduct.cfm?partnumber=ELL14)                                                                   |
 | Thorlabs Elliptec ELL20           | Linear Stage: 60 mm Travel                                                                                                                                            | `Native` |                                                                   [ELL20](https://www.thorlabs.com/thorproduct.cfm?partnumber=ELL20)                                                                   |

@@ -28,7 +28,7 @@ pyueye==4.96.952
 QDarkStyle==3.2.3
 QScintilla==2.14.1
 scikit-image==0.25.2
-scikit_learn==1.7.2
+scikit_learn==1.9.0
 scipy>=1.16.2
 setuptools>=80.9.0
 tables==3.10.2

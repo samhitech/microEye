@@ -11,9 +11,17 @@ import pyqtgraph as pg
 import tifffile as tf
 
 from microEye.analysis.checklist_dialog import ChecklistDialog
+from microEye.analysis.clustering.density import (
+    Density_OptionsDialog,
+    DensityAnalysisPlot,
+    get_cluster_density,
+)
 from microEye.analysis.clustering.plot import (
     ClusterPlotOptionsDialog,
     ClustersScatter,
+    DBSCAN_OptionsDialog,
+    HDBSCAN_OptionsDialog,
+    OPTICS_OptionsDialog,
     PlotResult,
     RulerPlotOptionsDialog,
     add_plot_result,
@@ -69,6 +77,9 @@ class LocalizationTab(SideBar):
     nn_mergeActivated = Signal()
 
     dbscanActivated = Signal()
+    hdbscanActivated = Signal()
+    opticsActivated = Signal()
+    densityActivated = Signal()
     renderClustersActivated = Signal()
     renderRulersActivated = Signal()
 
@@ -91,7 +102,7 @@ class LocalizationTab(SideBar):
 
         self.__init_z_extraction()
 
-        self.__init_dbscan_clustering()
+        self.__init_clustering()
 
         self.__init_buttons()
 
@@ -386,61 +397,69 @@ class LocalizationTab(SideBar):
 
         self.addSection('NN Analysis', fnearestN, True)
 
-    def __init_dbscan_clustering(self):
+    def __init_clustering(self):
         clustering = QtWidgets.QFormLayout()
 
-        self.__dbscan_eps = QtWidgets.QDoubleSpinBox()
-        self.__dbscan_eps.setMinimum(0)
-        self.__dbscan_eps.setMaximum(5000)
-        self.__dbscan_eps.setValue(50)
+        self.__dbscan_options = DBSCAN_OptionsDialog()
+        self.__optics_options = OPTICS_OptionsDialog()
+        self.__hdbscan_options = HDBSCAN_OptionsDialog()
+        self.__density_options = Density_OptionsDialog()
 
-        self.__dbscan_min_samples = QtWidgets.QSpinBox()
-        self.__dbscan_min_samples.setMinimum(2)
-        self.__dbscan_min_samples.setMaximum(1000)
-        self.__dbscan_min_samples.setValue(5)
+        def dbscan_emit():
+            res = self.__dbscan_options.exec()
 
-        self.__dbscan_metric = QtWidgets.QComboBox()
-        metrics = [
-            'euclidean',
-        ]
-
-        for metric in metrics:
-            self.__dbscan_metric.addItem(metric)
-
-        self.__dbscan_algorithm = QtWidgets.QComboBox()
-        algos = ['auto', 'ball_tree', 'kd_tree', 'brute']
-        for alg in algos:
-            self.__dbscan_algorithm.addItem(alg)
-
-        self.__dbscan_leaf_size = QtWidgets.QSpinBox()
-        self.__dbscan_leaf_size.setMinimum(0)
-        self.__dbscan_leaf_size.setMaximum(1000)
-        self.__dbscan_leaf_size.setValue(30)
-
-        self.__dbscan_scale_data = QtWidgets.QCheckBox('Scale Data ?')
+            if res == QtWidgets.QDialog.DialogCode.Accepted:
+                self.dbscanActivated.emit()
 
         self.__dbscan_btn = QtWidgets.QPushButton(
-            'DBSCAN', clicked=lambda: self.dbscanActivated.emit()
+            'DBSCAN', clicked=lambda: dbscan_emit()
         )
-        self.__dbscan_render_btn = QtWidgets.QPushButton(
+
+        def hdbscan_emit():
+            res = self.__hdbscan_options.exec()
+
+            if res == QtWidgets.QDialog.DialogCode.Accepted:
+                self.hdbscanActivated.emit()
+
+        self.__hdbscan_btn = QtWidgets.QPushButton(
+            'HDBSCAN', clicked=lambda: hdbscan_emit()
+        )
+
+        def density_emit():
+            res = self.__density_options.exec()
+
+            if res == QtWidgets.QDialog.DialogCode.Accepted:
+                self.densityActivated.emit()
+
+        self.__density_btn = QtWidgets.QPushButton(
+            'Density Analysis', clicked=lambda: density_emit()
+        )
+
+        def optics_emit():
+            res = self.__optics_options.exec()
+
+            if res == QtWidgets.QDialog.DialogCode.Accepted:
+                self.opticsActivated.emit()
+
+        self.__optics_btn = QtWidgets.QPushButton(
+            'OPTICS', clicked=lambda: optics_emit()
+        )
+        self.__cluster_render_btn = QtWidgets.QPushButton(
             'Show Clusters',
             clicked=lambda: self.renderClustersActivated.emit(),
         )
-        self.__dbscan_ruler_btn = QtWidgets.QPushButton(
+        self.__cluster_ruler_btn = QtWidgets.QPushButton(
             'Show Rulers',
             clicked=lambda: self.renderRulersActivated.emit(),
         )
 
-        clustering.addRow(QtWidgets.QLabel('Epsilon'), self.__dbscan_eps)
-        clustering.addRow(QtWidgets.QLabel('Min Samples'), self.__dbscan_min_samples)
-        clustering.addRow(QtWidgets.QLabel('Leaf Size'), self.__dbscan_leaf_size)
-        # clustering.addRow(QtWidgets.QLabel('Metric'), self.__dbscan_metric)
-        clustering.addRow(QtWidgets.QLabel('Algorithm'), self.__dbscan_algorithm)
-        clustering.addWidget(self.__dbscan_scale_data)
         clustering.addWidget(self.__dbscan_btn)
-        clustering.addWidget(self.__dbscan_render_btn)
-        clustering.addWidget(self.__dbscan_ruler_btn)
-        self.addSection('DBSCAN Clustering', clustering, False)
+        clustering.addWidget(self.__hdbscan_btn)
+        clustering.addWidget(self.__optics_btn)
+        clustering.addWidget(self.__density_btn)
+        clustering.addWidget(self.__cluster_render_btn)
+        clustering.addWidget(self.__cluster_ruler_btn)
+        self.addSection('Clustering', clustering, False)
 
     def __init_buttons(self):
         self.import_loc_btn = QtWidgets.QPushButton(
@@ -532,6 +551,12 @@ class LocalizationTab(SideBar):
                 )
 
                 plt.show()
+
+    def setBtnEnabled(self, btn_attr_name: str, enabled: bool = False):
+        '''Disable a button by its attribute name.'''
+        btn = getattr(self, f'_LocalizationTab{btn_attr_name}', None)
+        if isinstance(btn, QtWidgets.QPushButton):
+            btn.setEnabled(enabled)
 
     def update_position(self, currentResults: FittingResults):
         '''Update the position label.'''
@@ -665,30 +690,6 @@ class LocalizationTab(SideBar):
     def zCalSlope(self):
         return self.__z_cal_slope.value()
 
-    @property
-    def dbscanEps(self):
-        return self.__dbscan_eps.value()
-
-    @property
-    def dbscanMinSamples(self):
-        return self.__dbscan_min_samples.value()
-
-    @property
-    def dbscanLeafSize(self):
-        return self.__dbscan_leaf_size.value()
-
-    @property
-    def dbscanMetric(self):
-        return self.__dbscan_metric.currentText()
-
-    @property
-    def dbscanAlgorithm(self):
-        return self.__dbscan_algorithm.currentText()
-
-    @property
-    def dbscanScaleData(self):
-        return self.__dbscan_scale_data.isChecked()
-
     def setButtonsEnabled(self, enabled=True):
         # check attributes of type QPushButton and set their enabled state
         for attr_name in dir(self):
@@ -722,12 +723,10 @@ class LocalizationTab(SideBar):
             'curveFitMethod': self.curveFitMethod,
             'zCalIntercept': self.zCalIntercept,
             'zCalSlope': self.zCalSlope,
-            'dbscanEps': self.dbscanEps,
-            'dbscanMinSamples': self.dbscanMinSamples,
-            'dbscanLeafSize': self.dbscanLeafSize,
-            'dbscanMetric': self.dbscanMetric,
-            'dbscanAlgorithm': self.dbscanAlgorithm,
-            'dbscanScaleData': self.dbscanScaleData,
+            'dbscanOptions': self.__dbscan_options.toDict(),
+            'hdbscanOptions': self.__hdbscan_options.toDict(),
+            'opticsOptions': self.__optics_options.toDict(),
+            'densityOptions': self.__density_options.toDict(),
         }
 
 
@@ -1126,6 +1125,17 @@ class LocalizationsView(QtWidgets.QWidget):
         self.localization_widget.dbscanActivated.connect(
             lambda: LocalizationProcessing.dbscan_clustering(self)
         )
+        self.localization_widget.hdbscanActivated.connect(
+            lambda: LocalizationProcessing.hdbscan_clustering(self)
+        )
+        self.localization_widget.opticsActivated.connect(
+            lambda: LocalizationProcessing.optics_clustering(self)
+        )
+
+        self.localization_widget.densityActivated.connect(
+            lambda: LocalizationProcessing.density_analysis(self)
+        )
+
         self.localization_widget.renderClustersActivated.connect(
             lambda: LocalizationRenderHelper.render_clusters(self)
         )
@@ -1307,17 +1317,50 @@ class LocalizationRenderHelper:
         if not view.fittingResults:
             return
 
-        images = [None] * len(view.fittingResults)
+        images, aspects = cls.batch_render_loc(
+            view.fittingResults, **view.localization_widget.toDict()
+        )
 
-        renderMode = view.localization_widget.renderMode
-        projection = view.localization_widget.projection
-        xy_bin = view.localization_widget.bin_xy
-        z_bin = view.localization_widget.bin_z
         auto_levels = view.localization_widget.autoStretch
+
+        for idx, (rendered_img, aspect) in enumerate(zip(images, aspects)):
+            if rendered_img is not None:
+                view.setImage(rendered_img, index=idx, autoLevels=auto_levels)
+                view.view_box.setAspectLocked(True, aspect)
+
+        return images
+
+    @classmethod
+    def batch_render_loc(cls, tables: list[FittingResults], **kwargs):
+        '''Batch render localizations for multiple FittingResults.
+
+        Parameters
+        ----------
+        tables : list[FittingResults]
+            List of FittingResults to render.
+        **kwargs : dict
+            Additional keyword arguments for rendering.
+
+        Returns
+        -------
+        tuple[list[np.ndarray], list[float]]
+            A tuple containing the rendered images and their corresponding aspects.
+        '''
+        if not tables:
+            return [], []
+
+        images = [None] * len(tables)
+        aspects = [1] * len(tables)
+
+        renderMode = kwargs.get('renderMode', RenderModes.HISTOGRAM)
+        projection = kwargs.get('projection', 0)
+        xy_bin = kwargs.get('binXY', 1)
+        z_bin = kwargs.get('binZ', 1)
+        slicePosition = kwargs.get('slicePosition', 0)
 
         renderer = BaseRenderer(xy_bin, z_bin, renderMode)
 
-        for idx, localizations in enumerate(view.fittingResults):
+        for idx, localizations in enumerate(tables):
             if not localizations or len(localizations) <= 0:
                 continue
 
@@ -1330,12 +1373,10 @@ class LocalizationRenderHelper:
                     localizations.data[DataColumns.INTENSITY],
                 )
 
-                aspect = 1 if projection == 0 else xy_bin / z_bin
-                view.view_box.setAspectLocked(True, aspect)
+                aspects[idx] = 1 if projection == 0 else xy_bin / z_bin
             elif 3 <= projection < 6:
                 slice_proj = projection - 3
-                aspect = 1 if slice_proj == 0 else xy_bin / z_bin
-                view.view_box.setAspectLocked(True, aspect)
+                aspects[idx] = 1 if slice_proj == 0 else xy_bin / z_bin
                 width = z_bin if slice_proj == 0 else xy_bin
 
                 rendered_img = renderer.render_slice(
@@ -1344,16 +1385,15 @@ class LocalizationRenderHelper:
                     localizations.data[DataColumns.Y],
                     localizations.data[DataColumns.Z],
                     localizations.data[DataColumns.INTENSITY],
-                    view.localization_widget.slicePosition,
+                    slicePosition,
                     width,
                 )
             else:
                 continue
 
-            view.setImage(rendered_img, index=idx, autoLevels=auto_levels)
             images[idx] = rendered_img
 
-        return images
+        return images, aspects
 
     @classmethod
     def render_clusters(
@@ -1469,8 +1509,12 @@ class LocalizationRenderHelper:
 
         args = [[view.currentResults]]
         worker_kwargs = {
-            'leaf_size': view.localization_widget.dbscanLeafSize,
-            'algorithm': view.localization_widget.dbscanAlgorithm,
+            'leaf_size': view.localization_widget.toDict()['dbscanOptions'][
+                'leaf_size'
+            ],
+            'algorithm': view.localization_widget.toDict()['dbscanOptions'][
+                'algorithm'
+            ],
             'scalebar_length': options['ruler_spacing'],
         }
         worker_kwargs.update(options)
@@ -1558,7 +1602,7 @@ class LocalizationProcessing:
         )
 
     @classmethod
-    def NeNA_estimate(clas, view: LocalizationsView):
+    def NeNA_estimate(cls, view: LocalizationsView):
         '''Estimate Nearest-Neighbor Analysis for localization precision.'''
         if view.currentResults is None:
             return
@@ -1791,9 +1835,7 @@ class LocalizationProcessing:
                 view.currentResults = results
                 view.results_plot.setData(view.currentResults.dataFrame())
 
-        view.runAsync(
-            work_func, done=done, finished_message='Track merging completed.'
-        )
+        view.runAsync(work_func, done=done, finished_message='Track merging completed.')
 
     @classmethod
     def extract_z(cls, view: LocalizationsView):
@@ -1880,12 +1922,7 @@ class LocalizationProcessing:
         def work_func(**kwargs):
             try:
                 return view.currentResults.cluster_dbscan(
-                    eps=view.localization_widget.dbscanEps,
-                    metric=view.localization_widget.dbscanMetric,
-                    algorithm=view.localization_widget.dbscanAlgorithm,
-                    min_samples=view.localization_widget.dbscanMinSamples,
-                    leaf_size=view.localization_widget.dbscanLeafSize,
-                    scale_data=view.localization_widget.dbscanScaleData,
+                    **view.localization_widget.toDict().get('dbscanOptions', {})
                 )
             except Exception:
                 traceback.print_exc()
@@ -1894,6 +1931,108 @@ class LocalizationProcessing:
         view.runAsync(
             work_func,
             finished_message='DBSCAN clustering completed.',
+        )
+
+    @classmethod
+    def hdbscan_clustering(cls, view: LocalizationsView):
+        if view.currentResults is None:
+            return
+
+        if len(view.currentResults) <= 0:
+            return
+
+        def work_func(**kwargs):
+            try:
+                return view.currentResults.cluster_hdbscan(
+                    **view.localization_widget.toDict().get('hdbscanOptions', {})
+                )
+            except Exception:
+                traceback.print_exc()
+                return None
+
+        view.runAsync(
+            work_func,
+            finished_message='HDBSCAN clustering completed.',
+        )
+
+    @classmethod
+    def optics_clustering(cls, view: LocalizationsView):
+        if view.currentResults is None:
+            return
+
+        if len(view.currentResults) <= 0:
+            return
+
+        def work_func(**kwargs):
+            try:
+                return view.currentResults.cluster_optics(
+                    **view.localization_widget.toDict().get('opticsOptions', {})
+                )
+            except Exception:
+                traceback.print_exc()
+                return None
+
+        view.runAsync(
+            work_func,
+            finished_message='OPTICS clustering completed.',
+        )
+
+    @classmethod
+    def density_analysis(cls, view: LocalizationsView):
+        '''
+        Batch density analysis for multiple FittingResults.
+
+        Parameters
+        ----------
+        tables : list[FittingResults]
+            List of FittingResults to analyze.
+        **kwargs : dict
+            Additional keyword arguments for density analysis.
+        '''
+        if view.currentResults is None:
+            return
+
+        if (
+            len(view.currentResults) <= 0
+            or view.currentResults.data[DataColumns.CLUSTER_ID] is None
+        ):
+            return
+
+        table = view.currentResults
+
+        options = view.localization_widget.toDict().get('densityOptions', {})
+
+        def worker_func(**kwargs):
+            try:
+                return get_cluster_density(
+                    table.data[DataColumns.X],
+                    table.data[DataColumns.Y],
+                    table.data[DataColumns.Z],
+                    table.data[DataColumns.CLUSTER_ID],
+                    **options,
+                )
+            except Exception:
+                logger.error('Error during density analysis.')
+                traceback.print_exc()
+
+        def done(results):
+            if results is not None:
+                density_plot = DensityAnalysisPlot.plot_density_results(
+                    table.data[DataColumns.X],
+                    table.data[DataColumns.Y],
+                    table.data[DataColumns.Z],
+                    table.data[DataColumns.CLUSTER_ID],
+                    *results,
+                )
+
+                view._density_plot_widget = density_plot
+
+                density_plot.show()
+
+        view.runAsync(
+            worker_func,
+            done=done,
+            finished_message='Density analysis completed.',
         )
 
 

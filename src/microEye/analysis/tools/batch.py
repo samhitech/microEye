@@ -4,6 +4,7 @@ import re
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from enum import Enum
+from pydoc import text
 from weakref import ref
 
 import cv2
@@ -25,7 +26,13 @@ from microEye.analysis.clustering.plot import (
     add_plot_result,
 )
 from microEye.analysis.fitting.results import DataColumns, FittingResults
-from microEye.analysis.viewer.localizations import LocalizationTab, plot_drift
+from microEye.analysis.processing import FRC_resolution_binomial, plot_frc
+from microEye.analysis.viewer.localizations import (
+    LocalizationRenderHelper,
+    LocalizationTab,
+    plot_drift,
+)
+from microEye.hardware.stages import view
 from microEye.images import ImageSequenceBase, TiffSeqHandler, create_array
 from microEye.qt import Qt, QtCore, QtGui, QtWidgets, getOpenFileName, getSaveFileName
 from microEye.utils.display import DisplayManager, fast_autolevels_opencv
@@ -70,12 +77,7 @@ def batch_cluster_dbscan(tables: list[FittingResults], **kwargs):
         ) as pbar:
             for _, table in enumerate(tables):
                 table.cluster_dbscan(
-                    eps=kwargs.get('dbscanEps'),
-                    metric=kwargs.get('dbscanMetric'),
-                    algorithm=kwargs.get('dbscanAlgorithm'),
-                    min_samples=kwargs.get('dbscanMinSamples'),
-                    leaf_size=kwargs.get('dbscanLeafSize'),
-                    scale_data=kwargs.get('dbscanScaleData'),
+                    **kwargs.get('dbscanOptions', {})
                 )
 
                 pbar.update(1)
@@ -141,6 +143,34 @@ def batch_export_localizations(tables: list[FittingResults], suffix: str, **kwar
             pbar.update(1)
 
 
+def batch_frc(tables: list[FittingResults], **kwargs):
+    try:
+        res = []
+
+        frc_method = kwargs.get('frcMethod', 'binomial')
+        frc_pixel_size = kwargs.get('binXY', 6)
+
+        with tqdm(total=len(tables), desc='Batch FRC Analysis', unit='table') as pbar:
+            for _, table in enumerate(tables):
+                res.append(
+                    FRC_resolution_binomial(
+                        np.c_[
+                            table.data[DataColumns.X],
+                            table.data[DataColumns.Y],
+                            table.data[DataColumns.INTENSITY],
+                        ],
+                        pixel_size=frc_pixel_size,
+                        method=frc_method,
+                    )
+                )
+
+                pbar.update(1)
+    except Exception:
+        traceback.print_exc()
+
+    return res
+
+
 class BatchLocalizations(QtWidgets.QDialog):
     NAME = 'Batch Localizations Tool'
 
@@ -190,8 +220,11 @@ class BatchLocalizations(QtWidgets.QDialog):
         # Localization Tab
         self.localization_tab = LocalizationTab()
 
-        for i in [0, 2, 3, 4]:
+        for i in [3, 4]:
             self.localization_tab.setSectionVisible(i, False)
+
+        for btn in ['__tardis_btn', '__NeNA_btn']:
+            self.localization_tab.setBtnEnabled(btn, False)
 
         self.localization_tab.export_loc_btn.setVisible(True)
         self.localization_tab.import_loc_btn.setVisible(False)
@@ -200,6 +233,10 @@ class BatchLocalizations(QtWidgets.QDialog):
 
         self.localization_tab.exportActivated.connect(
             lambda: self.batch_export_localizations()
+        )
+
+        self.localization_tab.renderActivated.connect(
+            lambda: self.batch_render_localizations()
         )
 
         self.localization_tab.driftCrossActivated.connect(
@@ -221,6 +258,8 @@ class BatchLocalizations(QtWidgets.QDialog):
         self.localization_tab.renderRulersActivated.connect(
             lambda: self.render_ruler_clusters()
         )
+
+        self.localization_tab.frcActivated.connect(lambda: self.batch_frc())
 
         layout.addWidget(self.localization_tab)
 
@@ -293,6 +332,73 @@ class BatchLocalizations(QtWidgets.QDialog):
             finished_message='Export completed for selected tables.',
         )
 
+    def batch_render_localizations(self):
+        def done(results):
+            if results is not None:
+                images, aspects = results
+
+                batch_rendered = pg.GraphicsLayoutWidget(
+                    show=True, title='Batch Rendered Localizations'
+                )
+                batch_rendered.setBackground(None)
+
+                image_items : list[pg.ImageItem] = []
+
+                for idx, (rendered_img, aspect) in enumerate(zip(images, aspects)):
+                    if rendered_img is not None:
+                        image_item = pg.ImageItem(rendered_img, axisOrder='row-major')
+                        image_items.append(image_item)
+
+                        plot_item = batch_rendered.ci.addViewBox(
+                            row=0, col=idx, invertY=True
+                        )
+                        plot_item.setAspectLocked(True, aspect)
+                        plot_item.setAutoVisible(True)
+                        plot_item.enableAutoRange()
+
+                        plot_item.addItem(image_item)
+
+                        if idx > 0:
+                            plot_item.setXLink(batch_rendered.ci.getItem(0, 0))
+                            plot_item.setYLink(batch_rendered.ci.getItem(0, 0))
+
+                        # title_item = pg.TextItem(text)
+                        # plot_item.addItem(title_item)
+
+                if not image_items:
+                    QtWidgets.QMessageBox.warning(
+                        self,
+                        'Warning',
+                        'No images were rendered for the selected tables.',
+                    )
+                    return
+
+                histogram_item = pg.HistogramLUTItem(
+                    gradientPosition='bottom', orientation='horizontal'
+                )
+                histogram_item.setImageItem(image_items[0])
+                batch_rendered.ci.addItem(
+                    histogram_item, row=1, col=0, colspan=len(image_items)
+                )
+
+                def update_luts():
+                    for item in image_items[1:]:
+                        item.setLookupTable(histogram_item.getLookupTable(item.image))
+                        item.setLevels(image_items[0].getLevels())
+
+                histogram_item.sigLookupTableChanged.connect(update_luts)
+                histogram_item.sigLevelsChanged.connect(update_luts)
+
+
+                self.batch_rendered = batch_rendered
+                batch_rendered.show()
+
+        self.runAsync(
+            LocalizationRenderHelper.batch_render_loc,
+            done=done,
+            finished_message='Rendering completed for selected tables.',
+        )
+
     def batch_drift_correction(self, mode: str):
         def done(results):
             if results is None:
@@ -313,6 +419,36 @@ class BatchLocalizations(QtWidgets.QDialog):
             mode=mode.lower(),
             done=done,
             finished_message='Drift correction completed for selected tables.',
+        )
+
+    def batch_frc(self):
+        def done(results):
+            if results is None:
+                return
+
+            frc_plots = pg.GraphicsLayoutWidget(show=True, title='FRC Analysis')
+            frc_plots.setBackground(None)
+
+            for i, result in enumerate(results):
+                frequencies, FRC, smoothed, resolution = result
+                items = plot_frc(
+                    frequencies, FRC, smoothed, resolution, return_plot_items=True
+                )
+
+                plot = frc_plots.ci.addPlot(row=i // 3, col=i % 3)
+                plot.setLabel('left', 'FRC', units='')
+                plot.setLabel('bottom', 'Spatial Frequency [1/nm]', units='')
+                plot.setTitle(f'FRC resolution: {np.round(resolution, 1)} nm')
+                for item in items:
+                    plot.addItem(item)
+
+            self.frc_plots = frc_plots
+            frc_plots.show()
+
+        self.runAsync(
+            batch_frc,
+            done=done,
+            finished_message='FRC analysis completed for selected tables.',
         )
 
     def batch_clustering_dbscan(self):
@@ -390,8 +526,8 @@ class BatchLocalizations(QtWidgets.QDialog):
         options = self._rulerDlg.values()
 
         worker_kwargs = {
-            'leaf_size': self.localization_tab.dbscanLeafSize,
-            'algorithm': self.localization_tab.dbscanAlgorithm,
+            'leaf_size': self.localization_tab.toDict()['dbscanOptions']['leaf_size'],
+            'algorithm': self.localization_tab.toDict()['dbscanOptions']['algorithm'],
             'scalebar_length': options['ruler_spacing'],
         }
         worker_kwargs.update(options)

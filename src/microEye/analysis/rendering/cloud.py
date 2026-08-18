@@ -58,7 +58,7 @@ class PointCloudRenderer:
         '''
         Initialize the point cloud renderer.
 
-        Parameters:
+        Parameters
         -----------
         xy_bin_size : float
             Size of each bin in the lateral (XY) dimensions
@@ -94,7 +94,7 @@ class PointCloudRenderer:
         '''
         Generates a point cloud from 3D single-molecule localizations using binning.
 
-        Parameters:
+        Parameters
         -----------
         X : np.ndarray
             Array of X coordinates for the localizations.
@@ -108,7 +108,7 @@ class PointCloudRenderer:
             Number of bins in each dimension as (depth, height, width).
             Defaults to None.
 
-        Returns:
+        Returns
         --------
         points : np.ndarray
             Nx3 array of point coordinates representing non-zero bins
@@ -186,14 +186,14 @@ class PointCloudRenderer:
         '''
         Renders a point cloud from an array of localizations.
 
-        Parameters:
+        Parameters
         -----------
         data : np.ndarray
             Array with columns (X, Y, Z, Intensity)
         shape : tuple[int, int, int], optional
             Number of bins in each dimension (depth, height, width), by default None
 
-        Returns:
+        Returns
         --------
         points : np.ndarray
             Nx3 array of point coordinates

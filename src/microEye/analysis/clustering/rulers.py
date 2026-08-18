@@ -9,11 +9,13 @@ import numpy as np
 from numpy.linalg import eigh
 
 from microEye.analysis.clustering.dbscan import (
+    OPTICS,
     CenteringMode,
     ClusterCenterResult,
     get_center,
     get_centers,
     perform_dbscan_clustering,
+    perform_hdbscan_clustering,
 )
 
 logger = logging.getLogger(__name__)
@@ -58,14 +60,14 @@ def align_ruler_pca(site_coords: np.ndarray):
         angle = np.arctan2(pc1[1], pc1[0])
 
     cos_a, sin_a = np.cos(-angle), np.sin(-angle)
-    R = np.array([[cos_a, -sin_a],
-                  [sin_a,  cos_a]])
+    R = np.array([[cos_a, -sin_a], [sin_a, cos_a]])
 
     aligned = coords_c @ R.T
 
     order = np.argsort(aligned[:, 0])
 
     return aligned[order], R, center, angle
+
 
 def canonical_flip(
     aligned_sites: np.ndarray,
@@ -80,10 +82,9 @@ def canonical_flip(
     '''
     if aligned_sites[0, 0] > 0:
         # Flip matrix: negate X, keep Y
-        F = np.array([[-1.0, 0.0],
-                      [ 0.0, 1.0]])
+        F = np.array([[-1.0, 0.0], [0.0, 1.0]])
         aligned_sites = (aligned_sites[::-1]) * np.array([-1.0, 1.0])
-        R = F @ R   # compose: first rotate, then flip
+        R = F @ R  # compose: first rotate, then flip
     return aligned_sites, R
 
 
@@ -204,6 +205,67 @@ def ruler_qc_smart(
     return candidate
 
 
+def group_sites_into_rulers(
+    cx: np.ndarray,
+    cy: np.ndarray,
+    cz: np.ndarray | None,
+    n_sites: int = 3,
+    method: str = 'dbscan',  # 'dbscan' or 'optics'
+    distance_threshold: float = 180.0,
+    xi: float = 0.05,
+    **kwargs,
+) -> np.ndarray:
+    """
+    Groups site centroids into candidate rulers.
+
+    Parameters
+    -----------
+    cx, cy, cz : np.ndarray
+        Arrays of x, y, (optional) z coordinates of site centroids.
+    n_sites : int
+        Minimum number of sites required to form a ruler.
+    method : str
+        Clustering method to use: 'dbscan' or 'optics'.
+    distance_threshold : float
+        Maximum distance between sites to be considered part of the same ruler.
+        (Ignored if method is 'optics')
+    xi : float
+        The xi parameter for OPTICS clustering. (ignored if method is 'dbscan')
+
+    Returns
+    --------
+    ruler_id : np.ndarray
+        Array of the same length as cx/cy/cz, where each element is the ID
+        of the ruler that the corresponding site belongs to.
+        Noise points are labeled as -1.
+    """
+    coords = np.column_stack((cx, cy) if cz is None else (cx, cy, cz))
+
+    if method == 'optics':
+        optics = OPTICS(min_samples=n_sites, xi=xi, cluster_method='xi')
+        optics.fit(coords)
+        ruler_id = optics.labels_
+    elif method == 'hdbscan':
+        ruler_id = perform_hdbscan_clustering(
+            cx,
+            cy,
+            cz,
+            min_cluster_size=n_sites,
+            cluster_selection_epsilon_max=distance_threshold,
+        )
+    else:
+        ruler_id = perform_dbscan_clustering(
+            cx,
+            cy,
+            cz,
+            eps=distance_threshold,
+            min_samples=n_sites,
+            **kwargs,
+        )
+
+    return ruler_id
+
+
 def get_rulers_from_clusters(
     x: np.ndarray,
     y: np.ndarray,
@@ -246,12 +308,14 @@ def get_rulers_from_clusters(
     if centers_result is None or not isinstance(centers_result, ClusterCenterResult):
         raise ValueError('get_centers did not return a valid ClusterCenterResult.')
 
-    ruler_id = perform_dbscan_clustering(
+    ruler_id = group_sites_into_rulers(
         centers_result.cx,
         centers_result.cy,
         centers_result.cz,
-        eps=distance_threshold,
-        min_samples=n_sites,
+        n_sites=n_sites,
+        method=kwargs.get('grouping_method', 'dbscan'),
+        distance_threshold=distance_threshold,
+        xi=kwargs.get('xi', 0.05),
         scale_data=scale_data,
         leaf_size=leaf_size,
         algorithm=algorithm,
