@@ -616,6 +616,10 @@ class basler_cam(miCamera):
         if param_name not in dir(self.cam):
             return
 
+        # checkif param_value is scalar (int, float, bool, str) if not return
+        if not isinstance(param_value, (int, float, bool, str)):
+            return
+
         attr = getattr(self.cam, param_name, None)
 
         if (

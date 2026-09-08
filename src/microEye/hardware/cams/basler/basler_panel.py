@@ -274,7 +274,7 @@ class Basler_Panel(Camera_Panel):
         self.refresh_framerate()
 
         self.OME_tab.set_param_value(
-            MetaParams.EXPOSURE, float(self._cam.exposure_current / 1000)
+            MetaParams.EXPOSURE, float(self._cam.exposure_current / self.FACTOR)
         )
         if self.master:
             self.exposureChanged.emit()

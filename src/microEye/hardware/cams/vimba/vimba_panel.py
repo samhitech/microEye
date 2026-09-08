@@ -244,7 +244,7 @@ class Vimba_Panel(Camera_Panel):
         self.refresh_framerate()
 
         self.OME_tab.set_param_value(
-            MetaParams.EXPOSURE, float(self._cam.exposure_current / 1000)
+            MetaParams.EXPOSURE, float(self._cam.exposure_current / self.FACTOR)
         )
         if self.master:
             self.exposureChanged.emit()
@@ -256,7 +256,7 @@ class Vimba_Panel(Camera_Panel):
 
     def refresh_framerate(self, value=None):
         with self._cam:
-            if value:
+            if value is not None:
                 self._cam.set_framerate(value)
             self._cam.get_framerate(False)
 

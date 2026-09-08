@@ -10,7 +10,7 @@ numpy==2.2.6
 ome_types==0.5.2
 opencv_python==4.12.0.88
 pandas==2.3.3
-pco==2.3.0
+pco==2.3.0 # 3.14 limits
 pycromanager==1.0.2
 pyfiglet==1.0.4
 pyflakes==3.4.0
@@ -23,7 +23,7 @@ pyserial==3.5
 PySide6==6.7.2
 PySide6_Addons==6.7.2
 PySide6_Essentials==6.7.2
-pystackreg>=0.2.8
+pystackreg>=0.2.8 # 3.14 limits
 pyueye==4.96.952
 QDarkStyle==3.2.3
 QScintilla==2.14.1

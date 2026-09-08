@@ -2,6 +2,7 @@ import json
 import logging
 import traceback
 from queue import Queue
+from typing import Union
 
 import cv2
 import matplotlib.pyplot as plt
@@ -11,7 +12,12 @@ import tifffile as tf
 
 from microEye.images import TiffSeqHandler, ZarrImageSequence, uImage
 from microEye.qt import Qt, QtCore, QtWidgets, Signal, getOpenFileName, getSaveFileName
-from microEye.utils.gui_helper import *
+from microEye.utils.gui_helper import (
+    create_check_box,
+    create_hbox_layout,
+    create_spin_box,
+    get_scaling_factor,
+)
 from microEye.utils.thread_worker import QThreadWorker
 
 logger = logging.getLogger(__name__)
@@ -1042,6 +1048,28 @@ class KymogramWidget(QtWidgets.QWidget):
             )
 
         return image
+
+    @classmethod
+    def export_image_as_tiff(
+        cls,
+        image: np.ndarray,
+        base_name: str | None = None,
+        dtype: np.dtype = np.float32,
+    ):
+        filename, _ = getSaveFileName(
+            caption='Export Image as TIFF',
+            directory=base_name if base_name else '',
+            filter='TIFF Files (*.tif *.tiff)',
+        )
+
+        if filename:
+            try:
+                import tifffile as tf
+
+                tf.imwrite(filename, image.astype(dtype))
+                logger.info('Image exported as TIFF: %s', filename)
+            except Exception as e:
+                logger.error('Error exporting image as TIFF: %s', e)
 
 
 if __name__ == '__main__':

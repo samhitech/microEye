@@ -50,8 +50,10 @@ class Parameters(Enum):
     PREFIT_DETECTOR = 'Prefit.Prefit Detector'
     MIN_AREA = 'Prefit.OpenCV Blob Detector.Min Area'
     MAX_AREA = 'Prefit.OpenCV Blob Detector.Max Area'
-    RELATIVE_THRESHOLD_MIN = 'Prefit.Relative Threshold.min'
-    RELATIVE_THRESHOLD_MAX = 'Prefit.Relative Threshold.max'
+    # RELATIVE_THRESHOLD_MIN = 'Prefit.Thresholding.min'
+    K_SIGMA = 'Prefit.Thresholding.K Sigma'
+    ROBUST_NOISE = 'Prefit.Thresholding.Robust'
+    RELATIVE_THRESHOLD_MAX = 'Prefit.Thresholding.Max'
     FITTING_METHOD = 'Localization.Fitting Method'
     ROI_SIZE = 'Localization.ROI Size'
     PIXEL_SIZE = 'Localization.Pixel-size'
@@ -244,26 +246,41 @@ class FittingOptions(Tree):
                         ],
                     },
                     {
-                        'name': 'Relative Threshold',
+                        'name': 'Thresholding',
                         'type': 'group',
                         'children': [
                             {
-                                'name': 'min',
+                                'name': 'K Sigma',
                                 'type': 'float',
-                                'value': 0.5,
-                                'limits': [0.0, 1.0],
-                                'step': 0.01,
-                                'decimals': 3,
-                                'tip': 'Minimum relative threshold for detection.',
+                                'value': 5.0,
+                                'limits': [0.0, 100.0],
+                                'step': 0.1,
+                                'decimals': 2,
+                                'tip': '''Number of standard deviations for
+                                detection threshold above baseline.''',
                             },
                             {
-                                'name': 'max',
+                                'name': 'Robust',
+                                'type': 'bool',
+                                'value': True,
+                                'tip': '''
+                                If checked, a robust estimate of the noise is used
+                                for thresholding (median absolute deviation).\n
+                                Otherwise, mean and standard deviation are used
+                                for thresholding.
+                                ''',
+                            },
+                            {
+                                'name': 'Max',
                                 'type': 'float',
                                 'value': 1.0,
                                 'limits': [0.0, 1.0],
                                 'step': 0.01,
                                 'decimals': 3,
-                                'tip': 'Maximum relative threshold for detection.',
+                                'tip': '''
+                                Maximum relative threshold for
+                                saturation-exclusion behavior.
+                                ''',
                             },
                         ],
                     },

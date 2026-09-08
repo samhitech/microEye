@@ -6,12 +6,15 @@ import cv2
 import numba as nb
 import numpy as np
 from scipy import signal
-from scipy.fftpack import fft2, fftshift, ifft2, ifftshift
-from skimage import filters
+from scipy.fftpack import fftshift, ifftshift
 from skimage.morphology import disk, white_tophat
 from skimage.restoration import rolling_ball
 
 from microEye.analysis.filters.base import SpatialFilter
+
+
+def _force_odd(n: int) -> int:
+    return n if n % 2 == 1 else n + 1
 
 
 class PassFilter(SpatialFilter):
@@ -24,7 +27,7 @@ class PassFilter(SpatialFilter):
 
 
 class DoG_Filter(SpatialFilter):
-    def __init__(self, sigma: float = 1, factor: float = 2.5) -> None:
+    def __init__(self, **kwargs) -> None:
         '''Difference of Gauss init
 
         Parameters
@@ -35,11 +38,11 @@ class DoG_Filter(SpatialFilter):
             factor = sigma_max/sigma_min, by default 2.5
         '''
         params = {
-            'sigma': sigma,
-            'factor': factor,
+            'sigma': kwargs.get('sigma', 1),
+            'factor': kwargs.get('factor', 2.5),
         }
         super().__init__(name='Difference of Gaussians', parameters=params)
-        self.set_params(sigma, factor)
+        self.set_params(params['sigma'], params['factor'])
 
     def set_params(self, sigma: float, factor: float):
         '''Set filter parameters.
@@ -54,26 +57,24 @@ class DoG_Filter(SpatialFilter):
         self._show_filter = False
         self.parameters['sigma'] = sigma
         self.parameters['factor'] = factor
-        self.rsize = max(math.ceil(6 * sigma + 1), 3)
+        self.rsize = _force_odd(max(math.ceil(6 * sigma + 1), 3))
         self.dog = DoG_Filter.gaussian_kernel(
             self.rsize, sigma
         ) - DoG_Filter.gaussian_kernel(self.rsize, max(1, factor * sigma))
 
-    def gaussian_kernel(dim, sigma):
+    def gaussian_kernel(dim, sigma) -> np.ndarray:
         x = cv2.getGaussianKernel(dim, sigma)
         kernel = x.dot(x.T)
         return kernel
 
     def run(self, image: np.ndarray) -> np.ndarray:
-        res = cv2.normalize(
-            signal.fftconvolve(image, np.rot90(self.dog), mode='same'),
-            None,
-            0,
-            255,
-            cv2.NORM_MINMAX,
-            cv2.CV_8U,
-        )
-        return res
+        padded = self.pad_image(image, self.dog, mode='reflect')
+
+        conv = signal.fftconvolve(padded, np.rot90(self.dog), mode='valid')
+
+        assert conv.shape == image.shape, 'padding/kernel size mismatch — check oddness'
+
+        return conv.astype(np.float32)
 
     def get_tree_parameters(self):
         '''Return the parameters for the pyqtgraph tree view.'''
@@ -104,21 +105,29 @@ class DoG_Filter(SpatialFilter):
         }
 
 
-class PointGaussFilter(SpatialFilter):
-    def __init__(self, sigma=1) -> None:
-        '''Gaussian filter initialization.'''
-        params = {'sigma': sigma}
-        super().__init__(name='Point Gaussian Filter', parameters=params)
-        self.set_params(sigma)
+class GaussPointFilter(SpatialFilter):
+    def __init__(self, **kwargs) -> None:
+        '''
+        Gaussian Point filter initialization.
+        An approximation of the Laplacian of Gaussian.
+        '''
+        params = {'sigma': kwargs.get('sigma', 2.0)}
+        super().__init__(name='Gaussian Filter', parameters=params)
 
         self.point_kernel = np.array([[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]])
+        self._combined_kernel = np.empty_like(self.point_kernel)
+
+        self.set_params(params['sigma'])
 
     def set_params(self, sigma):
-        '''Set the sigma parameter for the Gaussian filter.'''
+        '''Set the sigma parameter for the Gaussian Point filter.'''
         self._show_filter = False
         self.parameters['sigma'] = sigma
-        self.gauss = PointGaussFilter.gaussian_kernel(
-            max(3, math.ceil(3 * sigma + 1)), sigma
+
+        gauss_size = _force_odd(max(3, math.ceil(3 * sigma + 1)))
+        self.gauss = GaussPointFilter.gaussian_kernel(gauss_size, sigma)
+        self._combined_kernel = signal.convolve2d(
+            self.gauss, self.point_kernel, mode='full'
         )
 
     def gaussian_kernel(dim, sigma):
@@ -127,14 +136,13 @@ class PointGaussFilter(SpatialFilter):
         return kernel
 
     def run(self, image: np.ndarray) -> np.ndarray:
-        # precompute combined kernel if possible
-        _combined_kernel = signal.convolve2d(
-            np.rot90(self.gauss), np.rot90(self.point_kernel), mode='full'
-        )
+        padded = self.pad_image(image, self._combined_kernel, mode='reflect')
 
-        point = signal.fftconvolve(image, np.rot90(_combined_kernel), mode='same')
+        conv = signal.fftconvolve(padded, self._combined_kernel, mode='valid')
 
-        return cv2.normalize(point, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
+        assert conv.shape == image.shape, 'padding/kernel size mismatch — check oddness'
+
+        return conv.astype(np.float32)
 
     def get_tree_parameters(self):
         '''Return the parameters for the pyqtgraph tree view.'''
@@ -213,16 +221,31 @@ class FourierFilter(SpatialFilter):
         def values(cls):
             return [column.name for column in cls]
 
-    def __init__(
-        self,
-        center=40.0,
-        width=90.0,
-        filter_type=PROFILES.Gaussian,
-        pass_type=PASS_TYPES.Band,
-        order=5,
-        show_filter=False,
-    ) -> None:
-        '''Fourier filter initialization.'''
+    def __init__(self, **kwargs) -> None:
+        '''Fourier filter initialization.
+
+        Parameters
+        ----------
+        center : float, optional
+            center frequency, by default 40.0
+        width : float, optional
+            width of the filter, by default 90.0
+        filter_type : PROFILES, optional
+            type of the filter, by default PROFILES.Gaussian
+        pass_type : PASS_TYPES, optional
+            type of the pass, by default PASS_TYPES.Band
+        order : int, optional
+            order of the filter, by default 5
+        show_filter : bool, optional
+            whether to show the filter, by default False
+        '''
+        center = kwargs.get('center', 40.0)
+        width = kwargs.get('width', 90.0)
+        filter_type = kwargs.get('filter_type', FourierFilter.PROFILES.Gaussian)
+        pass_type = kwargs.get('pass_type', FourierFilter.PASS_TYPES.Band)
+        order = kwargs.get('order', 5)
+        show_filter = kwargs.get('show_filter', False)
+
         params = {
             'center': center,
             'width': width,
@@ -434,11 +457,15 @@ class FourierFilter(SpatialFilter):
         ft[:, :, 0] *= filter
         ft[:, :, 1] *= filter
         idft = cv2.idft(ifftshift(ft))
-        idft = cv2.magnitude(idft[:, :, 0], idft[:, :, 1])
-        cv2.normalize(idft, img, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
+        magnitude = cv2.magnitude(idft[:, :, 0], idft[:, :, 1])[
+            pad_rows[0] : -pad_rows[1], pad_cols[0] : -pad_cols[1]
+        ]
 
-        # exex = time.msecsTo(QDateTime.currentDateTime())
-        return img[pad_rows[0] : -pad_rows[1], pad_cols[0] : -pad_cols[1]]
+        assert magnitude.shape == image.shape, (
+            'size mismatch after filtering'
+        )
+
+        return magnitude.astype(np.float32)
 
     def set_params(
         self,
@@ -529,14 +556,14 @@ class BackgroundReduction(SpatialFilter):
         'White Top Hat',
     ]
 
-    def __init__(self, radius: float = 30.0) -> None:
+    def __init__(self, **kwargs) -> None:
         '''Rolling ball filter initialization.'''
         params = {
-            'radius': radius,
-            'method': 'Rolling Ball',
+            'radius': kwargs.get('radius', 30.0),
+            'method': kwargs.get('method', 'Rolling Ball'),
         }
         super().__init__(name='Background Reduction', parameters=params)
-        self.set_params(radius)
+        self.set_params(params['radius'], params['method'])
 
     def set_params(self, radius: float, method='Rolling Ball'):
         '''Set the radius parameter fand the method.'''

@@ -11,7 +11,12 @@ from microEye.analysis.clustering.dbscan import (
     perform_optics_clustering,
 )
 from microEye.analysis.fitting.aim import _shift_correction, aim_drift_correction
-from microEye.analysis.fitting.processing import *
+from microEye.analysis.fitting.processing import (
+    merge_localizations,
+    nn_trajectories,
+    shift_correction,
+    shift_estimation,
+)
 from microEye.analysis.fitting.rcc import (
     dcc_shift_estimation,
     mcc_shift_estimation,
@@ -445,8 +450,8 @@ class FittingResults:
                 self.data[DataColumns.FRAME],
                 self.data[DataColumns.X],
                 self.data[DataColumns.Y],
-                self.data[DataColumns.BACKGROUND],
                 self.data[DataColumns.INTENSITY],
+                self.data[DataColumns.BACKGROUND],
                 self.data[DataColumns.XY_RATIO],
                 self.get_column(DataColumns.TRACK_ID),
                 self.get_column(DataColumns.NEIGHBOUR_DISTANCE),
@@ -478,8 +483,8 @@ class FittingResults:
                 self.data[DataColumns.FRAME],
                 self.data[DataColumns.X],
                 self.data[DataColumns.Y],
-                self.data[DataColumns.BACKGROUND],
                 self.data[DataColumns.INTENSITY],
+                self.data[DataColumns.BACKGROUND],
             ]
 
             if self.fitting_method == FittingMethod.MLE_2D_fixed_sigma:
@@ -488,8 +493,8 @@ class FittingResults:
                     self.data[DataColumns.ITERATION],
                     self.data[DataColumns.CRLB_X],
                     self.data[DataColumns.CRLB_Y],
-                    self.data[DataColumns.CRLB_BACKGROUND],
                     self.data[DataColumns.CRLB_INTENSITY],
+                    self.data[DataColumns.CRLB_BACKGROUND],
                 ]
             elif self.fitting_method == FittingMethod.MLE_2D_free_sigma:
                 loc = np.c_[
@@ -498,8 +503,8 @@ class FittingResults:
                     self.data[DataColumns.ITERATION],
                     self.data[DataColumns.CRLB_X],
                     self.data[DataColumns.CRLB_Y],
-                    self.data[DataColumns.CRLB_BACKGROUND],
                     self.data[DataColumns.CRLB_INTENSITY],
+                    self.data[DataColumns.CRLB_BACKGROUND],
                     self.data[DataColumns.CRLB_SIGMA_X],
                 ]
             elif self.fitting_method == FittingMethod.MLE_2D_elliptical_sigma:
@@ -510,8 +515,8 @@ class FittingResults:
                     self.data[DataColumns.ITERATION],
                     self.data[DataColumns.CRLB_X],
                     self.data[DataColumns.CRLB_Y],
-                    self.data[DataColumns.CRLB_BACKGROUND],
                     self.data[DataColumns.CRLB_INTENSITY],
+                    self.data[DataColumns.CRLB_BACKGROUND],
                     self.data[DataColumns.CRLB_SIGMA_X],
                     self.data[DataColumns.CRLB_SIGMA_Y],
                 ]
@@ -522,8 +527,8 @@ class FittingResults:
                     self.data[DataColumns.ITERATION],
                     self.data[DataColumns.CRLB_X],
                     self.data[DataColumns.CRLB_Y],
-                    self.data[DataColumns.CRLB_BACKGROUND],
                     self.data[DataColumns.CRLB_INTENSITY],
+                    self.data[DataColumns.CRLB_BACKGROUND],
                     self.data[DataColumns.CRLB_Z],
                 ]
 
@@ -644,6 +649,42 @@ class FittingResults:
             np.array(locs_per_bin),
         )
 
+    def extended_stats(self):
+        statistics = {}
+
+        unique_frames, counts = np.unique(
+            self.data[DataColumns.FRAME], return_counts=True
+        )
+
+        # percintile of localizations per frame
+        p1, p2 = np.percentile(counts, [1, 99])
+        p1 = int(np.floor(p1))
+        p2 = int(np.ceil(p2))
+
+        # use counts to make a histogram of average localizations per frame
+        hist, bin_edges = np.histogram(
+            counts, bins=np.arange(p1, p2 + 1, 1), density=True
+        )
+
+        statistics['Localizations per frame'] = {
+            'counts': counts,
+            'hist': hist,
+            'bin_edges': bin_edges,
+            'mean': np.mean(counts),
+            'std': np.std(counts),
+            'min': np.min(counts),
+            'max': np.max(counts),
+            'median': np.median(counts),
+            'percentiles': {
+                '1st': p1,
+                '99th': p2,
+            },
+            'xlabel': 'Localizations per frame',
+            'ylabel': 'Probability density',
+        }
+
+        return statistics
+
     def drift_cross_correlation(
         self, n_bins=10, pixelSize=10, upsampling=100, rmax=20, method='phase'
     ):
@@ -672,8 +713,10 @@ class FittingResults:
 
         Returns
         -------
-        tuple(FittingResults, np.ndarray)
-            returns the drift corrected fittingResults and recontructed image
+        tuple(FittingResults, tuple(np.ndarray, np.ndarray, np.ndarray, None))
+            FittingResults with corrected drift and tuple of (frames, drift_x,
+            drift_y, None) where drift_x and drift_y are the estimated drifts
+            in nanometers for each frame.
 
 
         References
@@ -768,24 +811,20 @@ class FittingResults:
         interpx = PchipInterpolator(frames_interp, drift_y, axis=0, extrapolate=True)
         # And this interpolation is used to get the shift at every frame-point
         frames_new = np.arange(0, max_frame, 1)
-        interpx = interpx(frames_new)
-        interpy = interpy(frames_new)
+        frame_drift = np.c_[
+            interpx(frames_new),
+            interpy(frames_new)
+        ]
 
-        shift_correction(
-            interpx,
-            interpy,
+        _shift_correction(
             frame_ids,
             self.data[DataColumns.X],
             self.data[DataColumns.Y],
+            None,
+            frame_drift
         )
 
-        drift_corrected_image = renderEngine.render_xy(
-            self.data[DataColumns.X],
-            self.data[DataColumns.Y],
-            self.data[DataColumns.INTENSITY],
-        )
-
-        return self, drift_corrected_image, (frames_new, interpx, interpy)
+        return self, (frames_new, frame_drift[:, 0], frame_drift[:, 1], None)
 
     def drift_fiducial_marker(self):
         df = self.dataFrame()
@@ -1037,14 +1076,13 @@ class FittingResults:
 
         kwargs['n_jobs'] = -1
 
-
         labels = perform_dbscan_clustering(
             self.data[DataColumns.X],
             self.data[DataColumns.Y],
             self.data[DataColumns.Z],
             eps,
             min_samples,
-            **kwargs
+            **kwargs,
         )
 
         self.data[DataColumns.CLUSTER_ID] = labels
@@ -1056,7 +1094,7 @@ class FittingResults:
             self.data[DataColumns.X],
             self.data[DataColumns.Y],
             self.data[DataColumns.Z],
-            **kwargs
+            **kwargs,
         )
 
         self.data[DataColumns.CLUSTER_ID] = labels
@@ -1075,7 +1113,7 @@ class FittingResults:
             self.data[DataColumns.Z],
             min_samples,
             xi,
-            **kwargs
+            **kwargs,
         )
 
         self.data[DataColumns.CLUSTER_ID] = labels

@@ -275,6 +275,8 @@ class ClustersScatter:
 
         res = []
 
+        verbose = kwargs.get('verbose', True)
+
         try:
             bins = np.arange(np.min(x), np.max(x) + bin_size, bin_size)
             counts, edges = np.histogram(x, bins=bins, density=True)
@@ -318,14 +320,15 @@ class ClustersScatter:
                 peak_positions = grid[peaks]
                 peak_heights = kde_y[peaks]
 
-                logger.info(
-                    f'[{axis_label}] Peak positions: {np.round(peak_positions, 1)}'
-                )
-                if len(peak_positions) >= 2:
+                if verbose:
                     logger.info(
-                        f'[{axis_label}] Spacings: '
-                        f'{np.round(np.diff(peak_positions), 1)}'
+                        f'[{axis_label}] Peak positions: {np.round(peak_positions, 1)}'
                     )
+                    if len(peak_positions) >= 2:
+                        logger.info(
+                            f'[{axis_label}] Spacings: '
+                            f'{np.round(np.diff(peak_positions), 1)}'
+                        )
 
                 # Add vertical lines for detected peaks
                 for pos in peak_positions:
@@ -367,7 +370,8 @@ class ClustersScatter:
                     )
                     res.append(label)
 
-                logger.info(f'σ[{axis_label}]: {np.round(sigma_values, 1)}')
+                if verbose:
+                    logger.info(f'σ[{axis_label}]: {np.round(sigma_values, 1)}')
 
         except Exception:
             logger.error(

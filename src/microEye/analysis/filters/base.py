@@ -41,8 +41,57 @@ class AbstractFilter(ABC):
     def parameters(self) -> Optional[dict]:
         return self._parameters
 
+    def get_kernel_padding(self, kernel: np.ndarray) -> tuple[int, int]:
+        '''Return the padding size for the kernel.
+
+        Parameters
+        ----------
+        kernel : np.ndarray
+            The kernel to be used for filtering.
+
+        Returns
+        -------
+        tuple[int, int]
+            The padding size for the kernel (height, width).
+        '''
+        kh, kw = kernel.shape
+
+        assert kh % 2 == 1 and kw % 2 == 1, (
+            'kernel must be odd-sized to avoid coordinate shift'
+        )
+
+        ph, pw = kh // 2, kw // 2
+
+        return ph, pw
+
+    def pad_image(
+        self, image: np.ndarray, kernel: np.ndarray, mode: str = 'reflect'
+    ) -> np.ndarray:
+        """Pad the image for filtering.
+
+        Parameters
+        ----------
+        image : np.ndarray
+            The input image to be padded.
+        kernel : np.ndarray
+            The kernel to be used for filtering.
+        mode : str, optional
+            The padding mode to be used. Default is 'reflect'.
+
+        Returns
+        -------
+        np.ndarray
+            The padded image.
+        """
+        ph, pw = self.get_kernel_padding(kernel)
+        padded = np.pad(image, ((ph, ph), (pw, pw)), mode=mode)
+
+        return padded
+
+
 class SpatialFilter(AbstractFilter):
     '''Base class for spatial filters.'''
+
     def __init__(self, name: str = 'Spatial Filter', parameters: dict = None):
         super().__init__(name=name, parameters=parameters)
 
@@ -54,6 +103,7 @@ class SpatialFilter(AbstractFilter):
 
 class TemporalFilter(AbstractFilter):
     '''Base class for temporal filters.'''
+
     def __init__(self, name: str = 'Temporal Filter', parameters: dict = None):
         super().__init__(name=name, parameters=parameters)
 

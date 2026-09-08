@@ -1,18 +1,18 @@
 # The microEye
 
-![microEye](https://github.com/samhitech/microEye/assets/89871015/37ca0859-0b4b-402d-8652-9a01d0bf0f29)
+<!-- ![microEye](https://github.com/samhitech/microEye/assets/89871015/37ca0859-0b4b-402d-8652-9a01d0bf0f29) -->
+
+```bash
+   __  ____              ____                ___  ____  ____
+  /  |/  (_)__________  / __/_ _____   _  __|_  |/ / / / __/
+ / /|_/ / / __/ __/ _ \/ _// // / -_) | |/ / __//_  _// _ \
+/_/  /_/_/\__/_/  \___/___/\_, /\__/  |___/____(_)_/(_)___/
+                          /___/
+```
 
 The **`microEye`** is a Python toolkit for fluorescence microscopy that supports super-resolution single-molecule localization microscopy and single-particle tracking. It features hardware control, data analysis, and visualization.
 
 This toolkit is compatible with the [hardware](#hardware) used in our microscope. For further details, refer to the [miEye microscope paper](https://doi.org/10.1016/j.ohx.2022.e00368) and [OSF project](http://doi.org/10.17605/osf.io/j2fqy).
-
-```bash
-   __  ____              ____                ___  ____   ____
-  /  |/  (_)__________  / __/_ _____   _  __|_  |/ / /  / __/
- / /|_/ / / __/ __/ _ \/ _// // / -_) | |/ / __//_  _/ /__ \
-/_/  /_/_/\__/_/  \___/___/\_, /\__/  |___/____(_)_/(_)____/ 
-                          /___/
-```
 
 <!-- ![Package Health](https://snyk.io/advisor/python/microEye/badge.svg) -->
 
@@ -23,7 +23,8 @@ This toolkit is compatible with the [hardware](#hardware) used in our microscope
 ![Package Version](https://img.shields.io/badge/Windows-Tested-cyan)
 ![Package Version](https://img.shields.io/badge/MacOS-Errors-red)
 ![Package Version](https://img.shields.io/badge/Linux-NotTested-lightgray)
-![Downloads](https://img.shields.io/pypi/dm/microEye.svg)
+
+<!-- ![Downloads](https://img.shields.io/pypi/dm/microEye.svg) -->
 
 <!-- ![Dependencies](https://img.shields.io/librariesio/release/pypi/microEye) -->
 
@@ -95,6 +96,7 @@ This toolkit is compatible with the [hardware](#hardware) used in our microscope
   Cameras from Basler, Allied Vision (Vimba X SDK), IDS Peak, Thorlabs,
   PCO, and PycroManager now share unified ROI, exposure, and framerate
   handling. Notable additions:
+  - **DCAM API v4 Support**: Full support for Hamamatsu sCMOS cameras via the DCAM API v4, tested with the ORCA-Fusion BT.
   - **IDS Peak** is newly supported with binning, flash, and full ROI and
     acquisition flow.
   - **Basler** is newly supported.
@@ -239,28 +241,28 @@ This toolkit is compatible with the [hardware](#hardware) used in our microscope
 >
 > _On Windows the `Vimba X installer` typically creates the `VIMBA_X_HOME` variable automatically — verify it before manually setting it._
 
-- Basler CMOS cameras: Install [`pylon`](https://www.baslerweb.com/en/downloads/software/?srsltid=AfmBOoqsMrbQT24hcWiCw-0ptD9PR7nCrPMBZSzi0YlI1CVItNQikMKW&downloadCategory.values.label.data=pylon) (_avoid installing it inside the Program Files directory_).
-- IDS CMOS cameras:
-  - Install [`IDS Software Suite 4.96.1`](https://en.ids-imaging.com/download-details/AB00604.html?os=windows&version=win10&bus=64&floatcalc=) for Windows 32/64-bit.
-  - Alternatively, [`IDS Peak Extended Setup`](https://en.ids-imaging.com/download-peak.html) is prefered as it support old uEye models and the new uEye+ ones.
+- - Hamamatsu CMOS cameras: Install [`DCAM API v4`](https://www.hamamatsu.com/eu/en/product/cameras/software/driver-software/dcam-api-for-windows.html).
+  - Basler CMOS cameras: Install [`pylon`](https://www.baslerweb.com/en/downloads/software/?srsltid=AfmBOoqsMrbQT24hcWiCw-0ptD9PR7nCrPMBZSzi0YlI1CVItNQikMKW&downloadCategory.values.label.data=pylon) (_avoid installing it inside the Program Files directory_).
+  - IDS CMOS cameras:
+    - Install [`IDS Software Suite 4.96.1`](https://en.ids-imaging.com/download-details/AB00604.html?os=windows&version=win10&bus=64&floatcalc=) for Windows 32/64-bit.
+    - Alternatively, [`IDS Peak Extended Setup`](https://en.ids-imaging.com/download-peak.html) is prefered as it support old uEye models and the new uEye+ ones.
 
 > [!TIP]
 >
 > - _The installation package also includes the uEye camera drivers for UI models in addition to the standard setup. Therefore, no installation of the IDS Software Suite is required for the operation of UI models._
 > - _If the process cannot read the system-wide `GENICAM_GENTL_PATH`/`GENICAM_GENTL64_PATH`, add the same variable to your User environment variables (not just System) and restart any open terminals or applications for the change to take effect._
 
-- Integrated Optics Lasers: Install [`Laser control software`](https://integratedoptics.com/downloads).
-
-- PCO cameras: Install [`pco.sdk`, `pco.runtime`](https://www.excelitas.com/product/pco-software-development-kits).
+- - Integrated Optics Lasers: Install [`Laser control software`](https://integratedoptics.com/downloads).
+  - PCO cameras: Install [`pco.sdk`, `pco.runtime`](https://www.excelitas.com/product/pco-software-development-kits).
 
 > [!NOTE]
 > **Support is under development.**
 
-- Thorlabs CMOS cameras: Install [`Thorcam`](https://www.thorlabs.com/software_pages/ViewSoftwarePage.cfm?Code=ThorCam) in its default directory. Note: Some Thorlabs cameras may be identified as IDS uEye cameras by Windows and may run without Thorcam.
+- - Thorlabs CMOS cameras: Install [`Thorcam`](https://www.thorlabs.com/software_pages/ViewSoftwarePage.cfm?Code=ThorCam) in its default directory. Note: Some Thorlabs cameras may be identified as IDS uEye cameras by Windows and may run without Thorcam.
 
-- Thorlabs hardware, install [`Kinesis® Software`](https://www.thorlabs.com/newgrouppage9.cfm?objectgroup_id=10285) and [`Elliptec™ Software`](https://www.thorlabs.com/software_pages/ViewSoftwarePage.cfm?Code=ELL).
+  - Thorlabs hardware, install [`Kinesis® Software`](https://www.thorlabs.com/newgrouppage9.cfm?objectgroup_id=10285) and [`Elliptec™ Software`](https://www.thorlabs.com/software_pages/ViewSoftwarePage.cfm?Code=ELL).
 
-4. **Open a terminal and execute microEye:** :partying_face:
+1. **Open a terminal and execute microEye:** :partying_face:
 
    ```powershell
    usage: microEye.exe [-h] [--module {mieye,viewer}] [--QT_API {PySide6,PyQt6,PyQt5}] [--theme {None,qdarktheme,qdarkstyle,...}]
@@ -415,12 +417,14 @@ Schematic overview of the miEye instrument:
 
 |          Camera           | Description                                                              |                  Driver                   |                                                     Link                                                      |
 | :-----------------------: | ------------------------------------------------------------------------ | :---------------------------------------: | :-----------------------------------------------------------------------------------------------------------: |
+|      Hamamatsu sCMOS      | Hamamatsu sCMOS cameras (e.g., ORCA-Flash4.0 V3, ORCA-Fusion BT)         |               `DCAM API v4`               |                 [Product Link](https://www.hamamatsu.com/eu/en/product/cameras/cmos-cameras/)                 |
 | IDS uEye UI-3060CP Rev. 2 | IDS industrial-grade CMOS cameras                                        | `IDS uEye SDK 4.96.1` `IDS Peak` `pyueye` |            [Product Link](https://en.ids-imaging.com/store/products/cameras/ui-3060cp-rev-2.html)             |
 |     Thorlabs DCC1545M     | DCx camera using UC480 driver                                            |              `ThorCam 3.7.0`              |                 [Product Link](https://www.thorlabs.com/thorProduct.cfm?partNumber=DCC1545M)                  |
 | Allied Vision Alvium 1800 | Allied Vision industrial-grade CMOS cameras (U-158m, U-511m)             |           `Vimba X SDK` `vmbpy`           | [Product Link](https://www.alliedvision.com/en/products/alvium-configurator/alvium-1800-u/158/#_configurator) |
 |    Basler ace 2 R PRO     | Basler `pylon` supported cameras                                         |             `pylon` `pypylon`             |                                                       -                                                       |
 |    Excelitas PCO sCMOS    | Excelitas pco.edge 4.2 LT USB sCMOS Camera                               |          `pco.sdk` `pco.python`           |               [Product Link](https://www.excelitas.com/product/pcoedge-42-lt-usb-scmos-camera)                |
 |       Pycro-camera        | Access to cameras via Micro-Manager drivers/adapters using Pycro-Manager |        `uManager` `Pycro-Manager`         |                                                       -                                                       |
+
 
 ### Additional Hardware
 

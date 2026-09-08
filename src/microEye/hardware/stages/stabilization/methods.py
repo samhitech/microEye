@@ -809,7 +809,7 @@ class FiducialStrategy(StabilizationStrategy):
             )
 
             # Detect blobs
-            points, _ = CV_BlobDetector().find_peaks_preview(th_img, None)
+            points = CV_BlobDetector().find_peaks(th_img)
 
             if len(points) < 1:
                 return None

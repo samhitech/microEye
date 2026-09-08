@@ -36,7 +36,12 @@ from microEye.analysis.fitting.results import (
 from microEye.analysis.fitting.results_stats import resultsStatsWidget
 from microEye.analysis.fitting.tardis import TARDIS_Widget
 from microEye.analysis.processing import FRC_resolution_binomial, plot_frc
-from microEye.analysis.rendering import *
+from microEye.analysis.rendering import (
+    BaseRenderer,
+    PointCloudRenderer,
+    Projection,
+    RenderModes,
+)
 from microEye.analysis.viewer.layers_widget import ImageItemsWidget
 from microEye.analysis.viewer.volume import PointCloudViewer, VolumeViewerWindow
 from microEye.qt import (
@@ -49,7 +54,13 @@ from microEye.qt import (
     getSaveFileName,
 )
 from microEye.utils.expandable_groupbox import SideBar
-from microEye.utils.gui_helper import *
+from microEye.utils.gui_helper import (
+    create_double_spin_box,
+    create_grid_layout,
+    create_hbox_layout,
+    create_spin_box,
+    create_widget,
+)
 from microEye.utils.thread_worker import QThreadWorker
 
 logger = logging.getLogger(__name__)
@@ -807,7 +818,9 @@ class LocalizationsView(QtWidgets.QWidget):
 
     def on_stack_ready(self, results: FittingResults):
         if results is not None and isinstance(results, FittingResults):
-            logger.info('Done importing results.')
+            logger.info(
+                f'Done importing results (Number of localizations: {len(results)}).'
+            )
             self.add_data_layer(results)
             self.show()
         else:
@@ -1184,12 +1197,18 @@ class LocalizationsView(QtWidgets.QWidget):
         self.toggle_tracking_btn = QtWidgets.QPushButton(
             'Track Plots', clicked=lambda: self.toggle_track_plots()
         )
+        self.localizations_per_frame_btn = QtWidgets.QPushButton(
+            'More Stats', clicked=lambda: LocalizationProcessing.extended_stats(self)
+        )
 
-        data_btn_layout = create_hbox_layout(
+        data_btn_layout = create_grid_layout(
+            2,
+            3,
             self.populate_data_btn,
             self.apply_filters_btn,
             self.zero_coords_btn,
             self.toggle_tracking_btn,
+            self.localizations_per_frame_btn,
         )
 
         # create x/y/z coordinate shift
@@ -1680,7 +1699,7 @@ class LocalizationProcessing:
                 view.currentResults = results[0]
                 view.results_plot.setData(view.currentResults.dataFrame())
                 plot_drift(
-                    *results[2],
+                    *results[1],
                     title=f'{label} Cross-Correlation',
                 )
                 view.render_loc()
@@ -1867,6 +1886,49 @@ class LocalizationProcessing:
                     )
                 )
                 view.results_plot.setData(view.currentResults.dataFrame())
+
+    @classmethod
+    def extended_stats(cls, view: LocalizationsView):
+        '''Display extended statistics for the fitting results.'''
+        if view.currentResults is None:
+            return
+
+        if len(view.currentResults) <= 0:
+            return
+
+        # localization per frame
+        def work_func(**kwargs):
+            try:
+                return view.currentResults.extended_stats()
+            except Exception:
+                traceback.print_exc()
+                return None
+
+        def done(results: dict):
+            if results is not None:
+                gl = pg.GraphicsLayoutWidget(show=True, title='Extended Statistics')
+
+                for idx, (key, value) in enumerate(results.items()):
+                    plot = gl.ci.addPlot(title=key, row=0, col=idx)
+
+                    items = ClustersScatter.histogram(
+                        value['counts'], bin_size=1, detect_peaks=True
+                    )
+
+                    plot.setLabel('bottom', value['xlabel'])
+                    plot.setLabel('left', value['ylabel'])
+                    plot.showGrid(x=True, y=True, alpha=0.2)
+                    for item in items:
+                        plot.addItem(item)
+
+                view.extended_stats_plot = gl
+                gl.show()
+
+        view.runAsync(
+            work_func,
+            finished_message='Extended statistics calculated.',
+            done=done,
+        )
 
     @classmethod
     def apply_filters(cls, view: LocalizationsView):

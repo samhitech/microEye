@@ -267,8 +267,8 @@ class PeakCamera(miCamera):
                         'Driver': 'IDS Peak',
                     }
                 )
-        except Exception:
-            logger.error('Error enumerating IDS Peak devices.', exc_info=True)
+        except Exception as e:
+            logger.error(f'Error getting camera list: {e}')
         finally:
             ids_peak.Library.Close()
 

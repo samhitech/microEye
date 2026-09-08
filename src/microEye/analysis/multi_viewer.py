@@ -246,7 +246,7 @@ class multi_viewer(QMainWindow):
                 ):
                     key = _compact_display_name(path, info['type'])
                     for table in range(len(widget.fittingResults)):
-                        key = f'{key} (Table {table})'
+                        key = f'{widget.windowTitle()} {key} (Table {table})'
                         loc_tables[key.replace('\n', ' ')] = ref(
                             widget.fittingResults[table]
                         )

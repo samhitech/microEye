@@ -59,7 +59,7 @@ This guide provides step-by-step instructions on how to use the `miEye module`
 
    |                 Power Switch                  |
    | :-------------------------------------------: |
-   | ![Power](images/setup/power_on_extension.jpg) |
+   | ![Power](images/setup/power_on_extension.png) |
 
 5. (`Optional`) Power on the `ThorLabs` red shutter control unit if the `561nm` laser line is being used.
 
@@ -70,6 +70,9 @@ This guide provides step-by-step instructions on how to use the `miEye module`
 6. (`Optional`) Power on the multimode fiber agitation module if needed.
 
    ![Agitation](images/setup/agitation.png)
+
+> [!TIP]
+> _The gray power cord is always plugged-in from this version onwards._
 
 ## Starting the microEye software
 
@@ -484,9 +487,12 @@ The Oil immersion objective must be cleaned after use.
 >
 > ![Exit CMD](images/software/mieye_exit_cmd.png)
 
-6. To turn off the multimode fiber agitation module, rotate the knob counter-clockwise till it shows `800`, and then unplug it from the power socket.
+1. To turn off the multimode fiber agitation module, rotate the knob counter-clockwise till it shows `800`.
 
    ![Agitation Off](images/setup/agitation_off.png)
+
+> [!TIP]
+> _No need to unplug the gray power cord anymore._
 
 7. Flip the extension cord's power switch to power off all the microscope hardware.
 

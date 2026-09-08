@@ -5,6 +5,8 @@ import typing
 from microEye.hardware.cams.camera_panel import Camera_Panel
 
 # Cameras
+from microEye.hardware.cams.dcam.dcam import dcamera
+from microEye.hardware.cams.dcam.dcam_panel import Dcam_Panel
 from microEye.hardware.cams.dummy.dummy_panel import Dummy_Panel
 from microEye.hardware.cams.micam import miCamera, miDummy
 from microEye.hardware.cams.pycromanager import PycroCamera
@@ -104,6 +106,12 @@ CAMERA_CONFIGS = {
         'camera_args': ['FullName'],
         'panel_class': Basler_Panel,
     },
+    'DCAM-API': {
+        'driver': 'DCAM-API',
+        'camera_class': dcamera,
+        'camera_args': ['Device ID'],
+        'panel_class': Dcam_Panel,
+    },
     'IDS Peak': {
         'driver': 'IDS Peak',
         'camera_class': PeakCamera,
@@ -153,6 +161,7 @@ class CameraManager(QtCore.QObject):
 
     CAMERAS: dict[str, list[dict]] = {
         'Basler': [],
+        'DCAM-API': [],
         'IDS Peak': [],
         'miDummy': [],
         'PycroCore': [],

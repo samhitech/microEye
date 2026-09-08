@@ -8,14 +8,14 @@ import cv2
 import numpy as np
 from tqdm import tqdm
 
-from microEye.analysis.filters import *
-from microEye.analysis.fitting.phasor_fit import *
+from microEye.analysis.filters import FourierFilter, SpatialFilter, TemporalMedianFilter
+from microEye.analysis.fitting.phasor_fit import phasor_fit
 from microEye.analysis.fitting.pyfit3Dcspline import (
     CPUmleFit_LM,
     get_roi_list,
     get_roi_list_CMOS,
 )
-from microEye.analysis.fitting.results import *
+from microEye.analysis.fitting.results import FittingMethod
 from microEye.images import TiffSeqHandler, ZarrImageSequence, uImage
 from microEye.qt import Qt, QtWidgets, Signal
 
@@ -207,7 +207,7 @@ class CV_BlobDetector(AbstractDetector):
 
         im_with_keypoints = (
             cv2.drawKeypoints(
-                img,
+                cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U),
                 keypoints,
                 np.array([]),
                 (0, 0, 255),
@@ -345,12 +345,77 @@ def pre_process_frame(
     return image, filtered, roi_info
 
 
+def estimate_noise_sigma(img: np.ndarray, robust: bool = True) -> tuple[float, float]:
+    '''
+    Estimate background and the noise (sigma) of an image.
+
+    Parameters
+    ----------
+    img : np.ndarray
+        Input image.
+    robust : bool, optional
+        - If True, use robust statistics (median and MAD) to estimate
+        the background and noise.
+        - If False, use mean and standard deviation. Default is True.
+
+    Returns
+    -------
+    tuple[float, float]
+        Background level and noise (sigma) of the image.
+    '''
+    if robust:
+        med = np.nanmedian(img)
+        mad = np.nanmedian(np.abs(img - med))
+        sigma = 1.4826 * mad  # consistent estimator of std under Gaussian noise
+        return med, sigma
+    else:
+        return np.nanmean(img), np.nanstd(img)
+
+
+def threshold_image(
+    img: np.ndarray,
+    k_sigma: float = 5.0,
+    max_threshold: float = 1.0,
+    robust: bool = True,
+) -> np.ndarray:
+    '''
+    Threshold an image based on estimated background and noise.
+
+    Parameters
+    ----------
+    img : np.ndarray
+        Input image.
+    k_sigma : float, optional
+        Number of standard deviations above the background
+        to set the threshold (default is 5.0).
+    max_threshold : float, optional
+        Maximum intensity threshold as a fraction of the maximum image intensity
+        (default is 1.0).
+    robust : bool, optional
+        - If True, use robust statistics (median and MAD) to estimate
+        the background and noise.
+        - If False, use mean and standard deviation.
+
+        Default is True.
+    '''
+    bg, sigma = estimate_noise_sigma(img, robust)
+    threshold = bg + k_sigma * sigma
+
+    th_img = (img > threshold).astype(np.uint8) * 255
+
+    if 0 < max_threshold < 1.0:
+        th_img[img > np.nanmax(img) * max_threshold] = 0
+
+    return th_img
+
+
 def detect_points(
     filtered_image: np.ndarray,
     filter_obj: 'SpatialFilter',
     detector: 'AbstractDetector',
     options: dict[str, Any],
-) -> np.ndarray:
+    return_intermediate: bool = False,
+):
     '''
     Detect points in the filtered image.
 
@@ -364,35 +429,35 @@ def detect_points(
         Point detection algorithm.
     options : Dict[str, Any]
         Detection options.
+    return_intermediate : bool, optional
+        Whether to return intermediate images (default is False).
 
     Returns
     -------
-    np.ndarray
-        Detected points.
+    np.ndarray | tuple[np.ndarray, np.ndarray, np.ndarray]
+        Detected points, and optionally thresholded image and filtered image.
+
+        - If return_intermediate is True, returns a tuple of (points, th_img, img).
+        - If return_intermediate is False, returns only the detected points of
+        shape (n, 2).
     '''
     irange = options.get('irange')
-    rel_threshold = options.get('rel_threshold', 0.4)
+    k_sigma = options.get('k_sigma', 5.0)
+    robust = options.get('robust_noise', True)
+    # rel_threshold = options.get('rel_threshold', 0.4)
     max_threshold = options.get('max_threshold', 1.0)
-
-    uImg = uImage(filtered_image)
-    uImg.equalizeLUT(irange, True)
 
     if isinstance(filter_obj, FourierFilter):
         filter_obj._show_filter = False
         filter_obj._refresh = False
+    uImg = uImage(filtered_image)
+    uImg.equalizeLUT(irange, True)
 
-    img = filter_obj.run(uImg._view)
+    img = filter_obj.run(uImg._image)
+    th_img = threshold_image(img, k_sigma, max_threshold, robust)
 
-    _, th_img = cv2.threshold(
-        img, np.quantile(img, 1 - 1e-4) * rel_threshold, 255, cv2.THRESH_BINARY
-    )
-    if max_threshold < 1.0:
-        _, th2 = cv2.threshold(
-            img, np.max(img) * max_threshold, 1, cv2.THRESH_BINARY_INV
-        )
-        th_img *= th2
-
-    return detector.find_peaks(th_img)
+    points = detector.find_peaks(th_img)
+    return (points, th_img, img) if return_intermediate else points
 
 
 def fit_points(
@@ -479,8 +544,11 @@ def localize_frame(
         Temporal median filter window size (default is 0).
     irange : tuple[int, int], optional
         Intensity range (default is None for autoscaling).
-    rel_threshold : float, optional
-        Relative intensity threshold (default is 0.4).
+    robust_noise : bool, optional
+        Whether to use a robust estimate of the noise (default is True).
+    k_sigma : float, optional
+        Number of standard deviations above the background to set the
+        threshold (default is 5.0).
     max_threshold : float, optional
         Maximum intensity threshold (default is 1.0).
     roi_size : int, optional
@@ -603,69 +671,41 @@ def localizeStackCPU(
 
 def get_rois_lists_GPU(
     stack_handler: Union[TiffSeqHandler, ZarrImageSequence],
-    filter: SpatialFilter,
+    spatial_filter: SpatialFilter,
     detector: AbstractDetector,
     **kwargs,
 ):
-    gain: Union[float, np.ndarray] = kwargs.get('gain', 1)
-    offset: Union[float, np.ndarray] = kwargs.get('offset', 0)
-    varim: np.ndarray = kwargs.get('varim')
-    roi_info = kwargs.get('roi_info')
-    irange = kwargs.get('irange')
-    rel_threshold: float = kwargs.get('rel_threshold', 0.4)
-    max_threshold: float = kwargs.get('max_threshold', 1.0)
-    tm_window: int = kwargs.get('tm_window', 0)
-    roi_size: int = kwargs.get('roi_size', 13)
-    c: int = kwargs.get('channel', 0)
-    z: int = kwargs.get('zSlice', 0)
+    options = {
+        'gain': kwargs.get('gain', 1),
+        'offset': kwargs.get('offset', 0),
+        'varim': kwargs.get('varim'),
+        'roi_info': kwargs.get('roi_info'),
+        'irange': kwargs.get('irange'),
+        # 'rel_threshold': kwargs.get('rel_threshold', 0.4),
+        'k_sigma': kwargs.get('k_sigma', 5.0),
+        'robust_noise': kwargs.get('robust_noise', True),
+        'max_threshold': kwargs.get('max_threshold', 1.0),
+        'tm_window': kwargs.get('tm_window', 0),
+        'roi_size': kwargs.get('roi_size', 13),
+        'channel': kwargs.get('channel', 0),
+        'zSlice': kwargs.get('zSlice', 0),
+    }
+    varim = options['varim']
+    roi_size = options['roi_size']
 
     def process_image(k: int) -> tuple[list, list, list, list]:
-        image = stack_handler.getSlice(k, c, z)
-        image = (image * gain) - offset
+        image, filtered, _ = pre_process_frame(k, stack_handler, options)
+        points = detect_points(filtered, spatial_filter, detector, options)
 
-        if tm_window > 1:
-            temp = TemporalMedianFilter()
-            temp._temporal_window = tm_window
-            frames = temp.getFrames(k, stack_handler)
-            filtered = temp.run(image, frames, roi_info)
+        if len(points) == 0:
+            return [], [], [], []
+
+        if varim is None:
+            rois, coords = get_roi_list(image, points, roi_size)
+            return rois, [], coords, [k + 1] * rois.shape[0]
         else:
-            filtered = image.copy()
-
-        if roi_info is not None:
-            origin, dim = roi_info
-            slice_y = slice(int(origin[1]), int(origin[1] + dim[1]))
-            slice_x = slice(int(origin[0]), int(origin[0] + dim[0]))
-            image = image[slice_y, slice_x]
-            filtered = filtered[slice_y, slice_x]
-
-        uImg = uImage(filtered)
-        uImg.equalizeLUT(irange, True)
-
-        if isinstance(filter, FourierFilter):
-            filter._show_filter = False
-            filter._refresh = False
-
-        img = filter.run(uImg._view)
-
-        _, th_img = cv2.threshold(
-            img, np.quantile(img, 1 - 1e-4) * rel_threshold, 255, cv2.THRESH_BINARY
-        )
-        if max_threshold < 1.0:
-            _, th2 = cv2.threshold(
-                img, np.max(img) * max_threshold, 1, cv2.THRESH_BINARY_INV
-            )
-            th_img *= th2
-
-        points: np.ndarray = detector.find_peaks(th_img)
-
-        if len(points) > 0:
-            if varim is None:
-                rois, coords = get_roi_list(image, points, roi_size)
-                return rois, [], coords, [k + 1] * rois.shape[0]
-            else:
-                rois, varims, coords = get_roi_list_CMOS(image, varim, points, roi_size)
-                return rois, varims, coords, [k + 1] * rois.shape[0]
-        return [], [], [], []
+            rois, varims, coords = get_roi_list_CMOS(image, varim, points, roi_size)
+            return rois, varims, coords, [k + 1] * rois.shape[0]
 
     with ThreadPoolExecutor() as executor:
         futures = [executor.submit(process_image, k) for k in range(len(stack_handler))]

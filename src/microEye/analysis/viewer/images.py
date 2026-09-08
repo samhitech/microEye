@@ -4,7 +4,7 @@ import math
 import os
 import threading
 import traceback
-from typing import Union
+from typing import Optional
 
 import cv2
 import numpy as np
@@ -24,10 +24,15 @@ else:
 from microEye.analysis.checklist_dialog import ChecklistDialog
 from microEye.analysis.cmosMaps import cmosMaps
 from microEye.analysis.filters import TemporalMedianFilter
-from microEye.analysis.fitting import psf, pyfit3Dcspline
-from microEye.analysis.fitting.fit import *
-from microEye.analysis.fitting.phasor_fit import phasor_fit
+from microEye.analysis.fitting import psf
+from microEye.analysis.fitting.fit import (
+    detect_points,
+    fit_points,
+    get_rois_lists_GPU,
+    localizeStackCPU,
+)
 from microEye.analysis.fitting.results import (
+    DataColumns,
     FittingMethod,
     FittingResults,
     ResultsUnits,
@@ -43,17 +48,17 @@ from microEye.images import (
     uImage,
 )
 from microEye.qt import (
+    QAction,
     QDateTime,
     Qt,
     QtCore,
-    QtGui,
     QtWidgets,
     Signal,
     Slot,
     getOpenFileName,
     getSaveFileName,
 )
-from microEye.utils.gui_helper import *
+from microEye.utils.gui_helper import create_widget, layout_add_elements, time_string_ms
 from microEye.utils.labelled_slider import LabelledSlider
 from microEye.utils.metadata_tree import MetadataEditorTree, MetaParams
 from microEye.utils.thread_worker import QThreadWorker
@@ -446,12 +451,31 @@ class StackView(QtWidgets.QWidget):
         self.tab_widget.addTab(self.kymogram_widget, 'Kymogram')
 
     def kymogram_display_clicked(self, data: np.ndarray):
-        cv2.destroyAllWindows()
+        if hasattr(self, 'kymogram_plot'):
+            self.kymogram_plot.close()
 
-        uImg = uImage(data)
-        uImg.equalizeLUT()
-        # self.image.setImage(uImg._view, autoLevels=True)
-        cv2.imshow('Kymogram', uImg._view)
+        plot = pg.GraphicsLayoutWidget()
+        view = plot.ci.addViewBox(row=0, col=0, invertY=True)
+        image_item = pg.ImageItem(data, autoLevels=True)
+        view.addItem(image_item)
+
+        hist = pg.HistogramLUTItem(gradientPosition='bottom', orientation='horizontal')
+        hist.setImageItem(image_item)
+        plot.ci.addItem(hist, row=1, col=0)
+
+        # add export button to export image as tiff to context menu of plot_item
+        export_action = QAction('Export Image as TIFF', view)
+        view.menu.addAction(export_action)
+
+        export_action.triggered.connect(
+            lambda: KymogramWidget.export_image_as_tiff(
+                image_item.image, base_name=f'Kymogram_{id(data)}.tiff'
+            )
+        )
+
+        self.kymogram_plot = plot
+        plot.setWindowTitle('Kymogram')
+        plot.show()
 
     def kymogram_btn_clicked(self):
         if self.stack_handler is None:
@@ -649,61 +673,6 @@ class StackView(QtWidgets.QWidget):
 
         self.__updating = False
 
-    def preprocess_image(self, image: uImage, roi_info):
-        if roi_info is not None:
-            origin, dim = roi_info
-            img = image._view[
-                int(origin[1]) : int(origin[1] + dim[1]),
-                int(origin[0]) : int(origin[0] + dim[0]),
-            ]
-        else:
-            origin, dim = None, None
-            img = image._view
-
-        # Apply bandpass filter
-        img = self.fitting_options_widget.get_image_filter().run(img)
-
-        # Threshold the image
-        _, th_img = cv2.threshold(
-            img,
-            np.quantile(img, 1 - 1e-4)
-            * self.get_param(Parameters.RELATIVE_THRESHOLD_MIN).value(),
-            255,
-            cv2.THRESH_BINARY,
-        )
-
-        if self.get_param(Parameters.RELATIVE_THRESHOLD_MAX).value() < 1.0:
-            _, th2 = cv2.threshold(
-                img,
-                np.max(img) * self.get_param(Parameters.RELATIVE_THRESHOLD_MAX).value(),
-                1,
-                cv2.THRESH_BINARY_INV,
-            )
-            th_img = th_img * th2
-
-        if self.get_param(Parameters.SHOW_FILTER).value():
-            cv2.namedWindow('Thresholded filtered Img.', cv2.WINDOW_NORMAL)
-            cv2.imshow('Thresholded filtered Img.', th_img)
-
-        return th_img, img, origin
-
-    def detect_and_display_keypoints(self, th_img, img, origin):
-        # Detect blobs
-        points, im_with_keypoints = (
-            self.fitting_options_widget.get_detector().find_peaks_preview(th_img, img)
-        )
-
-        # Show keypoints
-        if self.get_param(Parameters.SHOW_FILTER).value():
-            cv2.namedWindow('Approx. Loc.', cv2.WINDOW_NORMAL)
-            cv2.imshow('Approx. Loc.', im_with_keypoints)
-
-        if len(points) > 0 and origin is not None:
-            points[:, 0] += origin[0]
-            points[:, 1] += origin[1]
-
-        return points
-
     def fit_keypoints(self, image, varim, points, return_points=False):
         '''Fit detected points using selected fitting method.
 
@@ -727,52 +696,32 @@ class StackView(QtWidgets.QWidget):
         if len(points) == 0:
             return None
 
+        if len(points) == 0:
+            return None
+
         method = self.fitting_options_widget.get_fitting_method()
         sz = self.get_param(Parameters.ROI_SIZE).value()
-        fitted_coords = None
 
-        if method == FittingMethod.Phasor_2D_CPU:
-            fitted_coords = phasor_fit(image, points, True, sz)
+        if method == FittingMethod.MLE_3D_cspline_sigma:
+            psf_param = np.ones(
+                (64, 4, 4, 4), dtype=np.float32
+            )  # unchanged special case
         else:
-            if varim is None:
-                varims = None
-                rois, coords = pyfit3Dcspline.get_roi_list(image, points, sz)
-            else:
-                rois, varims, coords = pyfit3Dcspline.get_roi_list_CMOS(
-                    image, varim, points, sz
-                )
-            Params = None
+            psf_param = np.array([self.get_param(Parameters.INITIAL_SIGMA).value()])
 
-            PSF_param = np.array([self.get_param(Parameters.INITIAL_SIGMA).value()])
+        options = {'method': method, 'roi_size': sz, 'PSFparam': psf_param}
+        params, crlbs, loglike = fit_points(image, points, varim, options)
 
-            if method == FittingMethod.MLE_2D_fixed_sigma:
-                Params, CRLBs, LogLikelihood = pyfit3Dcspline.CPUmleFit_LM(
-                    rois, 1, PSF_param, varims, 0
-                )
-            elif method == FittingMethod.MLE_2D_free_sigma:
-                Params, CRLBs, LogLikelihood = pyfit3Dcspline.CPUmleFit_LM(
-                    rois, 2, PSF_param, varims, 0
-                )
-            elif method == FittingMethod.MLE_2D_elliptical_sigma:
-                Params, CRLBs, LogLikelihood = pyfit3Dcspline.CPUmleFit_LM(
-                    rois, 4, PSF_param, varims, 0
-                )
-            elif method == FittingMethod.MLE_3D_cspline_sigma:
-                Params, CRLBs, LogLikelihood = pyfit3Dcspline.CPUmleFit_LM(
-                    rois, 5, np.ones((64, 4, 4, 4), dtype=np.float32), varims, 0
-                )
-
-            fitted_coords = coords + Params[:, :2]
-
-        if fitted_coords is None:
+        if params is None or len(params) == 0:
             return None
+
+        fitted_coords = params[:, :2]
 
         if return_points:
             return fitted_coords
 
-        # Draw visualization
-        keypoints = [cv2.KeyPoint(*point, size=1.0) for point in fitted_coords[:, :2]]
-        vis_img = cv2.drawKeypoints(
+        keypoints = [cv2.KeyPoint(*point, size=1.0) for point in fitted_coords]
+        return cv2.drawKeypoints(
             self.empty_image,
             keypoints,
             None,
@@ -780,29 +729,49 @@ class StackView(QtWidgets.QWidget):
             cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS,
         )
 
-        return vis_img
-
     def apply_realtime_localization(self, image, varim, roiInfo):
-        th_img, img, origin = self.preprocess_image(self.uImage, roiInfo)
+        if roiInfo is not None:
+            origin, dim = roiInfo
+            raw = self.uImage._view[
+                int(origin[1]) : int(origin[1] + dim[1]),
+                int(origin[0]) : int(origin[0] + dim[0]),
+            ]
+        else:
+            origin, raw = None, self.uImage._view
 
-        # Detect blobs.
-        points = self.detect_and_display_keypoints(th_img, img, origin)
+        filter_obj = self.fitting_options_widget.get_image_filter()
+        detector = self.fitting_options_widget.get_detector()
+        options = {
+            'irange': None
+            if self.get_param(Parameters.AUTO_STRETCH).value()
+            else tuple(map(math.ceil, self.lr_0.getRegion())),
+            'max_threshold': self.get_param(Parameters.RELATIVE_THRESHOLD_MAX).value(),
+            'k_sigma': self.get_param(Parameters.K_SIGMA).value(),
+            'robust_noise': self.get_param(Parameters.ROBUST_NOISE).value()
+        }
 
-        # im_with_keypoints = (
-        #     self.fit_keypoints(image, varim, points) if len(points) > 0 else None
-        # )
+        points, th_img, img = detect_points(
+            raw, filter_obj, detector, options, return_intermediate=True
+        )
 
-        # if im_with_keypoints is not None:
-        #     alpha = self.empty_alpha.copy()
-        #     alpha[..., :3] = im_with_keypoints
-        #     alpha[..., 3] = im_with_keypoints[..., 2]
-        #     self.image_layers.getImageItemAt(-1).setImage(alpha, autoLevels=False)
+        if self.get_param(Parameters.SHOW_FILTER).value() and th_img is not None:
+            cv2.namedWindow('Thresholded filtered Img.', cv2.WINDOW_NORMAL)
+            cv2.imshow('Thresholded filtered Img.', th_img)
+            _, im_with_keypoints = detector.find_peaks_preview(th_img, img)
+            cv2.namedWindow('Approx. Loc.', cv2.WINDOW_NORMAL)
+            cv2.imshow('Approx. Loc.', im_with_keypoints)
+
+        if len(points) > 0 and origin is not None:
+            points[:, 0] += origin[0]
+            points[:, 1] += origin[1]
 
         if len(points) > 0:
             points = self.fit_keypoints(image, varim, points, return_points=True)
             self.scatter_locs.setData(
                 pos=points + 0.5, size=10, brush='b', symbol='x', pxMode=True
             )
+        else:
+            self.scatter_locs.clear()
 
     @Slot()
     def extract_psf(self):
@@ -970,9 +939,11 @@ class StackView(QtWidgets.QWidget):
                 offset = res[1]
                 varim = res[2]
 
-        rel_threshold = self.get_param(Parameters.RELATIVE_THRESHOLD_MIN).value()
+        # rel_threshold = self.get_param(Parameters.RELATIVE_THRESHOLD_MIN).value()
         max_threshold = self.get_param(Parameters.RELATIVE_THRESHOLD_MAX).value()
         roi_size = self.get_param(Parameters.ROI_SIZE).value()
+        k_sigma = self.get_param(Parameters.K_SIGMA).value()
+        robust_noise = self.get_param(Parameters.ROBUST_NOISE).value()
 
         PSFparam = np.array([self.get_param(Parameters.INITIAL_SIGMA).value()])
 
@@ -983,7 +954,9 @@ class StackView(QtWidgets.QWidget):
             'varim': varim,
             'roi_info': roi_info,
             'irange': min_max,
-            'rel_threshold': rel_threshold,
+            # 'rel_threshold': rel_threshold,
+            'k_sigma': k_sigma,
+            'robust_noise': robust_noise,
             'max_threshold': max_threshold,
             'tm_window': tm_window,
             'roi_size': roi_size,
@@ -1026,7 +999,9 @@ class StackView(QtWidgets.QWidget):
             'varim': options['varim'],
             'roi_info': options['roi_info'],
             'irange': options['irange'],
-            'rel_threshold': options['rel_threshold'],
+            'k_sigma': options['k_sigma'],
+            'robust_noise': options['robust_noise'],
+            # 'rel_threshold': options['rel_threshold'],
             'max_threshold': options['max_threshold'],
             'tm_window': options['tm_window'],
             'roi_size': options['roi_size'],

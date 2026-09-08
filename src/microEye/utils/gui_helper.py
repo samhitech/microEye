@@ -343,6 +343,32 @@ def create_vbox_layout(*args):
 
     return vbox_layout
 
+def create_grid_layout(rows, cols, *widgets):
+    '''
+    Create a QGridLayout and add the specified widgets to it.
+
+    Parameters
+    ----------
+    rows : int
+        Number of rows in the grid.
+    cols : int
+        Number of columns in the grid.
+    *widgets : QWidget
+        Widgets to add to the grid.
+
+    Returns
+    -------
+    QGridLayout
+        The created QGridLayout.
+    '''
+    grid_layout = QtWidgets.QGridLayout()
+
+    for i, widget in enumerate(widgets):
+        row = i // cols
+        col = i % cols
+        grid_layout.addWidget(widget, row, col)
+
+    return grid_layout
 
 def layout_add_elements(
     layout: Union[QtWidgets.QVBoxLayout, QtWidgets.QHBoxLayout], *args

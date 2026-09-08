@@ -76,9 +76,7 @@ def batch_cluster_dbscan(tables: list[FittingResults], **kwargs):
             total=len(tables), desc='Batch DBSCAN Clustering', unit='table'
         ) as pbar:
             for _, table in enumerate(tables):
-                table.cluster_dbscan(
-                    **kwargs.get('dbscanOptions', {})
-                )
+                table.cluster_dbscan(**kwargs.get('dbscanOptions', {}))
 
                 pbar.update(1)
     except Exception:
@@ -104,7 +102,7 @@ def batch_drift_correction(tables: list[FittingResults], mode: str, **kwargs):
                 elif mode == 'cross correlation':
                     res = table.drift_cross_correlation(
                         n_bins=kwargs.get('crossBins'),
-                        pixel_size=kwargs.get('crossPixelSize'),
+                        pixelSize=kwargs.get('crossPixelSize'),
                         upsampling=kwargs.get('crossUpSampling'),
                         rmax=kwargs.get('crossRMAX'),
                         method=kwargs.get('crossMethod'),
@@ -163,6 +161,21 @@ def batch_frc(tables: list[FittingResults], **kwargs):
                         method=frc_method,
                     )
                 )
+
+                pbar.update(1)
+    except Exception:
+        traceback.print_exc()
+
+    return res
+
+
+def batch_loc_per_frame(tables: list[FittingResults], **kwargs):
+    try:
+        res: list[dict] = []
+
+        with tqdm(total=len(tables), desc='Batch Locs per Frame', unit='table') as pbar:
+            for _, table in enumerate(tables):
+                res.append(table.extended_stats())
 
                 pbar.update(1)
     except Exception:
@@ -263,6 +276,29 @@ class BatchLocalizations(QtWidgets.QDialog):
 
         layout.addWidget(self.localization_tab)
 
+        self._init_context_menu()
+
+    def _init_context_menu(self):
+        self.context_menu = QtWidgets.QMenu(self)
+
+        self.context_menu.addAction(
+            'Select All', lambda: self.tables_checklist.selectAll()
+        )
+        self.context_menu.addAction(
+            'Deselect All', lambda: self.tables_checklist.clearSelection()
+        )
+        self.context_menu.addSeparator()
+        self.context_menu.addAction(
+            'Extended Statistics', lambda: self.batch_extended_stats()
+        )
+
+        self.tables_checklist.setContextMenuPolicy(
+            QtCore.Qt.ContextMenuPolicy.CustomContextMenu
+        )
+        self.tables_checklist.customContextMenuRequested.connect(
+            lambda pos: self.context_menu.exec(self.tables_checklist.mapToGlobal(pos))
+        )
+
     @property
     def selected_names(self) -> list[str]:
         selected_items = self.tables_checklist.selectedItems()
@@ -342,7 +378,7 @@ class BatchLocalizations(QtWidgets.QDialog):
                 )
                 batch_rendered.setBackground(None)
 
-                image_items : list[pg.ImageItem] = []
+                image_items: list[pg.ImageItem] = []
 
                 for idx, (rendered_img, aspect) in enumerate(zip(images, aspects)):
                     if rendered_img is not None:
@@ -388,7 +424,6 @@ class BatchLocalizations(QtWidgets.QDialog):
 
                 histogram_item.sigLookupTableChanged.connect(update_luts)
                 histogram_item.sigLevelsChanged.connect(update_luts)
-
 
                 self.batch_rendered = batch_rendered
                 batch_rendered.show()
@@ -449,6 +484,57 @@ class BatchLocalizations(QtWidgets.QDialog):
             batch_frc,
             done=done,
             finished_message='FRC analysis completed for selected tables.',
+        )
+
+    def batch_extended_stats(self):
+        def done(results: list[dict]):
+            from matplotlib import pyplot as plt
+
+            if results is None:
+                return
+
+            # violin plot of localizations per frame for each table
+            fig = plt.figure(figsize=(10, 6))
+            ax = fig.add_subplot(111)
+
+            x_tick_labels = []
+
+            for i, result in enumerate(results):
+                if result is None:
+                    continue
+
+                # Get the table parent directory name not full path
+                table_name = self.selected_names[i].split('[')[0].strip()
+                if not table_name:
+                    table_name = f'Dataset {i + 1}'
+
+                counts_per_frame = result['Localizations per frame'].get('counts')
+
+                if counts_per_frame is not None:
+                    ax.violinplot(
+                        counts_per_frame,
+                        positions=[i],
+                        showmeans=True,
+                        showmedians=True,
+                        showextrema=True,
+                    )
+                    x_tick_labels.append(table_name)
+
+            ax.set_xticks(range(len(x_tick_labels)))
+            ax.set_xticklabels(x_tick_labels)
+            ax.set_xlabel('Dataset')
+            ax.set_ylabel('Localizations per Frame')
+            ax.set_title('Extended Statistics')
+            ax.set_xlim(-0.5, len(x_tick_labels) - 0.5)
+            ax.set_ylim(bottom=0)
+
+            ax.grid()
+            fig.show()
+
+        self.runAsync(
+            batch_loc_per_frame,
+            done=done,
+            finished_message='Extended statistics completed for selected tables.',
         )
 
     def batch_clustering_dbscan(self):
