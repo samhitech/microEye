@@ -4,7 +4,7 @@ This guide provides step-by-step instructions on how to use the `miEye module`
 
 ![Scope ON](images/setup/scope.jpg)
 
-> _Last Update 18th June 2026_
+> _Last Update 8th September 2026_
 
 <!-- add table of contents -->
 
