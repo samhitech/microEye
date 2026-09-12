@@ -39,6 +39,7 @@ def _find_best_linear_segment(
     y: np.ndarray,
     min_points: int = 5,
     r2_threshold: float = 0.9999,
+    **kwargs,
 ):
     '''
     Find longest contiguous segment with high linearity.
@@ -73,7 +74,9 @@ def _find_best_linear_segment(
         for j in range(i + min_points, n + 1):
             xx = x[i:j].reshape(-1, 1)
             yy = y[i:j]
-            model = LinearRegression().fit(xx, yy)
+            model = LinearRegression(
+                fit_intercept=kwargs.get('fit_intercept', True)
+            ).fit(xx, yy)
             r2 = model.score(xx, yy)
             if r2 > best_r2:
                 best_r2 = r2
@@ -145,7 +148,7 @@ def _perform_calibration_analysis(data: pd.DataFrame, diameter=10, event=None):
         irradiance_port = irradiance_port[mask]
         irradiance_camera = irradiance_camera[mask]
 
-        model = LinearRegression().fit(
+        model = LinearRegression(fit_intercept=False).fit(
             irradiance_port.reshape(-1, 1), irradiance_camera
         )
 

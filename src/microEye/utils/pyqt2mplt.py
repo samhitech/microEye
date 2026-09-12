@@ -70,6 +70,7 @@ class FigurePayload:
 class PlotterSettings(Tree):
     renderActivated = Signal()
     saveActivated = Signal()
+    showFigureActivated = Signal()
 
     def __init__(self, parent=None):
         self._plot_labels: list[str] = ['(none)']
@@ -112,10 +113,42 @@ class PlotterSettings(Tree):
                         'value': 'DejaVu Sans',
                     },
                     {
+                        'name': 'Auto Render',
+                        'type': 'bool',
+                        'value': True,
+                        'tip': (
+                            'When enabled, the figure re-renders automatically '
+                            'after every settings change (debounced). Disable '
+                            'this and use "Render Now" if the plot is heavy and '
+                            'live updates feel laggy.'
+                        ),
+                    },
+                    {
                         'name': 'Debounce (ms)',
                         'type': 'int',
                         'value': 150,
-                        'limits': (100, 1000),
+                        'limits': (50, 3000),
+                    },
+                    {
+                        'name': 'Keep Figure Window On Top',
+                        'type': 'bool',
+                        'value': False,
+                    },
+                    {
+                        'name': 'Fit Window To Figure Size',
+                        'type': 'bool',
+                        'value': True,
+                        'tip': (
+                            "Resize the figure window to match the figure's "
+                            "actual pixel size (Width/Height x DPI), like a "
+                            "normal plt.show() window, instead of stretching "
+                            "the figure to whatever size the window happens "
+                            "to be. Clamped to your screen size."
+                        ),
+                    },
+                    {
+                        'name': 'Show Figure Window',
+                        'type': 'action',
                     },
                     {
                         'name': 'Render Now',
@@ -192,6 +225,7 @@ class PlotterSettings(Tree):
                         ],
                         'value': 'best',
                     },
+                    {'name': 'Legend Handle Size', 'type': 'float', 'value': 0.0},
                     {'name': 'Line Width', 'type': 'float', 'value': 1.6},
                     {'name': 'Marker Size', 'type': 'float', 'value': 5.0},
                     {'name': 'Font Size', 'type': 'int', 'value': 10},
@@ -226,6 +260,10 @@ class PlotterSettings(Tree):
         save_param = self.get_param('Figure.Save Figure')
         if save_param is not None:
             save_param.sigActivated.connect(self.saveActivated)
+
+        show_param = self.get_param('Figure.Show Figure Window')
+        if show_param is not None:
+            show_param.sigActivated.connect(self.showFigureActivated)
 
     def change(self, param: Parameter, changes: list):
         self.paramsChanged.emit(param, changes)
@@ -359,13 +397,55 @@ class PlotterSettings(Tree):
                     break
 
 
+class MatplotlibFigureWindow(QtWidgets.QWidget):
+    '''Standalone, top-level window that hosts the actual Matplotlib canvas.
+
+    This is deliberately kept separate from the settings dialog (rather than
+    embedded in a splitter next to it) so that:
+
+    - The figure gets its own native OS window (title bar, independent
+      resize/move/minimize, its own taskbar entry) instead of being one pane
+      of the settings dialog.
+    - Moving/resizing the settings panel never forces Qt to re-layout or
+      repaint the canvas, and vice versa.
+
+    It still uses the same ``FigureCanvasQTAgg``/``NavigationToolbar2QT`` as
+    before -- that part of the stack was not the source of the slowdown.
+    '''
+
+    closed = Signal()
+
+    def __init__(self, title: str = 'Matplotlib Plotter - Figure'):
+        # parent=None + Window flag => independent top-level window, not
+        # tied into any other widget's layout.
+        super().__init__(parent=None, flags=QtCore.Qt.WindowType.Window)
+        self.setWindowTitle(title)
+        self.resize(1000, 700)
+
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        self.figure = Figure(figsize=(11, 7), dpi=100)
+        self.canvas = FigureCanvas(self.figure)
+        self.toolbar = NavigationToolbar(self.canvas, self)
+        layout.addWidget(self.toolbar)
+        layout.addWidget(self.canvas, 1)
+
+    def closeEvent(self, event):
+        # Default Qt behaviour (no WA_DeleteOnClose) just hides the window,
+        # so it can be reopened later via "Show Figure Window" without
+        # losing the current figure contents.
+        self.closed.emit()
+        super().closeEvent(event)
+
+
 class MatplotlibPlotterDialog(QtWidgets.QDialog):
     NAME = 'Matplotlib Plotter'
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle(self.NAME)
-        self.resize(1600, 720)
+        self.resize(460, 720)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose, True)
         self.setWindowFlags(
             self.windowFlags() | QtCore.Qt.WindowType.WindowMaximizeButtonHint
@@ -381,36 +461,36 @@ class MatplotlibPlotterDialog(QtWidgets.QDialog):
         self._refresh_timer.setInterval(150)
         self._refresh_timer.timeout.connect(self.render_now)
 
+        # The figure now lives in its own native top-level window instead of
+        # being embedded in this dialog. `self.figure` / `self.canvas` /
+        # `self.toolbar` are kept as aliases so the rest of the class (draw
+        # logic, save_figure, etc.) doesn't need to change.
+        self.figure_window = MatplotlibFigureWindow(f'{self.NAME} - Figure')
+        self.figure_window.closed.connect(self._on_figure_window_closed)
+        self.figure = self.figure_window.figure
+        self.canvas = self.figure_window.canvas
+        self.toolbar = self.figure_window.toolbar
+        self._last_figure_window_size: tuple[int, int] | None = None
+
         self.__init_layout()
         self._sync_settings_from_payload()
-        self.schedule_render()
+
+        # Draw once immediately regardless of the "Auto Render" setting so
+        # the user sees something as soon as the dialog opens.
+        self.render_now()
+        self.figure_window.show()
 
     def __init_layout(self):
         layout = QtWidgets.QVBoxLayout(self)
-
-        splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
-        layout.addWidget(splitter, 1)
+        layout.setContentsMargins(0, 0, 0, 0)
 
         self.plot_settings = PlotterSettings()
         self.plot_settings.paramsChanged.connect(self._on_settings_changed)
         self.plot_settings.renderActivated.connect(self.render_now)
         self.plot_settings.saveActivated.connect(self.save_figure)
+        self.plot_settings.showFigureActivated.connect(self._show_figure_window)
 
-        splitter.addWidget(self.plot_settings)
-
-        figure_container = QtWidgets.QWidget()
-        figure_layout = QtWidgets.QVBoxLayout(figure_container)
-        figure_layout.setContentsMargins(0, 0, 0, 0)
-
-        self.figure = Figure(figsize=(11, 7), dpi=100)
-        self.canvas = FigureCanvas(self.figure)
-        self.toolbar = NavigationToolbar(self.canvas, self)
-        figure_layout.addWidget(self.toolbar)
-        figure_layout.addWidget(self.canvas, 1)
-        splitter.addWidget(figure_container)
-
-        splitter.setStretchFactor(0, 0)
-        splitter.setStretchFactor(1, 1)
+        layout.addWidget(self.plot_settings, 1)
 
     @classmethod
     def plot(cls, x, y, **kwargs) -> MatplotlibPlotterDialog:
@@ -419,7 +499,7 @@ class MatplotlibPlotterDialog(QtWidgets.QDialog):
         series = PlotSeriesPayload(
             x,
             y,
-            plot_type=kwargs.get('plot_type','scatter'),
+            plot_type=kwargs.get('plot_type', 'scatter'),
             label=kwargs.get('label', ''),
             dataset=kwargs.get('label', ''),
             style=kwargs.get('style', {}),
@@ -475,8 +555,21 @@ class MatplotlibPlotterDialog(QtWidgets.QDialog):
         self._sync_settings_from_payload(force_rebuild=True)
         self.schedule_render()
 
-    def schedule_render(self):
+    def schedule_render(self, force: bool = False):
+        '''Debounced render request.
+
+        When "Auto Render" is disabled in the settings, changes no longer
+        trigger a render automatically -- only the "Render Now" button (or
+        `force=True`) will. This is the main lever for taming lag on heavy
+        figures: keep tweaking settings without the whole grid re-drawing
+        on every keystroke/drag, then render once when ready.
+        '''
+        if not force and not self._auto_render_enabled():
+            return
         self._refresh_timer.start()
+
+    def _auto_render_enabled(self) -> bool:
+        return bool(self.plot_settings.get_param_value('Figure.Auto Render', True))
 
     def _on_settings_changed(self, _param: Parameter, changes: list):
         if self._is_refreshing_subplots:
@@ -495,13 +588,79 @@ class MatplotlibPlotterDialog(QtWidgets.QDialog):
             if dotted_path == 'Figure.Debounce (ms)':
                 self._refresh_timer.setInterval(int(_data))
 
+            if dotted_path == 'Figure.Keep Figure Window On Top':
+                self._apply_window_on_top(bool(_data))
+
         if should_refresh_subplots:
             self._refresh_subplot_settings()
 
         self.schedule_render()
 
+    def _sync_figure_window_size(self, width_in: float, height_in: float, dpi: int):
+        """Resize the figure window to match the figure's true pixel size.
+
+        FigureCanvasQTAgg always stretches the figure to fill its container,
+        no matter whether that container is embedded, a standalone window
+        like this one, or the window created by plt.show(). A real
+        plt.show() window only *looks* like it "fits" because Qt sizes it to
+        (width_in * dpi, height_in * dpi) when it's first created. Without
+        this, a high-DPI figure gets squeezed into an arbitrarily-sized
+        window and everything renders undersized/blurry-looking.
+        """
+        if not bool(
+            self.plot_settings.get_param_value('Figure.Fit Window To Figure Size', True)
+        ):
+            return
+
+        canvas_w = max(1, round(width_in * dpi))
+        canvas_h = max(1, round(height_in * dpi))
+
+        screen = self.figure_window.screen() or QtWidgets.QApplication.primaryScreen()
+        if screen is not None:
+            available = screen.availableGeometry()
+            max_w = max(300, available.width() - 80)
+            max_h = max(300, available.height() - 120)
+        else:
+            max_w, max_h = 1600, 1000
+
+        target_w = min(canvas_w, max_w)
+        target_h = min(canvas_h, max_h)
+
+        toolbar_h = self.figure_window.toolbar.sizeHint().height()
+        window_size = (target_w, target_h + toolbar_h)
+
+        if window_size != self._last_figure_window_size:
+            self._last_figure_window_size = window_size
+            self.figure_window.resize(*window_size)
+
+    def _show_figure_window(self):
+        self.figure_window.show()
+        self.figure_window.raise_()
+        self.figure_window.activateWindow()
+
+    def _on_figure_window_closed(self):
+        # The window is hidden (not destroyed) on close, so nothing to clean
+        # up here beyond logging -- it can be reopened via the "Show Figure
+        # Window" action, which will still reflect the last rendered state.
+        logger.debug('Matplotlib figure window closed/hidden by user.')
+
+    def _apply_window_on_top(self, on_top: bool):
+        flags = self.figure_window.windowFlags()
+        if on_top:
+            flags |= QtCore.Qt.WindowType.WindowStaysOnTopHint
+        else:
+            flags &= ~QtCore.Qt.WindowType.WindowStaysOnTopHint
+        was_visible = self.figure_window.isVisible()
+        self.figure_window.setWindowFlags(flags)
+        # Changing window flags on most platforms implicitly hides the
+        # widget; re-show it if it was visible before.
+        if was_visible:
+            self.figure_window.show()
+
     def closeEvent(self, event):
         self._refresh_timer.stop()
+        self.figure_window.close()
+        self.figure_window.deleteLater()
         super().closeEvent(event)
         self.deleteLater()
 
@@ -855,6 +1014,8 @@ class MatplotlibPlotterDialog(QtWidgets.QDialog):
         height_in = float(self.plot_settings.get_param_value('Figure.Height (in)', 7.0))
         dpi = int(self.plot_settings.get_param_value('Figure.DPI', 100))
 
+        self._sync_figure_window_size(width_in, height_in, dpi)
+
         style_ctx, rc_ctx = self._style_context()
 
         with style_ctx, rc_ctx:
@@ -1004,8 +1165,17 @@ class MatplotlibPlotterDialog(QtWidgets.QDialog):
                 axis.grid(show_grid)
 
                 handles, labels = axis.get_legend_handles_labels()
+
                 if show_legend and handles and labels:
                     axis.legend(loc=legend_location)
+
+                # Adjust the size of the legend handles
+                size = self.plot_settings.get_param_value(
+                    'Style.Legend Handle Size', 0
+                )
+                if size > 0:
+                    for handle in handles:
+                        handle._sizes = [size]
 
             for row in range(rows):
                 for col in range(cols):

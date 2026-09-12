@@ -11,6 +11,7 @@ class CalibrationDatasetMeta:
     pixel_size_um: float | None = None
     wavelength_nm: float = 488.0
     min_exposure_s: float | None = None
+    max_dn: int | None = 4096
 
     dark_calibration_directory: str | None = None
     gain: float | None = None

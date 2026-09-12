@@ -3,11 +3,11 @@
 <!-- ![microEye](https://github.com/samhitech/microEye/assets/89871015/37ca0859-0b4b-402d-8652-9a01d0bf0f29) -->
 
 ```bash
-   __  ____              ____                ___  ____  _______                                                                         
-  /  |/  (_)__________  / __/_ _____   _  __|_  |/ / / / __<  /
- / /|_/ / / __/ __/ _ \/ _// // / -_) | |/ / __//_  _// _ \/ / 
-/_/  /_/_/\__/_/  \___/___/\_, /\__/  |___/____(_)_/(_)___/_/  
-                          /___/ 
+   __  ____              ____                ___  ____  ____ ___ 
+  /  |/  (_)__________  / __/_ _____   _  __|_  |/ / / / __/|_  |
+ / /|_/ / / __/ __/ _ \/ _// // / -_) | |/ / __//_  _// _ \/ __/ 
+/_/  /_/_/\__/_/  \___/___/\_, /\__/  |___/____(_)_/(_)___/____/ 
+                          /___/  
 ```
 
 The **`microEye`** is a Python toolkit for fluorescence microscopy that supports super-resolution single-molecule localization microscopy and single-particle tracking. It features hardware control, data analysis, and visualization.

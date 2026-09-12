@@ -266,6 +266,7 @@ class PhotonTransfer(QtWidgets.QDialog):
                 if meta.get('min_exposure_s') is None
                 else float(meta['min_exposure_s'])
             ),
+            max_dn=int(meta.get('max_dn', 4096))
         )
 
     def import_datasets_clicked(self):
@@ -354,12 +355,24 @@ class PhotonTransfer(QtWidgets.QDialog):
         if not ok:
             return
 
+        max_dn, ok = QtWidgets.QInputDialog.getInt(
+            self,
+            'Max DN',
+            'Max DN:',
+            value=4096,
+            min=255,
+            max=65535,
+        )
+        if not ok:
+            return
+
         ds = CalibrationDatasetMeta(
             name=name.strip(),
             signal_path=os.path.normpath(signal_path),
             dark_path=os.path.normpath(dark_path),
             pixel_size_um=pixel_size_um,
             port_power_mW=port_power,
+            max_dn=max_dn,
         )
         self._add_dataset(ds)
         self.update_directory_list()

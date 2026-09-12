@@ -59,6 +59,8 @@ def fit_ptc_model(signal_path, dark_path, **kwargs):
         & (mean_dn < kwargs.get('linearity_limit_dn', 4096 * 0.9))
     )
 
+    logger.info(f'Valid points for linear fit: {np.sum(valid)} of {len(mean_dn)}')
+
     i0, i1, _model, r2 = _find_best_linear_segment(
         mean_dn[valid],
         variance_for_fit[valid],
@@ -108,7 +110,10 @@ def perform_analysis(
     for i, (name, dataset) in enumerate(datasets.items()):
         logger.info(f'Analyzing dataset: {name}')
         returned_data[name] = fit_ptc_model(
-            dataset.signal_path, dataset.dark_path, **kwargs
+            dataset.signal_path,
+            dataset.dark_path,
+            linearity_limit_dn=dataset.max_dn * 0.9,
+            **kwargs,
         )
 
         irradiance = (
@@ -132,21 +137,29 @@ def perform_analysis(
         valid = (
             (mean_e > 0)
             & np.isfinite(mean_e)
-            & (params['mean_dn'][1:] < kwargs.get('linearity_limit_dn', 4096 * 0.8))
+            & (
+                params['mean_dn'][1:]
+                < kwargs.get('linearity_limit_dn', dataset.max_dn * 0.8)
+            )
         )
 
         i0, i1, _model, r2 = _find_best_linear_segment(
-            photons[valid], mean_e[valid], min_points=100, r2_threshold=r2_threshold
+            photons[valid],
+            mean_e[valid],
+            min_points=100,
+            r2_threshold=r2_threshold,
+            fit_intercept=False,
         )
         logger.info(
             f'Responsivity | Best linear segment: indices {i0} to {i1}, R²={r2:.6f}'
         )
 
-        model = LinearRegression(fit_intercept=True)
+        model = LinearRegression(fit_intercept=False)
         model.fit(photons[valid][i0:i1].reshape(-1, 1), mean_e[valid][i0:i1])
         params['qe'] = float(model.coef_[0])
         params['qe_intercept'] = float(model.intercept_)
 
+        model = LinearRegression(fit_intercept=False)
         model.fit(photons[valid].reshape(-1, 1), params['mean_dn'][1:][valid])
         params['responsivity'] = float(model.coef_[0])
         params['responsivity_intercept'] = float(model.intercept_)

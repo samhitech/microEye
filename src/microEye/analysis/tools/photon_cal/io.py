@@ -14,32 +14,34 @@ def _normalize_variance_source(value: str | None) -> str:
 
 
 def dataset_from_payload(payload: dict) -> CalibrationDatasetMeta:
-    return CalibrationDatasetMeta(
-        name=str(payload.get('name', 'dataset')),
-        signal_path=str(payload.get('signal_path', '')),
-        dark_path=str(payload.get('dark_path', '')),
-        laser_power_mW=(
+    init_args = {
+        'name': str(payload.get('name', 'dataset')),
+        'signal_path': str(payload.get('signal_path', '')),
+        'dark_path': str(payload.get('dark_path', '')),
+        'laser_power_mW': (
             None
             if payload.get('laser_power_mW') is None
             else float(payload.get('laser_power_mW'))
         ),
-        port_power_mW=(
+        'port_power_mW': (
             None
             if payload.get('port_power_mW') is None
             else float(payload.get('port_power_mW'))
         ),
-        pixel_size_um=(
+        'pixel_size_um': (
             None
             if payload.get('pixel_size_um') is None
             else float(payload.get('pixel_size_um'))
         ),
-        wavelength_nm=float(payload.get('wavelength_nm', 488.0)),
-        min_exposure_s=(
+        'wavelength_nm': float(payload.get('wavelength_nm', 488.0)),
+        'min_exposure_s': (
             None
             if payload.get('min_exposure_s') is None
             else float(payload.get('min_exposure_s'))
         ),
-    )
+        'max_dn': int(payload.get('max_dn', 4096)),
+    }
+    return CalibrationDatasetMeta(**init_args)
 
 
 def save_analysis_cache(
