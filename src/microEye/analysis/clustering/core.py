@@ -1,33 +1,17 @@
 import logging
-from dataclasses import dataclass
-from enum import Enum
 
 import numba as nb
 import numpy as np
 from hdbscan import HDBSCAN
-from scipy.spatial import ConvexHull, Delaunay, Voronoi
 from sklearn.cluster import DBSCAN, OPTICS, cluster_optics_dbscan
-from sklearn.preprocessing import StandardScaler
+
+from microEye.analysis.clustering.dataclasses import (
+    CenteringMode,
+    CenteringOptions,
+    ClusterCenterResult,
+)
 
 logger = logging.getLogger(__name__)
-
-
-@nb.njit(cache=True)
-def geometric_median(points, max_iter=128, tol=1e-6, eps=1e-12):
-    guess = np.median(points, axis=0)
-    for _ in range(max_iter):
-        try:
-            deltas = points - guess
-            distances = np.linalg.norm(deltas, axis=1)
-            weights = 1.0 / np.maximum(distances, eps)
-            new_guess = np.sum(points * weights[:, None], axis=0) / np.sum(weights)
-            if np.linalg.norm(new_guess - guess) < tol:
-                return new_guess
-            guess = new_guess
-        except Exception as e:
-            logger.error(f'Error in geometric_median: {e}')
-            break
-    return guess
 
 
 @nb.njit(fastmath=True, cache=True)
@@ -159,11 +143,16 @@ def huber_center(points, delta=2.0, max_iter=64, tol=1e-5):
     return guess
 
 
-class CenteringMode(Enum):
-    CRLB_WEIGHTED_MEAN = 'crlb_weighted_mean'
-    MEAN = 'mean'
-    GEOMETRIC_MEDIAN = 'geometric_median'
-    HUBER_CENTER = 'huber_center'
+def scale_data(x, y, z, sigma_xy=10.0, sigma_z=10.0):
+    '''
+    Scales the input coordinates for clustering algorithms
+     that require isotropic distances.
+    '''
+    if z is None:
+        return np.column_stack((x, y)), 1.0
+    else:
+        scale = sigma_xy / sigma_z
+        return np.column_stack((x, y, z * scale)), scale
 
 
 def get_center(
@@ -178,13 +167,14 @@ def get_center(
     '''
     Computes the center of clusters based on the specified centering mode.
 
-    *Methods*
+    **Methods**
 
-    - CRLB_WEIGHTED_MEAN: Computes the center using a weighted mean based on the
+    - **_CRLB_WEIGHTED_MEAN_**: Computes the center using a weighted mean based on the
     Cramer-Rao Lower Bound (CRLB) variances for x and y coordinates.
-    - GEOMETRIC_MEDIAN: Computes the center as the geometric median of the points.
-    - HUBER_CENTER: Computes the center using M-estimation with a Huber loss function.
-    - MEAN: Computes the center as the arithmetic mean of the points.
+    - **_GEOMETRIC_MEDIAN_**: Computes the center as the geometric median of the points.
+    - **_HUBER_CENTER_**: Computes the center using
+       M-estimation with a Huber loss function.
+    - **_MEAN_**: Computes the center as the arithmetic mean of the points.
 
     Parameters
     -----------
@@ -261,24 +251,6 @@ def get_center(
     return mu_x, mu_y, mu_z, sigma_com
 
 
-@dataclass
-class ClusterCenterResult:
-    x: np.ndarray
-    y: np.ndarray
-    z: np.ndarray | None
-    labels: np.ndarray
-    intensity: np.ndarray | None
-    crlb_x: np.ndarray | None
-    crlb_y: np.ndarray | None
-    cx: np.ndarray
-    cy: np.ndarray
-    cz: np.ndarray | None
-    c_sigma: np.ndarray | None
-    c_label: np.ndarray
-    n_points: np.ndarray
-    rejected: int
-
-
 def get_centers(
     x: np.ndarray,
     y: np.ndarray,
@@ -287,14 +259,19 @@ def get_centers(
     intensity: np.ndarray | None = None,
     crlb_x: np.ndarray | None = None,
     crlb_y: np.ndarray | None = None,
-    center_mode: CenteringMode = CenteringMode.CRLB_WEIGHTED_MEAN,
-    eps: float = 1e-12,
-    rejection_threshold: float | None = None,
-    min_points: int | None = None,
-    max_points: int | None = None,
-    subtract_com: bool = False,
-    **kwargs,
+    options: CenteringOptions | None = None,
 ) -> ClusterCenterResult | None:
+    if options is None:
+        options = CenteringOptions()
+
+    rejection_threshold = options.rejection_threshold or None
+    min_points = (
+        options.min_points
+        or (options.min_points is not None and options.min_points > 1)
+        or None
+    )
+    max_points = options.max_points or None
+
     try:
         # Filter out noise (label < 0) safely
         valid_mask = labels >= 0
@@ -353,10 +330,10 @@ def get_centers(
                 x_cluster,
                 y_cluster,
                 z_cluster,
-                center_mode=center_mode,
+                center_mode=options.center_mode,
                 crlb_x=crlb_x[s] if crlb_x is not None else None,
                 crlb_y=crlb_y[s] if crlb_y is not None else None,
-                eps=eps,
+                eps=options.eps,
             )
 
             # Reject clusters with large uncertainty
@@ -376,7 +353,7 @@ def get_centers(
             c_labels.append(i)
             n_points.append(len(x_cluster))
 
-            if subtract_com:
+            if options.subtract_com:
                 x[s] -= mu_x
                 y[s] -= mu_y
                 if z is not None:
@@ -419,14 +396,6 @@ def get_centers(
         return None
 
 
-def scale_data(x, y, z, sigma_xy=10.0, sigma_z=10.0):
-    if z is None:
-        return np.column_stack((x, y)), 1.0
-    else:
-        scale = sigma_xy / sigma_z
-        return np.column_stack((x, y, z * scale)), scale
-
-
 def perform_dbscan_clustering(X, Y, Z, eps=50, min_samples=2, **kwargs):
     '''
     Performs DBSCAN clustering on 3D localization data.
@@ -456,7 +425,10 @@ def perform_dbscan_clustering(X, Y, Z, eps=50, min_samples=2, **kwargs):
         else:
             logger.warning('Standard deviation of data is zero. Skipping scaling.')
 
-    dbscan_model = DBSCAN(eps=eps, min_samples=min_samples, **kwargs)
+    # remove any not need kwargs that are not relevant to DBSCAN
+    relevant_kwargs = {k: v for k, v in kwargs.items() if k in DBSCAN().get_params()}
+
+    dbscan_model = DBSCAN(eps=eps, min_samples=min_samples, **relevant_kwargs)
     dbscan_model.fit(VECTORS)
 
     labels = dbscan_model.labels_
@@ -483,6 +455,10 @@ def perform_hdbscan_clustering(X, Y, Z, **kwargs):
     '''
     sigma_xy = kwargs.pop('sigma_xy', 10.0)
     sigma_z = kwargs.pop('sigma_z', 10.0)
+    min_samples = kwargs.pop('min_samples', None)
+    min_samples = min_samples or (min_samples is not None and min_samples > 0) or None
+    if min_samples:
+        kwargs['min_samples'] = min_samples
 
     VECTORS, scale = scale_data(X, Y, Z, sigma_xy, sigma_z)
 
@@ -544,6 +520,9 @@ def perform_optics_clustering(X, Y, Z, min_samples=10, xi=0.05, **kwargs):
     '''
     sigma_xy = kwargs.pop('sigma_xy', 10.0)
     sigma_z = kwargs.pop('sigma_z', 10.0)
+    max_eps = kwargs.pop('max_eps', np.inf)
+    max_eps = max_eps or (max_eps is not None and max_eps > 0) or np.inf
+    kwargs['max_eps'] = max_eps
 
     VECTORS, scale = scale_data(X, Y, Z, sigma_xy, sigma_z)
 

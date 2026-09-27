@@ -5,6 +5,7 @@ import traceback
 import weakref
 
 import cv2
+import h5py
 import numpy as np
 import pandas as pd
 import pyqtgraph as pg
@@ -12,22 +13,25 @@ import tifffile as tf
 
 from microEye.analysis.checklist_dialog import ChecklistDialog
 from microEye.analysis.clustering.density import (
-    Density_OptionsDialog,
     DensityAnalysisPlot,
     get_cluster_density,
 )
-from microEye.analysis.clustering.plot import (
-    ClusterPlotOptionsDialog,
+from microEye.analysis.clustering.dialogs import OptionsDialog, OptionsModes
+from microEye.analysis.clustering.pipeline import (
+    render_grids_batch,
+    render_rulers_batch,
+)
+from microEye.analysis.clustering.viewer import (
+    ClusterRenderData,
+    ClusterResultsWidget,
     ClustersScatter,
-    DBSCAN_OptionsDialog,
-    HDBSCAN_OptionsDialog,
-    OPTICS_OptionsDialog,
-    PlotResult,
-    RulerPlotOptionsDialog,
+    ClustersViewer,
+    PipelineResult,
     add_plot_result,
 )
+from microEye.analysis.drift import DriftOptionsDialog, plot_drift
 from microEye.analysis.fitting.nena import NeNA_Widget
-from microEye.analysis.fitting.processing import plot_animation_stats, plot_drift
+from microEye.analysis.fitting.processing import plot_animation_stats
 from microEye.analysis.fitting.psf import stats
 from microEye.analysis.fitting.results import (
     DataColumns,
@@ -37,10 +41,12 @@ from microEye.analysis.fitting.results_stats import resultsStatsWidget
 from microEye.analysis.fitting.tardis import TARDIS_Widget
 from microEye.analysis.processing import FRC_resolution_binomial, plot_frc
 from microEye.analysis.rendering import (
+    Axis,
     BaseRenderer,
     PointCloudRenderer,
     Projection,
     RenderModes,
+    SpatialIndex3D,
 )
 from microEye.analysis.viewer.layers_widget import ImageItemsWidget
 from microEye.analysis.viewer.volume import PointCloudViewer, VolumeViewerWindow
@@ -72,12 +78,11 @@ class LocalizationTab(SideBar):
     renderActivated = Signal()
     render3DActivated = Signal()
     animationActivated = Signal()
+    viewUpdateRequested = Signal()
 
     extractZActivated = Signal()
 
-    driftCrossActivated = Signal()
-    driftFiducialsActivated = Signal()
-    aimDriftCorrectionActivated = Signal()
+    driftCorrectionActivated = Signal(str, dict)
 
     frcActivated = Signal()
     nenaActivated = Signal()
@@ -92,6 +97,7 @@ class LocalizationTab(SideBar):
     opticsActivated = Signal()
     densityActivated = Signal()
     renderClustersActivated = Signal()
+    renderGridActivated = Signal()
     renderRulersActivated = Signal()
 
     importActivated = Signal()
@@ -169,6 +175,22 @@ class LocalizationTab(SideBar):
             'Animation', clicked=lambda: self.animationActivated.emit()
         )
 
+        self.__view_cx = create_double_spin_box(
+            min_value=-1e7, max_value=1e7, decimals=1
+        )
+        self.__view_cy = create_double_spin_box(
+            min_value=-1e7, max_value=1e7, decimals=1
+        )
+        self.__view_w = create_double_spin_box(
+            min_value=1, max_value=int(1e7), decimals=1, initial_value=1000
+        )
+        self.__view_h = create_double_spin_box(
+            min_value=1, max_value=int(1e7), decimals=1, initial_value=1000
+        )
+        self.__goto_btn = QtWidgets.QPushButton(
+            'Go to View', clicked=lambda: self.viewUpdateRequested.emit()
+        )
+
         # Render GroupBox
         flocalization = QtWidgets.QFormLayout()
 
@@ -186,6 +208,14 @@ class LocalizationTab(SideBar):
                 self.__animation_btn,
             )
         )
+
+        flocalization.addRow(
+            'Center X/Y [nm]:', create_hbox_layout(self.__view_cx, self.__view_cy)
+        )
+        flocalization.addRow(
+            'Width/Height [nm]:', create_hbox_layout(self.__view_w, self.__view_h)
+        )
+        flocalization.addRow(self.__goto_btn)
         # End Localization GroupBox
 
         self.addSection('Render', flocalization, True)
@@ -255,76 +285,19 @@ class LocalizationTab(SideBar):
         self.addSection('Z Extraction', z_extract_form)
 
     def __init_drift(self):
-        drift_cross_args = QtWidgets.QHBoxLayout()
-
-        self.__drift_cross_bins = create_spin_box(initial_value=10)
-        self.__drift_cross_px = create_spin_box(initial_value=10)
-        self.__drift_cross_up = create_spin_box(
-            min_value=0, max_value=1000, initial_value=100
-        )
-        self.__drift_rmax = create_spin_box(
-            min_value=0, max_value=1000, initial_value=23
+        self._drift_dialog = DriftOptionsDialog(parent=self)
+        self._drift_dialog.drift_requested.connect(
+            lambda method, params: self.driftCorrectionActivated.emit(method, params)
         )
 
-        drift_cross_args.addWidget(self.__drift_cross_bins)
-        drift_cross_args.addWidget(self.__drift_cross_px)
-        drift_cross_args.addWidget(self.__drift_cross_up)
-        drift_cross_args.addWidget(self.__drift_rmax)
-
-        self.__cross_method_cbox = QtWidgets.QComboBox()
-        self.__cross_method_cbox.addItem('Phase', 'phase')
-        self.__cross_method_cbox.addItem('Direct', 'dcc')
-        self.__cross_method_cbox.addItem('Mean', 'mcc')
-        self.__cross_method_cbox.addItem('Redundant', 'rcc')
-
-        self.__drift_cross_btn = QtWidgets.QPushButton(
-            'Drift X-Corr', clicked=lambda: self.driftCrossActivated.emit()
-        )
-        self.__drift_fdm_btn = QtWidgets.QPushButton(
-            'Fiducial markers', clicked=lambda: self.driftFiducialsActivated.emit()
-        )
-
-        # AIM Drift Correction
-        self.__aim_segment_size = create_spin_box(
-            min_value=1, max_value=10000, initial_value=100
-        )
-        self.__aim_intersect_d = create_double_spin_box(
-            min_value=1, max_value=1000, initial_value=20
-        )
-        self.__aim_z_scale = create_double_spin_box(
-            min_value=0.01, max_value=10.0, initial_value=1.0
-        )
-
-        aim_drift_args = QtWidgets.QHBoxLayout()
-        aim_drift_args.addWidget(self.__aim_segment_size)
-        aim_drift_args.addWidget(self.__aim_intersect_d)
-        aim_drift_args.addWidget(self.__aim_z_scale)
-
-        self.__aim_btn = QtWidgets.QPushButton(
-            'AIM Drift Correction',
-            clicked=lambda: self.aimDriftCorrectionActivated.emit(),
+        self._drift_correction_btn = QtWidgets.QPushButton(
+            'Drift Correction', clicked=lambda: self._drift_dialog.exec()
         )
 
         # Drift GroupBox
-        fdrift = QtWidgets.QFormLayout()
+        fdrift = QtWidgets.QVBoxLayout()
+        fdrift.addWidget(self._drift_correction_btn)
 
-        fdrift.addRow(
-            QtWidgets.QLabel('Drift X-Corr. (bins, pixelSize, upsampling, rmax):')
-        )
-        fdrift.addRow(drift_cross_args)
-        fdrift.addRow(
-            create_hbox_layout(
-                self.__cross_method_cbox, self.__drift_cross_btn, self.__drift_fdm_btn
-            )
-        )
-
-        fdrift.addRow(
-            QtWidgets.QLabel(
-                'AIM Drift Correction (segment size, intersect d, z scale):'
-            )
-        )
-        fdrift.addRow(aim_drift_args)
-        fdrift.addRow(self.__aim_btn)
         # End Drift GroupBox
 
         self.addSection('Drift Correction', fdrift, True)
@@ -411,10 +384,16 @@ class LocalizationTab(SideBar):
     def __init_clustering(self):
         clustering = QtWidgets.QFormLayout()
 
-        self.__dbscan_options = DBSCAN_OptionsDialog()
-        self.__optics_options = OPTICS_OptionsDialog()
-        self.__hdbscan_options = HDBSCAN_OptionsDialog()
-        self.__density_options = Density_OptionsDialog()
+        self.__dbscan_options = OptionsDialog(mode=OptionsModes.DBSCAN)
+        self.__optics_options = OptionsDialog(mode=OptionsModes.OPTICS)
+        self.__hdbscan_options = OptionsDialog(mode=OptionsModes.HDBSCAN)
+        self.__density_options = OptionsDialog(mode=OptionsModes.CLUSTER_DENSITY)
+
+        self.__cluster_options_dialog = OptionsDialog(mode=OptionsModes.RENDERING)
+        self.__ruler_options_dialog = OptionsDialog(
+            mode=OptionsModes.RULER, export=True
+        )
+        self.__grid_options_dialog = OptionsDialog(mode=OptionsModes.GRID, export=True)
 
         def dbscan_emit():
             res = self.__dbscan_options.exec()
@@ -463,6 +442,10 @@ class LocalizationTab(SideBar):
             'Show Rulers',
             clicked=lambda: self.renderRulersActivated.emit(),
         )
+        self.__cluster_grid_btn = QtWidgets.QPushButton(
+            'Show Grid',
+            clicked=lambda: self.renderGridActivated.emit(),
+        )
 
         clustering.addWidget(self.__dbscan_btn)
         clustering.addWidget(self.__hdbscan_btn)
@@ -470,6 +453,7 @@ class LocalizationTab(SideBar):
         clustering.addWidget(self.__density_btn)
         clustering.addWidget(self.__cluster_render_btn)
         clustering.addWidget(self.__cluster_ruler_btn)
+        clustering.addWidget(self.__cluster_grid_btn)
         self.addSection('Clustering', clustering, False)
 
     def __init_buttons(self):
@@ -635,39 +619,39 @@ class LocalizationTab(SideBar):
 
     @property
     def crossMethod(self):
-        return self.__cross_method_cbox.currentData()
+        return self._drift_dialog.method_combo.currentData()
 
     @property
     def crossLabel(self) -> str:
-        return self.__cross_method_cbox.currentText()
+        return self._drift_dialog.method_combo.currentText()
 
     @property
     def crossBins(self) -> int:
-        return self.__drift_cross_bins.value()
+        return self._drift_dialog.cross_bins.value()
 
     @property
     def crossPixelSize(self) -> int:
-        return self.__drift_cross_px.value()
+        return self._drift_dialog.cross_px.value()
 
     @property
     def crossUpSampling(self) -> int:
-        return self.__drift_cross_up.value()
+        return self._drift_dialog.cross_up.value()
 
     @property
     def crossRMAX(self) -> int:
-        return self.__drift_rmax.value()
+        return self._drift_dialog.cross_rmax.value()
 
     @property
     def aimSegmentSize(self) -> int:
-        return self.__aim_segment_size.value()
+        return self._drift_dialog.aim_segment_size.value()
 
     @property
     def aimIntersectD(self) -> float:
-        return self.__aim_intersect_d.value()
+        return self._drift_dialog.aim_intersect_d.value()
 
     @property
     def aimZScale(self) -> float:
-        return self.__aim_z_scale.value()
+        return self._drift_dialog.aim_z_scale.value()
 
     @property
     def nnMinDistance(self):
@@ -700,6 +684,24 @@ class LocalizationTab(SideBar):
     @property
     def zCalSlope(self):
         return self.__z_cal_slope.value()
+
+    def set_view_readout(self, cx: float, cy: float, w: float, h: float):
+        for box, val in zip(
+            (self.__view_cx, self.__view_cy, self.__view_w, self.__view_h),
+            (cx, cy, w, h),
+        ):
+            box.blockSignals(True)
+            box.setValue(val)
+            box.blockSignals(False)
+
+    @property
+    def viewCenterSize(self):
+        return (
+            self.__view_cx.value(),
+            self.__view_cy.value(),
+            self.__view_w.value(),
+            self.__view_h.value(),
+        )
 
     def setButtonsEnabled(self, enabled=True):
         # check attributes of type QPushButton and set their enabled state
@@ -734,11 +736,30 @@ class LocalizationTab(SideBar):
             'curveFitMethod': self.curveFitMethod,
             'zCalIntercept': self.zCalIntercept,
             'zCalSlope': self.zCalSlope,
-            'dbscanOptions': self.__dbscan_options.toDict(),
-            'hdbscanOptions': self.__hdbscan_options.toDict(),
-            'opticsOptions': self.__optics_options.toDict(),
-            'densityOptions': self.__density_options.toDict(),
+            'dbscanOptions': self.__dbscan_options.values(),
+            'hdbscanOptions': self.__hdbscan_options.values(),
+            'opticsOptions': self.__optics_options.values(),
+            'densityOptions': self.__density_options.values(),
         }
+
+    def optionsDialog(self, mode: OptionsModes):
+        if mode == OptionsModes.DBSCAN:
+            return self.__dbscan_options
+        elif mode == OptionsModes.HDBSCAN:
+            return self.__hdbscan_options
+        elif mode == OptionsModes.OPTICS:
+            return self.__optics_options
+        elif mode == OptionsModes.CLUSTER_DENSITY:
+            return self.__density_options
+        elif mode == OptionsModes.RENDERING:
+            return self.__cluster_options_dialog
+        elif mode == OptionsModes.RULER:
+            return self.__ruler_options_dialog
+        elif mode == OptionsModes.GRID:
+            return self.__grid_options_dialog
+        else:
+            logger.warning(f'No options dialog for mode: {mode}')
+            return None
 
 
 class LocalizationsView(QtWidgets.QWidget):
@@ -851,15 +872,18 @@ class LocalizationsView(QtWidgets.QWidget):
         if image is None or self.image_layers.currentLayer is None:
             return
 
-        index = kwargs.get('index', self.image_layers.currentIndex)
+        index = kwargs.pop('index', self.image_layers.currentIndex)
+        rect = kwargs.pop('rect', None)
 
         colorMap = self.fittingResults[index].colormap
         if colorMap is not None:
             kwargs['colorMap'] = colorMap
 
-        self.image_layers.getImageItemAt(index).setImage(
-            image, autoLevels=autoLevels, **kwargs
-        )
+        item = self.image_layers.getImageItemAt(index)
+        item.setImage(image, autoLevels=autoLevels, **kwargs)
+
+        if rect is not None:
+            item.setRect(QtCore.QRectF(*rect))  # (x0, y0, width_nm, height_nm)
 
     def init_graphics(self):
         '''Initialize the graphics layout for the main window.'''
@@ -868,12 +892,20 @@ class LocalizationsView(QtWidgets.QWidget):
         self.image_widget.setMinimumWidth(600)
 
         # Create the ViewBox
-        self.view_box: pg.ViewBox = self.image_widget.addViewBox(row=0, col=0)
+        self.view_box = self.image_widget.ci.addViewBox(row=0, col=0)
 
-        self.view_box.setAspectLocked(True)
+        self.view_box.setAspectLocked(True, 1)
         self.view_box.setAutoVisible(True)
-        self.view_box.enableAutoRange()
+        self.view_box.enableAutoRange(enable=False)
         self.view_box.invertY(True)
+
+        self._scale_bar = pg.ScaleBar(
+            size=1000,
+            suffix='nm',
+            brush=pg.mkBrush('w'),
+            offset=(-20, -20),
+        )
+        self._scale_bar.setParentItem(self.view_box)
 
         self.empty_image = np.zeros((128, 128), dtype=np.uint8)
         self.empty_alpha = np.zeros((128, 128, 4), dtype=np.uint8)
@@ -903,6 +935,23 @@ class LocalizationsView(QtWidgets.QWidget):
         # Add the two sub-main layouts
         self.main_layout.addWidget(self.image_widget, 4)
 
+        self._render_debounce = QtCore.QTimer(self)
+        self._render_debounce.setSingleShot(True)
+        self._render_debounce.setInterval(50)
+        self._render_debounce.timeout.connect(self.render_loc)
+
+        self._render_token = 0
+
+        def _on_view_range_changed(*_):
+            (x0, x1), (y0, y1) = self.view_box.viewRange()
+            self.localization_widget.set_view_readout(
+                (x0 + x1) / 2, (y0 + y1) / 2, x1 - x0, y1 - y0
+            )
+
+            self._render_debounce.start()
+
+        self.view_box.sigRangeChanged.connect(_on_view_range_changed)
+
     def add_data_layer(self, data: FittingResults):
         if data is None:
             return
@@ -925,7 +974,8 @@ class LocalizationsView(QtWidgets.QWidget):
             name=path,
         )
 
-        self.render_loc()
+        self.render_loc(full_extent=True)
+        # self.view_box.autoRange()
 
     def add_image_item(
         self,
@@ -1007,15 +1057,28 @@ class LocalizationsView(QtWidgets.QWidget):
         '''Update the position label.'''
         self.localization_widget.update_position(self.currentResults)
 
-    def render_loc(self):
+    def goto_view(self):
+        cx, cy, w, h = self.localization_widget.viewCenterSize
+        self.view_box.setRange(
+            xRange=(cx - w / 2, cx + w / 2),
+            yRange=(cy - h / 2, cy + h / 2),
+            padding=0,
+        )
+
+    def render_loc(self, full_extent=False):
         '''Update the rendered super-res image.
+
+        Parameters
+        ----------
+        full_extent : bool, optional
+            Whether to render the full extent of the image, by default False.
 
         Returns
         -------
         ndarray or None
             Rendered super-res image or None.
         '''
-        return LocalizationRenderHelper.render_loc(self)
+        return LocalizationRenderHelper.render_loc(self, full_extent=full_extent)
 
     def toAnimation(self):
         '''
@@ -1104,15 +1167,12 @@ class LocalizationsView(QtWidgets.QWidget):
         self.localization_widget.extractZActivated.connect(
             lambda: LocalizationProcessing.extract_z(self)
         )
+        self.localization_widget.viewUpdateRequested.connect(self.goto_view)
 
-        self.localization_widget.driftCrossActivated.connect(
-            lambda: LocalizationProcessing.drift_cross(self)
-        )
-        self.localization_widget.driftFiducialsActivated.connect(
-            lambda: LocalizationProcessing.drift_fdm(self)
-        )
-        self.localization_widget.aimDriftCorrectionActivated.connect(
-            lambda: LocalizationProcessing.drift_aim(self)
+        self.localization_widget.driftCorrectionActivated.connect(
+            lambda method, params: LocalizationProcessing.drift_correction(
+                self, method, params
+            )
         )
 
         self.localization_widget.frcActivated.connect(
@@ -1154,6 +1214,9 @@ class LocalizationsView(QtWidgets.QWidget):
         )
         self.localization_widget.renderRulersActivated.connect(
             lambda: LocalizationRenderHelper.render_rulers(self)
+        )
+        self.localization_widget.renderGridActivated.connect(
+            lambda: LocalizationRenderHelper.render_grid(self)
         )
 
         self.localization_widget.importActivated.connect(
@@ -1271,6 +1334,20 @@ class LocalizationsView(QtWidgets.QWidget):
         if self.currentResults is not None:
             self.results_plot.toggle_track_plots()
 
+    def _show_empty_filter_image(self):
+        img = np.zeros(
+            (
+                self.image_layers.currentLayer.height(),
+                self.image_layers.currentLayer.width(),
+                3,
+            ),
+            np.uint8,
+        )
+        cv2.putText(
+            img, 'EMPTY!', (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 1, 2
+        )
+        self.setImage(img, autoLevels=False)
+
     def filter_updated(self, df: pd.DataFrame):
         '''Update the view when data filters are updated.
 
@@ -1279,53 +1356,118 @@ class LocalizationsView(QtWidgets.QWidget):
         df : pd.DataFrame
             The filtered DataFrame.
         '''
-        if df is not None:
-            self.updateStatsLabel()
+        if df is None:
+            return
 
-            if df.count().min() > 1:
-                render_mode = self.localization_widget.renderMode
-                renderClass = BaseRenderer(self.localization_widget.bin_xy, render_mode)
-                img = renderClass.render_xy(
-                    df['x'].to_numpy(), df['y'].to_numpy(), df['intensity'].to_numpy()
-                )
-                self.setImage(img, autoLevels=False)
-            else:
-                # Create a black image
-                img = np.zeros(
-                    (
-                        self.image_layers.currentLayer.height(),
-                        self.image_layers.currentLayer.width(),
-                        3,
-                    ),
-                    np.uint8,
-                )
+        self.updateStatsLabel()
 
-                # Write some Text
-                font = cv2.FONT_HERSHEY_SIMPLEX
-                bottomLeftCornerOfText = (10, 50)
-                fontScale = 1
-                fontColor = (255, 255, 255)
-                thickness = 1
-                lineType = 2
+        if df.count().min() <= 1:
+            self._show_empty_filter_image()
+            return
 
-                cv2.putText(
-                    img,
-                    'EMPTY!',
-                    bottomLeftCornerOfText,
-                    font,
-                    fontScale,
-                    fontColor,
-                    thickness,
-                    lineType,
-                )
-                self.setImage(img, autoLevels=False)
+        filtered_table = FittingResults.fromDataFrame(df)
+        kwargs = self.localization_widget.toDict()
+        kwargs['view_range'] = tuple(self.view_box.viewRange())
+
+        images, rects = LocalizationRenderHelper.batch_render_loc(
+            [filtered_table], **kwargs
+        )
+        img, rect = (images[0], rects[0]) if images else (None, None)
+
+        if img is None:
+            self._show_empty_filter_image()
+            return
+
+        self.setImage(img, autoLevels=False, rect=rect)
+
+    @classmethod
+    def get_data_view(cls, path: str) -> QtWidgets.QWidget:
+        with h5py.File(path, 'r') as f:
+            if 'microEye' in f and 'PYTABLES_FORMAT_VERSION' in f.attrs:
+                type = 'Localizations'
+                return LocalizationsView(path=path)
+            elif (
+                'file_type' in f.attrs
+                and f.attrs['file_type'] == 'microEye.analysis.clustering.model'
+            ):
+                type = f.attrs['file_type']
+                return ClusterResultsWidget(path=path)
+        return None
 
 
 class LocalizationRenderHelper:
     '''Helper class for rendering localizations.'''
 
+    _PROJECTION_AXES = {
+        0: (Axis.X, Axis.Y, None),  # XY
+        1: (Axis.X, Axis.Z, None),  # XZ
+        2: (Axis.Y, Axis.Z, None),  # YZ
+        3: (Axis.X, Axis.Y, Axis.Z),  # XY (slice)
+        4: (Axis.X, Axis.Z, Axis.Y),  # XZ (slice)
+        5: (Axis.Y, Axis.Z, Axis.X),  # YZ (slice)
+    }
+    _AXIS_COLUMN = {Axis.X: DataColumns.X, Axis.Y: DataColumns.Y, Axis.Z: DataColumns.Z}
+
+    @staticmethod
+    def _effective_bin_pair(
+        requested_x, requested_y, extent_x, extent_y, max_px, force=False
+    ):
+        '''
+        Calculate the effective bin sizes for rendering based on
+        the requested bin sizes, the extent of the data, and the
+        maximum pixel size allowed.
+
+        Parameters
+        ----------
+        requested_x : float
+            The requested bin size in the x-direction.
+        requested_y : float
+            The requested bin size in the y-direction.
+        extent_x : float
+            The extent of the data in the x-direction.
+        extent_y : float
+            The extent of the data in the y-direction.
+        max_px : int
+            The maximum pixel size allowed.
+
+        Returns
+        -------
+        tuple of float
+            The effective bin sizes in the x and y directions.
+        '''
+        requested_x = max(requested_x, 1e-3)
+        requested_y = max(requested_y, 1e-3)
+        needed_x = extent_x / requested_x if extent_x > 0 else 0.0
+        needed_y = extent_y / requested_y if extent_y > 0 else 0.0
+        needed = max(needed_x, needed_y)
+        if needed <= max_px or force:
+            return requested_x, requested_y
+        scale = needed / max_px
+        return requested_x * scale, requested_y * scale
+
+    _spatial_index_cache = weakref.WeakKeyDictionary()
+
     @classmethod
-    def render_loc(cls, view: LocalizationsView):
+    def _get_spatial_index(cls, table: FittingResults) -> SpatialIndex3D:
+        '''
+        Spatial indices are used for efficient spatial queries on the localization data.
+
+        This method caches the spatial index to avoid redundant computations.
+
+        When `FittingResults` is updated, the cache is automatically
+        invalidated due to the use of `WeakKeyDictionary`.'''
+        index = cls._spatial_index_cache.get(table)
+        if index is None:
+            index = SpatialIndex3D(
+                table.data[DataColumns.X],
+                table.data[DataColumns.Y],
+                table.data[DataColumns.Z],
+            )
+            cls._spatial_index_cache[table] = index
+        return index
+
+    @classmethod
+    def render_loc(cls, view: LocalizationsView, full_extent: bool = False):
         '''Update the rendered super-res image.
 
         Returns
@@ -1336,18 +1478,65 @@ class LocalizationRenderHelper:
         if not view.fittingResults:
             return
 
-        images, aspects = cls.batch_render_loc(
-            view.fittingResults, **view.localization_widget.toDict()
-        )
+        view._render_token += 1
+        token = view._render_token
 
-        auto_levels = view.localization_widget.autoStretch
+        kwargs = view.localization_widget.toDict()
+        kwargs['view_range'] = None if full_extent else tuple(view.view_box.viewRange())
 
-        for idx, (rendered_img, aspect) in enumerate(zip(images, aspects)):
-            if rendered_img is not None:
-                view.setImage(rendered_img, index=idx, autoLevels=auto_levels)
-                view.view_box.setAspectLocked(True, aspect)
+        def work(**_):
+            return LocalizationRenderHelper.batch_render_loc(
+                view.fittingResults, **kwargs
+            )
 
-        return images
+        def done(result):
+            if token != view._render_token or result is None:
+                return
+            images, rects = result
+            auto_levels = view.localization_widget.autoStretch
+            for idx, (img, rect) in enumerate(zip(images, rects)):
+                if img is not None:
+                    # Compute the histogram levels for auto-stretching
+                    # Conisder data is SMLM and linear stretching is not ideal,
+                    # we can use percentile-based stretching
+                    levels = (
+                        np.percentile(img, [0, 99.9])
+                        if auto_levels
+                        else view.histogram_item.getLevels()
+                    )
+
+                    view.setImage(
+                        img, index=idx, rect=rect, autoLevels=False, levels=levels
+                    )
+
+                    if view._scale_bar:
+                        # sacale bar size in nm based on the FOV
+                        scale_size = max(rect[2], rect[3]) / 10
+                        # Round to nearest 1, 2, 5, 10, 20, 50, 100, etc.
+                        magnitude = 10 ** np.floor(np.log10(scale_size))
+                        nice_sizes = np.array([1, 2, 5, 10, 20, 50, 100]) * magnitude
+                        closest_size = nice_sizes[
+                            np.argmin(np.abs(nice_sizes - scale_size))
+                        ]
+                        view._scale_bar.size = closest_size
+                        view._scale_bar.text.setText(
+                            f'{closest_size:.0f} nm'
+                            if closest_size < 1000
+                            else f'{closest_size / 1000:.1f} μm'
+                        )
+                        view._scale_bar.updateBar()
+
+            if full_extent:
+                view.view_box.autoRange()
+
+        def error(exc):
+            logger.error('Rendering failed.')
+            traceback.print_exc()
+
+        worker = QThreadWorker(work)
+        worker.signals.result.connect(done)
+        worker.signals.error.connect(error)
+        view._threadpool.start(worker)
 
     @classmethod
     def batch_render_loc(cls, tables: list[FittingResults], **kwargs):
@@ -1369,50 +1558,84 @@ class LocalizationRenderHelper:
             return [], []
 
         images = [None] * len(tables)
+        rects = [None] * len(tables)
         aspects = [1] * len(tables)
 
         renderMode = kwargs.get('renderMode', RenderModes.HISTOGRAM)
         projection = kwargs.get('projection', 0)
-        xy_bin = kwargs.get('binXY', 1)
-        z_bin = kwargs.get('binZ', 1)
+        xy_bin = kwargs.get('binXY', 1) or 1
+        z_bin = kwargs.get('binZ', 1) or 1
         slicePosition = kwargs.get('slicePosition', 0)
 
-        renderer = BaseRenderer(xy_bin, z_bin, renderMode)
+        # ((x0,x1),(y0,y1)) of the *displayed* axes, nm, or None
+        view_range = kwargs.get('view_range')
+        max_render_px = kwargs.get('max_render_px', 2048)
+
+        axes = cls._PROJECTION_AXES.get(projection)
+        if axes is None:
+            return images, rects
+
+        view_x_axis, view_y_axis, slice_axis = axes
+
+        requested_bin = {Axis.X: xy_bin, Axis.Y: xy_bin, Axis.Z: z_bin}
+        slice_width = requested_bin.get(slice_axis) if slice_axis is not None else None
 
         for idx, localizations in enumerate(tables):
             if not localizations or len(localizations) <= 0:
                 continue
 
-            if 0 <= projection < 3:
-                rendered_img = renderer.render(
-                    Projection(projection),
-                    localizations.data[DataColumns.X],
-                    localizations.data[DataColumns.Y],
-                    localizations.data[DataColumns.Z],
-                    localizations.data[DataColumns.INTENSITY],
-                )
-
-                aspects[idx] = 1 if projection == 0 else xy_bin / z_bin
-            elif 3 <= projection < 6:
-                slice_proj = projection - 3
-                aspects[idx] = 1 if slice_proj == 0 else xy_bin / z_bin
-                width = z_bin if slice_proj == 0 else xy_bin
-
-                rendered_img = renderer.render_slice(
-                    Projection(slice_proj),
-                    localizations.data[DataColumns.X],
-                    localizations.data[DataColumns.Y],
-                    localizations.data[DataColumns.Z],
-                    localizations.data[DataColumns.INTENSITY],
-                    slicePosition,
-                    width,
-                )
-            else:
+            index = cls._get_spatial_index(localizations)
+            if not (index.has_axis(view_x_axis) and index.has_axis(view_y_axis)):
+                continue  # e.g. no Z column but an XZ/YZ mode was requested
+            if slice_axis is not None and not index.has_axis(slice_axis):
                 continue
 
-            images[idx] = rendered_img
+            col_x = localizations.data[cls._AXIS_COLUMN[view_x_axis]]
+            col_y = localizations.data[cls._AXIS_COLUMN[view_y_axis]]
 
-        return images, aspects
+            if view_range is not None:
+                (x0, x1), (y0, y1) = view_range
+            else:
+                x0, x1 = float(np.min(col_x)), float(np.max(col_x))
+                y0, y1 = float(np.min(col_y)), float(np.max(col_y))
+
+            eff_x, eff_y = cls._effective_bin_pair(
+                requested_bin[view_x_axis],
+                requested_bin[view_y_axis],
+                x1 - x0,
+                y1 - y0,
+                max_render_px,
+                force=kwargs.get('force_bin_size', False),
+            )
+
+            origin_x = np.floor(x0 / eff_x) * eff_x
+            origin_y = np.floor(y0 / eff_y) * eff_y
+
+            ranges = {view_x_axis: (origin_x, x1), view_y_axis: (origin_y, y1)}
+            if slice_axis is not None:
+                half_w = slice_width / 2
+                ranges[slice_axis] = (slicePosition - half_w, slicePosition + half_w)
+
+            sel = index.query(ranges)
+            if sel.size == 0:
+                continue
+
+            n_cols = max(1, int(np.ceil((x1 - origin_x) / eff_x)) + 4)
+            n_rows = max(1, int(np.ceil((y1 - origin_y) / eff_y)) + 4)
+
+            renderer = BaseRenderer(eff_x, eff_y, renderMode)
+            rendered_img = renderer.render_xy(
+                col_x[sel],
+                col_y[sel],
+                localizations.data[DataColumns.INTENSITY][sel],
+                shape=(n_rows, n_cols),
+                origin=(origin_x, origin_y),
+            )
+
+            images[idx] = rendered_img
+            rects[idx] = (origin_x, origin_y, n_cols * eff_x, n_rows * eff_y)
+
+        return images, rects
 
     @classmethod
     def render_clusters(
@@ -1423,85 +1646,19 @@ class LocalizationRenderHelper:
             return
 
         labels = view.currentResults.data.get(DataColumns.CLUSTER_ID)
-        if labels is None:
-            logger.warning('No cluster labels found. Run DBSCAN first.')
+        if labels is None or len(np.unique(labels)) <= 2:
+            logger.warning('No cluster labels found. Run Clustering first.')
             return None
 
-        labels = np.asarray(labels, dtype=np.int32)
-        x = np.asarray(view.currentResults.data[DataColumns.X], dtype=np.float64)
-        y = np.asarray(view.currentResults.data[DataColumns.Y], dtype=np.float64)
-        z = (
-            view.currentResults.data[DataColumns.Z]
-            if view.currentResults.data[DataColumns.Z] is not None
-            else None
+        view.cluster_viewer = ClustersViewer()
+
+        view.cluster_viewer.load_cluster_render(
+            cluster_render_result=ClusterRenderData(
+                tables=[view.currentResults.toClusterRender()],
+            )
         )
 
-        if (
-            not hasattr(view, '_cluster_options_dialog')
-            or view._cluster_options_dialog is None
-        ):
-            view._cluster_options_dialog = ClusterPlotOptionsDialog(view)
-
-        res = view._cluster_options_dialog.exec()
-        if not res:
-            return
-
-        options = view._cluster_options_dialog.values()
-
-        if options['mode'] in [
-            'fov',
-        ]:
-            work_func = ClustersScatter.scatter
-
-            args = [x, y, z, labels]
-            worker_kwargs = {}
-        elif options['mode'] == 'superimposed':
-            work_func = ClustersScatter.superimposed
-
-            intensity = np.asarray(
-                view.currentResults.data[DataColumns.INTENSITY], dtype=np.float64
-            )
-            crlb_x = np.asarray(
-                view.currentResults.data[DataColumns.CRLB_X], dtype=np.float64
-            )
-            crlb_y = np.asarray(
-                view.currentResults.data[DataColumns.CRLB_Y], dtype=np.float64
-            )
-
-            args = [x, y, z, intensity, labels, crlb_x, crlb_y]
-
-            worker_kwargs = {
-                'rasterized': options['rasterized'],
-                'pixel_size': options['pixel_size'],
-                'render_mode': options['render_mode'],
-                'center_mode': options['center_mode'],
-                'extent': options['extent'],
-                'rejection_threshold': options['rejection_threshold'],
-                'min_points': options['min_points'],
-            }
-        else:
-            logger.warning('Mode unavailable.')
-            return
-
-        def done(results):
-            if results is not None:
-                cluster_overlay_items = pg.GraphicsLayoutWidget(
-                    show=True, title='DBSCAN'
-                )
-                cluster_overlay_items.setBackground(None)
-
-                add_plot_result(cluster_overlay_items, results)
-
-                view.cluster_overlay_items = cluster_overlay_items
-                cluster_overlay_items.show()
-
-        view.runAsync(
-            work_func,
-            *args,
-            **worker_kwargs,
-            done=done,
-            finished_message='Cluster rendering completed.',
-        )
+        view.cluster_viewer.show()
 
     @classmethod
     def render_rulers(cls, view: LocalizationsView):
@@ -1509,47 +1666,32 @@ class LocalizationRenderHelper:
             return
 
         labels = view.currentResults.data.get(DataColumns.CLUSTER_ID)
-        if labels is None:
-            logger.warning('No cluster labels found. Run DBSCAN first.')
+        if labels is None or len(np.unique(labels)) <= 2:
+            logger.warning('No cluster labels found. Run Clustering first.')
             return None
 
-        if (
-            not hasattr(view, '_ruler_options_dialog')
-            or view._ruler_options_dialog is None
-        ):
-            view._ruler_options_dialog = RulerPlotOptionsDialog(view)
-        res = view._ruler_options_dialog.exec()
+        dialog = view.localization_widget.optionsDialog(OptionsModes.RULER)
+
+        if dialog is None:
+            logger.warning('Ruler options dialog not found.')
+            return
+
+        res = dialog.exec()
         if not res:
             return
 
-        options = view._ruler_options_dialog.values()
-
-        work_func = ClustersScatter.render_rulers_batch
+        work_func = render_rulers_batch
 
         args = [[view.currentResults]]
-        worker_kwargs = {
-            'leaf_size': view.localization_widget.toDict()['dbscanOptions'][
-                'leaf_size'
-            ],
-            'algorithm': view.localization_widget.toDict()['dbscanOptions'][
-                'algorithm'
-            ],
-            'scalebar_length': options['ruler_spacing'],
-        }
-        worker_kwargs.update(options)
+        worker_kwargs = dialog.values()
 
         def done(results):
-            if results is not None:
-                ruler_overlay_items = pg.GraphicsLayoutWidget(show=True, title='Rulers')
-                ruler_overlay_items.setBackground(None)
-
-                for i in range(len(results)):
-                    add_plot_result(
-                        ruler_overlay_items, results[i], 0, i, **worker_kwargs
-                    )
-
-                view.ruler_overlay_items = ruler_overlay_items
-                ruler_overlay_items.show()
+            if results is not None and isinstance(results, PipelineResult):
+                widget = ClusterResultsWidget()
+                widget.load_pipeline_result(results)
+                widget.resize(1100, 600)
+                widget.show()
+                view.ruler_overlay_items = widget
 
         view.runAsync(
             work_func,
@@ -1557,6 +1699,46 @@ class LocalizationRenderHelper:
             **worker_kwargs,
             done=done,
             finished_message='Ruler rendering completed.',
+        )
+
+    @classmethod
+    def render_grid(cls, view: LocalizationsView):
+        if view.currentResults is None or len(view.currentResults) <= 0:
+            return
+
+        labels = view.currentResults.data.get(DataColumns.CLUSTER_ID)
+        if labels is None or len(np.unique(labels)) <= 2:
+            logger.warning('No cluster labels found. Run Clustering first.')
+            return None
+
+        dialog = view.localization_widget.optionsDialog(OptionsModes.GRID)
+        if dialog is None:
+            logger.warning('Grid options dialog not found.')
+            return
+
+        res = dialog.exec()
+        if not res:
+            return
+
+        work_func = render_grids_batch
+
+        args = [[view.currentResults]]
+        worker_kwargs = dialog.values()
+
+        def done(results):
+            if results is not None and isinstance(results, PipelineResult):
+                widget = ClusterResultsWidget()
+                widget.load_pipeline_result(results)
+                widget.resize(1100, 600)
+                widget.show()
+                view.ruler_overlay_items = widget
+
+        view.runAsync(
+            work_func,
+            *args,
+            **worker_kwargs,
+            done=done,
+            finished_message='Grid rendering completed.',
         )
 
     @classmethod
@@ -1670,26 +1852,31 @@ class LocalizationProcessing:
         view.tardis.show()
 
     @classmethod
-    def drift_cross(cls, view: LocalizationsView):
-        '''Perform drift cross-correlation.'''
+    def drift_correction(cls, view: LocalizationsView, method: str, params: dict):
+        '''Perform drift correction using the specified method.'''
         if view.currentResults is None:
             return
 
         if len(view.currentResults) <= 0:
             return
 
-        method = view.localization_widget.crossMethod
-        label = view.localization_widget.crossLabel
+        label = view.localization_widget._drift_dialog.method_combo.currentText()
 
         def work_func(**kwargs):
             try:
-                return view.currentResults.drift_cross_correlation(
-                    view.localization_widget.crossBins,
-                    view.localization_widget.crossPixelSize,
-                    view.localization_widget.crossUpSampling,
-                    view.localization_widget.crossRMAX,
-                    method=method,
-                )
+                if method in ['rcc', 'dcc', 'mcc', 'phase']:
+                    return view.currentResults.drift_cross_correlation(
+                        method=method, **params
+                    )
+                elif method == 'fdm':
+                    return view.currentResults.drift_fiducial_marker()
+                elif method == 'aim':
+                    return view.currentResults.drift_aim(**params)
+                elif method == 'comet':
+                    return view.currentResults.drift_comet(**params)
+                else:
+                    logger.warning(f'Unknown drift correction method: {method}')
+
             except Exception:
                 traceback.print_exc()
                 return None
@@ -1700,72 +1887,12 @@ class LocalizationProcessing:
                 view.results_plot.setData(view.currentResults.dataFrame())
                 plot_drift(
                     *results[1],
-                    title=f'{label} Cross-Correlation',
+                    title=f'{label}',
                 )
                 view.render_loc()
 
         view.runAsync(
-            work_func, done=done, finished_message='Drift cross-correlation completed.'
-        )
-
-    @classmethod
-    def drift_fdm(cls, view: LocalizationsView):
-        '''Perform drift correction using fiducial markers.'''
-        if view.currentResults is None:
-            return
-
-        if len(view.currentResults) <= 0:
-            return
-
-        def work_func(**kwargs):
-            try:
-                return view.currentResults.drift_fiducial_marker()
-            except Exception:
-                traceback.print_exc()
-                return None
-
-        def done(results):
-            if results is not None:
-                view.currentResults = results[0]
-                view.results_plot.setData(view.currentResults.dataFrame())
-                plot_drift(*results[1], title='Fiducial Marker Drift Correction')
-                view.render_loc()
-
-        view.runAsync(
-            work_func,
-            done=done,
-            finished_message='Fiducial marker drift correction completed.',
-        )
-
-    @classmethod
-    def drift_aim(cls, view: LocalizationsView):
-        '''Perform drift correction using AIM.'''
-        if view.currentResults is None:
-            return
-
-        if len(view.currentResults) <= 0:
-            return
-
-        def work_func(**kwargs):
-            try:
-                return view.currentResults.drift_aim(
-                    view.localization_widget.aimSegmentSize,
-                    view.localization_widget.aimIntersectD,
-                    view.localization_widget.aimZScale,
-                )
-            except Exception:
-                traceback.print_exc()
-                return None
-
-        def done(results):
-            if results is not None:
-                view.currentResults = results[0]
-                view.results_plot.setData(view.currentResults.dataFrame())
-                plot_drift(*results[1], title='AIM Drift Correction')
-                view.render_loc()
-
-        view.runAsync(
-            work_func, done=done, finished_message='AIM drift correction completed.'
+            work_func, done=done, finished_message='Drift correction completed.'
         )
 
     @classmethod
@@ -1911,9 +2038,7 @@ class LocalizationProcessing:
                 for idx, (key, value) in enumerate(results.items()):
                     plot = gl.ci.addPlot(title=key, row=0, col=idx)
 
-                    items = ClustersScatter.histogram(
-                        value['counts'], bin_size=1, detect_peaks=True
-                    )
+                    items = ClustersScatter.histogram(value['counts'], bin_size=1)
 
                     plot.setLabel('bottom', value['xlabel'])
                     plot.setLabel('left', value['ylabel'])
@@ -1984,7 +2109,9 @@ class LocalizationProcessing:
         def work_func(**kwargs):
             try:
                 return view.currentResults.cluster_dbscan(
-                    **view.localization_widget.toDict().get('dbscanOptions', {})
+                    **view.localization_widget.optionsDialog(
+                        OptionsModes.DBSCAN
+                    ).values()
                 )
             except Exception:
                 traceback.print_exc()
@@ -2006,7 +2133,9 @@ class LocalizationProcessing:
         def work_func(**kwargs):
             try:
                 return view.currentResults.cluster_hdbscan(
-                    **view.localization_widget.toDict().get('hdbscanOptions', {})
+                    **view.localization_widget.optionsDialog(
+                        OptionsModes.HDBSCAN
+                    ).values()
                 )
             except Exception:
                 traceback.print_exc()
@@ -2028,7 +2157,9 @@ class LocalizationProcessing:
         def work_func(**kwargs):
             try:
                 return view.currentResults.cluster_optics(
-                    **view.localization_widget.toDict().get('opticsOptions', {})
+                    **view.localization_widget.optionsDialog(
+                        OptionsModes.OPTICS
+                    ).values()
                 )
             except Exception:
                 traceback.print_exc()
@@ -2060,9 +2191,17 @@ class LocalizationProcessing:
         ):
             return
 
+        labels = view.currentResults.data.get(DataColumns.CLUSTER_ID)
+        if labels is None or len(np.unique(labels)) <= 2:
+            logger.warning('No cluster labels found. Run Clustering first.')
+            return None
+
+
         table = view.currentResults
 
-        options = view.localization_widget.toDict().get('densityOptions', {})
+        options = view.localization_widget.optionsDialog(
+            OptionsModes.CLUSTER_DENSITY
+        ).values()
 
         def worker_func(**kwargs):
             try:
@@ -2147,7 +2286,10 @@ class LocalizationIO:
                     )
 
             if 'Super-res image' in options:
-                sres_img = view.render_loc()[view.image_layers.currentIndex]
+                kwargs = view.localization_widget.toDict()
+                sres_img = LocalizationRenderHelper.batch_render_loc(
+                    view.fittingResults, force_bin_size=True, **kwargs
+                )[view.image_layers.currentIndex]
                 tf.imwrite(
                     re.sub(r'(\.h5|\.tsv)$', '_super_res.tif', filename),
                     sres_img,

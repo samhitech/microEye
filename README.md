@@ -3,11 +3,15 @@
 <!-- ![microEye](https://github.com/samhitech/microEye/assets/89871015/37ca0859-0b4b-402d-8652-9a01d0bf0f29) -->
 
 ```bash
-   __  ____              ____                ___  ____  ____ ___ 
-  /  |/  (_)__________  / __/_ _____   _  __|_  |/ / / / __/|_  |
- / /|_/ / / __/ __/ _ \/ _// // / -_) | |/ / __//_  _// _ \/ __/ 
-/_/  /_/_/\__/_/  \___/___/\_, /\__/  |___/____(_)_/(_)___/____/ 
-                          /___/  
+╭─────────────────────────────────────────────────────────────────────╮
+│                                                                     │
+│     __  ____              ____                ___  ____  ____ ____  │
+│    /  |/  (_)__________  / __/_ _____   _  __|_  |/ / / / __/|_  /  │
+│   / /|_/ / / __/ __/ _ \/ _// // / -_) | |/ / __//_  _// _ \_/_ <   │
+│  /_/  /_/_/\__/_/  \___/___/\_, /\__/  |___/____(_)_/(_)___/____/   │
+│                            /___/                                    │
+│                                                                     │
+╰─────────────────────────────────────────────────────────────────────╯
 ```
 
 The **`microEye`** is a Python toolkit for fluorescence microscopy that supports super-resolution single-molecule localization microscopy and single-particle tracking. It features hardware control, data analysis, and visualization.
@@ -530,6 +534,18 @@ Special thanks to the following projects and libraries that make this work possi
 - **TARDIS (Temporal Analysis of Relative Distances)**: We have developed a partial Python implementation of TARDIS without fitting for now. For more information, refer to the [`TARDIS` software releases](https://github.com/kjamartens/TARDIS-public). The underlying algorithms and scientific details of TARDIS are detailed in the manuscript:
 
   > _Martens et al., “Temporal analysis of relative distances (TARDIS) is a robust, parameter-free alternative to single-particle tracking”, Nature Methods (2024). [Article](https://rdcu.be/dv1sr)_
+
+- **RCC (Robust Cross-Correlation)**: We have implemented the RCC algorithm in Python for drift correction in SMLM data.
+  
+  > _Y. Wang, J. Schnitzbauer, Z. Hu, X. Li, Y. Cheng, Z.-L. Huang, and B. Huang, “Localization events-based sample drift correction for localization microscopy with redundant cross-correlation algorithm,” Opt. Express 22(13), 15982 (2014)._ [Paper](https://doi.org/10.1364/OE.22.015982) [GitHub](https://github.com/yinawang28/RCC)
+
+- **AIM (Adaptive Intersection Maximization)**: We have implemented the AIM algorithm in Python for drift correction in SMLM data.
+  
+  > _H. Ma, M. Chen, P. Nguyen, and Y. Liu, “Toward drift-free high-throughput nanoscopy through adaptive intersection maximization,” Sci. Adv. 10(21), eadm7765 (2024)._ [Paper](www.science.org/doi/10.1126/sciadv.adm7765) [GitHub](https://github.com/YangLiuLab/AIM)
+
+- **COMET (Cost-function Optimized Maximal overlap drift EsTimation)**: We have implemented the COMET algorithm in Python for drift correction in SMLM data.
+
+  > _L. Reinkensmeier, S. Aufmkolk, I. Farabella, A. Egner, and M. Bates, “Cost-function Optimized Maximal Overlap Drift Estimation for Single Molecule Localization Microscopy,” (2026)._ [Paper](https://doi.org/10.64898/2026.03.27.714864) [GitHub](https://github.com/gpufit/Comet/tree/master)
 
 > [!IMPORTANT]
 > **Disclaimer**

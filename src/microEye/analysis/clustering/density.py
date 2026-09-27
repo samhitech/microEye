@@ -14,51 +14,6 @@ from microEye.qt import QAction, QtCore, QtGui, QtWidgets, getSaveFileName
 logger = logging.getLogger(__name__)
 
 
-class Density_OptionsDialog(QtWidgets.QDialog):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-
-        self.setWindowTitle('Density Options')
-        self.setModal(True)
-
-        # Create layout
-        layout = QtWidgets.QFormLayout(self)
-
-        # Method selection
-        self.method_combo = QtWidgets.QComboBox()
-        self.method_combo.addItems(['convex_hull', 'alpha_shape', 'voronoi'])
-
-        # Force 2D
-        self.force_2d_checkbox = QtWidgets.QCheckBox('Force 2D Calculation (ignore Z)')
-
-        # Alpha parameter input (only relevant for alpha_shape)
-        self.alpha_input = QtWidgets.QDoubleSpinBox()
-        self.alpha_input.setRange(0.1, 1000.0)
-        self.alpha_input.setValue(30.0)
-        self.alpha_input.setSingleStep(1.0)
-
-        # Buttons
-        self.button_box = QtWidgets.QDialogButtonBox(
-            QtWidgets.QDialogButtonBox.StandardButton.Ok
-            | QtWidgets.QDialogButtonBox.StandardButton.Cancel
-        )
-        self.button_box.accepted.connect(self.accept)
-        self.button_box.rejected.connect(self.reject)
-
-        # Add widgets to layout
-        layout.addRow('Method:', self.method_combo)
-        layout.addRow('Alpha:', self.alpha_input)
-        layout.addWidget(self.force_2d_checkbox)
-        layout.addWidget(self.button_box)
-
-    def toDict(self):
-        return {
-            'method': self.method_combo.currentText(),
-            'alpha': self.alpha_input.value(),
-            'is_2d': self.force_2d_checkbox.isChecked(),
-        }
-
-
 class DensityAnalysisPlot(pg.GraphicsLayoutWidget):
     def __init__(self, parent=None):
         super().__init__(parent)

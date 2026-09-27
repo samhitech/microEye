@@ -1,6 +1,11 @@
+import argparse
 import importlib.util
 import logging
 import os
+
+from rich.console import Console
+from rich.logging import RichHandler
+from rich.traceback import install
 
 from microEye._version import __version__, version_info
 
@@ -10,6 +15,8 @@ from microEye._version import __version__, version_info
 from microEye.hardware import cams
 
 PREFERRED_QT_APIS = ('PySide6', 'PyQt6', 'PyQt5')
+
+HELP_MESSAGE = ''
 
 
 def _select_qt_api(cli_choice: str | None) -> str:
@@ -23,11 +30,16 @@ def _select_qt_api(cli_choice: str | None) -> str:
 
 
 def getArgs():
-    import argparse
     import os
+    import re
     import sys
 
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        add_help=False,
+    )
+    parser.add_argument(
+        '-h', '--help', action='store_true', help='Show this help message and exit.'
+    )
     parser.add_argument(
         '--module',
         help='The module to launch [mieye|viewer], '
@@ -63,6 +75,34 @@ def getArgs():
         action='store_true',
     )
 
+    lines = []
+    for line in parser.format_help().splitlines():
+        # format flags (cyan)
+        line = re.sub(r'(?<=\s|\[)(-\S+)', r'[bold #00d7ff]\1[/bold #00d7ff]', line)
+        line = re.sub(r'(?<=\s|\[)(--\S+)', r'[bold #00d7ff]\1[/bold #00d7ff]', line)
+
+        # format scripts & files (warm yellow)
+        line = re.sub(r'(?<=\s)(\S+\.py)', r'[#ffb86c]\1[/#ffb86c]', line)
+        line = re.sub(r'(?<=\s)(\S+\.exe)', r'[#ffb86c]\1[/#ffb86c]', line)
+        line = re.sub(r'(?<=\s)(\S+\.dll)', r'[#ffb86c]\1[/#ffb86c]', line)
+        line = re.sub(r'(?<=\s)(\S+\.so)', r'[#ffb86c]\1[/#ffb86c]', line)
+        line = re.sub(r'(?<=\s)(\S+\.dylib)', r'[#ffb86c]\1[/#ffb86c]', line)
+
+        # format curly braces (bright green)
+        line = re.sub(r'(?<=\s)(\{.*?\})', r'[bold #5af78e]\1[/bold #5af78e]', line)
+
+        # format flags within brackets (cyan)
+        line = re.sub(r'(?<=\[)(--\S+)', r'[bold #00d7ff]\1[/bold #00d7ff]', line)
+        line = re.sub(r'(?<=\[)(-\S+)', r'[bold #00d7ff]\1[/bold #00d7ff]', line)
+
+        line = line.replace('usage:', '[bold #dcdcaa]usage:[/bold #dcdcaa]')
+        line = line.replace('options:', '[bold #dcdcaa]options:[/bold #dcdcaa]')
+
+        lines.append(line)
+
+    global HELP_MESSAGE
+    HELP_MESSAGE = '\n'.join(lines) + '\n'
+
     args, _ = parser.parse_known_args(sys.argv)
 
     # access the parsed arguments
@@ -74,6 +114,7 @@ def getArgs():
     configure_logger(args)
 
     return args
+
 
 def configure_logger(args):
     import os
@@ -93,15 +134,31 @@ def configure_logger(args):
         and args.module
     ):
         os.makedirs(os.path.dirname(log_filename))
+
+    if not args.no_log_file and args.module:
+        console = Console(
+            file=open(log_filename, 'a', encoding='utf-8')  # noqa: SIM115, W291
+        )
+        file_handler = RichHandler(
+                        console=console,
+                        rich_tracebacks=True,
+                        tracebacks_show_locals=True,
+                        markup=True,
+                    )
+    else:
+        file_handler = logging.NullHandler()
+
     # set the logging configuration with both file and console handlers
     logging.basicConfig(
         level=level,
-        format='%(asctime)s | %(name)s | %(levelname)s | %(message)s',
+        format='%(message)s',
         handlers=[
-            logging.FileHandler(log_filename)
-            if not args.no_log_file and args.module
-            else logging.NullHandler(),
-            logging.StreamHandler(sys.stdout)
+            file_handler,
+            RichHandler(
+                rich_tracebacks=True,
+                tracebacks_show_locals=True,
+                markup=True,
+            )
             if not args.no_log_console
             else logging.NullHandler(),
         ],
@@ -110,5 +167,10 @@ def configure_logger(args):
     logging.getLogger().debug('Log level set to %s', level_name)
 
 
-
+install(
+    show_locals=False,
+    code_width=150,
+    width=200,
+    extra_lines=2,
+)
 ARGS = getArgs()

@@ -1,19 +1,17 @@
+# AIM: Adaptive Intersection Maximization
+#
+# References
+# [1] H. Ma, M. Chen, P. Nguyen, and Y. Liu,
+# “Toward drift-free high-throughput nanoscopy through adaptive
+# intersection maximization,” Sci. Adv. 10(21), eadm7765 (2024).
+#
+# https://www.science.org/doi/10.1126/sciadv.adm7765
+# https://github.com/YangLiuLab/AIM
+#
 import numba as nb
 import numpy as np
-from scipy.interpolate import PchipInterpolator, interp1d
-from scipy.optimize import OptimizeResult, minimize
-from scipy.spatial import KDTree
 
-
-@nb.jit(nopython=True, parallel=True)
-def _shift_correction(frame_bins, x, y, z, shifts: np.ndarray):
-    for idx in nb.prange(0, len(shifts)):
-        mask = slice(frame_bins[idx - 1] if idx > 0 else 0, frame_bins[idx])
-        x[mask] -= shifts[idx, 0]
-        if y is not None and shifts.ndim > 1 and shifts.shape[1] > 1:
-            y[mask] -= shifts[idx, 1]
-        if z is not None and shifts.ndim > 1 and shifts.shape[1] > 2:
-            z[mask] -= shifts[idx, 2]
+from microEye.analysis.drift.core import _compute_frame_drift, _shift_correction
 
 
 @nb.njit('int64(int64[:], int64[:], int64[:], int64[:])', cache=True)
@@ -140,11 +138,11 @@ def _calc_intersections(
     target_counts: np.ndarray,
     shifts: np.ndarray,
     roi_size: int,
-    is_2d: bool = True
+    is_2d: bool = True,
 ):
     target_coords_shifted = target[:, np.newaxis] + shifts
 
-    intersection_counts : np.ndarray = np.zeros(shifts.shape[0], dtype=np.int64)
+    intersection_counts: np.ndarray = np.zeros(shifts.shape[0], dtype=np.int64)
 
     for shift_idx in nb.prange(shifts.shape[0]):
         intersection_counts[shift_idx] = _intersections(
@@ -199,8 +197,9 @@ def _point_intersect_2d(
         tar_counts.astype(np.int64),
         shifts.astype(np.int64),
         int(roi_size),
-        is_2d=True
+        is_2d=True,
     )
+
 
 def _point_intersect_1d(
     ref_coords: np.ndarray,
@@ -220,24 +219,27 @@ def _point_intersect_1d(
         tar_counts.astype(np.int64),
         shifts.astype(np.int64),
         int(roi_size),
-        is_2d=False
+        is_2d=False,
     )
+
 
 def _get_fft_peak(roi: np.ndarray, roi_size: int) -> tuple[float, float]:
     '''
     Estimate sub-pixel peak position using 2D FFT phase.
     roi shape is (roi_size, roi_size) where row=Y, col=X.
     '''
-    fft_spectrum = np.fft.fft2(roi) # Do NOT transpose!
+    fft_spectrum = np.fft.fft2(roi)  # Do NOT transpose!
     grid_dimensions = np.array(roi.shape)
 
     # Extract primary frequencies:
     # Axis 1 (cols) = X frequency component [0, 1]
     # Axis 0 (rows) = Y frequency component [1, 0]
-    phase_angles = np.array([
-        np.angle(fft_spectrum[0, 1]),  # X-frequency
-        np.angle(fft_spectrum[1, 0]),  # Y-frequency
-    ])
+    phase_angles = np.array(
+        [
+            np.angle(fft_spectrum[0, 1]),  # X-frequency
+            np.angle(fft_spectrum[1, 0]),  # Y-frequency
+        ]
+    )
     spatial_resolutions = 2 * np.pi / grid_dimensions
 
     peak_pos = np.zeros(2, dtype=np.float64)
@@ -359,7 +361,7 @@ def intersection_max(
 
         # convert target coordinates to a 1D array in intersect_d units
         x_scaled = np.round(relative_drift_x + x1 / Intersect_d).astype(np.int64)
-        y_scaled = np.round(relative_drift_y +y1 / Intersect_d).astype(np.int64)
+        y_scaled = np.round(relative_drift_y + y1 / Intersect_d).astype(np.int64)
 
         target = x_scaled + y_scaled * int(image_width)
 
@@ -528,54 +530,6 @@ def intersection_max_z(
         'frame_drift': frame_drift,
         'drift_z': drift_z,
     }
-
-
-def _compute_frame_drift(
-    seg_centers: np.ndarray,
-    drift_segments: np.ndarray,
-    max_frame: int,
-    kind: str = 'pchip',
-) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Interpolates coarse block drift vectors down to a per-frame
-    drift array (max_frame, ndim).
-
-    Parameters
-    ----------
-    seg_centers : np.ndarray
-        Array of shape (num_segs,) containing the center frame of each segment.
-    drift_segments : np.ndarray
-        Array of shape (num_segs, ndim) containing the estimated drift for each segment.
-    max_frame : int
-        The maximum frame index in the dataset.
-    kind : str
-        Interpolation method: 'pchip' (default) or 'linear', 'cubic', etc.
-
-    Returns
-    -------
-    frames_full : np.ndarray
-        Array of shape (max_frame,) containing all frame indices.
-    frame_drift : np.ndarray
-        Array of shape (max_frame, ndim) containing the interpolated
-        drift for each frame.
-    """
-    ndim = drift_segments.shape[1]
-    frames_full = np.arange(0, max_frame)
-    frame_drift = np.zeros((max_frame, ndim), dtype=np.float64)
-
-    for d in range(ndim):
-        if kind == 'pchip':
-            # PCHIP prevents cubic extrapolation ripples at boundary frames
-            interp_func = PchipInterpolator(
-                seg_centers, drift_segments[:, d], extrapolate=True
-            )
-        else:
-            interp_func = interp1d(
-                seg_centers, drift_segments[:, d], kind=kind, fill_value='extrapolate'
-            )
-        frame_drift[:, d] = interp_func(frames_full)
-
-    return frames_full, frame_drift
 
 
 def _run_two_stage_aim_engine(

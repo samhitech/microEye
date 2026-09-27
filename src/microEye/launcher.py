@@ -1,4 +1,6 @@
-from microEye import ARGS, __version__
+from rich.console import Console
+
+from microEye import ARGS, HELP_MESSAGE, __version__
 
 
 def splash(module):
@@ -6,6 +8,8 @@ def splash(module):
 
     import pyfiglet
     import pyjokes
+    from rich.panel import Panel
+    from rich.text import Text
 
     fonts = [
         # 'ansi_shadow',
@@ -18,12 +22,26 @@ def splash(module):
         # 'standard',
         # 'stop',
     ]
-    print(
-        pyfiglet.Figlet(font=random.choice(fonts), width=250).renderText(
-            f'MicroEye v{__version__}\n{module}'
-        )
+    title_panel = Panel(
+        Text(
+            pyfiglet.Figlet(font=random.choice(fonts), width=250).renderText(
+                f'MicroEye v{__version__}'
+            ),
+            style='bold #dcdcaa',
+        ),
+        subtitle=f'[bold #4fc1ff]{module}[/bold #4fc1ff]',
+        border_style='#4fc1ff',  # Bright VS Code blue for the outline
+        padding=(1, 2),
+        expand=False,
     )
-    print(pyjokes.get_joke())
+    joke_text = Text.from_markup(
+        f'\n[bold #dcdcaa]🤖 Random Joke:[/bold #dcdcaa] '
+        f'[italic #ce9178]"{pyjokes.get_joke()}"[/italic #ce9178]\n'
+    )
+
+    console = Console()
+    console.print(title_panel)
+    console.print(joke_text)
 
 
 def main():
@@ -40,6 +58,10 @@ def main():
 
     splash(name)
 
+    if ARGS.help:
+        Console().print(HELP_MESSAGE)
+        return
+
     if module_name == 'mieye':
         from microEye.hardware.mieye import miEye_module
 
@@ -49,7 +71,10 @@ def main():
 
         gui_class = multi_viewer
     else:
-        print('For help: \n>>> microEye -h')
+        Console().print(
+            '[bold #dcdcaa]For help:\n>>>[/bold #dcdcaa] '
+            '[italic #4fc1ff]microEye -h[/italic #4fc1ff]'
+        )
         from microEye.utils.micro_launcher import microLauncher
 
         gui_class = microLauncher

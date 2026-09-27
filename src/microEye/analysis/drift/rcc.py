@@ -1,3 +1,12 @@
+# RCC: Robust Cross-Correlation Drift Estimation
+# MCC: Mean Cross-Correlation Drift Estimation
+# DCC: Direct Cross-Correlation Drift Estimation
+#
+# References
+# [1] Y. Wang, J. Schnitzbauer, Z. Hu, X. Li, Y. Cheng, Z.-L. Huang, and B. Huang,
+#     “Localization events-based sample drift correction for localization microscopy
+#     with redundant cross-correlation algorithm,” Opt. Express 22(13), 15982 (2014).
+#
 import cv2
 import numba as nb
 import numpy as np

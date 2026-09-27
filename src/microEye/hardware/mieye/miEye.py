@@ -127,7 +127,7 @@ class miEye_module(QMainWindow):
 
         # Threading
         max_threads = QtCore.QThreadPool.globalInstance().maxThreadCount()
-        print(f'Multithreading with maximum {max_threads} threads')
+        logger.info(f'Multithreading with maximum {max_threads} threads')
 
         # IR 1D array
         self.ir_array_dock = None

@@ -1,13 +1,13 @@
 import json
 import logging
 import os
-import re
 import webbrowser
 from enum import Enum
 from typing import Optional, Union
 from weakref import ref
 
 import cv2
+import h5py
 
 from microEye import __version__
 from microEye.analysis.file_system import FileSystem, _compact_display_name
@@ -55,7 +55,7 @@ class multi_viewer(QMainWindow):
 
         # Threading
         self._threadpool = QtCore.QThreadPool.globalInstance()
-        print(
+        logger.info(
             f'Multithreading with maximum {self._threadpool.maxThreadCount()} threads'
         )
 
@@ -396,8 +396,15 @@ class multi_viewer(QMainWindow):
                 view = None
                 logger.error(f'Error opening: {e}')
 
-        elif file_type in ['HDF5', 'TSV']:
+        elif file_type in ['TSV']:
             view = LocalizationsView(path=path)
+        elif file_type in ['HDF5']:
+            view = LocalizationsView.get_data_view(path=path)
+
+            if view is None:
+                logger.warning(f'Unknown HDF5 file type for {path}.')
+                return
+
         elif file_type == 'PSF':
             view = PSFView(path)
 

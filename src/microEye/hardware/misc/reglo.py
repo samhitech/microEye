@@ -1,3 +1,4 @@
+import logging
 import traceback
 
 from microEye.qt import (
@@ -12,6 +13,7 @@ from microEye.qt import (
 )
 from microEye.utils.start_gui import StartGUI
 
+logger = logging.getLogger(__name__)
 
 class RegloDigital(QtSerialPort.QSerialPort):
     _ACK_ = '*'
@@ -382,7 +384,7 @@ class reglo_digital_module(QMainWindow):
 
         # Threading
         self._threadpool = QtCore.QThreadPool.globalInstance()
-        print(
+        logger.info(
             f'Multithreading with maximum {self._threadpool.maxThreadCount()} threads'
         )
 

@@ -1,40 +1,34 @@
 import logging
 import os
-import re
 import traceback
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from enum import Enum
-from pydoc import text
 from weakref import ref
 
-import cv2
 import numpy as np
-import ome_types as ome
 import pyqtgraph as pg
-import tifffile as tf
-import tqdm
-from pystackreg import StackReg
-from skimage import transform
-from tqdm import tqdm
+import rich.progress as rp
 
 from microEye import __version__
-from microEye.analysis.clustering.plot import (
-    ClusterPlotOptionsDialog,
-    ClustersScatter,
-    PlotResult,
-    RulerPlotOptionsDialog,
-    add_plot_result,
+from microEye.analysis.clustering.dataclasses import (
+    ClusterRenderData,
+    PipelineResult,
 )
+from microEye.analysis.clustering.dialogs import OptionsDialog, OptionsModes
+from microEye.analysis.clustering.pipeline import (
+    render_grids_batch,
+    render_rulers_batch,
+)
+from microEye.analysis.clustering.viewer import (
+    ClusterResultsWidget,
+    ClustersViewer,
+)
+from microEye.analysis.drift import plot_drift
 from microEye.analysis.fitting.results import DataColumns, FittingResults
-from microEye.analysis.processing import FRC_resolution_binomial, plot_frc
+from microEye.analysis.processing.frc import FRC_resolution_binomial, plot_frc
 from microEye.analysis.viewer.localizations import (
     LocalizationRenderHelper,
     LocalizationTab,
-    plot_drift,
 )
-from microEye.hardware.stages import view
-from microEye.images import ImageSequenceBase, TiffSeqHandler, create_array
-from microEye.qt import Qt, QtCore, QtGui, QtWidgets, getOpenFileName, getSaveFileName
+from microEye.qt import QtCore, QtWidgets
 from microEye.utils.display import DisplayManager, fast_autolevels_opencv
 from microEye.utils.thread_worker import QThreadWorker
 
@@ -70,50 +64,54 @@ def display_frame(
     )
 
 
+def _get_progress_bar():
+    return rp.Progress(
+        rp.SpinnerColumn(),  # Animated spinner
+        rp.TextColumn('[progress.description]{task.description}'),
+        rp.BarColumn(),  # The actual progress bar
+        rp.TaskProgressColumn(show_speed=True),  # Percentage complete
+        rp.TimeElapsedColumn(),
+        transient=True,
+    )
+
+
 def batch_cluster_dbscan(tables: list[FittingResults], **kwargs):
     try:
-        with tqdm(
-            total=len(tables), desc='Batch DBSCAN Clustering', unit='table'
-        ) as pbar:
+        with _get_progress_bar() as progress:
+            task = progress.add_task('[red]Batch DBSCAN Clustering', total=len(tables))
+
             for _, table in enumerate(tables):
                 table.cluster_dbscan(**kwargs.get('dbscanOptions', {}))
 
-                pbar.update(1)
+                progress.update(task, advance=1)
     except Exception:
         traceback.print_exc()
 
 
-def batch_drift_correction(tables: list[FittingResults], mode: str, **kwargs):
+def batch_drift_correction(
+    tables: list[FittingResults], mode: str, params: dict, **kwargs
+):
     try:
-        keys = kwargs.get('keys', [])
+        keys = kwargs.pop('keys', [])
 
         drift_args = {}
 
-        with tqdm(
-            total=len(tables), desc='Batch Drift Correction', unit='table'
-        ) as pbar:
+        with _get_progress_bar() as progress:
+            task = progress.add_task('[red]Batch Drift Correction', total=len(tables))
             for i, table in enumerate(tables):
                 if mode == 'aim':
-                    res = table.drift_aim(
-                        segment_size=kwargs.get('aimSegmentSize'),
-                        intersect_d=kwargs.get('aimIntersectD'),
-                        z_scale=kwargs.get('aimZScale'),
-                    )
+                    res = table.drift_aim(**params)
                 elif mode == 'cross correlation':
-                    res = table.drift_cross_correlation(
-                        n_bins=kwargs.get('crossBins'),
-                        pixelSize=kwargs.get('crossPixelSize'),
-                        upsampling=kwargs.get('crossUpSampling'),
-                        rmax=kwargs.get('crossRMAX'),
-                        method=kwargs.get('crossMethod'),
-                    )
+                    res = table.drift_cross_correlation(**params)
+                elif mode == 'comet':
+                    res = table.drift_comet(**params)
                 else:
                     res = table.drift_fiducial_marker()
 
                 if res is not None:
                     drift_args[keys[i] if keys else i] = res[1]
 
-                pbar.update(1)
+                progress.update(task, advance=1)
 
     except Exception:
         traceback.print_exc()
@@ -125,10 +123,10 @@ def batch_export_localizations(tables: list[FittingResults], suffix: str, **kwar
     if suffix is None or suffix.strip() == '':
         suffix = 'exported'
 
-    # use tqdm to show progress bar
-    with tqdm(
-        total=len(tables), desc='Batch Exporting localizations', unit='table'
-    ) as pbar:
+    with _get_progress_bar() as progress:
+        task = progress.add_task(
+            '[red]Batch Exporting localizations', total=len(tables)
+        )
         for _, table in enumerate(tables):
             base_name = os.path.splitext(os.path.basename(table.path))[0]
             dir_name = os.path.dirname(table.path)
@@ -138,7 +136,7 @@ def batch_export_localizations(tables: list[FittingResults], suffix: str, **kwar
                 file_path, key='microEye', index=False, complevel=0
             )
 
-            pbar.update(1)
+            progress.update(task, advance=1)
 
 
 def batch_frc(tables: list[FittingResults], **kwargs):
@@ -148,7 +146,8 @@ def batch_frc(tables: list[FittingResults], **kwargs):
         frc_method = kwargs.get('frcMethod', 'binomial')
         frc_pixel_size = kwargs.get('binXY', 6)
 
-        with tqdm(total=len(tables), desc='Batch FRC Analysis', unit='table') as pbar:
+        with _get_progress_bar() as progress:
+            task = progress.add_task('[red]Batch FRC Analysis', total=len(tables))
             for _, table in enumerate(tables):
                 res.append(
                     FRC_resolution_binomial(
@@ -162,7 +161,7 @@ def batch_frc(tables: list[FittingResults], **kwargs):
                     )
                 )
 
-                pbar.update(1)
+                progress.update(task, advance=1)
     except Exception:
         traceback.print_exc()
 
@@ -173,11 +172,12 @@ def batch_loc_per_frame(tables: list[FittingResults], **kwargs):
     try:
         res: list[dict] = []
 
-        with tqdm(total=len(tables), desc='Batch Locs per Frame', unit='table') as pbar:
+        with _get_progress_bar() as progress:
+            task = progress.add_task('[red]Batch Locs per Frame', total=len(tables))
             for _, table in enumerate(tables):
                 res.append(table.extended_stats())
 
-                pbar.update(1)
+                progress.update(task, advance=1)
     except Exception:
         traceback.print_exc()
 
@@ -204,8 +204,11 @@ class BatchLocalizations(QtWidgets.QDialog):
         self._threadpool = QtCore.QThreadPool.globalInstance()
         self._worker = None  # Placeholder for the worker thread
 
-        self._clustDlg = ClusterPlotOptionsDialog(self, batch_mode=True)
-        self._rulerDlg = RulerPlotOptionsDialog(self, batch_mode=True)
+        self._clustDlg = OptionsDialog(self, OptionsModes.RENDERING)
+        self._gridDlg = OptionsDialog(self, OptionsModes.GRID, export=True, batch=True)
+        self._rulerDlg = OptionsDialog(
+            self, OptionsModes.RULER, export=True, batch=True
+        )
 
         # timer to refresh display
         self._timer_interval = 100  # 10 FPS
@@ -252,14 +255,8 @@ class BatchLocalizations(QtWidgets.QDialog):
             lambda: self.batch_render_localizations()
         )
 
-        self.localization_tab.driftCrossActivated.connect(
-            lambda: self.batch_drift_correction(mode='Cross Correlation')
-        )
-        self.localization_tab.driftFiducialsActivated.connect(
-            lambda: self.batch_drift_correction(mode='Fiducial Markers')
-        )
-        self.localization_tab.aimDriftCorrectionActivated.connect(
-            lambda: self.batch_drift_correction(mode='AIM')
+        self.localization_tab.driftCorrectionActivated.connect(
+            lambda method, params: self.batch_drift_correction(method, params)
         )
 
         self.localization_tab.dbscanActivated.connect(
@@ -270,6 +267,9 @@ class BatchLocalizations(QtWidgets.QDialog):
         )
         self.localization_tab.renderRulersActivated.connect(
             lambda: self.render_ruler_clusters()
+        )
+        self.localization_tab.renderGridActivated.connect(
+            lambda: self.render_grid_clusters()
         )
 
         self.localization_tab.frcActivated.connect(lambda: self.batch_frc())
@@ -434,7 +434,7 @@ class BatchLocalizations(QtWidgets.QDialog):
             finished_message='Rendering completed for selected tables.',
         )
 
-    def batch_drift_correction(self, mode: str):
+    def batch_drift_correction(self, mode: str, params: dict = None):
         def done(results):
             if results is None:
                 return
@@ -452,6 +452,7 @@ class BatchLocalizations(QtWidgets.QDialog):
         self.runAsync(
             batch_drift_correction,
             mode=mode.lower(),
+            params=params if params is not None else {},
             done=done,
             finished_message='Drift correction completed for selected tables.',
         )
@@ -560,32 +561,29 @@ class BatchLocalizations(QtWidgets.QDialog):
             )
             return
 
-        res = self._clustDlg.exec()
-        if not res:
-            return
-
-        options = self._clustDlg.values()
+        def worker(**kwargs):
+            tables: list[FittingResults] = kwargs.pop('tables', [])
+            return [table.toClusterRender() for table in tables]
 
         def done(results):
-            if results is not None:
-                cluster_overlay_items = pg.GraphicsLayoutWidget(
-                    show=True, title='DBSCAN'
+            if results is None:
+                logger.warning('No results to render.')
+                return
+
+            self.cluster_overlay_items = ClustersViewer()
+            self.cluster_overlay_items.viewer_params.aggregate = True
+
+            self.cluster_overlay_items.load_cluster_render(
+                cluster_render_result=ClusterRenderData(
+                    tables=results,
                 )
-                cluster_overlay_items.setBackground(None)
-
-                for i, result in enumerate(results):
-                    column = i % 3
-                    row = i // 3
-                    add_plot_result(cluster_overlay_items, result, row, column)
-
-                self.cluster_overlay_items = cluster_overlay_items
-                cluster_overlay_items.show()
+            )
+            self.cluster_overlay_items.show()
 
         self.runAsync(
-            ClustersScatter.render_clusters_batch,
+            worker,
             finished_message='Cluster rendering completed for selected tables.',
             done=done,
-            **options,
         )
 
     def render_ruler_clusters(self):
@@ -609,31 +607,57 @@ class BatchLocalizations(QtWidgets.QDialog):
         if not res:
             return
 
-        options = self._rulerDlg.values()
+        worker_kwargs = self._rulerDlg.values()
 
-        worker_kwargs = {
-            'leaf_size': self.localization_tab.toDict()['dbscanOptions']['leaf_size'],
-            'algorithm': self.localization_tab.toDict()['dbscanOptions']['algorithm'],
-            'scalebar_length': options['ruler_spacing'],
-        }
-        worker_kwargs.update(options)
-
-        def done(results: list[PlotResult]):
-            if results is not None:
-                ruler_overlay_items = pg.GraphicsLayoutWidget(show=True, title='Rulers')
-                ruler_overlay_items.setBackground(None)
-
-                for i in range(len(results)):
-                    add_plot_result(
-                        ruler_overlay_items, results[i], 0, i, **worker_kwargs
-                    )
-
-                self.ruler_overlay_items = ruler_overlay_items
-                ruler_overlay_items.show()
+        def done(results):
+            if results is not None and isinstance(results, PipelineResult):
+                widget = ClusterResultsWidget()
+                widget.load_pipeline_result(results)
+                widget.resize(1100, 600)
+                widget.show()
+                self.ruler_overlay_items = widget
 
         self.runAsync(
-            ClustersScatter.render_rulers_batch,
+            render_rulers_batch,
             finished_message='Ruler rendering completed for selected tables.',
+            done=done,
+            **worker_kwargs,
+        )
+
+    def render_grid_clusters(self):
+        selected_tables = self.selected_tables
+
+        if not selected_tables:
+            return
+
+        if len(selected_tables) <= 0:
+            return
+
+        if any(table.data[DataColumns.CLUSTER_ID] is None for table in selected_tables):
+            QtWidgets.QMessageBox.warning(
+                self,
+                'Warning',
+                'Please perform DBSCAN clustering before rendering.',
+            )
+            return
+
+        res = self._gridDlg.exec()
+        if not res:
+            return
+
+        worker_kwargs = self._gridDlg.values()
+
+        def done(results):
+            if results is not None and isinstance(results, PipelineResult):
+                widget = ClusterResultsWidget()
+                widget.load_pipeline_result(results)
+                widget.resize(1100, 600)
+                widget.show()
+                self.grid_overlay_items = widget
+
+        self.runAsync(
+            render_grids_batch,
+            finished_message='Grid rendering completed for selected tables.',
             done=done,
             **worker_kwargs,
         )

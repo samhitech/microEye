@@ -5,23 +5,25 @@ import numpy as np
 import pandas as pd
 from scipy.interpolate import PchipInterpolator
 
-from microEye.analysis.clustering.dbscan import (
+from microEye.analysis.clustering.core import (
     perform_dbscan_clustering,
     perform_hdbscan_clustering,
     perform_optics_clustering,
 )
-from microEye.analysis.fitting.aim import _shift_correction, aim_drift_correction
+from microEye.analysis.clustering.dataclasses import LabeledLocalizations
+from microEye.analysis.drift import (
+    _shift_correction,
+    aim_drift_correction,
+    comet_drift_correction,
+    dcc_shift_estimation,
+    mcc_shift_estimation,
+    phase_shift_estimation,
+    rcc_shift_estimation,
+    rcc_solve,
+)
 from microEye.analysis.fitting.processing import (
     merge_localizations,
     nn_trajectories,
-    shift_correction,
-    shift_estimation,
-)
-from microEye.analysis.fitting.rcc import (
-    dcc_shift_estimation,
-    mcc_shift_estimation,
-    rcc_shift_estimation,
-    rcc_solve,
 )
 from microEye.analysis.rendering import BaseRenderer, Projection, RenderModes
 
@@ -649,6 +651,59 @@ class FittingResults:
             np.array(locs_per_bin),
         )
 
+    def toClusterRender(self, return_dict=False):
+        '''Returns columns for cluster rendering'''
+        labels = self.data.get(DataColumns.CLUSTER_ID)
+        if labels is None or len(np.unique(labels)) <= 2:
+            logger.warning('No cluster labels found. Run Clustering first.')
+            return None
+
+        labels = np.asarray(labels, dtype=np.int32)
+        x = np.asarray(self.data[DataColumns.X], dtype=np.float32)
+        y = np.asarray(self.data[DataColumns.Y], dtype=np.float32)
+        z = (
+            np.asarray(self.data[DataColumns.Z], dtype=np.float32)
+            if self.data[DataColumns.Z] is not None
+            else None
+        )
+        intensity = np.asarray(
+            self.data[DataColumns.INTENSITY], dtype=np.float32
+        )
+        crlb_x = np.asarray(
+            self.data[DataColumns.CRLB_X], dtype=np.float32
+        )
+        crlb_y = np.asarray(
+            self.data[DataColumns.CRLB_Y], dtype=np.float32
+        )
+        crlb_z = (
+            np.asarray(self.data[DataColumns.CRLB_Z], dtype=np.float32)
+            if self.data[DataColumns.CRLB_Z] is not None
+            else None
+        )
+
+        if return_dict:
+            return {
+                DataColumns.X: x,
+                DataColumns.Y: y,
+                DataColumns.Z: z,
+                DataColumns.CLUSTER_ID: labels,
+                DataColumns.INTENSITY: intensity,
+                DataColumns.CRLB_X: crlb_x,
+                DataColumns.CRLB_Y: crlb_y,
+                DataColumns.CRLB_Z: crlb_z if crlb_z is not None else None,
+            }
+
+        return LabeledLocalizations(
+            x=x,
+            y=y,
+            z=z,
+            labels=labels,
+            intensity=intensity,
+            crlb_x=crlb_x,
+            crlb_y=crlb_y,
+            crlb_z=crlb_z,
+        )
+
     def extended_stats(self):
         statistics = {}
 
@@ -686,7 +741,7 @@ class FittingResults:
         return statistics
 
     def drift_cross_correlation(
-        self, n_bins=10, pixelSize=10, upsampling=100, rmax=20, method='phase'
+        self, n_bins=10, pixel_size=10, upsampling=100, rmax=20, method='phase'
     ):
         """Corrects the XY drift using cross-correlation measurments
 
@@ -737,7 +792,7 @@ class FittingResults:
             logger.error('Drift cross-correlation failed: 2 or more bins are required.')
             return
 
-        renderEngine = BaseRenderer(pixelSize, RenderModes.HISTOGRAM)
+        renderEngine = BaseRenderer(pixel_size, RenderModes.HISTOGRAM)
 
         x_max = int((np.max(self.data[DataColumns.X]) / renderEngine._pixel_size) + 4)
         y_max = int((np.max(self.data[DataColumns.Y]) / renderEngine._pixel_size) + 4)
@@ -772,16 +827,18 @@ class FittingResults:
         logger.info('Shift Estimation ...')
         try:
             if method == 'rcc':
-                imshift, A = rcc_shift_estimation(sub_images, pixelSize)
+                imshift, A = rcc_shift_estimation(sub_images, pixel_size)
 
                 logger.info('Shift Optimization ...')
                 drift = rcc_solve(imshift, A, n_bins, rmax=rmax)
             elif method == 'mcc':
-                drift = mcc_shift_estimation(sub_images, pixelSize)
+                drift = mcc_shift_estimation(sub_images, pixel_size)
             elif method == 'dcc':
-                drift = dcc_shift_estimation(sub_images, pixelSize)
+                drift = dcc_shift_estimation(sub_images, pixel_size)
             elif method == 'phase':
-                drift = shift_estimation(np.array(sub_images), pixelSize, upsampling)
+                drift = phase_shift_estimation(
+                    np.array(sub_images), pixel_size, upsampling
+                )
             else:
                 raise ValueError(f'Unknown drift estimation method: {method}')
         except MemoryError as e:
@@ -811,17 +868,14 @@ class FittingResults:
         interpx = PchipInterpolator(frames_interp, drift_y, axis=0, extrapolate=True)
         # And this interpolation is used to get the shift at every frame-point
         frames_new = np.arange(0, max_frame, 1)
-        frame_drift = np.c_[
-            interpx(frames_new),
-            interpy(frames_new)
-        ]
+        frame_drift = np.c_[interpx(frames_new), interpy(frames_new)]
 
         _shift_correction(
             frame_ids,
             self.data[DataColumns.X],
             self.data[DataColumns.Y],
             None,
-            frame_drift
+            frame_drift,
         )
 
         return self, (frames_new, frame_drift[:, 0], frame_drift[:, 1], None)
@@ -947,13 +1001,59 @@ class FittingResults:
             frame_drift,
         )
 
-        logger.info('Drift correction using AIM method completed successfully.')
+        logger.debug('AIM Done.')
 
         return self, (
             frame_full,
             frame_drift[:, 0],
             frame_drift[:, 1],
             frame_drift[:, 2] if z is not None else None,
+        )
+
+    def drift_comet(self, **kwargs):
+        frames = self.data[DataColumns.FRAME]
+        x = self.data[DataColumns.X]
+        y = self.data[DataColumns.Y]
+        z = self.data[DataColumns.Z] if self.data[DataColumns.Z] is not None else None
+
+        logger.info('Drift correction using COMET method ...')
+
+        res = comet_drift_correction(
+            frames=frames,
+            x=x,
+            y=y,
+            z=z,
+            **kwargs,
+        )
+
+        if res is None or not isinstance(res, dict):
+            logger.error(
+                'Drift correction failed: COMET method returned None or invalid result.'
+            )
+            return
+
+        frame_ids: np.ndarray = res['frame_ids']
+        frame_full: np.ndarray = res['frame_full']
+        frame_drift: np.ndarray = res['frame_drift']
+
+        logger.info('Applying drift correction ...')
+
+        # Apply drift correction
+        _shift_correction(
+            frame_ids,
+            self.data[DataColumns.X],
+            self.data[DataColumns.Y],
+            self.data[DataColumns.Z] if self.data[DataColumns.Z] is not None else None,
+            frame_drift,
+        )
+
+        logger.debug('COMET Done.')
+
+        return self, (
+            frame_full,
+            frame_drift[:, 0],
+            frame_drift[:, 1],
+            frame_drift[:, 2],
         )
 
     def nn_trajectories(
@@ -1165,6 +1265,6 @@ class FittingResults:
         for column in dataFrame.columns.values.tolist():
             key = map_column_alias(column)
             if key is not None:
-                fittingResults.data[key] = dataFrame[column].to_numpy()
+                fittingResults.data[key] = np.ascontiguousarray(dataFrame[column])
 
         return fittingResults

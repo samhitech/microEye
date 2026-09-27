@@ -122,15 +122,13 @@ class Tree(ParameterTree):
             True if the value is set successfully, False otherwise.
         '''
         try:
-            parameter: Parameter = self.param_tree.param(*param.value.split('.'))
+            parameter = self.get_param(param)
+            if parameter is None:
+                return False
             parameter.setValue(value, blockSignals)
-        except Exception:
-            import traceback
-
-            traceback.print_exc()
-            return False
-        else:
             return True
+        except Exception:
+            return False
 
     def get_param_path(self, param: Parameter):
         '''
@@ -307,7 +305,7 @@ class Tree(ParameterTree):
             if contains.lower().strip() in path.lower().split('.')[-1]
         ]
         if path:
-            self.get_param(path[0])
+            return self.get_param(path[0])
         else:
             return None
 

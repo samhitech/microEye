@@ -1,5 +1,5 @@
 import logging
-from enum import Enum
+from enum import IntEnum
 from typing import Optional
 
 import numba
@@ -34,7 +34,7 @@ def filter_points_in_range(coords, values, center, half_width):
     return mask
 
 
-class RenderModes(Enum):
+class RenderModes(IntEnum):
     '''
     Enum class for the rendering modes.
     '''
@@ -47,7 +47,7 @@ class RenderModes(Enum):
     '''Gaussian Rendering'''
 
 
-class Projection(Enum):
+class Projection(IntEnum):
     '''
     Enum class for different projections.
     '''
@@ -58,6 +58,66 @@ class Projection(Enum):
     '''XZ Projection'''
     YZ = 2
     '''YZ Projection'''
+
+
+class Axis(IntEnum):
+    X = 0
+    Y = 1
+    Z = 2
+
+
+class SpatialIndex3D:
+    '''
+    A simple spatial index for 3D points that allows efficient querying of points
+    within specified ranges along the X, Y, and Z axes.
+    '''
+
+    def __init__(self, x: np.ndarray, y: np.ndarray, z: Optional[np.ndarray] = None):
+        self._coords = {}
+        for axis, arr in ((Axis.X, x), (Axis.Y, y), (Axis.Z, z)):
+            if arr is None:
+                continue
+            arr = np.asarray(arr, dtype=np.float64)
+            order = np.argsort(arr, kind='mergesort')
+            self._coords[axis] = (arr, order, arr[order])
+
+    def has_axis(self, axis: Axis) -> bool:
+        return axis in self._coords
+
+    def query(self, ranges: dict) -> np.ndarray:
+        '''ranges: {Axis: (lo, hi)}. Binary-searches the axis with the
+        narrowest *relative* span (smallest candidate slice), then
+        boolean-masks the rest.'''
+        ranges = {
+            a: r for a, r in ranges.items() if a in self._coords and r is not None
+        }
+        if not ranges:
+            any_axis = next(iter(self._coords))
+            return self._coords[any_axis][1]
+
+        def relative_width(item):
+            axis, (lo, hi) = item
+            sorted_vals = self._coords[axis][2]
+            span = sorted_vals[-1] - sorted_vals[0] if len(sorted_vals) else 1.0
+            return (hi - lo) / span if span > 0 else 0.0
+
+        primary, (lo, hi) = min(ranges.items(), key=relative_width)
+        _, order, sorted_vals = self._coords[primary]
+
+        start = np.searchsorted(sorted_vals, lo, side='left')
+        stop = np.searchsorted(sorted_vals, hi, side='right')
+        if stop <= start:
+            return np.empty(0, dtype=order.dtype)
+
+        candidate = order[start:stop]
+        for axis, (a_lo, a_hi) in ranges.items():
+            if axis is primary:
+                continue
+            values = self._coords[axis][0][candidate]
+            candidate = candidate[(values >= a_lo) & (values <= a_hi)]
+            if candidate.size == 0:
+                break
+        return candidate
 
 
 class BaseRenderer:
@@ -223,8 +283,9 @@ class BaseRenderer:
         molecule localizations.
 
 
-        Params
-        -------
+
+        Parameters
+        ----------
         X (np.ndarray)
             Sub-pixel localized points X coordinates
         Y (np.ndarray)
@@ -234,6 +295,22 @@ class BaseRenderer:
         shape (tuple[int, int], optional)
             Super-res image (height, width), by default None
 
+        kwargs : dict
+            Additional keyword arguments for rendering options:
+            - origin : tuple[float, float], optional
+                Origin for the coordinates. If provided,
+                X and Y will be shifted accordingly.
+            - zero_origin : bool, optional
+                If True (default), the coordinates will be shifted to the origin.
+            - x_padding : int, optional
+                Padding in pixels for the X dimension (default is 4).
+            - y_padding : int, optional
+                Padding in pixels for the Y dimension (default is 4).
+            - x_offset : int, optional
+                Offset in pixels for the X dimension (default is 2).
+            - y_offset : int, optional
+                Offset in pixels for the Y dimension (default is 2).
+
         Returns
         -------
         Image (np.ndarray)
@@ -241,7 +318,11 @@ class BaseRenderer:
         '''
         self._validate_inputs(X, Y, Intensity)
 
-        if kwargs.get('zero_origin', True):
+        origin = kwargs.get('origin')
+        if origin is not None:
+            X = X - origin[0]
+            Y = Y - origin[1]
+        elif kwargs.get('zero_origin', True):
             X, Y = self._zero_origin(X, Y)
 
         x_padding = kwargs.get('x_padding', 4)
@@ -257,7 +338,7 @@ class BaseRenderer:
                 x_max, y_max = shape[1], shape[0]
             n_max = max(x_max, y_max)
 
-            self._image = np.zeros([y_max, x_max])
+            self._image = np.zeros([y_max, x_max], dtype=np.float32)
             X = np.round(X / self._pixel_size) + x_offset
             Y = np.round(Y / self._pixel_size) + y_offset
 
@@ -273,7 +354,7 @@ class BaseRenderer:
             n_max = max(x_max, y_max)
 
             step = int((self._gauss_len - 1) // 2)
-            self._image = np.zeros([y_max, x_max])
+            self._image = np.zeros([y_max, x_max], dtype=np.float32)
             X = np.round(X / self._pixel_size) + 4 * step
             Y = np.round(Y / self._pixel_size) + 4 * step
 
@@ -281,7 +362,7 @@ class BaseRenderer:
 
         return self._image
 
-    def render_xz(self, X, Z, Intensity, shape=None):
+    def render_xz(self, X, Z, Intensity, shape=None, **kwargs):
         '''
         Renders XZ projection of super resolution image.
 
@@ -302,7 +383,13 @@ class BaseRenderer:
             Rendered XZ projection
         '''
         self._validate_inputs(X, Z, Intensity)
-        X, Z = self._zero_origin(X, Z)
+
+        origin = kwargs.get('origin')
+        if origin is not None:
+            X = X - origin[0]
+            Z = Z - origin[1]
+        else:
+            X, Z = self._zero_origin(X, Z)
 
         if self._mode in [RenderModes.HISTOGRAM, RenderModes.EVENT_HISTOGRAM]:
             if shape is None:
@@ -311,7 +398,7 @@ class BaseRenderer:
             else:
                 x_max, z_max = shape[1], shape[0]
 
-            self._image = np.zeros([z_max, x_max])
+            self._image = np.zeros([z_max, x_max], dtype=np.float32)
             X = np.round(X / self._pixel_size) + 2
             Z = np.round(Z / self._z_pixel_size) + 2
 
@@ -329,7 +416,7 @@ class BaseRenderer:
             step_lateral = int((self._gauss_len - 1) // 2)
             step_axial = int((self._z_gauss_len - 1) // 2)
 
-            self._image = np.zeros([z_max, x_max])
+            self._image = np.zeros([z_max, x_max], dtype=np.float32)
             X = np.round(X / self._pixel_size) + 4 * step_lateral
             Z = np.round(Z / self._z_pixel_size) + 4 * step_axial
 
@@ -343,7 +430,7 @@ class BaseRenderer:
 
         return self._image
 
-    def render_yz(self, Y, Z, Intensity, shape=None):
+    def render_yz(self, Y, Z, Intensity, shape=None, **kwargs):
         '''
         Renders YZ projection of super resolution image.
 
@@ -363,7 +450,7 @@ class BaseRenderer:
         np.ndarray
             Rendered YZ projection
         '''
-        return self.render_xz(Y, Z, Intensity, shape)
+        return self.render_xz(Y, Z, Intensity, shape, **kwargs)
 
     def render_slice(
         self,
