@@ -9,7 +9,6 @@ import numpy as np
 import pyqtgraph as pg
 import pyqtgraph.opengl as gl
 from pyqtgraph import functions as fn
-from tabulate import tabulate
 
 from microEye.analysis.fitting.psf import ConfidenceMethod, PSFdata, stats
 from microEye.analysis.fitting.results import FittingMethod

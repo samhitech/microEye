@@ -337,7 +337,7 @@ class Thorlabs_Panel(Camera_Panel):
             IDS Camera python adapter
         '''
         nRet = 0
-        if self._cam.acquisition:
+        if self._cam.acquisition or self.is_busy():
             return  # if acquisition is already going on
 
         if not self._cam.memory_allocated:
@@ -367,7 +367,7 @@ class Thorlabs_Panel(Camera_Panel):
         '''
 
         nRet = 0
-        if self._cam.acquisition:
+        if self._cam.acquisition or self.is_busy():
             return  # if acquisition is already going on
 
         if not self._cam.memory_allocated:

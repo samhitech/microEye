@@ -131,3 +131,10 @@ dmypy.json
 .pypirc
 src/multi_viewer.py
 src/mieye_module.py
+
+# Claude Code local-only files
+.claude/
+.ruff_cache/
+
+# Logs
+logs/

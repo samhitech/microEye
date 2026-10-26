@@ -6,7 +6,6 @@ import traceback
 import cv2
 import numpy as np
 import pyqtgraph as pg
-import tabulate
 import tifffile as tf
 
 # Cameras
@@ -65,7 +64,12 @@ class AcquisitionManager(QtCore.QObject):
         self.acquisitionWidget.stopAcquisitionZ.connect(self.stop_scan_acquisition)
         self.acquisitionWidget.openLastTileXY.connect(self.show_last_tile)
         self.acquisitionWidget.directoryChanged.connect(self.update_directories)
-        self.acquisitionWidget.moveZ.connect(StageManager.instance().move_z)
+        # the scan thread waits for the move, so its delay starts after it;
+        # moveZ must never be emitted on the GUI thread (deadlock)
+        self.acquisitionWidget.moveZ.connect(
+            StageManager.instance().move_z,
+            QtCore.Qt.ConnectionType.BlockingQueuedConnection,
+        )
 
     def result_scan_acquisition(self, data):
         self._scanning = False
@@ -242,14 +246,10 @@ def scanAcquisition(steps, step_size, delay, average=1, **kwargs):
 
         if not stage_manager.is_open(Axis.X) or len(cams) == 0:
             data = []
-            info = [
-                {
-                    'XY-Stage Open': stage_manager.is_open(Axis.X),
-                    'Camera Available': len(cams) > 0,
-                }
-            ]
-            error_msg = tabulate.tabulate(info, headers='keys', tablefmt='rounded_grid')
-            raise RuntimeError(f'XY-scan failed!\n{error_msg}')
+            raise RuntimeError(
+                f'XY-scan failed: XY-stage open={stage_manager.is_open(Axis.X)}, '
+                f'camera available={len(cams) > 0}'
+            )
 
         cam: miCamera = cams[0]['Camera']
         panel: Camera_Panel = cams[0]['Panel']
@@ -363,6 +363,7 @@ def z_stack_acquisition(
 
         data = []
         peak = None
+        was_locked = None
 
         cams = []
         # any camera instead of vimba that is not IR
@@ -370,15 +371,10 @@ def z_stack_acquisition(
             cams.extend([cam for cam in cam_list if not cam['IR']])
 
         if not stage_manager.is_open(Axis.Z) or len(cams) == 0 or nFrames <= 0:
-            info = [
-                {
-                    'Z-Stage Open': stage_manager.z_stage().is_open(),
-                    'Camera Available': len(cams) > 0,
-                    'Frames > 0': nFrames > 0,
-                }
-            ]
-            error_msg = tabulate.tabulate(info, headers='keys', tablefmt='rounded_grid')
-            raise RuntimeError(f'Z-scan failed!\n{error_msg}')
+            raise RuntimeError(
+                f'Z-scan failed: Z-stage open={stage_manager.is_open(Axis.Z)}, '
+                f'camera available={len(cams) > 0}, frames > 0={nFrames > 0}'
+            )
 
         cam: miCamera = cams[0]['Camera']
         cam_pan: Camera_Panel = cams[0]['Panel']
@@ -389,6 +385,7 @@ def z_stack_acquisition(
         cam_pan.camera_options.set_param_value(CamParams.SAVE_DATA, True)
 
         peak = FocusStabilizer.instance().getParameter()
+        was_locked = FocusStabilizer.instance().isFocusStabilized(Axis.Z)
         for x in range(n):
             if x > 0:
                 if event and event.is_set():
@@ -406,13 +403,12 @@ def z_stack_acquisition(
                     FocusStabilizer.instance().setParameter(value, True)
                     QtCore.QThread.msleep(delay)
                 else:
-                    if FocusStabilizer.instance().isFocusStabilized(Axis.Z):
-                        FocusStabilizer.instance().toggleFocusStabilization(
-                            Axis.Z, False
-                        )
+                    FocusStabilizer.instance().toggleFocusStabilization(Axis.Z, False)
                     acquisition_manager.acquisitionWidget.moveZ.emit(reverse, step_size)
                     QtCore.QThread.msleep(delay)
-                    FocusStabilizer.instance().toggleFocusStabilization(Axis.Z, True)
+                    FocusStabilizer.instance().toggleFocusStabilization(
+                        Axis.Z, was_locked
+                    )
             frame = None
             prefix = f'Z_{x:04d}_'
 
@@ -425,8 +421,10 @@ def z_stack_acquisition(
     except Exception as e:
         logger.error('Z-scan failed: %s', e)
     finally:
-        if peak:
+        if peak is not None:
             FocusStabilizer.instance().setParameter(peak)
+        if was_locked is not None:  # a stopped scan may have left it unlocked
+            FocusStabilizer.instance().toggleFocusStabilization(Axis.Z, was_locked)
     return
 
 
@@ -483,9 +481,7 @@ def z_calibration(
                 _, snapshot = FocusStabilizer.instance().tracker_snapshot
                 positions[x, 1] = np.mean(snapshot[-nFrames:, 2])
         else:
-            logger.warning('Z-calibration failed!')
-            info = [{'Z-Stage Open': stage_manager.z_stage().is_open()}]
-            print(tabulate.tabulate(info, headers='keys', tablefmt='rounded_grid'))
+            logger.warning('Z-calibration failed: Z-stage open=False')
             positions = None
     except Exception:
         traceback.print_exc()

@@ -1,4 +1,5 @@
 import logging
+import threading
 import traceback
 from typing import Optional
 
@@ -40,6 +41,9 @@ class KinesisXY(AbstractStage):
         self.Y = KDC101Controller(portName=y_port)
         self.prec = 4
         self._driver = StageDriver.DUAL_SERIALPORT
+        #: axes with a command running, claimed before its worker starts
+        self._busy_axes: set[Axis] = set()
+        self._busy_lock = threading.Lock()
 
     @property
     def x(self) -> float:
@@ -54,8 +58,8 @@ class KinesisXY(AbstractStage):
         return pos
 
     def home(self, is_async=True):
-        self.run_async(self.X.home, is_async=is_async)
-        self.run_async(self.Y.home, is_async=is_async)
+        self.run_async(Axis.X, self.X.home, is_async=is_async)
+        self.run_async(Axis.Y, self.Y.home, is_async=is_async)
 
     @emit_after_signal('moveFinished')
     def move_absolute(self, x, y, z=0, **kwargs):
@@ -68,9 +72,9 @@ class KinesisXY(AbstractStage):
         x = round(x, self.prec)
         y = round(y, self.prec)
         if x != self.X.position or force:
-            self.run_async(self.X.move_absolute, x, is_async=is_async)
+            self.run_async(Axis.X, self.X.move_absolute, x, is_async=is_async)
         if y != self.Y.position or force:
-            self.run_async(self.Y.move_absolute, y, is_async=is_async)
+            self.run_async(Axis.Y, self.Y.move_absolute, y, is_async=is_async)
 
     @emit_after_signal('moveFinished')
     def move_relative(self, x, y, z=0, **kwargs):
@@ -80,9 +84,9 @@ class KinesisXY(AbstractStage):
         y = round(y, self.prec)
 
         if x != 0:
-            self.run_async(self.X.move_relative, x, is_async=is_async)
+            self.run_async(Axis.X, self.X.move_relative, x, is_async=is_async)
         if y != 0:
-            self.run_async(self.Y.move_relative, y, is_async=is_async)
+            self.run_async(Axis.Y, self.Y.move_relative, y, is_async=is_async)
 
     def refresh_position(self):
         self.move_absolute(self.X.position, self.Y.position, force=True, is_async=True)
@@ -105,10 +109,43 @@ class KinesisXY(AbstractStage):
         self.X.clearResponses()
         self.Y.clearResponses()
 
-    def run_async(self, callback, *args, is_async=True):
-        super().run_async(
-            callback, *args, is_async=is_async, prior=self.clear_responses
-        )
+    def is_busy(self) -> bool:
+        return bool(self._busy_axes)
+
+    def run_async(self, axis: Axis, callback, *args, is_async=True) -> bool:
+        '''Run a command on one axis (each has its own KDC101). The axis is
+        claimed here, before the worker starts, so a second command on it is
+        refused while the other axis stays free.'''
+        controller = self.X if axis == Axis.X else self.Y
+        with self._busy_lock:
+            if not self.is_open():
+                return False
+            if axis in self._busy_axes:
+                logger.warning(
+                    '%s: %s is busy, command rejected.', self._name, axis.name
+                )
+                return False
+            self._busy_axes.add(axis)
+        controller.clearResponses()  # this axis's replies only
+
+        def worker_callback():
+            try:
+                self.signals.asyncStarted.emit()
+                callback(*args)
+            except Exception:
+                traceback.print_exc()
+            finally:
+                with self._busy_lock:
+                    self._busy_axes.discard(axis)
+                self.signals.asyncFinished.emit()
+
+        if is_async:
+            QtCore.QThreadPool.globalInstance().start(
+                QThreadWorker(worker_callback, nokwargs=True)
+            )
+        else:
+            worker_callback()
+        return True
 
     def is_open(self):
         return all([self.X.isOpen(), self.Y.isOpen()])

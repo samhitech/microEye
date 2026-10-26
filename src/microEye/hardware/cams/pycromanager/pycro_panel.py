@@ -142,6 +142,9 @@ class PycroPanel(Camera_Panel):
         self._cam = cam
 
     def update_cam(self, param, value):
+        if self._showing_readback:
+            return
+
         if self._cam.has_property(param.name()):
             self._cam.set_property(param.name(), value)
 
@@ -151,10 +154,8 @@ class PycroPanel(Camera_Panel):
         if self._dispose_cam:
             return
 
-        def update(event):
-            '''
-            Fetches the current readings and settings from the laser device.
-            '''
+        def read(event):
+            readings = []
             for property in self._cam.get_prop_names():
                 if '.' in property:
                     continue
@@ -162,15 +163,14 @@ class PycroPanel(Camera_Panel):
                 param = self.camera_options.get_param(
                     '.'.join([CamParams.ACQ_SETTINGS.value, property])
                 )
+                if param:
+                    value = type(param.value())(self._cam.get_property(property))
+                    readings.append({'name': property, 'value': value})
+            return readings
 
-                new_value = type(param.value())(self._cam.get_property(property))
-                if param and new_value != param.value():
-                    param.setValue(new_value, self.update_cam)
-
-            self.refresh_exposure()
-            self.updateInfo()
-
-        worker = QThreadWorker(update)
+        worker = QThreadWorker(read)
+        worker.signals.result.connect(self.show_readings)
+        worker.signals.finished.connect(self.updateInfo)
         worker.signals.finished.connect(
             self.timer.start
         )  # Restart the timer after fetching stats
@@ -186,6 +186,9 @@ class PycroPanel(Camera_Panel):
         Value : double
             selected exposure in milliseconds
         '''
+        if self._showing_readback:
+            return
+
         self._cam.setExposure(value)
 
         self.refresh_exposure()

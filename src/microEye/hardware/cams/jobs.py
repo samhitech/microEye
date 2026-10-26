@@ -379,7 +379,8 @@ class AcquisitionJob:
                 photometric='minisblack',
             )
         except ValueError as ve:
-            if str(ve) == 'data too large for standard TIFF file':
+            # tifffile 2026: 'data too large for non-BigTIFF file'
+            if 'data too large' in str(ve):
                 writer.close()
                 self.saveMetadata(roi_index)
                 self.frames_saved = 0

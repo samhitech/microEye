@@ -4,6 +4,7 @@ import os
 import weakref
 from enum import Enum
 
+from microEye.hardware.cams.camera_list import CameraManager
 from microEye.hardware.mieye.acquisition_manager import AcquisitionManager
 from microEye.hardware.mieye.devices_manager import (
     DEVICES,
@@ -31,6 +32,7 @@ from microEye.qt import (
     Signal,
 )
 from microEye.tools.microscopy import ObjectiveCalculator
+from microEye.utils.display import DisplayManager
 from microEye.utils.pyscripting import pyEditor
 from microEye.utils.start_gui import StartGUI, __version__
 
@@ -447,6 +449,36 @@ class miEye_module(QMainWindow):
 
     def scriptTest(self):
         exec(self.pyEditor.toPlainText())
+
+    def closeEvent(self, event):
+        '''Closing the main window ends the app: the image windows are separate
+        top-level windows and would keep it running. Asks first while a camera
+        acquires (it never refuses, so a stuck acquisition cannot trap you).'''
+        acquiring = any(
+            cam['Camera'].acquisition
+            for cams in CameraManager.CAMERAS.values()
+            for cam in cams
+            if not cam['IR']  # the focus camera always runs
+        )
+        if acquiring:
+            buttons = QtWidgets.QMessageBox.StandardButton
+            answer = QtWidgets.QMessageBox.question(
+                self,
+                'Quit',
+                'A camera is still acquiring.\n\nQuit anyway? Unsaved frames are '
+                'lost.',
+                buttons.Yes | buttons.No,
+                buttons.No,
+            )
+            if answer != buttons.Yes:
+                event.ignore()
+                return
+        DisplayManager.CLOSING = True
+        DisplayManager.close_all_displays()
+        super().closeEvent(event)
+        # exit, not quit: Qt 6's quit is a request a window that opens meanwhile
+        # can cancel
+        QApplication.instance().exit(0)
 
     def getDockWidget(self, text: str, content: QtWidgets.QWidget):
         dock = QtWidgets.QDockWidget(text, self)

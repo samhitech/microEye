@@ -4,9 +4,9 @@ from typing import Optional, Union
 
 import numpy as np
 import pyqtgraph as pg
-from tabulate import tabulate
 
 from microEye.qt import QAction, QApplication, QtCore, QtWidgets
+from microEye.utils.console_table import print_table
 
 
 class Immersion(Enum):
@@ -315,7 +315,7 @@ class Objective:
                     ]
                 )
 
-        print(tabulate(data, headers=['Property', 'Value'], tablefmt='rounded_grid'))
+        print_table(data, headers=['Property', 'Value'])
 
 
 class TIRF:

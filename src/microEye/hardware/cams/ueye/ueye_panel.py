@@ -357,7 +357,7 @@ class IDS_Panel(Camera_Panel):
             an extra prefix added to the image stack file name.
         '''
         nRet = 0
-        if self._cam.acquisition:
+        if self._cam.acquisition or self.is_busy():
             return  # if acquisition is already going on
 
         if not self._cam.memory_allocated:
@@ -389,7 +389,7 @@ class IDS_Panel(Camera_Panel):
         '''
 
         nRet = 0
-        if self._cam.acquisition:
+        if self._cam.acquisition or self.is_busy():
             return  # if acquisition is already going on
 
         if not self._cam.memory_allocated:

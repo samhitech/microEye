@@ -105,7 +105,7 @@ class StackView(QtWidgets.QWidget):
                 ome_metadata = None
 
                 if isinstance(stack_handler, TiffSeqHandler):
-                    with tf.TiffFile(stack_handler._tiff_seq.files[0]) as fl:
+                    with tf.TiffFile(stack_handler._tiff_seq[0]) as fl:
                         if fl.is_ome:
                             ome_metadata = OME.from_xml(fl.ome_metadata)
 

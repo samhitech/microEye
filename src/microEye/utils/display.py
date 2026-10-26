@@ -27,7 +27,7 @@ def fast_autolevels_opencv(
             ]
         ).T
     else:
-        hist = cv2.calcHist([image], [0], None, [nbins], [0, nbins])
+        hist = cv2.calcHist([image], [0], None, [nbins], [0, nbins]).reshape(nbins, 1)
     cumsum = np.cumsum(hist, axis=0)
     total = cumsum[-1]
 
@@ -111,6 +111,7 @@ class PyQtGraphDisplay(QtWidgets.QWidget):
         self._target_fps = kwargs.get('target_fps', 80)
         self._last_update = perf_counter_ns()
         self._updating = False
+        self._bit_depth = 12  # the camera's, for the saturation warning
 
         width = kwargs.get('width', 512)
         height = kwargs.get('height', 512)
@@ -200,7 +201,7 @@ class PyQtGraphDisplay(QtWidgets.QWidget):
 
         # Add text item in viewbox for FPS display
         self._saturation_warning = pg.LabelItem(
-            'Saturated | Max ≥ 90%% of 12-bit', color='w', size='16pt', bold=True
+            'Saturated | Max ≥ 90%% of full scale', color='w', size='16pt', bold=True
         )
         self._saturation_warning.setText(
             '<div style="'
@@ -209,7 +210,7 @@ class PyQtGraphDisplay(QtWidgets.QWidget):
             'background-color: rgba(0, 0, 0, 0.5); '
             '">'
             '<spanstyle="font-weight: bold;">'
-            'SATURATED | Max ≥ 90% of 12-bit'
+            'SATURATED | Max ≥ 90% of full scale'
             '</span>'
             '</div>'
         )
@@ -294,7 +295,10 @@ class PyQtGraphDisplay(QtWidgets.QWidget):
                 f'Std: {np.std(self.image_item.image):.2f}</span></div>'
             )
 
-        is_saturated = np.max(self.image_item.image) >= 0.9 * (2**12)
+        image = self.image_item.image
+        bits = 8 if image.dtype == np.uint8 else self._bit_depth
+        # a Python bool: PyQt6 refuses NumPy's
+        is_saturated = bool(np.max(image) >= 0.9 * (2**bits))
         self._saturation_warning.setVisible(is_saturated)
         self.plot_widget.setBackground('#990000' if is_saturated else 'default')
 
@@ -329,6 +333,7 @@ class PyQtGraphDisplay(QtWidgets.QWidget):
         self.frame_counter.update()  # Update frame counter
 
         try:
+            self._bit_depth = kwargs.get('bit_depth', self._bit_depth)
             thresholds = kwargs.get('threshold', [0, 255])
             plot_data: np.ndarray = kwargs.get('plot')
 
@@ -428,6 +433,8 @@ class DisplayManager(QtCore.QObject):
     image_update_signal = Signal(str, object, dict)
 
     DISPLAYS: dict[str, PyQtGraphDisplay] = {}
+    #: set while miEye closes: frames still arriving open no new window
+    CLOSING = False
 
     _instance = None  # Singleton instance
 
@@ -456,6 +463,8 @@ class DisplayManager(QtCore.QObject):
     @classmethod
     def im_show(cls, window_name: str, image: np.ndarray, kwargs: dict):
         '''Show an image in a new or existing display window.'''
+        if window_name not in cls.DISPLAYS and cls.CLOSING:
+            return  # miEye is closing: late frames open no new window
         if window_name not in cls.DISPLAYS:
             cls.DISPLAYS[window_name] = PyQtGraphDisplay(window_name, **kwargs)
             cls.DISPLAYS[window_name].close_signal.connect(

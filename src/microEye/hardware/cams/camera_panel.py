@@ -88,6 +88,9 @@ class Camera_Panel(QtWidgets.QGroupBox):
 
         # flag true to close camera adapter and dispose it
         self._dispose_cam = False
+        # set while settings read from the camera are shown, so they are not
+        # sent back to it
+        self._showing_readback = False
         self._buffer = Queue()  # data memory stack
         self._temps = Queue()  # camera sensor temperature stack
         # stack of (frame, temperature) tuples (for saving)
@@ -522,6 +525,9 @@ class Camera_Panel(QtWidgets.QGroupBox):
         self.camera_options.set_roi_info(x, y, w, h)
 
     def update_cam(self, param: Optional[Parameter], param_value):
+        if self._showing_readback:
+            return None
+
         path = self.camera_options.param_tree.childPath(param)
 
         if path is None:
@@ -530,6 +536,45 @@ class Camera_Panel(QtWidgets.QGroupBox):
         self.cam.update_cam(param, path, param_value)
 
         return path
+
+    @Slot(object)
+    def show_readings(self, readings: list[dict]):
+        '''Show settings read from the camera by a worker (GUI thread only).
+
+        Parameters
+        ----------
+        readings : list[dict]
+            One dict per setting: 'parent', 'name', 'value', and optionally
+            'limits' and 'enabled'.
+        '''
+        self._showing_readback = True
+        try:
+            for prop in readings:
+                try:
+                    parent = prop.get('parent', CamParams.ACQ_SETTINGS)
+                    parent = getattr(parent, 'value', parent)
+                    param = self.camera_options.get_param(
+                        '.'.join([parent, prop['name']])
+                    )
+                    limits = prop.get('limits')
+                    if limits and list(limits) != list(param.opts.get('limits', [])):
+                        param.setLimits(limits)
+                    if prop['value'] != param.value():
+                        param.setValue(prop['value'])
+                    enabled = prop.get('enabled')
+                    if enabled is not None and enabled != param.opts.get(
+                        'enabled', True
+                    ):
+                        param.setOpts(enabled=enabled)
+                except Exception:
+                    logging.getLogger(__name__).exception(
+                        'Error showing setting %s', prop.get('name', 'unknown')
+                    )
+
+            self.refresh_exposure()
+            self.refresh_framerate()
+        finally:
+            self._showing_readback = False
 
     def refresh_framerate(self, value=None):
         pass
@@ -882,6 +927,10 @@ class Camera_Panel(QtWidgets.QGroupBox):
         '''
         if self._cam.acquisition:
             return  # if acquisition is already going on
+        if self.is_busy():
+            if Event is not None:
+                Event.set()  # a waiting protocol or scan does not hang
+            return
 
         self._save_prefix = Prefix
         self.acq_job = self.getAcquisitionJob(event=Event)
@@ -892,7 +941,7 @@ class Camera_Panel(QtWidgets.QGroupBox):
         self.start_all_workers()
 
     def capture_image(self):
-        if self._cam.acquisition:
+        if self._cam.acquisition or self.is_busy():
             return  # if acquisition is already going on
 
         self.acq_job = self.getAcquisitionJob(frames=1, event=None, save=False)
@@ -909,10 +958,28 @@ class Camera_Panel(QtWidgets.QGroupBox):
         if self.acq_job is not None:
             self.acq_job.stop_threads = True
 
+    def is_busy(self) -> bool:
+        '''True while the last job's capture, display or save thread still runs.
+
+        The capture thread clears `acquisition` before display and save have
+        emptied their queues; a job started then got no save thread and saved
+        no images.
+        '''
+        busy = any(
+            worker is not None and not worker.is_set()
+            for worker in (self.c_worker, self.d_worker, self.s_worker)
+        )
+        if busy:
+            logger.warning(
+                '%s: still saving the last acquisition; not started.', self._cam.name
+            )
+        return busy
+
     def start_all_workers(self):
         '''
         Starts all workers
         '''
+        job = self.acq_job  # the finished signals arrive later, on the GUI thread
 
         self._buffer.queue.clear()
         self._temps.queue.clear()
@@ -923,9 +990,7 @@ class Camera_Panel(QtWidgets.QGroupBox):
         if self.d_worker is None or self.d_worker.is_set():
             self.d_worker = QThreadWorker(cam_display, self.acq_job, self)
 
-            self.d_worker.signals.finished.connect(
-                lambda: self.acq_job.setDone(1, True)
-            )
+            self.d_worker.signals.finished.connect(lambda: job.setDone(1, True))
             # Execute
             self.d_worker.setAutoDelete(True)
             self._threadpool.start(self.d_worker)
@@ -942,9 +1007,7 @@ class Camera_Panel(QtWidgets.QGroupBox):
         if self.c_worker is None or self.c_worker.is_set():
             # Any other args, kwargs are passed to the run function
             self.c_worker = QThreadWorker(self.cam_capture, *self.getCaptureArgs())
-            self.c_worker.signals.finished.connect(
-                lambda: self.acq_job.setDone(0, True)
-            )
+            self.c_worker.signals.finished.connect(lambda: job.setDone(0, True))
             self.c_worker.setAutoDelete(True)
             # Execute
             self._threadpool.start(self.c_worker)
@@ -1095,6 +1158,7 @@ def display_frame(
             'plot_type': camp.camera_options.isHistogramPlot,
             'threshold': thresholds,
             'plot': hist if camp.camera_options.isHistogramPlot else cdf,
+            'bit_depth': camp.camera_options.get_param_value(CamParams.BIT_DEPTH),
         },
     )
 

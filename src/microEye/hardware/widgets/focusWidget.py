@@ -269,6 +269,9 @@ class focusWidget(QtWidgets.QDockWidget):
                 fillLevel=0,  # Fill down to y=0
             ),
         }
+        self._setpoint_line = pg.InfiniteLine(angle=0, pen='y')
+        self._setpoint_line.hide()
+        self._z_shift.addItem(self._setpoint_line)
 
     def _update_plot_visibility(self, method: StabilizationMethods):
         is_line = method in [
@@ -353,8 +356,15 @@ class focusWidget(QtWidgets.QDockWidget):
         positions: np.ndarray = kwargs.get('positions')
         X, Y, Z = positions[:, 0], positions[:, 1], positions[:, 2]
 
-        if FocusStabilizer.instance().isFocusStabilized(Axis.Z):
-            Z = Z - FocusStabilizer.instance().getParameter()
+        # Z stays absolute; rebasing the whole history on every lock change
+        # made locking and unlocking (e.g. per z-scan plane) redraw everything.
+        setpoint = FocusStabilizer.instance().getParameter()
+        show = FocusStabilizer.instance().isFocusStabilized(Axis.Z) and np.isscalar(
+            setpoint
+        )
+        self._setpoint_line.setVisible(show)
+        if show:
+            self._setpoint_line.setPos(setpoint)
 
         Localizations: dict = kwargs.get('localizations')
         line_profile: dict = kwargs.get('line_profile')
@@ -422,8 +432,6 @@ class focusWidget(QtWidgets.QDockWidget):
             self._z_hist.setXRange(bin_edges[0], bin_edges[-1], padding=0.04)
             self._z_hist.setYRange(0, np.nanmax(hist), padding=0.04)
             self._last_range_update = perf_counter_ns()
-
-        QtCore.QThread.msleep(10)  # slight delay to ensure GUI updates
 
     def getRoiCoords(self, roi: pg.ROI = None):
         if isinstance(roi, pg.RectROI):

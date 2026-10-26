@@ -4,7 +4,8 @@ from enum import Enum
 from typing import Any, Optional, Union
 
 import numpy as np
-from tabulate import tabulate
+
+from microEye.utils.console_table import print_table
 
 
 class miCamera:
@@ -107,7 +108,7 @@ class miCamera:
         self.populate_status()
         for key in self.status:
             data = [[k, i] for k, i in self.status[key].items()]
-            print(tabulate(data, headers=[key], tablefmt='rounded_grid'))
+            print_table(data, headers=['Property', 'Value'], title=key)
 
     def property_tree(self) -> list[dict[str, Any]]:
         '''

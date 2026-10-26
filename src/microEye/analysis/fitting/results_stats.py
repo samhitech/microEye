@@ -59,11 +59,15 @@ class resultsStatsWidget(QtWidgets.QWidget):
 
     def _derive_tracking_df(self):
         tr_id_col = str(DataColumns.TRACK_ID)
-        if self._df[tr_id_col].max() > 0 and self._extended:
+        dist_col = str(DataColumns.NEIGHBOUR_DISTANCE)
+        if (
+            self._extended
+            and tr_id_col in self._df
+            and dist_col in self._df
+            and self._df[tr_id_col].max() > 0
+        ):
             track_ids = self._df[self._df[tr_id_col] > 0][tr_id_col].to_numpy()
-            distances = self._df[self._df[tr_id_col] > 0][
-                'neighbour_distance'
-            ].to_numpy()
+            distances = self._df[self._df[tr_id_col] > 0][dist_col].to_numpy()
 
             # Get unique track IDs and their counts
             unique_ids, counts = np.unique(track_ids, return_counts=True)

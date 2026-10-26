@@ -141,7 +141,13 @@ else:
                 c[r] += re2f[i] * re2f[i] + im2f[i] * im2f[i]
         return a[1 : R_max + 1] / np.sqrt(b[1 : R_max + 1] * c[1 : R_max + 1])
 
-    @numba.njit(parallel=True, fastmath=True, cache=True)
+    @numba.njit(
+            [
+                'void(float32[:, :], float32[:, :], float32[:, :])',
+                'void(float64[:, :], float64[:, :], float32[:, :])',
+                'void(uint16[:, :], uint16[:, :], float32[:, :])',
+            ],
+            parallel=True, fastmath=True, cache=True)
     def window_and_normalize(image_1, image_2, window):
         sum_1 = np.sum(image_1)
         sum_2 = np.sum(image_2)

@@ -4,7 +4,6 @@ from enum import Enum
 from typing import Any, Optional
 
 import numpy as np
-from tabulate import tabulate
 
 from microEye.hardware.cams.camera_options import CamParams
 from microEye.hardware.cams.micam import miCamera

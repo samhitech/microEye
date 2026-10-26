@@ -5,81 +5,89 @@ import time
 import numba as nb
 import numpy as np
 import pyqtgraph as pg
-from sklearn.neighbors import NearestNeighbors
+from scipy.spatial import KDTree
 
 logger = logging.getLogger(__name__)
 
 @nb.njit(
-    nb.types.Tuple((nb.int64, nb.int64[:], nb.int64[:], nb.float64[:]))(
-        nb.float64[:, :],
-        nb.float64[:, :],
-        nb.int64[:],
-        nb.int64[:],
-        nb.float64[:],
-        nb.int64,
-        nb.float64,
-        nb.float64,
-        nb.int64,
+    nb.types.Tuple((nb.int64, nb.int64[:], nb.float64[:]))(
+        nb.float64[:, :],  # data: frame, x, y
+        nb.int64[:],  # ids (frame boundary indices)
+        nb.int64[:],  # trackID array to update
+        nb.float64[:],  # neighbour_dist to update
+        nb.int64,  # min_frame
+        nb.int64,  # max_frame
+        nb.int64,  # maxOff
+        nb.float64,  # minDistance
+        nb.float64,  # maxDistance
     ),
-    parallel=True,
     cache=True,
 )
-def nn_trajectories(
-    currentFrame: np.ndarray,
-    nextFrame: np.ndarray,
-    c_trackID: np.ndarray,
-    n_trackID: np.ndarray,
-    nn_dist: np.ndarray,
-    counter: int = 0,
-    minDistance: float = 0,
-    maxDistance: float = 30,
-    neighbors=1,
+def run_global_tracking(
+    data: np.ndarray,
+    ids: np.ndarray,
+    trackID: np.ndarray,
+    neighbour_dist: np.ndarray,
+    min_frame: int,
+    max_frame: int,
+    maxOff: int,
+    minDistance: float,
+    maxDistance: float,
 ):
-    currentIDs = None
+    counter = 0
 
-    if len(currentFrame) > 0 and len(nextFrame) > 0:
-        with nb.objmode(foundnn='float64[:,:]', dist_mask='boolean[:]'):
-            nNeighbors = NearestNeighbors(
-                n_neighbors=max(1, min(neighbors, nextFrame.shape[0]))
-            )
-            nNeighbors.fit(nextFrame[:, 1:] if nextFrame.shape[1] > 2 else nextFrame)
-            foundnn = nNeighbors.kneighbors(
-                currentFrame[:, 1:] if currentFrame.shape[1] > 2 else currentFrame
-            )
-            foundnn = np.asarray(foundnn, dtype=np.float64)
-            # print(foundnn.shape)
+    for frameID in range(min_frame, max_frame):
+        c_start = ids[frameID - 1] if frameID > 0 else 0
+        c_end = ids[frameID]
 
-            dist_mask = np.logical_and(
-                foundnn[0, ...] >= minDistance, foundnn[0, ...] <= maxDistance
-            )
-            # print(dist_mask.shape)
-            arg = np.argmax(dist_mask, axis=1)
-            dist_mask = dist_mask[np.arange(len(arg)), arg]
-            foundnn = foundnn[:, np.arange(len(arg)), arg]
-            # print(dist_mask.shape)
+        n_current = c_end - c_start
+        if n_current == 0:
+            continue
 
-        currentIDs = np.where(dist_mask)[0].astype(np.int64)
+        coords_current = data[c_start:c_end, 1:]
 
-        neighbourIDs = foundnn[1][dist_mask].astype(np.int64)
-        distance = foundnn[0]
+        for offset in range(0, maxOff + 1):
+            nextID = frameID + offset + 1
+            if nextID > max_frame:
+                continue
 
-        if np.isnan(distance).any():
-            print('Nan!\n\n')
+            n_start = ids[nextID - 1]
+            n_end = ids[nextID]
 
-        for idx in range(len(currentIDs)):
-            if n_trackID[neighbourIDs[idx]] == 0:
-                if c_trackID[currentIDs[idx]] == 0:
-                    counter += 1
-                    c_trackID[currentIDs[idx]] = counter
-                    n_trackID[neighbourIDs[idx]] = counter
-                else:
-                    n_trackID[neighbourIDs[idx]] = c_trackID[currentIDs[idx]]
+            n_next = n_end - n_start
+            if n_next == 0:
+                continue
 
-                nn_dist[neighbourIDs[idx]] = distance[currentIDs[idx]]
+            coords_next = data[n_start:n_end, 1:]
 
-    # counter += 0 if currentIDs is None else len(currentIDs)
+            with nb.objmode(distances='float64[:]', indices='int64[:]'):
+                tree = KDTree(coords_next)
+                distances, indices = tree.query(
+                    coords_current, k=1, distance_upper_bound=maxDistance
+                )
+                distances = np.asarray(distances, dtype=np.float64)
+                indices = np.asarray(indices, dtype=np.int64)
 
-    return counter, c_trackID, n_trackID, nn_dist
+            for idx in range(n_current):
+                dist = distances[idx]
+                neighbour_idx = indices[idx]
+
+                # no neighbour within maxDistance: KDTree returns index n_next
+                if neighbour_idx < n_next and dist >= minDistance:
+                    glob_curr = c_start + idx
+                    glob_next = n_start + neighbour_idx
+
+                    if trackID[glob_next] == 0:
+                        if trackID[glob_curr] == 0:
+                            counter += 1
+                            trackID[glob_curr] = counter
+                            trackID[glob_next] = counter
+                        else:
+                            trackID[glob_next] = trackID[glob_curr]
+
+                        neighbour_dist[glob_next] = dist
+
+    return counter, trackID, neighbour_dist
 
 
 # @nb.njit(parallel=True)

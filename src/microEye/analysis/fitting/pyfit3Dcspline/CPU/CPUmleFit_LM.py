@@ -4,6 +4,8 @@ import numpy as np
 from microEye.analysis.fitting.pyfit3Dcspline.CPU.CPUfunctions import *
 from microEye.analysis.fitting.pyfit3Dcspline.CPU.CPUsplineLib import *
 
+# cache=True keeps the helpers compiled into these kernels: numba does not see a
+# change in CPUfunctions.py / CPUsplineLib.py, so edit this file after one
 
 @nb.njit(cache=True)
 def kernel_MLEFit_LM(d_data, PSFSigma, sz, iterations, d_varim=None):

@@ -1,5 +1,6 @@
 import logging
-from collections import deque
+import threading
+import time
 from dataclasses import dataclass
 
 from microEye.hardware.stages.kinesis.kdc101.factory import *
@@ -49,6 +50,10 @@ class KDC101State:
 
 
 class KDC101Controller(QtCore.QObject):
+    #: Seconds a reply is kept for the waiter that expects it.
+    REPLY_MAX_AGE = 60.0
+    #: Most replies kept (status updates arrive continuously).
+    MAX_REPLIES = 256
     '''Class for controlling Thorlab Z825B 25mm actuator by a KDC101'''
 
     SOURCE = 0x01
@@ -76,7 +81,9 @@ class KDC101Controller(QtCore.QObject):
         self.__serial.setPortName(kwargs.get('portName', 'COM1'))
 
         self.__buffer = []
-        self.__responses = deque(maxlen=256)
+        #: (arrival time, reply, data); each waiter takes only what it expects
+        self.__responses: list[tuple[float, KDC101_RESPONSES, dict]] = []
+        self.__replies = threading.Condition()
 
         self.__channel = kwargs.get('channel', Channels.NA)
 
@@ -297,7 +304,14 @@ class KDC101Controller(QtCore.QObject):
 
         response = KDC101_CMDS.get(cmd.command_id).response
         if response:
-            return self.wait_for_response(response)
+            expected = {response}
+            if response in (
+                KDC101_RESPONSES.MGMSG_MOT_MOVE_COMPLETED,
+                KDC101_RESPONSES.MGMSG_MOT_MOVE_HOMED,
+            ):
+                # a stop ends a move or homing with MOVE_STOPPED instead
+                expected.add(KDC101_RESPONSES.MGMSG_MOT_MOVE_STOPPED)
+            return self.wait_for_response(expected)
 
     def identify(self):
         if self.isOpen():
@@ -368,7 +382,7 @@ class KDC101Controller(QtCore.QObject):
             )
             return self.write(_RELATIVE)
 
-    def move_stop(self, mode=StopMode.IMMEDIATE):
+    def move_stop(self, mode=StopMode.IMMEDIATE, wait: bool = True):
         if self.isOpen():
             _STOP = KDC101_Factory.create_command(
                 KDC101_CMDS.MGMSG_MOT_MOVE_STOP,
@@ -377,6 +391,9 @@ class KDC101Controller(QtCore.QObject):
                 destination=self.destination,
                 source=self.source,
             )
+            if not wait:  # send only, do not wait for MOVE_STOPPED
+                self.onWrite.emit(bytearray(_STOP.data))
+                return None
             return self.write(_STOP)
 
     def start_updates(self):
@@ -673,20 +690,37 @@ class KDC101Controller(QtCore.QObject):
                     logger.info(
                         f'\nReceived response: {response_enum}, Data: {parsed_data}'
                     )
-                    self.__responses.append((response_enum, parsed_data))
+                    self._deliver(response_enum, parsed_data)
                     self._handle_state_update(response_enum, parsed_data)
                     self.dataReceived.emit(response_enum, parsed_data)
                 except ValueError as e:
-                    logger.error(f'Error interpreting response.', exc_info=e)
+                    logger.error('Error interpreting response.', exc_info=e)
 
         except Exception as e:
             self.__serial.errorOccurred.emit(str(e))
+
+    def _deliver(self, response_enum: KDC101_RESPONSES, parsed_data: dict):
+        '''Keep a parsed reply for the waiter that expects it, and wake waiters.'''
+        now = time.monotonic()
+        with self.__replies:
+            self.__responses.append((now, response_enum, parsed_data))
+            cutoff = now - self.REPLY_MAX_AGE
+            self.__responses = [
+                reply for reply in self.__responses if reply[0] >= cutoff
+            ][-self.MAX_REPLIES :]
+            self.__replies.notify_all()
+
+    @staticmethod
+    def _on_gui_thread() -> bool:
+        app = QtCore.QCoreApplication.instance()
+        return app is not None and QtCore.QThread.currentThread() == app.thread()
 
     def clearResponses(self):
         '''
         Clear the response buffer.
         '''
-        self.__responses.clear()
+        with self.__replies:
+            self.__responses.clear()
         self.__buffer = []
 
     def wait_for_response(
@@ -703,20 +737,41 @@ class KDC101Controller(QtCore.QObject):
         timeout : int, optional
             The timeout in milliseconds (default is 60000).
         '''
-        start_time = QtCore.QDateTime.currentMSecsSinceEpoch()
+        if isinstance(expected_response, KDC101_RESPONSES):
+            expected = {expected_response}
+        else:
+            expected = set(expected_response)
+        deadline = time.monotonic() + timeout / 1000
+        # replies arrive through rx_slot on the GUI thread: a waiter on the GUI
+        # thread must let it run; a worker just sleeps until rx_slot wakes it
+        on_gui = self._on_gui_thread()
 
-        while QtCore.QDateTime.currentMSecsSinceEpoch() - start_time < timeout:
-            if self.__responses:
-                response_enum, parsed_data = self.__responses.popleft()
-                if response_enum == expected_response:
-                    return response_enum, parsed_data
+        while True:
+            with self.__replies:
+                # take the first reply this waiter expects; leave the others
+                for index, (_, response_enum, parsed_data) in enumerate(
+                    self.__responses
+                ):
+                    if response_enum in expected:
+                        del self.__responses[index]
+                        return response_enum, parsed_data
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                if not on_gui:
+                    self.__replies.wait(min(remaining, 0.1))
 
             if not self.isOpen():
                 logger.error('Serial port closed while waiting for response.')
                 return None, None
 
-            QtCore.QCoreApplication.processEvents()
-            QtCore.QThread.msleep(10)
+            if on_gui:
+                QtCore.QCoreApplication.processEvents()
+                time.sleep(0.005)
 
-        logger.error(f'Timeout waiting for response: {expected_response}')
+        logger.error(
+            'KDC101 %s: timeout waiting for %s.',
+            self.portName(),
+            ' or '.join(sorted(reply.name for reply in expected)),
+        )
         return None, None

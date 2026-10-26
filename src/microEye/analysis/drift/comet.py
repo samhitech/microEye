@@ -12,13 +12,13 @@ from time import perf_counter_ns
 
 import numba as nb
 import numpy as np
-import rich.progress as rp
 from numba import cuda
 from scipy.optimize import minimize
 from scipy.spatial import KDTree
 
 from microEye.analysis.drift.core import _compute_frame_drift
 from microEye.analysis.drift.segment import adaptive_segmentation
+from microEye.utils.gui_helper import _get_progress_bar
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +112,31 @@ if cuda.is_available():
 else:
     MODE = 'numba'
 
-    @nb.njit(parallel=True, fastmath=True, cache=True)
+    @nb.njit(
+        [
+            nb.types.Tuple((nb.float32, nb.float32[:, :]))(
+                nb.float32[:, :],  # d
+                nb.float32[:, :],  # x_ij
+                nb.int64[:],  # si
+                nb.int64[:],  # sj
+                nb.float64,  # sigma
+                nb.float32[:, :, :],  # grad_local
+                nb.float32[:],  # cost_local
+            ),
+            nb.types.Tuple((nb.float32, nb.float32[:, :]))(
+                nb.float64[:, :],  # d
+                nb.float32[:, :],  # x_ij
+                nb.int64[:],  # si
+                nb.int64[:],  # sj
+                nb.float64,  # sigma
+                nb.float32[:, :, :],  # grad_local
+                nb.float32[:],  # cost_local
+            ),
+        ],
+        parallel=True,
+        fastmath=True,
+        cache=True,
+    )
     def cost_and_grad_numba(d, x_ij, si, sj, sigma, grad_local, cost_local):
         ndim = d.shape[-1]
 
@@ -133,15 +157,15 @@ else:
         return cost_local.sum(), grad_local.sum(axis=0)
 
     def target_func(
-        d_flat,
-        x_ij,
-        si,
-        sj,
-        sigma,
-        n_segments,
-        ndim,
-        grad_local,
-        cost_local,
+        d_flat: np.ndarray,
+        x_ij: np.ndarray,
+        si: np.ndarray,
+        sj: np.ndarray,
+        sigma: float,
+        n_segments: int,
+        ndim: int,
+        grad_local: np.ndarray,
+        cost_local: np.ndarray,
     ):
         d = d_flat.reshape(n_segments, ndim)
         grad_local.fill(0.0)
@@ -262,14 +286,7 @@ def run_comet(
         si = cp.asarray(si, order='C')
         sj = cp.asarray(sj, order='C')
 
-    with rp.Progress(
-        rp.SpinnerColumn(),  # Animated spinner
-        rp.TextColumn('[progress.description]{task.description}'),
-        rp.BarColumn(),  # The actual progress bar
-        rp.TaskProgressColumn(),  # Percentage complete
-        rp.TimeElapsedColumn(),
-        transient=True,
-    ) as progress:
+    with _get_progress_bar() as progress:
         task = progress.add_task(
             '[cyan]COMET drift estimation...', total=len(sigma_schedule)
         )

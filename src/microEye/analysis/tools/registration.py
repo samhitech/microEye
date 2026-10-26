@@ -188,7 +188,7 @@ def process_stack(
         if filename.endswith('.tif'):
             writer.close()
             if isinstance(moving_stack, TiffSeqHandler):
-                with tf.TiffFile(moving_stack._tiff_seq.files[0]) as fl:
+                with tf.TiffFile(moving_stack._tiff_seq[0]) as fl:
                     if fl.is_ome:
                         obj = ome.OME.from_xml(fl.ome_metadata)
                         obj.images[0].name = 'Registered Stack'

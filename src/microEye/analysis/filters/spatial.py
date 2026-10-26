@@ -11,6 +11,7 @@ from skimage.morphology import disk, white_tophat
 from skimage.restoration import rolling_ball
 
 from microEye.analysis.filters.base import SpatialFilter
+from microEye.analysis.utils import get_rounded_radial_coord
 
 
 def _force_odd(n: int) -> int:
@@ -112,7 +113,7 @@ class GaussPointFilter(SpatialFilter):
         An approximation of the Laplacian of Gaussian.
         '''
         params = {'sigma': kwargs.get('sigma', 2.0)}
-        super().__init__(name='Gaussian Filter', parameters=params)
+        super().__init__(name='Gaussian Point Filter', parameters=params)
 
         self.point_kernel = np.array([[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]])
         self._combined_kernel = np.empty_like(self.point_kernel)
@@ -125,7 +126,7 @@ class GaussPointFilter(SpatialFilter):
         self.parameters['sigma'] = sigma
 
         gauss_size = _force_odd(max(3, math.ceil(3 * sigma + 1)))
-        self.gauss = GaussPointFilter.gaussian_kernel(gauss_size, sigma)
+        self.gauss = cv2.getGaussianKernel(gauss_size, sigma, cv2.CV_32F)
         self._combined_kernel = signal.convolve2d(
             self.gauss, self.point_kernel, mode='full'
         )
@@ -136,13 +137,20 @@ class GaussPointFilter(SpatialFilter):
         return kernel
 
     def run(self, image: np.ndarray) -> np.ndarray:
-        padded = self.pad_image(image, self._combined_kernel, mode='reflect')
-
-        conv = signal.fftconvolve(padded, self._combined_kernel, mode='valid')
-
-        assert conv.shape == image.shape, 'padding/kernel size mismatch — check oddness'
-
-        return conv.astype(np.float32)
+        smoothed = cv2.sepFilter2D(
+            image,
+            ddepth=cv2.CV_32F,
+            kernelX=self.gauss,
+            kernelY=self.gauss,
+            borderType=cv2.BORDER_REFLECT,
+        )
+        conv = cv2.filter2D(
+            smoothed,
+            ddepth=cv2.CV_32F,
+            kernel=self.point_kernel,
+            borderType=cv2.BORDER_REFLECT,
+        )
+        return conv
 
     def get_tree_parameters(self):
         '''Return the parameters for the pyqtgraph tree view.'''
@@ -162,30 +170,6 @@ class GaussPointFilter(SpatialFilter):
                 },
             ],
         }
-
-
-@nb.njit(parallel=True)
-def radial_coordinates_nb(shape):
-    '''Generates a 2D array with radial cordinates
-    with according to the first two axis of the
-    supplied shape tuple
-
-    Returns
-    -------
-    R, Rsq
-        Radius 2d matrix (R) and radius squared matrix (Rsq)
-    '''
-    R = np.zeros(shape, dtype=np.float32)
-    Rsq = np.zeros(shape, dtype=np.float32)
-
-    center = (shape[0] // 2, shape[1] // 2)
-
-    for i in nb.prange(shape[0]):
-        for j in range(shape[1]):
-            R[i, j] = np.sqrt((i - center[0]) ** 2 + (j - center[1]) ** 2)
-            Rsq[i, j] = R[i, j] ** 2
-
-    return R, Rsq
 
 
 class FourierFilter(SpatialFilter):
@@ -264,17 +248,14 @@ class FourierFilter(SpatialFilter):
         self._refresh = True
 
     def radial_coordinates(self, shape):
-        '''Generates a 2D array with radial cordinates
-        with according to the first two axis of the
-        supplied shape tuple
+        '''Generates a 2D array with radial coordinates unshifted for raw FFT layouts'''
+        R = get_rounded_radial_coord(shape[:2])
 
-        Returns
-        -------
-        R, Rsq
-            Radius 2d matrix (R) and radius squared matrix (Rsq)
-        '''
-        self._radial_coordinates = radial_coordinates_nb(shape[:2])
+        # Shift the coordinate system so the "center" frequency
+        # maps to the corners (raw FFT layout)
+        R = np.fft.ifftshift(R)
 
+        self._radial_coordinates = R, R**2
         return self._radial_coordinates
 
     def ideal_filter(self, shape, cutoff, cuton):
@@ -390,82 +371,62 @@ class FourierFilter(SpatialFilter):
 
         return filter
 
-    def run(self, image: np.ndarray):
-        '''Applies an FFT pass filter to the 2D image.
-
-        Params
-        -------
-        image (np.ndarray)
-            the image to be filtered.
-        '''
-
-        # time = QDateTime.currentDateTime()
-
+    def run(self, image: np.ndarray) -> np.ndarray:
+        '''Applies an optimized, cached FFT pass filter to a 2D image.'''
         rows, cols = image.shape
         nrows = cv2.getOptimalDFTSize(rows)
         ncols = cv2.getOptimalDFTSize(cols)
+
         pad_rows = nrows - rows
         pad_cols = ncols - cols
 
-        # Ensure that pad_cols[1] and pad_rows[1] are at least 1
-        pad_rows = (pad_rows // 2, max(1, pad_rows - pad_rows // 2))
-        pad_cols = (pad_cols // 2, max(1, pad_cols - pad_cols // 2))
+        pad_top = pad_rows // 2
+        pad_bottom = pad_rows - pad_top
+        pad_left = pad_cols // 2
+        pad_right = pad_cols - pad_left
 
-        nimg = np.pad(image, (pad_rows, pad_cols), mode='reflect')
-        # nimg = np.zeros((nrows, ncols))
-        # nimg[:rows, :cols] = image
+        # Direct float32 casting
+        nimg = cv2.copyMakeBorder(
+            image.astype(np.float32),
+            pad_top,
+            pad_bottom,
+            pad_left,
+            pad_right,
+            cv2.BORDER_REFLECT,
+        )
 
-        ft = fftshift(cv2.dft(np.float64(nimg), flags=cv2.DFT_COMPLEX_OUTPUT))
+        ft = cv2.dft(nimg, flags=cv2.DFT_COMPLEX_OUTPUT)
 
-        filter = np.ones(ft.shape[:2])
-
-        refresh = self._refresh
-
-        if self._filter is None:
-            refresh = True
-        elif self._filter.shape != ft.shape[:2]:
-            refresh = True
-
-        if refresh:
+        # Cache & Generate filter masks only when parameters or shapes modify
+        if (
+            self._filter is None
+            or self._filter.shape != (nrows, ncols)
+            or self._refresh
+        ):
             if self.parameters['type'] == FourierFilter.PROFILES.Gaussian.name:
-                filter = self.gaussian_filter(
-                    ft.shape, self.parameters['center'], self.parameters['width']
+                f_mask = self.gaussian_filter(
+                    (nrows, ncols), self.parameters['center'], self.parameters['width']
                 )
             elif self.parameters['type'] == FourierFilter.PROFILES.Butterworth.name:
-                filter = self.butterworth_filter(
-                    ft.shape,
+                f_mask = self.butterworth_filter(
+                    (nrows, ncols),
                     self.parameters['center'],
                     self.parameters['width'],
                     self.parameters['order'],
                 )
             else:
-                cutoff = int(
-                    max(0, self.parameters['center'] - self.parameters['width'] // 2)
+                f_mask = self.ideal_filter(
+                    (nrows, ncols), self.parameters['center'], self.parameters['width']
                 )
-                cuton = int(self.parameters['center'] + self.parameters['width'] // 2)
-                filter = self.ideal_filter(ft.shape, cutoff, cuton)
 
-            self._filter = filter
-        else:
-            filter = self._filter
+            self._filter = f_mask[:, :, np.newaxis]
+            self._refresh = False
 
-        if self._show_filter:
-            cv2.namedWindow(self.name, cv2.WINDOW_NORMAL)
-            cv2.imshow(self.name, (filter * 255).astype(np.uint8))
+        ft *= self._filter
 
-        img = np.zeros(nimg.shape, dtype=np.uint8)
-        ft[:, :, 0] *= filter
-        ft[:, :, 1] *= filter
-        idft = cv2.idft(ifftshift(ft))
-        magnitude = cv2.magnitude(idft[:, :, 0], idft[:, :, 1])[
-            pad_rows[0] : -pad_rows[1], pad_cols[0] : -pad_cols[1]
-        ]
+        inv_img = cv2.idft(ft, flags=cv2.DFT_SCALE | cv2.DFT_REAL_OUTPUT)
 
-        assert magnitude.shape == image.shape, (
-            'size mismatch after filtering'
-        )
-
-        return magnitude.astype(np.float32)
+        return inv_img[pad_top : pad_top + rows, pad_left : pad_left + cols]
 
     def set_params(
         self,

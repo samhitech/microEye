@@ -359,11 +359,15 @@ class PeakPanel(Camera_Panel):
         '''
         if self._cam.acquisition:
             return  # if acquisition is already going on
+        if self.is_busy():
+            if Event is not None:
+                Event.set()  # a waiting protocol or scan does not hang
+            return
 
         self._cam.refresh_info()  # refresh adapter info
 
         self._save_prefix = Prefix
-        self.acq_job = self.getAcquisitionJob(Event=Event)
+        self.acq_job = self.getAcquisitionJob(event=Event)
 
         ret = self._cam.start_acquisition()
 

@@ -86,23 +86,25 @@ def kernel_cholesky(A, n, L, U) -> int:
         _description_
     '''
     info = 0
+    # G (A = G G^T) in U[i*n + j], G^T in L[j*n + i]: where kernel_luEvaluate
+    # reads them (as on the GPU)
     for i in range(n):
         for j in range(i + 1):
             s = 0.0
             for k in range(j):
-                s += L[i * n + k] * L[j * n + k]
+                s += U[i * n + k] * U[j * n + k]
 
             if i == j:
                 if A[i * n + i] - s >= 1e-15:  # Improved numerical stability
-                    L[i * n + j] = math.sqrt(A[i * n + i] - s)
-                    U[j * n + i] = L[i * n + j]  # U is the transpose of L
+                    U[i * n + j] = math.sqrt(A[i * n + i] - s)
+                    L[j * n + i] = U[i * n + j]
                 else:
                     info = 1
                     return info
             else:
-                if L[j * n + j] > 1e-15:  # Avoid division by very small numbers
-                    L[i * n + j] = 1.0 / L[j * n + j] * (A[i * n + j] - s)
-                    U[j * n + i] = L[i * n + j]  # U is the transpose of L
+                if U[j * n + j] > 1e-15:  # Avoid division by very small numbers
+                    U[i * n + j] = 1.0 / U[j * n + j] * (A[i * n + j] - s)
+                    L[j * n + i] = U[i * n + j]
                 else:
                     info = 1
                     return info

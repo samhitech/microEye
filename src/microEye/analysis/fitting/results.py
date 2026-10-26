@@ -23,7 +23,7 @@ from microEye.analysis.drift import (
 )
 from microEye.analysis.fitting.processing import (
     merge_localizations,
-    nn_trajectories,
+    run_global_tracking,
 )
 from microEye.analysis.rendering import BaseRenderer, Projection, RenderModes
 
@@ -1071,7 +1071,7 @@ class FittingResults:
         maxOff : int
             Maximum length of trajectory in frames
         neighbors : int
-            Number of nearest neighbors to consider
+            Unused, kept for old callers: only the nearest neighbour is linked
 
         Returns
         -------
@@ -1094,41 +1094,22 @@ class FittingResults:
 
         ids = np.cumsum(np.bincount(self.data[DataColumns.FRAME].astype(np.int64)))
 
-        counter = 0
         min_frame = np.min(self.data[DataColumns.FRAME])
         max_frame = np.max(self.data[DataColumns.FRAME])
 
-        for frameID in np.arange(min_frame, max_frame, dtype=np.int64):
-            for offset in np.arange(0, maxOff + 1, dtype=np.int64):
-                nextID = frameID + offset + 1
-
-                if nextID > max_frame:
-                    continue
-
-                currentMask = slice(
-                    ids[frameID - 1] if frameID > 0 else 0, ids[frameID]
-                )
-                nextMask = slice(ids[nextID - 1], ids[nextID])
-
-                (
-                    counter,
-                    self.trackID[currentMask],
-                    self.trackID[nextMask],
-                    self.neighbour_dist[nextMask],
-                ) = nn_trajectories(
-                    data[currentMask, :],
-                    data[nextMask, :],
-                    c_trackID=self.trackID[currentMask],
-                    n_trackID=self.trackID[nextMask],
-                    nn_dist=self.neighbour_dist[nextMask],
-                    counter=counter,
-                    minDistance=minDistance,
-                    maxDistance=maxDistance,
-                    neighbors=neighbors,
-                )
-            print(f'NN {frameID / max_frame:.2%} ...               ', end='\r')
-
-        logger.info('\nDone ...')
+        logger.info('Tracking trajectories ...')
+        counter, self.trackID, self.neighbour_dist = run_global_tracking(
+            np.ascontiguousarray(data, dtype=np.float64),
+            ids.astype(np.int64),
+            self.trackID,
+            self.neighbour_dist,
+            int(min_frame),
+            int(max_frame),
+            int(maxOff),
+            float(minDistance),
+            float(maxDistance),
+        )
+        logger.info('Done: %d trajectories.', counter)
 
         return self
 

@@ -110,13 +110,11 @@ if cuda.is_available() and len(list(cuda.gpus)) > 0:
         #     pass
         # elif fittype == 2:  # free sigma
         #     pass
-        if fittype == 4:  # fixed sigmax and sigmay
-            PSFSigma = float(PSFparam[0])
+        if fittype in (1, 2, 4):  # the PSF sigma (the starting one for 2 and 4)
+            PSFSigma = np.float32(PSFparam[0])  # float32: the kernels compute in it
         elif fittype == 5:  # spline fit
-            coeff = PSFparam.flatten()
-            spline_xsize = PSFparam.shape[1]
-            spline_ysize = PSFparam.shape[2]
-            spline_zsize = PSFparam.shape[3]
+            coeff = PSFparam.flatten()  # (64, z, y, x), as psf2cspline_np
+            spline_zsize, spline_ysize, spline_xsize = PSFparam.shape[1:]
 
         # EMCCD = 0, sCMOS = 1
         cameratype = 0 if varim is None else 1
@@ -279,6 +277,7 @@ if cuda.is_available() and len(list(cuda.gpus)) > 0:
         elif fittype == 5:  # fit x,y,bg,I,z
             if initZ < 0:
                 initZ = spline_zsize / 2.0
+            initZ = np.float32(initZ)
 
             if cameratype == 0:
                 GPU.kernel_splineMLEFit_z_EMCCD[blockx, threadx](
@@ -440,10 +439,8 @@ def CPUmleFit_LM(
     elif fittype == 4:  # fixed sigmax and sigmay
         PSFSigma = float(PSFparam[0])
     elif fittype == 5:  # spline fit
-        coeff = PSFparam.flatten()
-        spline_xsize = PSFparam.shape[1]
-        spline_ysize = PSFparam.shape[2]
-        spline_zsize = PSFparam.shape[3]
+        coeff = PSFparam.flatten()  # (64, z, y, x), as psf2cspline_np
+        spline_zsize, spline_ysize, spline_xsize = PSFparam.shape[1:]
 
     # EMCCD = 0, sCMOS = 1
     cameratype = 0 if varim is None else 1
@@ -619,6 +616,8 @@ def fit_single_iteration(data, PSFSigma, sz, iterations, varim, fittype):
         return result, crb, ll
 
 
+# cache=True keeps the kernels compiled into these drivers: numba does not see
+# a change in CPU/*.py, so edit this file (or clear __pycache__) after one
 @nb.njit(parallel=True, cache=True)
 def CPU_parallel_fit_2D(
     data,
@@ -706,6 +705,21 @@ def CPU_parallel_fit_2D(
 #                 LogLikelihood[ii] = -1
 
 
+@nb.njit
+def fit_single_spline(data, coeff, xsize, ysize, zsize, sz, iterations, initZ, varim):
+    # the try lives here: inside the prange loop it makes numba run it serially
+    try:
+        return CPU.kernel_splineMLEFit_z(
+            data, coeff, xsize, ysize, zsize, sz, iterations, initZ, varim
+        )
+    except Exception:
+        return (
+            np.full(NV_PSP + 1, -1, dtype=np.float32),
+            np.full(NV_PSP, -1, dtype=np.float32),
+            np.float64(-1),
+        )
+
+
 @nb.njit(parallel=True, cache=True)
 def CPU_parallel_fit_3D_scpline(
     data,
@@ -723,24 +737,11 @@ def CPU_parallel_fit_3D_scpline(
     LogLikelihood,
 ):
     for ii in nb.prange(Nfitraw):
-        try:
-            Parameters[ii, :], CRLBs[ii, :], LogLikelihood[ii] = (
-                CPU.kernel_splineMLEFit_z(
-                    data[ii, :],
-                    coeff,
-                    spline_xsize,
-                    spline_ysize,
-                    spline_zsize,
-                    int(sz),
-                    iterations,
-                    initZ,
-                    None if varim is None else varim[ii, :],
-                )
-            )
-        except Exception:
-            Parameters[ii, :] = -1
-            CRLBs[ii, :] = -1
-            LogLikelihood[ii] = -1
+        varim_ii = None if varim is None else varim[ii, :]
+        Parameters[ii, :], CRLBs[ii, :], LogLikelihood[ii] = fit_single_spline(
+            data[ii, :], coeff, spline_xsize, spline_ysize, spline_zsize,
+            int(sz), iterations, initZ, varim_ii,
+        )  # fmt: skip
 
 
 @nb.njit(cache=True)

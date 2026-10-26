@@ -67,6 +67,7 @@ class CamParams(Enum):
     # add colors for dual view RG, GB, GR, BR, BG, etc.
     DUAL_VIEW_COLORS = 'Display.Dual View Colors'
     LINE_PROFILER = 'Display.Line Profiler'
+    BIT_DEPTH = 'Display.Bit Depth'
     LUT = 'Display.LUT'
     LUT_NUMPY = 'Display.LUT Numpy (12bit)'
     LUT_OPENCV = 'Display.LUT Opencv (8bit)'
@@ -260,6 +261,13 @@ class CameraOptions(Tree):
                         'name': str(CamParams.LINE_PROFILER),
                         'type': 'bool',
                         'value': False,
+                    },
+                    {
+                        'name': str(CamParams.BIT_DEPTH),
+                        'type': 'list',
+                        'limits': [8, 10, 12, 14, 16],
+                        'value': 12,
+                        'tip': 'For the saturation warning (8-bit images: always 8)',
                     },
                     {
                         'name': str(CamParams.RESIZE_DISPLAY),

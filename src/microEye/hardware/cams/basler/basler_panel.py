@@ -178,49 +178,11 @@ class Basler_Panel(Camera_Panel):
         if self._dispose_cam:
             return
 
-        def update(event):
-            '''
-            Fetches the current readings and settings from the laser device.
-            '''
-            for prop in self.cam.property_tree():
-                try:
-                    if prop['type'] == 'action':
-                        continue
+        def read(event):
+            return [p for p in self.cam.property_tree() if p['type'] != 'action']
 
-                    parent = prop.pop('parent', CamParams.ACQ_SETTINGS)
-                    name = prop.pop('name', None)
-                    value = prop.pop('value', None)
-                    limits = prop.pop('limits', None)
-                    enabled = prop.pop('enabled', False)
-
-                    param = self.camera_options.get_param(
-                        '.'.join([parent.value, name])
-                    )
-
-                    with param.treeChangeBlocker():
-                        if limits and (
-                            len(limits) != len(param.opts.get('limits', []))
-                            or any(
-                                old != new
-                                for old, new in zip(
-                                    param.opts.get('limits', []), limits
-                                )
-                            )
-                        ):
-                            param.setLimits(limits)
-                        if value != param.value():
-                            param.setValue(value)
-                        if enabled != param.opts.get('enabled', True):
-                            param.setOpts(enabled=enabled)
-                except Exception as e:
-                    logging.getLogger(__name__).error(
-                        f"Error updating parameter {prop.get('name', 'unknown')}: {e}"
-                    )
-                    traceback.print_exc()
-
-            self.refresh_exposure()
-
-        worker = QThreadWorker(update)
+        worker = QThreadWorker(read)
+        worker.signals.result.connect(self.show_readings)
         # worker.signals.finished.connect(
         #     self.timer.start
         # )  # Restart the timer after fetching stats
@@ -228,6 +190,9 @@ class Basler_Panel(Camera_Panel):
         QtCore.QThreadPool.globalInstance().start(worker)
 
     def update_cam(self, param: Optional[Parameter], param_value):
+        if self._showing_readback:
+            return
+
         path = super().update_cam(param, param_value)
 
         # Restart the timer to update the camera params after a change
@@ -268,6 +233,9 @@ class Basler_Panel(Camera_Panel):
         Value : double
             selected exposure in micro-seconds
         '''
+        if self._showing_readback:
+            return
+
         self._cam.setExposure(value)
 
         self.refresh_exposure()
@@ -303,6 +271,9 @@ class Basler_Panel(Camera_Panel):
         self.refresh_framerate()
 
     def framerate_changed(self, param, value: float):
+        if self._showing_readback:
+            return
+
         self.refresh_framerate(value)
 
     def io_line_changed(self, value):

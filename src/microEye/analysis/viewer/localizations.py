@@ -43,7 +43,6 @@ from microEye.analysis.processing import FRC_resolution_binomial, plot_frc
 from microEye.analysis.rendering import (
     Axis,
     BaseRenderer,
-    PointCloudRenderer,
     Projection,
     RenderModes,
     SpatialIndex3D,
@@ -72,11 +71,38 @@ from microEye.utils.thread_worker import QThreadWorker
 logger = logging.getLogger(__name__)
 
 
+def _nice_length(length_nm: float) -> tuple[float, str]:
+    magnitude = 10 ** np.floor(np.log10(length_nm))
+    nice = np.array([1, 2, 5, 10, 20, 50, 100]) * magnitude
+    size = nice[np.argmin(np.abs(nice - length_nm))]
+    return size, f'{size:.0f} nm' if size < 1000 else f'{size / 1000:.1f} μm'
+
+
+class VerticalScaleBar(pg.ScaleBar):
+    '''A scale bar along the view's y axis (z in the side views).'''
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.text.setAngle(90)
+
+    def updateBar(self):
+        view = self.parentItem()
+        if view is None:
+            return
+        p1 = view.mapFromViewToItem(self, QtCore.QPointF(0, 0))
+        p2 = view.mapFromViewToItem(self, QtCore.QPointF(0, self.size))
+        h = abs((p2 - p1).y())
+        # bottom aligned with the horizontal bar: the two form an L
+        self.bar.setRect(QtCore.QRectF(0, self._width - h, self._width, h))
+        self.text.setPos(0, self._width - h / 2)
+
+
 class LocalizationTab(SideBar):
     projectionChanged = Signal()
 
     renderActivated = Signal()
     render3DActivated = Signal()
+    zStretchChanged = Signal()
     animationActivated = Signal()
     viewUpdateRequested = Signal()
 
@@ -154,6 +180,15 @@ class LocalizationTab(SideBar):
             min_value=0, max_value=250, initial_value=10
         )
         self.__z_binsize = create_spin_box(min_value=0, max_value=250, initial_value=50)
+        self.__z_stretch = create_double_spin_box(
+            min_value=0, max_value=50, single_step=1, decimals=1, initial_value=0
+        )
+        self.__z_stretch.setSpecialValueText('Auto')
+        self.__z_stretch.setToolTip(
+            'Side views (XZ, YZ) show z this many times larger than x/y; '
+            'Auto: the depth a quarter of the width.'
+        )
+        self.__z_stretch.valueChanged.connect(lambda: self.zStretchChanged.emit())
 
         self.__position_label = QtWidgets.QLabel('Position [nm]:')
         self.__position = create_double_spin_box(
@@ -199,6 +234,7 @@ class LocalizationTab(SideBar):
         flocalization.addRow('Frame bins:', self.__frame_bins)
         flocalization.addRow('XY binsize [nm]:', self.__xy_binsize)
         flocalization.addRow('Z binsize [nm]:', self.__z_binsize)
+        flocalization.addRow('Z stretch:', self.__z_stretch)
         flocalization.addRow(self.__position_label, self.__position)
         flocalization.addRow(
             create_hbox_layout(
@@ -223,6 +259,7 @@ class LocalizationTab(SideBar):
     def __init_z_extraction(self):
         # Z Extraction
         self.z_cal_curve = None  # LEAVE IT!!!
+        self.z_cal_path = ''  # the last calibration file, for the dialog's folder
 
         z_extract_form = QtWidgets.QFormLayout()
 
@@ -470,9 +507,10 @@ class LocalizationTab(SideBar):
         '''Load a calibration file.'''
         self.z_cal_curve, path = stats.import_fit_curve(
             self,
-            os.path.dirname(self.currentResults.path),
+            os.path.dirname(self.z_cal_path),  # '' the first time
         )
         if self.z_cal_curve is not None:
+            self.z_cal_path = path
             self.__cal_file_path.setText(path)
             if self.z_cal_curve.method == stats.CurveFitMethod.LINEAR:
                 self.__cal_file_path.setText(path)
@@ -602,6 +640,11 @@ class LocalizationTab(SideBar):
         return self.__position.value()
 
     @property
+    def zStretch(self) -> float:
+        '''z magnification of the side views; 0 = automatic.'''
+        return self.__z_stretch.value()
+
+    @property
     def projection(self) -> int:
         return self.__projection_cbox.currentData()
 
@@ -718,6 +761,7 @@ class LocalizationTab(SideBar):
             'binXY': self.bin_xy,
             'binZ': self.bin_z,
             'slicePosition': self.slicePosition,
+            'zStretch': self.zStretch,
             'autoStretch': self.autoStretch,
             'frcMethod': self.frcMethod,
             'crossMethod': self.crossMethod,
@@ -906,6 +950,15 @@ class LocalizationsView(QtWidgets.QWidget):
             offset=(-20, -20),
         )
         self._scale_bar.setParentItem(self.view_box)
+        # z in the side views (XZ, YZ), whose z is stretched
+        self._z_scale_bar = VerticalScaleBar(
+            size=100,
+            suffix='nm',
+            brush=pg.mkBrush('w'),
+            offset=(-20, -20),
+        )
+        self._z_scale_bar.setParentItem(self.view_box)
+        self._z_scale_bar.setVisible(False)
 
         self.empty_image = np.zeros((128, 128), dtype=np.uint8)
         self.empty_alpha = np.zeros((128, 128, 4), dtype=np.uint8)
@@ -941,6 +994,8 @@ class LocalizationsView(QtWidgets.QWidget):
         self._render_debounce.timeout.connect(self.render_loc)
 
         self._render_token = 0
+        #: the next render sets the display levels (Auto-stretch)
+        self._restretch = True
 
         def _on_view_range_changed(*_):
             (x0, x1), (y0, y1) = self.view_box.viewRange()
@@ -1065,20 +1120,25 @@ class LocalizationsView(QtWidgets.QWidget):
             padding=0,
         )
 
-    def render_loc(self, full_extent=False):
+    def render_loc(self, full_extent=False, restretch=False):
         '''Update the rendered super-res image.
 
         Parameters
         ----------
         full_extent : bool, optional
             Whether to render the full extent of the image, by default False.
+        restretch : bool, optional
+            Recompute the display levels (Auto-stretch); a full-extent render
+            always does, panning and zooming keep them.
 
         Returns
         -------
         ndarray or None
             Rendered super-res image or None.
         '''
-        return LocalizationRenderHelper.render_loc(self, full_extent=full_extent)
+        return LocalizationRenderHelper.render_loc(
+            self, full_extent=full_extent, restretch=restretch
+        )
 
     def toAnimation(self):
         '''
@@ -1158,7 +1218,15 @@ class LocalizationsView(QtWidgets.QWidget):
         self.localization_widget.projectionChanged.connect(
             lambda: self.update_position()
         )
-        self.localization_widget.renderActivated.connect(lambda: self.render_loc())
+        self.localization_widget.projectionChanged.connect(
+            lambda: self.render_loc(full_extent=True)
+        )
+        self.localization_widget.zStretchChanged.connect(
+            lambda: self.render_loc(full_extent=True)
+        )
+        self.localization_widget.renderActivated.connect(
+            lambda: self.render_loc(restretch=True)
+        )
         self.localization_widget.render3DActivated.connect(
             lambda: LocalizationRenderHelper.render_3D(self)
         )
@@ -1467,7 +1535,9 @@ class LocalizationRenderHelper:
         return index
 
     @classmethod
-    def render_loc(cls, view: LocalizationsView, full_extent: bool = False):
+    def render_loc(
+        cls, view: LocalizationsView, full_extent: bool = False, restretch=False
+    ):
         '''Update the rendered super-res image.
 
         Returns
@@ -1482,7 +1552,39 @@ class LocalizationRenderHelper:
         token = view._render_token
 
         kwargs = view.localization_widget.toDict()
-        kwargs['view_range'] = None if full_extent else tuple(view.view_box.viewRange())
+        axes = cls._PROJECTION_AXES.get(kwargs.get('projection', 0))
+        if full_extent and axes is not None:
+            # fit the view first, then render it: fitting it after the render
+            # lost to a render of the old view started meanwhile (blank on open)
+            ranges = []
+            for axis in axes[:2]:
+                columns = [
+                    table.data[cls._AXIS_COLUMN[axis]] for table in view.fittingResults
+                ]
+                columns = [c for c in columns if c is not None and len(c)]
+                if columns:
+                    ranges.append(
+                        (
+                            min(np.nanmin(c) for c in columns),
+                            max(np.nanmax(c) for c in columns),
+                        )
+                    )
+            if len(ranges) == 2:
+                side = axes[1] == Axis.Z
+                view.view_box.invertY(not side)  # images: y down; side views: z up
+                stretch = kwargs.get('zStretch') or 0
+                if side and not stretch:  # auto: the depth a quarter of the width
+                    width = ranges[0][1] - ranges[0][0]
+                    depth = max(ranges[1][1] - ranges[1][0], 1.0)
+                    stretch = float(np.clip(round(0.25 * width / depth), 1, 20))
+                # the locked ratio is x scale / y scale (screen pixels per nm)
+                view.view_box.setAspectLocked(True, 1 / stretch if side else 1)
+                view.view_box.setRange(
+                    xRange=ranges[0], yRange=ranges[1], padding=0.02
+                )
+        if full_extent or restretch:
+            view._restretch = True
+        kwargs['view_range'] = tuple(view.view_box.viewRange())
 
         def work(**_):
             return LocalizationRenderHelper.batch_render_loc(
@@ -1493,14 +1595,20 @@ class LocalizationRenderHelper:
             if token != view._render_token or result is None:
                 return
             images, rects = result
-            auto_levels = view.localization_widget.autoStretch
+            # levels follow a pan or zoom only when asked: else the brightness
+            # jumps with every move
+            auto_levels = view.localization_widget.autoStretch and view._restretch
+            if any(img is not None for img in images):
+                view._restretch = False
             for idx, (img, rect) in enumerate(zip(images, rects)):
                 if img is not None:
                     # Compute the histogram levels for auto-stretching
                     # Conisder data is SMLM and linear stretching is not ideal,
                     # we can use percentile-based stretching
+                    # sparse renders are mostly empty pixels: stretch on the rest
+                    filled = img[img > 0]
                     levels = (
-                        np.percentile(img, [0, 99.9])
+                        (0, np.percentile(filled, 99.9) if filled.size else 1)
                         if auto_levels
                         else view.histogram_item.getLevels()
                     )
@@ -1511,23 +1619,18 @@ class LocalizationRenderHelper:
 
                     if view._scale_bar:
                         # sacale bar size in nm based on the FOV
-                        scale_size = max(rect[2], rect[3]) / 10
-                        # Round to nearest 1, 2, 5, 10, 20, 50, 100, etc.
-                        magnitude = 10 ** np.floor(np.log10(scale_size))
-                        nice_sizes = np.array([1, 2, 5, 10, 20, 50, 100]) * magnitude
-                        closest_size = nice_sizes[
-                            np.argmin(np.abs(nice_sizes - scale_size))
-                        ]
-                        view._scale_bar.size = closest_size
-                        view._scale_bar.text.setText(
-                            f'{closest_size:.0f} nm'
-                            if closest_size < 1000
-                            else f'{closest_size / 1000:.1f} μm'
-                        )
+                        size, label = _nice_length(max(rect[2], rect[3]) / 10)
+                        view._scale_bar.size = size
+                        view._scale_bar.text.setText(label)
                         view._scale_bar.updateBar()
 
-            if full_extent:
-                view.view_box.autoRange()
+                    side = axes is not None and axes[1] == Axis.Z
+                    view._z_scale_bar.setVisible(side)
+                    if side:
+                        size, label = _nice_length(rect[3] / 5)
+                        view._z_scale_bar.size = size
+                        view._z_scale_bar.text.setText(label)
+                        view._z_scale_bar.updateBar()
 
         def error(exc):
             logger.error('Rendering failed.')
@@ -1624,7 +1727,10 @@ class LocalizationRenderHelper:
             n_rows = max(1, int(np.ceil((y1 - origin_y) / eff_y)) + 4)
 
             renderer = BaseRenderer(eff_x, eff_y, renderMode)
-            rendered_img = renderer.render_xy(
+            # render_xz bins the vertical axis by the z bin (YZ alike)
+            side = view_y_axis == Axis.Z
+            render = renderer.render_xz if side else renderer.render_xy
+            rendered_img = render(
                 col_x[sel],
                 col_y[sel],
                 localizations.data[DataColumns.INTENSITY][sel],
@@ -1743,29 +1849,32 @@ class LocalizationRenderHelper:
 
     @classmethod
     def render_3D(cls, view: LocalizationsView):
-        '''
-        Render a 3D view of the super-res image.
-        '''
-        if (
-            view.currentResults is None
-            or view.currentResults.data[DataColumns.Z] is None
-        ):
-            return None
-
-        if len(view.currentResults) <= 0:
+        '''Show the localizations of the current XY view in 3D.'''
+        results = view.currentResults
+        if results is None or results.data[DataColumns.Z] is None or len(results) <= 0:
             return
 
-        renderClass = PointCloudRenderer(
-            view.localization_widget.bin_xy, view.localization_widget.bin_z
+        x = results.data[DataColumns.X]
+        y = results.data[DataColumns.Y]
+        z = results.data[DataColumns.Z]
+        keep = np.isfinite(x) & np.isfinite(y) & np.isfinite(z)
+        if view.localization_widget.projection in (0, 3):  # XY: only what is shown
+            (x0, x1), (y0, y1) = view.view_box.viewRange()
+            keep &= (x >= x0) & (x <= x1) & (y >= y0) & (y <= y1)
+        if not keep.any():
+            logger.warning('No localizations with z in the current view.')
+            return
+
+        intensity = results.data[DataColumns.INTENSITY]
+        # kept on the view, or Python may free the window while it is open
+        view._cloud_viewer = PointCloudViewer(
+            x[keep],
+            y[keep],
+            z[keep],
+            None if intensity is None else intensity[keep],
+            title=f'3D view ({keep.sum()} localizations)',
         )
-        # Render point cloud
-        points, intensities, metadata = renderClass.render(
-            view.currentResults.data[DataColumns.X],
-            view.currentResults.data[DataColumns.Y],
-            view.currentResults.data[DataColumns.Z],
-            view.currentResults.data[DataColumns.INTENSITY],
-        )
-        return PointCloudViewer(points, intensities, metadata)
+        view._cloud_viewer.show()
 
 
 class LocalizationProcessing:

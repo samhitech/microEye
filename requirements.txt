@@ -5,15 +5,16 @@ h5py==3.15.0
 hdbscan==0.8.44
 hidapi==0.14.0
 ids-peak==1.11.1.0.5
-matplotlib==3.10.7
+matplotlib==3.11.2
 mmpycorex==0.3.16
-numba==0.62.1
+numba==0.68.0
 numba-cuda==0.30.4
-numpy==2.2.6
+numpy==2.4.6
 ome_types==0.5.2
-opencv_python==4.12.0.88
+opencv_python==5.0.0.93
 pandas==2.3.3
 pco==2.3.0 # 3.14 limits
+psutil>=7.1.0
 pycromanager==1.0.2
 pyfiglet==1.0.4
 pyflakes==3.4.0
@@ -28,14 +29,15 @@ PySide6_Addons==6.7.2
 PySide6_Essentials==6.7.2
 pystackreg>=0.2.8 # 3.14 limits
 pyueye==4.96.952
+PyYAML>=6.0
 QDarkStyle==3.2.3
 QScintilla==2.14.1
+rich>=14.2.0
 scikit-image==0.25.2
 scikit_learn==1.9.0
 scipy>=1.16.2
 setuptools>=80.9.0
 tables==3.10.2
-tabulate==0.9.0
 tqdm>=4.66.4
-tifffile==2025.10.4
+tifffile==2026.3.3
 zarr>=3.1.3

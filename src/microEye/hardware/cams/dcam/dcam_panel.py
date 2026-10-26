@@ -117,57 +117,18 @@ class Dcam_Panel(Camera_Panel):
         if self._dispose_cam:
             return
 
-        def update(event):
-            '''
-            Fetches the current readings and settings from the laser device.
-            '''
-            for prop in self.cam.property_tree():
-                try:
-                    if prop['type'] == 'action':
-                        continue
+        def read(event):
+            return [p for p in self.cam.property_tree() if p['type'] != 'action']
 
-                    parent = prop.pop('parent', CamParams.ACQ_SETTINGS)
-                    name = prop.pop('name', None)
-                    value = prop.pop('value', None)
-                    limits = prop.pop('limits', None)
-                    enabled = prop.pop('enabled', False)
-
-                    param = self.camera_options.get_param('.'.join([parent, name]))
-
-                    # if 'Source' in name or 'Active' in name:
-                    #     print(
-                    #         f'Updating parameter {name}: {value}, {limits}, {enabled}'
-                    #     )
-
-                    with param.treeChangeBlocker():
-                        if limits and (
-                            len(limits) != len(param.opts.get('limits', []))
-                            or any(
-                                old != new
-                                for old, new in zip(
-                                    param.opts.get('limits', []), limits
-                                )
-                            )
-                        ):
-                            param.setLimits(limits)
-                        if value != param.value():
-                            param.setValue(value)
-                        if enabled != param.opts.get('enabled', True):
-                            param.setOpts(enabled=enabled)
-                except Exception as e:
-                    logging.getLogger(__name__).error(
-                        f"Error updating parameter {prop.get('name', 'unknown')}: {e}"
-                    )
-                    traceback.print_exc()
-
-            self.refresh_exposure()
-            self.refresh_framerate()
-
-        worker = QThreadWorker(update)
+        worker = QThreadWorker(read)
+        worker.signals.result.connect(self.show_readings)
 
         QtCore.QThreadPool.globalInstance().start(worker)
 
     def update_cam(self, param: Optional[Parameter], param_value):
+        if self._showing_readback:
+            return
+
         path = super().update_cam(param, param_value)
 
         # Restart the timer to update the camera params after a change
@@ -208,6 +169,9 @@ class Dcam_Panel(Camera_Panel):
         Value : double
             selected exposure in seconds
         '''
+        if self._showing_readback:
+            return
+
         with self._cam:
             self._cam.set_exposure(value)
 
@@ -226,6 +190,9 @@ class Dcam_Panel(Camera_Panel):
         )
 
     def framerate_changed(self, param, value: float):
+        if self._showing_readback:
+            return
+
         self.refresh_framerate(value)
 
     def refresh_framerate(self, value=None):

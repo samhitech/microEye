@@ -358,14 +358,14 @@ class TiffSeqHandler(ImageSequenceBase):
         super().__init__()
 
         self._tiff_seq = tiff_seq
-        self.path = ','.join(self._tiff_seq.files)
+        self.path = ','.join(self._tiff_seq)
         self._initialize_arrays()
 
     def _initialize_arrays(self):
         '''Initializes arrays and attributes.'''
-        self._stores = [None] * len(self._tiff_seq.files)
-        self._zarr = [None] * len(self._tiff_seq.files)
-        self._frames = [None] * len(self._tiff_seq.files)
+        self._stores = [None] * len(self._tiff_seq)
+        self._zarr = [None] * len(self._tiff_seq)
+        self._frames = [None] * len(self._tiff_seq)
         self._data = None
         self._shape = None
         self._dtype = None
@@ -380,7 +380,7 @@ class TiffSeqHandler(ImageSequenceBase):
         ValueError
             If the shapes of TIFF files do not match.
         '''
-        for idx, file in enumerate(self._tiff_seq.files):
+        for idx, file in enumerate(self._tiff_seq):
             self._stores[idx] = tf.imread(file, aszarr=True)
             self._zarr[idx] = zarr.open(store=self._stores[idx], mode='r')
             n_dim = len(self._zarr[idx].shape)

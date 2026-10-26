@@ -392,6 +392,7 @@ class CameraList(QtWidgets.QWidget):
 
         if camera_args:
             camera = camera_class(*[cam[arg] for arg in camera_args])
+            camera.name = self._free_name(camera.name)  # two cameras of one model
             args.insert(0, camera)
 
         panel: Camera_Panel = panel_class(*args)
@@ -401,6 +402,18 @@ class CameraList(QtWidgets.QWidget):
             {'Camera': panel.cam, 'Panel': panel, 'IR': mini, 'Info': cam}
         )
         return panel
+
+    @staticmethod
+    def _free_name(name: str) -> str:
+        '''`name`, or `name #2`, `#3` ... when an added camera already has it.'''
+        taken = {
+            str(c['Panel']) for cams in CameraManager.CAMERAS.values() for c in cams
+        }
+        n = 2
+        unique = name
+        while unique in taken:
+            unique, n = f'{name} #{n}', n + 1
+        return unique
 
     def _display_warning_message(self, message):
         '''

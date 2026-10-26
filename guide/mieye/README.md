@@ -39,27 +39,39 @@ This guide provides step-by-step instructions on how to use the `miEye module`
 
 ## Starting the microscope
 
-1. Start by powering on the chiller (water pump) next to the microscope (right side) by flipping the black switch shown in the photo below.
-2. Once powered on, press the button below the standby text on the screen to start the chiller's circulation.
-
-   |           Standby VS Running           |
-   | :------------------------------------: |
-   | ![Chiller_0](images/setup/chiller.png) |
-
-3. Connect the three USB cables to the back of the microscope PC, as indicated by the yellow arrows in the photo below.
-
-   |               USB Cables               |
-   | :------------------------------------: |
-   | ![USB Cables](images/setup/cables.png) |
-   - `Allied Vision` NIR camera for focus stabilization. (`Blue cable`)
-   - `Basler` acquisition camera. (`Black cable`)
-   - `Laser Relay` for laser triggering. (`White cable`)
-
-4. Flip the extension cord's power switch to power all the microscope hardware.
+1. Flip the extension cord's power switch to power all the microscope hardware.
 
    |                 Power Switch                  |
    | :-------------------------------------------: |
    | ![Power](images/setup/power_on_extension.png) |
+
+2. Start by powering on the chiller (water pump) power supply next to the microscope PC (Left side) by following the steps below:
+   1. The `KORAD` power supply unit powers on once the extention cord's power switch is flipped, but the chiller's circulation is not yet running.
+   2. You should see it like in panel (A) below, with the `-OFF` watts displayed on the screen.
+   3. Press `OCP` to turn on the power supply's over current protection, you should see `OCP` displayed on the screen, see panel (B).
+   4. Press the `ON/OFF` button to turn on the chiller's circulation, you should see the `C.V` next to the `12.00V` displayed on the screen and watts displayed on the screen, see panel (C).
+
+      |             Standby VS Running             |
+      | :----------------------------------------: |
+      | ![Chiller_0](images/setup/chiller_new.png) |
+
+3. Connect the camera cables to the specific PC ports required for full data bandwidth.
+
+   - **Blue cable:** Connect to any of the topmost USB ports on the PC motherboard.
+   - **Black cable:** Connect to any of the lowermost USB ports on the PC expansion card.
+   - **White cable (Laser Relay):** Leave this permanently connected to the USB hub.
+
+> [!IMPORTANT]
+> _Incorrect port placement will cause the cameras to fail due to insufficient bandwidth._
+>
+> - _The **Allied Vision NIR camera (Blue cable)** must go into a motherboard port._
+> - _The **Basler acquisition camera (Black cable)** must go into the dedicated USB expansion card port._
+
+4. Turn on the USB hub by pressing the button indicated by the yellow arrow (the button lights up when on). This connects the Lasers to PC and powers the Laser Relay.
+
+   |               USB Cables                |
+   | :-------------------------------------: |
+   | ![USB Cables](images/setup/usb_hub.png) |
 
 5. (`Optional`) Power on the `ThorLabs` red shutter control unit if the `561nm` laser line is being used.
 
@@ -487,35 +499,41 @@ The Oil immersion objective must be cleaned after use.
 >
 > ![Exit CMD](images/software/mieye_exit_cmd.png)
 
-1. To turn off the multimode fiber agitation module, rotate the knob counter-clockwise till it shows `800`.
+6. To turn off the multimode fiber agitation module, rotate the knob counter-clockwise till it shows `800`.
 
    ![Agitation Off](images/setup/agitation_off.png)
 
 > [!TIP]
 > _No need to unplug the gray power cord anymore._
 
-7. Flip the extension cord's power switch to power off all the microscope hardware.
+7. Turn off the USB hub using the power button (the button is unlit when the hub is off), as shown below.
+
+   |               USB Cables               |
+   | :------------------------------------: |
+   | ![USB Cables](images/setup/usb_hub.png) |
+
+   - Disconnect the `Allied Vision` NIR camera (`Blue cable`) from the PC motherboard USB port.
+   - Disconnect the `Basler` acquisition camera (`Black cable`) from the PC expansion card USB port.
+   - **Plug both disconnected cables into the turned-off USB hub** to keep your workspace tidy and ensure the cameras remain powered down.
+
+> [!CAUTION]
+> _**Always disconnect the cameras from your computer's USB ports when the microscope is not in use.**_
+>
+> _Standard PC ports keep the cameras powered on even when the computer is off._
+>
+> _To keep the workspace tidy, you can plug the idle camera cables into the switched-off USB hub._
+
+8. Turn off the chiller power supply by pressing the `ON/OFF` button, you should see `-OFF` watts displayed on the screen.
+
+   |             Standby VS Running             |
+   | :----------------------------------------: |
+   | ![Chiller_0](images/setup/chiller_new.png) |
+
+9. Flip the extension cord's power switch to power off all the microscope hardware.
 
    |                 Power Switch                  |
    | :-------------------------------------------: |
    | ![Power](images/setup/power_on_extension.jpg) |
-
-8. Disconnect the three USB cables to the back of the microscope PC, as indicated by the yellow arrows in the photo below.
-
-   |               USB Cables               |
-   | :------------------------------------: |
-   | ![USB Cables](images/setup/cables.png) |
-   - `Allied Vision` NIR camera for focus stabilization. (`Blue cable`)
-   - `Basler` acquisition camera. (`Black cable`)
-   - `Laser Relay` for laser triggering. (`White cable`)
-
-9. Press the button below the standby text on the screen to stop the chiller's circulation.
-
-10. Power off the chiller by flipping the black switch shown in the photo below.
-
-|           Standby VS Running           |
-| :------------------------------------: |
-| ![Chiller_0](images/setup/chiller.png) |
 
 ## Troubleshooting & FAQs
 

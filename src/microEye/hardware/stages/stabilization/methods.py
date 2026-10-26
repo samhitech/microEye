@@ -808,8 +808,8 @@ class FiducialStrategy(StabilizationStrategy):
                 cv2.THRESH_BINARY,
             )
 
-            # Detect blobs
-            points = CV_BlobDetector().find_peaks(th_img)
+            # Detect blobs (the blob detector takes 8-bit images only)
+            points = CV_BlobDetector().find_peaks(th_img.astype(np.uint8))
 
             if len(points) < 1:
                 return None

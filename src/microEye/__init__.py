@@ -2,6 +2,7 @@ import argparse
 import importlib.util
 import logging
 import os
+import sys
 
 from rich.console import Console
 from rich.logging import RichHandler
@@ -164,9 +165,33 @@ def configure_logger(args):
         ],
         force=True,
     )
+    # numba's DEBUG output is compiler internals, and numba-cuda 0.30 crashes
+    # formatting one of its messages (it passes lazy_func to pprint.pformat)
+    logging.getLogger('numba').setLevel(max(level, logging.INFO))
     logging.getLogger().debug('Log level set to %s', level_name)
 
 
+def _enable_console_vt():
+    # In a Windows console without virtual-terminal (ANSI) mode, rich writes each
+    # coloured piece of a line with its own Win32 call, and each call waits for
+    # the GIL: a worker's log line took ~200 ms while another thread was busy
+    # (~6 ms in this mode). Pipes and other terminals are left as they are.
+    if sys.platform != 'win32':
+        return
+    import ctypes
+
+    enable_virtual_terminal_processing = 0x0004
+    kernel32 = ctypes.windll.kernel32
+    for std_handle in (-11, -12):  # stdout, stderr
+        handle = kernel32.GetStdHandle(std_handle)
+        mode = ctypes.c_uint32()
+        if kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+            kernel32.SetConsoleMode(
+                handle, mode.value | enable_virtual_terminal_processing
+            )
+
+
+_enable_console_vt()  # before rich creates its consoles
 install(
     show_locals=False,
     code_width=150,

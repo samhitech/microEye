@@ -7,6 +7,7 @@ from queue import LifoQueue
 from threading import Event
 from typing import Optional, Union
 
+import numba
 import numpy as np
 from pyqtgraph.parametertree import Parameter
 
@@ -128,6 +129,11 @@ class FocusStabilizer(QtCore.QObject):
     _instance = None
 
     TIME_POINTS = 1000
+    #: GUI updates (preview, plots) at most this often; fitting and Z moves
+    #: still run for every frame
+    GUI_INTERVAL_NS = 50_000_000
+    #: numba threads the fits may use, so the GUI and cameras keep some cores
+    FIT_THREADS = 4
 
     updateViewBox = Signal(object)
     updatePlots = Signal(dict)
@@ -193,6 +199,8 @@ class FocusStabilizer(QtCore.QObject):
         self.__preview = True
 
         self._exec_time = 0
+        self._last_gui_ns = 0
+        self._gui_due = True  # this frame updates the GUI (set by the worker)
 
         # Data logging
         self.__logger = DataLogger()
@@ -569,7 +577,12 @@ class FocusStabilizer(QtCore.QObject):
         '''
         return self.__initial_z_position
 
-    def setParameter(self, value: Union[float, np.ndarray], incerement: bool = False):
+    def setParameter(
+        self,
+        value: Union[float, np.ndarray],
+        incerement: bool = False,
+        notify: bool = True,
+    ):
         '''
         Set the focus parameter.
 
@@ -582,12 +595,15 @@ class FocusStabilizer(QtCore.QObject):
         incerement : bool, optional
             If True, increment the current focus parameter value by the given value,
             otherwise set the focus parameter to the given value.
+        notify : bool, optional
+            If False, do not emit `parameterChanged` (no GUI update).
         '''
         if incerement and isinstance(self.__initial_z_position, (float, int)):
             self.__initial_z_position += value
         else:
             self.__initial_z_position = value
-        self.parameterChanged.emit(self.__initial_z_position)
+        if notify:
+            self.parameterChanged.emit(self.__initial_z_position)
 
     def isFocusStabilized(self, axis: Axis):
         '''
@@ -624,6 +640,8 @@ class FocusStabilizer(QtCore.QObject):
             The current state of the automatic Focus Stabilization.
         '''
         ref = self.__z_stabilization if axis == Axis.Z else self.__xy_stabilization
+        if value is not None and value == ref:
+            return ref  # already set; e.g. the tree echoing our own signal
 
         ref = not ref if value is None else value
 
@@ -676,6 +694,15 @@ class FocusStabilizer(QtCore.QObject):
 
         Handles the IR peak fitting and piezo autofocus tracking.
         '''
+        # numba keeps the limit per thread, and pool threads run other jobs later
+        previous = numba.get_num_threads()
+        numba.set_num_threads(min(self.FIT_THREADS, numba.config.NUMBA_NUM_THREADS))
+        try:
+            self._track()
+        finally:
+            numba.set_num_threads(previous)
+
+    def _track(self):
         counter = 0
         self._exec_time = 0
         self.__tracker.fill_time(time.monotonic_ns() / 1e9)
@@ -692,7 +719,8 @@ class FocusStabilizer(QtCore.QObject):
 
                     image = self.getImage()
 
-                    if self.preview():
+                    self._gui_due = self._show_now()
+                    if self.preview() and self._gui_due:
                         self.updateViewBox.emit(image.copy())
 
                     # fit the parameter and stabilize
@@ -711,6 +739,13 @@ class FocusStabilizer(QtCore.QObject):
         logging.getLogger(__name__).info(
             f'{FocusStabilizer.__name__} worker is terminating.'
         )
+
+    def _show_now(self) -> bool:
+        now = time.perf_counter_ns()
+        if now - self._last_gui_ns < self.GUI_INTERVAL_NS:
+            return False
+        self._last_gui_ns = now
+        return True
 
     def fit_parameter(self, data: np.ndarray, method: StabilizationMethods):
         """
@@ -784,7 +819,7 @@ class FocusStabilizer(QtCore.QObject):
                     append[Axis.Z] = z_param
 
                     if not self.isFocusStabilized(Axis.Z):
-                        self.setParameter(z_param)
+                        self.setParameter(z_param, notify=self._gui_due)
                     else:
                         shifts[Axis.Z] = _shifts[Axis.Z]
 
@@ -802,16 +837,16 @@ class FocusStabilizer(QtCore.QObject):
         self.__tracker.append_axis(Axis.Y, append[Axis.Y])
         self.__tracker.append_axis(Axis.Z, append[Axis.Z])
 
-        time, positions = self.__tracker.snapshot()
-
-        self.updatePlots.emit(
-            {
-                'time': time,
-                'positions': positions,
-                'localizations': Localizations,
-                'line_profile': line_profile,
-            }
-        )
+        if self._gui_due:
+            time, positions = self.__tracker.snapshot()
+            self.updatePlots.emit(
+                {
+                    'time': time,
+                    'positions': positions,
+                    'localizations': Localizations,
+                    'line_profile': line_profile,
+                }
+            )
 
         return shifts
 
@@ -904,6 +939,9 @@ class FocusStabilizerView(Tree):
         super().__init__(parent=parent)
 
         FocusStabilizer.instance().parameterChanged.connect(self.update_focus_parameter)
+        FocusStabilizer.instance().focusStabilizationToggled.connect(
+            self.update_stabilization
+        )
 
         FocusStabilizer.instance().calCoeffChanged.connect(
             self.update_calibration_coefficients
@@ -1371,6 +1409,17 @@ class FocusStabilizerView(Tree):
             self.set_param_value(FocusStabilizerParams.FOCUS_PARAMETER, value)
         else:
             self.set_param_value(FocusStabilizerParams.FOCUS_PARAMETER, np.nan)
+
+    def update_stabilization(self, value: bool, axis: Axis):
+        '''Keep the stabilization checkbox in step with the stabilizer, so the
+        lock button flips the real state.'''
+        param = (
+            FocusStabilizerParams.Z_STABILIZATION
+            if axis == Axis.Z
+            else FocusStabilizerParams.XY_STABILIZATION
+        )
+        if self.get_param_value(param) != value:
+            self.set_param_value(param, value)
 
     def update_calibration_coefficients(self, coeffs: np.ndarray):
         '''

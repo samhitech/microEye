@@ -4,6 +4,35 @@ import numba as nb
 import numpy as np
 from numba import cuda
 
+from microEye.analysis.fitting.pyfit3Dcspline.constants import (
+    ACCEPTANCE,
+    INIT_LAMBDA,
+    SCALE_DOWN,
+    SCALE_UP,
+    TOLERANCE,
+)
+
+# The kernels compute in float32 (as the original CUDA fitter): a Python float,
+# an int mixed with a float32 or math.pow make numba compute in float64, which
+# consumer GPUs run at a small fraction of the float32 speed. Use these.
+F32 = np.float32
+ZERO, HALF, ONE, TWO, THREE, FOUR = (F32(v) for v in (0, 0.5, 1, 2, 3, 4))
+SIX, TWELVE, TENTH = F32(6), F32(12), F32(0.1)
+SQRT_2PI = F32(math.sqrt(2 * math.pi))
+PI_32 = F32(math.pi)
+TINY, BIG = F32(1e-9), F32(1e13)
+TOLERANCE_32, INIT_LAMBDA_32 = F32(TOLERANCE), F32(INIT_LAMBDA)
+SCALE_UP_32, SCALE_DOWN_32 = F32(SCALE_UP), F32(SCALE_DOWN)
+ACCEPTANCE_32, MU_MIN = F32(ACCEPTANCE), F32(1.3)
+
+
+@cuda.jit(device=True)
+def kernel_limit_centre(value, sz):
+    '''A fitted centre kept within a quarter of the ROI of its middle.'''
+    middle = (nb.float32(sz) - ONE) / TWO
+    quarter = nb.float32(sz) / FOUR
+    return min(max(value, middle - quarter), middle + quarter)
+
 
 @cuda.jit(device=True)
 def kernel_IntGauss1D(ii, x, sigma) -> float:
@@ -18,11 +47,12 @@ def kernel_IntGauss1D(ii, x, sigma) -> float:
     sigma : float
         sigma value of the PSF
     '''
-    norm = 1.0 / (2.0*sigma*sigma)
+    norm = math.sqrt(ONE / (TWO * sigma * sigma))
+    offset = nb.float32(ii) - x
 
-    return 0.5 * (
-        math.erf((ii-x+0.5) * math.sqrt(norm))
-        - math.erf((ii-x-0.5) * math.sqrt(norm)))
+    return HALF * (
+        math.erf((offset + HALF) * norm) - math.erf((offset - HALF) * norm)
+    )
 
 
 @cuda.jit(
@@ -48,7 +78,8 @@ def kernel_alpha(z, Ax, Bx, d):
         alpha value
     '''
 
-    return 1.0 + math.pow(z/d, 2) + Ax*math.pow(z/d, 3) + Bx*math.pow(z/d, 4)
+    q = z / d
+    return ONE + q * q + Ax * q * q * q + Bx * q * q * q * q
 
 
 @cuda.jit(
@@ -75,9 +106,10 @@ def kernel_dalphadz(z, Ax, Bx, d) -> float:
     '''
 
     return (
-        2.0 * z/(d*d) +
-        3.0*Ax*math.pow(z, 2)/(d*d*d) +
-        4.0*Bx*math.pow(z, 3)/math.pow(d, 4))
+        TWO * z / (d * d)
+        + THREE * Ax * z * z / (d * d * d)
+        + FOUR * Bx * z * z * z / (d * d * d * d)
+    )
 
 
 @cuda.jit(
@@ -104,9 +136,10 @@ def kernel_d2alphadz2(z, Ax, Bx, d):
     '''
 
     return (
-        2.0/(d*d) +
-        6.0*Ax*z/(d*d*d) +
-        12.0*Bx*math.pow(z, 2)/math.pow(d, 4))
+        TWO / (d * d)
+        + SIX * Ax * z / (d * d * d)
+        + TWELVE * Bx * z * z / (d * d * d * d)
+    )
 
 
 @cuda.jit(
@@ -137,15 +170,18 @@ def kernel_DerivativeIntGauss1D(ii, x, sigma, N, PSFy, calc_d2):
     (float, float)
         dudt, d2udt2 values
     '''
-    a = math.exp(-0.5*math.pow(((ii+0.5-x)/sigma), 2))
-    b = math.exp(-0.5*math.pow((ii-0.5-x)/sigma, 2))
+    up = nb.float32(ii) + HALF - x
+    down = nb.float32(ii) - HALF - x
+    a = math.exp(-HALF * (up / sigma) * (up / sigma))
+    b = math.exp(-HALF * (down / sigma) * (down / sigma))
 
-    dudt = - (N / (math.sqrt(2.0 * np.pi) * sigma)) * (a-b) * PSFy
-    d2udt2 = 0.0
+    dudt = -(N / (SQRT_2PI * sigma)) * (a - b) * PSFy
+    d2udt2 = ZERO
 
-    if (calc_d2):
-        d2udt2 = - (N / (math.sqrt(2.0 * np.pi) * math.pow(sigma, 3))) * \
-                 ((ii+0.5-x)*a-(ii-0.5-x)*b)*PSFy
+    if calc_d2:
+        d2udt2 = (
+            -(N / (SQRT_2PI * sigma * sigma * sigma)) * (up * a - down * b) * PSFy
+        )
 
     return dudt, d2udt2
 
@@ -178,19 +214,18 @@ def kernel_DerivativeIntGauss1DSigma(ii, x, Sx, N, PSFy, calc_d2):
     (float, float)
         dudt, d2udt2 values
     '''
-    ax = math.exp(-0.5*math.pow(((ii+0.5-x)/Sx), 2))
-    bx = math.exp(-0.5*math.pow((ii-0.5-x)/Sx, 2))
+    up = nb.float32(ii) - x + HALF
+    down = nb.float32(ii) - x - HALF
+    ax = math.exp(-HALF * (up / Sx) * (up / Sx))
+    bx = math.exp(-HALF * (down / Sx) * (down / Sx))
 
-    dudt = - (N/(math.sqrt(2*np.pi)*Sx*Sx)) * \
-        (ax * (ii - x + 0.5) - bx*(ii - x - 0.5)) * PSFy
-    d2udt2 = 0.0
+    dudt = -(N / (SQRT_2PI * Sx * Sx)) * (ax * up - bx * down) * PSFy
+    d2udt2 = ZERO
 
-    if (calc_d2):
-        d2udt2 = (
-            - (2 / Sx)*dudt
-            - (N/(math.sqrt(2*np.pi)*math.pow(Sx, 5)))*(
-                ax*math.pow((ii-x+0.5), 3)
-                - bx*math.pow((ii-x-0.5), 3)) * PSFy)
+    if calc_d2:
+        d2udt2 = -(TWO / Sx) * dudt - (
+            N / (SQRT_2PI * Sx * Sx * Sx * Sx * Sx)
+        ) * (ax * up * up * up - bx * down * down * down) * PSFy
 
     return dudt, d2udt2
 
@@ -236,7 +271,7 @@ def kernel_DerivativeIntGauss2DSigma(ii, jj, x, y, S, N, PSFx, PSFy, calc_d2):
         jj, y, S, N, PSFx, calc_d2)
 
     dudt = dSx + dSy
-    d2udt2 = 0.0
+    d2udt2 = ZERO
     if (calc_d2):
         d2udt2 = ddSx + ddSy
 
@@ -262,13 +297,14 @@ def kernel_CenterofMass2D(sz, data):
     tuple[float, float]
         (x, y) coordinate to return
     '''
-    tmpx = tmpy = tmpsum = 0.0
+    tmpx = tmpy = tmpsum = ZERO
 
     for ii in range(sz):
         for jj in range(sz):
-            tmpx += data[sz*jj+ii]*ii
-            tmpy += data[sz*jj+ii]*jj
-            tmpsum += data[sz*jj+ii]
+            value = data[sz * jj + ii]
+            tmpx += value * nb.float32(ii)
+            tmpy += value * nb.float32(jj)
+            tmpsum += value
 
     x = tmpx / tmpsum
     y = tmpy / tmpsum
@@ -298,10 +334,9 @@ def kernel_GaussFMaxMin2D(sz, sigma, data) -> tuple[float, float]:
         (MaxN, MinBG) maximum pixel value, minimum background value.
     '''
     # int ii, jj, kk, ll;
-    MaxN = 0.0
-    MinBG = 10e10  # big
+    MaxN = ZERO
+    MinBG = BIG
 
-    norm = 1.0 / (2.0 * sigma * sigma)
     # loop over all pixels
     for kk in range(sz):
         for ll in range(sz):
@@ -465,8 +500,8 @@ def kernel_DerivativeIntGauss2Dz(
     dSy, ddSy = kernel_DerivativeIntGauss1DSigma(
         jj, theta[1], Sy, theta[2], PSFx, True)
 
-    dSdalpha_x = PSFSigma_x/(2.0*math.sqrt(alphax))
-    dSdalpha_y = PSFSigma_y/(2.0*math.sqrt(alphay))
+    dSdalpha_x = PSFSigma_x / (TWO * math.sqrt(alphax))
+    dSdalpha_y = PSFSigma_y / (TWO * math.sqrt(alphay))
 
     dSdzx = dSdalpha_x * kernel_dalphadz(z-gamma, Ax, Bx, d)
     dSdzy = dSdalpha_y * kernel_dalphadz(z+gamma, Ay, By, d)
@@ -481,15 +516,17 @@ def kernel_DerivativeIntGauss2Dz(
         d2udt2[0] = ddx
         d2udt2[1] = ddy
 
-        d2Sdalpha2_x = -PSFSigma_x/(4.0*math.pow(alphax, 1.5))
-        d2Sdalpha2_y = -PSFSigma_y/(4.0*math.pow(alphay, 1.5))
+        d2Sdalpha2_x = -PSFSigma_x / (FOUR * alphax * math.sqrt(alphax))
+        d2Sdalpha2_y = -PSFSigma_y / (FOUR * alphay * math.sqrt(alphay))
 
-        ddSddzx = (
-            d2Sdalpha2_x * math.pow(kernel_dalphadz(z-gamma, Ax, Bx, d), 2) +
-            dSdalpha_x * kernel_d2alphadz2(z-gamma, Ax, Bx, d))
-        ddSddzy = (
-            d2Sdalpha2_y*math.pow(kernel_dalphadz(z+gamma, Ay, By, d), 2) +
-            dSdalpha_y*kernel_d2alphadz2(z+gamma, Ay, By, d))
+        dax = kernel_dalphadz(z - gamma, Ax, Bx, d)
+        day = kernel_dalphadz(z + gamma, Ay, By, d)
+        ddSddzx = d2Sdalpha2_x * dax * dax + dSdalpha_x * kernel_d2alphadz2(
+            z - gamma, Ax, Bx, d
+        )
+        ddSddzy = d2Sdalpha2_y * day * day + dSdalpha_y * kernel_d2alphadz2(
+            z + gamma, Ay, By, d
+        )
 
         d2udt2[4] = (
             ddSx * (dSdzx * dSdzx) +
@@ -555,7 +592,7 @@ def kernel_MatInvN(M, Minv, DiagMinv, sz):
     sz : _type_
         sz size of the matrix
     '''
-    tmp1 = 0.0
+    tmp1 = ZERO
     yy = cuda.local.array(shape=30, dtype=np.float32)
 
     for jj in range(sz):
@@ -566,32 +603,32 @@ def kernel_MatInvN(M, Minv, DiagMinv, sz):
                 for kk in range(ii):
                     tmp1 += M[ii+kk*sz]*M[kk+jj*sz]
                 M[ii+jj*sz] -= tmp1
-                tmp1 = 0
+                tmp1 = ZERO
 
         for ii in range(jj+1, sz, 1):
             if (jj > 0):
                 for kk in range(jj):
                     tmp1 += M[ii+kk*sz] * M[kk+jj*sz]
-                M[ii+jj*sz] = (1/M[jj+jj*sz])*(M[ii+jj*sz]-tmp1)
-                tmp1 = 0
+                M[ii+jj*sz] = (ONE/M[jj+jj*sz])*(M[ii+jj*sz]-tmp1)
+                tmp1 = ZERO
             else:
-                M[ii+jj*sz] = (1/M[jj+jj*sz])*M[ii+jj*sz]
+                M[ii+jj*sz] = (ONE/M[jj+jj*sz])*M[ii+jj*sz]
 
-    tmp1 = 0
+    tmp1 = ZERO
 
     for num in range(sz):
         # calculate yy
         if (num == 0):
-            yy[0] = 1
+            yy[0] = ONE
         else:
-            yy[0] = 0
+            yy[0] = ZERO
 
         for ii in range(1, sz, 1):
-            b = 1 if ii == num else 0
+            b = ONE if ii == num else ZERO
             for jj in range(ii):
                 tmp1 += M[ii+jj*sz]*yy[jj]
             yy[ii] = b-tmp1
-            tmp1 = 0
+            tmp1 = ZERO
 
         # calculate Minv
         Minv[sz-1+num*sz] = yy[sz-1] / M[(sz-1)+(sz-1)*sz]
@@ -599,8 +636,8 @@ def kernel_MatInvN(M, Minv, DiagMinv, sz):
         for ii in range(sz-2, -1, -1):
             for jj in range(ii+1, sz, 1):
                 tmp1 += M[ii+jj*sz]*Minv[jj+num*sz]
-            Minv[ii+num*sz] = (1/M[ii+ii*sz])*(yy[ii]-tmp1)
-            tmp1 = 0
+            Minv[ii+num*sz] = (ONE/M[ii+ii*sz])*(yy[ii]-tmp1)
+            tmp1 = ZERO
 
     # if DiagMinv:
     for ii in range(sz):

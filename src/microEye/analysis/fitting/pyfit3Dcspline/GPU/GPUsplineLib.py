@@ -44,21 +44,21 @@ def kernel_computeDelta3D(
     # int i,j,k;
     # float cx,cy,cz;
 
-    cz = 1.0
+    cz = ONE
     for i in range(4):
-        cy = 1.0
+        cy = ONE
         for j in range(4):
-            cx = 1.0
+            cx = ONE
             for k in range(4):
                 delta_f[i*16 + j*4 + k] = cz * cy * cx
                 if(k < 3):
-                    delta_dxf[i*16+j*4+k+1] = (float(k)+1) * cz * cy * cx
+                    delta_dxf[i*16+j*4+k+1] = nb.float32(k + 1) * cz * cy * cx
 
                 if(j < 3):
-                    delta_dyf[i*16+(j+1)*4+k] = (float(j)+1) * cz * cy * cx
+                    delta_dyf[i*16+(j+1)*4+k] = nb.float32(j + 1) * cz * cy * cx
 
                 if(i < 3):
-                    delta_dzf[(i+1)*16+j*4+k] = (float(i)+1) * cz * cy * cx
+                    delta_dzf[(i+1)*16+j*4+k] = nb.float32(i + 1) * cz * cy * cx
 
                 cx = cx * x_delta
             cy = cy * y_delta
@@ -89,19 +89,19 @@ def kernel_cholesky(A, n, L, U) -> int:
     info = 0
     for i in range(n):
         for j in range(i+1):
-            s = 0.0
+            s = ZERO
             for k in range(j):
                 s += U[i * n + k] * U[j * n + k]
 
             if (i == j):
-                if (A[i*n+i]-s >= 0):
+                if (A[i*n+i]-s >= ZERO):
                     U[i * n + j] = math.sqrt(A[i * n + i] - s)
                     L[j*n+i] = U[i * n + j]
                 else:
                     info = 1
                     return info
             else:
-                U[i * n + j] = (1.0 / U[j * n + j] * (A[i * n + j] - s))
+                U[i * n + j] = (ONE / U[j * n + j] * (A[i * n + j] - s))
                 L[j*n+i] = U[i * n + j]
     return info
 
@@ -194,8 +194,10 @@ def kernel_DerivativeSpline(
     tuple[...]
         dudt, model
     '''
-    temp = 0
-    # float dudt_temp[NV_PSP] = {0};//,temp;
+    temp = ZERO
+    # the caller reuses dudt for every pixel (the CPU version makes a new one)
+    for i in range(NV_PSP):
+        dudt[i] = ZERO
 
     xc = max(xc, 0)
     xc = min(xc, xsize - 1)
@@ -220,12 +222,12 @@ def kernel_DerivativeSpline(
             delta_dzf[i] *
             coeff[i*(xsize*ysize*zsize)+zc*(xsize*ysize)+yc*xsize+xc])
 
-    dudt[0] *= -1.0*theta[2]
-    dudt[1] *= -1.0*theta[2]
+    dudt[0] *= -theta[2]
+    dudt[1] *= -theta[2]
     dudt[4] *= theta[2]
     dudt[2] = temp
-    dudt[3] = 1.0
+    dudt[3] = ONE
 
-    model = theta[3] + theta[2] * max(1e-9, temp)
+    model = theta[3] + theta[2] * max(TINY, temp)
 
     return dudt, model

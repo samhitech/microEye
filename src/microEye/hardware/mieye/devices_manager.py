@@ -3,6 +3,7 @@ import re
 import traceback
 import weakref
 from enum import Enum, auto
+from functools import partial
 from typing import Union
 
 from microEye.hardware.cams.camera_list import CameraList
@@ -29,6 +30,7 @@ from microEye.hardware.stages.stabilizer import FocusStabilizer
 from microEye.hardware.stages.view import StageView
 from microEye.hardware.widgets.focusWidget import focusWidget
 from microEye.qt import QtCore, QtWidgets, Signal
+from microEye.utils.display import DisplayManager
 from microEye.utils.hid_utils.controller import Buttons, dz_hybrid, hidController
 from microEye.utils.retry_exec import retry_exec
 
@@ -44,6 +46,16 @@ class DEVICES(Enum):
     LASER_RELAY = auto()
     STAGE = auto()
     STAGE_MANAGER = auto()
+
+
+def close_windows(camera: str) -> None:
+    '''Close a camera's image windows ('<camera>' and '<camera> (...)'). Called
+    one event-loop turn after removal: updates already queued land first.'''
+    for name in [
+        n for n in DisplayManager.DISPLAYS
+        if n == camera or n.startswith(f'{camera} (')
+    ]:
+        DisplayManager.close_display(name)
 
 
 class DeviceManager(QtCore.QObject):
@@ -379,6 +391,7 @@ class DeviceManager(QtCore.QObject):
         WeakObjects.addObject(widget)
 
     def _remove_camera(self, widget: Camera_Panel, ir: bool):
+        QtCore.QTimer.singleShot(0, partial(close_windows, widget.cam.name))
         WeakObjects.removeObject(widget)
         if ir:
             self.widgetRemoved.emit(DEVICES.IR_CAM, widget)

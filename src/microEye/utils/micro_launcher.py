@@ -1,5 +1,6 @@
 import importlib
 import os
+import shutil
 import subprocess
 import sys
 from collections.abc import Iterable
@@ -186,7 +187,7 @@ class microLauncher(QtWidgets.QMainWindow):
         no_log_file = self.no_log_file_checkbox.isChecked()
         no_log_console = self.no_log_console_checkbox.isChecked()
 
-        env = os.environ
+        env = dict(os.environ)  # the child's, not this process's
         env['QT_API'] = qt_api
         env['PYQTGRAPH_QT_LIB'] = qt_api
         env['MITHEME'] = miTheme
@@ -194,7 +195,7 @@ class microLauncher(QtWidgets.QMainWindow):
 
         # Define the command and arguments
         cmd = [
-            'python',
+            sys.executable,  # this Python, not whichever is first on PATH
             '-m',
             'microEye.launcher',
             '--module',
@@ -235,11 +236,15 @@ class microLauncher(QtWidgets.QMainWindow):
                 **pkwargs,
             )
             # self.close()
-        else:  # Unix-based systems (Linux, macOS, etc.)
-            subprocess.Popen(
-                ['setsid', 'gnome-terminal', '--working-directory=' + cwd, '--'] + cmd,
-                env=env,
-            )
+        else:  # Linux, macOS: in gnome-terminal if there is one (to see the log)
+            terminal = shutil.which('gnome-terminal')
+            if terminal:
+                cmd = [terminal, '--working-directory=' + cwd, '--', *cmd]
+            try:
+                subprocess.Popen(cmd, cwd=cwd, env=env, start_new_session=True)
+            except OSError as exc:
+                QtWidgets.QMessageBox.warning(self, 'microEye', f'Cannot start: {exc}')
+                return
             self.close()
 
     def center(self):

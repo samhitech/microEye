@@ -24,6 +24,9 @@ class TemporalMedianFilter(TemporalFilter):
             return
 
         maximum = dataHandler.shapeTCZYX()[0]
+        if maximum < 2:  # a single frame: nothing to take a median over
+            self._frames = self._median = self._start = None
+            return None
         step = 0
         if self._temporal_window % 2:
             step = self._temporal_window // 2

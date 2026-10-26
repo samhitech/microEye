@@ -1,8 +1,19 @@
 from typing import Callable, Union
 
 import numpy as np
+import rich.progress as rp
 
 from microEye.qt import QApplication, QtCore, QtWidgets, Signal
+
+
+def _get_progress_bar(transient: bool=False) -> rp.Progress:
+    return rp.Progress(
+        *rp.Progress.get_default_columns(),
+        rp.MofNCompleteColumn(),  # Shows "Done/Total" (e.g., 4/10)
+        rp.TimeElapsedColumn(),  # Shows time spent
+        rp.TransferSpeedColumn(),  # Shows speed of processing
+        transient=transient,
+    )
 
 
 def create_line_edit(
