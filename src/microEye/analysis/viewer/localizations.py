@@ -39,7 +39,7 @@ from microEye.analysis.fitting.results import (
 )
 from microEye.analysis.fitting.results_stats import resultsStatsWidget
 from microEye.analysis.fitting.tardis import TARDIS_Widget
-from microEye.analysis.processing import FRC_resolution_binomial, plot_frc
+from microEye.analysis.processing import FRC_resolution_binomial, kinetics, plot_frc
 from microEye.analysis.rendering import (
     Axis,
     BaseRenderer,
@@ -125,6 +125,8 @@ class LocalizationTab(SideBar):
     renderClustersActivated = Signal()
     renderGridActivated = Signal()
     renderRulersActivated = Signal()
+
+    kineticsActivated = Signal(dict)
 
     importActivated = Signal()
     exportActivated = Signal()
@@ -492,6 +494,43 @@ class LocalizationTab(SideBar):
         clustering.addWidget(self.__cluster_ruler_btn)
         clustering.addWidget(self.__cluster_grid_btn)
         self.addSection('Clustering', clustering, False)
+
+        self.__init_kinetics()
+
+    def __init_kinetics(self):
+        kinetics_layout = QtWidgets.QFormLayout()
+
+        self.__kinetics_group = QtWidgets.QComboBox()
+        self.__kinetics_group.addItem('Cluster ID', DataColumns.CLUSTER_ID)
+        self.__kinetics_group.addItem('Track ID', DataColumns.TRACK_ID)
+        self.__kinetics_gap = create_spin_box(0, 1000, initial_value=1)
+        self.__kinetics_gap.setToolTip('Missing frames tolerated inside one event.')
+        self.__kinetics_exposure = create_double_spin_box(0.001, 1e5, 1, 3, 100)
+        self.__kinetics_exposure.setToolTip(
+            'Time per frame: the exposure, or the frame interval if longer.'
+        )
+        self.__kinetics_min_events = create_spin_box(1, 100000, initial_value=3)
+        self.__kinetics_min_events.setToolTip(
+            'Groups with fewer bright events get only means, no fits.'
+        )
+        kinetics_btn = QtWidgets.QPushButton(
+            'Binding Kinetics',
+            clicked=lambda: self.kineticsActivated.emit(
+                {
+                    'column': self.__kinetics_group.currentData(),
+                    'max_gap': self.__kinetics_gap.value(),
+                    'frame_time': self.__kinetics_exposure.value(),
+                    'min_events': self.__kinetics_min_events.value(),
+                }
+            ),
+        )
+
+        kinetics_layout.addRow('Group by:', self.__kinetics_group)
+        kinetics_layout.addRow('Max gap [frames]:', self.__kinetics_gap)
+        kinetics_layout.addRow('Exposure [ms]:', self.__kinetics_exposure)
+        kinetics_layout.addRow('Min events for fit:', self.__kinetics_min_events)
+        kinetics_layout.addWidget(kinetics_btn)
+        self.addSection('Kinetics', kinetics_layout, False)
 
     def __init_buttons(self):
         self.import_loc_btn = QtWidgets.QPushButton(
@@ -1275,6 +1314,9 @@ class LocalizationsView(QtWidgets.QWidget):
 
         self.localization_widget.densityActivated.connect(
             lambda: LocalizationProcessing.density_analysis(self)
+        )
+        self.localization_widget.kineticsActivated.connect(
+            lambda params: LocalizationProcessing.binding_kinetics(self, params)
         )
 
         self.localization_widget.renderClustersActivated.connect(
@@ -2162,6 +2204,82 @@ class LocalizationProcessing:
             work_func,
             finished_message='Extended statistics calculated.',
             done=done,
+        )
+
+    @classmethod
+    def binding_kinetics(cls, view: LocalizationsView, params: dict):
+        '''Bright and dark times per cluster or track, with a preview window.'''
+        results = view.currentResults
+        if results is None or len(results) <= 0:
+            return
+
+        column: DataColumns = params['column']
+        labels = results.data.get(column)
+        if labels is None:
+            logger.info('No %s column: run clustering or tracking first.', column)
+            return
+        if column == DataColumns.TRACK_ID:
+            labels = np.where(labels > 0, labels, -1)  # track 0: untracked
+        frames = results.data[DataColumns.FRAME]
+
+        def work_func(**kwargs):
+            return kinetics.binding_kinetics(
+                frames,
+                labels,
+                params['max_gap'],
+                params['frame_time'],
+                params['min_events'],
+            )
+
+        def done(output):
+            from microEye.analysis.tools.photon_cal.table import PandasModel
+
+            table, bright, dark = output
+            table = table.rename(
+                columns=lambda c: f'{c} [ms]' if c.startswith(('bright', 'dark')) else c
+            )
+
+            plots = pg.GraphicsLayoutWidget()
+            for col, (name, times) in enumerate((('Bright', bright), ('Dark', dark))):
+                plot = plots.addPlot(row=0, col=col, title=f'{name} times')
+                plot.setLabel('bottom', f'{name} time [ms]')
+                plot.setLabel('left', 'Probability density')
+                plot.showGrid(x=True, y=True, alpha=0.2)
+                if len(times) == 0:
+                    continue
+                counts, edges = np.histogram(times, bins=50, density=True)
+                plot.plot(
+                    edges, counts, stepMode='center', fillLevel=0,
+                    brush=(0, 185, 231, 120),
+                )
+                tau = kinetics.fit_lifetime(times)
+                if np.isfinite(tau):
+                    t = np.linspace(0, edges[-1], 200)
+                    plot.plot(t, np.exp(-t / tau) / tau, pen='r')
+                    plot.setTitle(f'{name} times: τ = {tau:.3g} ms (n = {len(times)})')
+
+            table_view = QtWidgets.QTableView()
+            table_view.setModel(PandasModel(table))
+
+            window = QtWidgets.QWidget()
+            window.setWindowTitle(f'Binding Kinetics ({len(table)} groups)')
+
+            def export_csv():
+                path, _ = getSaveFileName(window, 'Export Kinetics', '', 'CSV (*.csv)')
+                if path:
+                    table.to_csv(path, index=False)
+                    logger.info('Kinetics exported to %s', path)
+
+            layout = QtWidgets.QVBoxLayout(window)
+            layout.addWidget(plots, 2)
+            layout.addWidget(table_view, 1)
+            layout.addWidget(QtWidgets.QPushButton('Export CSV', clicked=export_csv))
+            window.resize(900, 700)
+            view.kinetics_window = window
+            window.show()
+
+        view.runAsync(
+            work_func, finished_message='Binding kinetics calculated.', done=done
         )
 
     @classmethod

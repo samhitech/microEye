@@ -26,6 +26,7 @@ class LaserRelay:
         self.__last = ''
         self.laserRelay_curr = ''
         self.__alex = False
+        self.__hold = 0
 
     @property
     def lastCommand(self):
@@ -71,6 +72,15 @@ class LaserRelay:
             raise TypeError('ALEX value should be boolean.')
 
         self.__alex = value
+
+    def hold(self) -> int:
+        '''Trigger hold time in ms: a trigger stays active this long after it
+        goes low (RelayBox HOLD command, bridges camera readout gaps).'''
+        return self.__hold
+
+    def setHold(self, ms: int):
+        '''Set the trigger hold time in ms, kept within the RelayBox 0 to 1000.'''
+        self.__hold = min(max(int(ms), 0), 1000)
 
     def open(self):
         '''
@@ -166,7 +176,10 @@ class LaserRelay:
                 raise ConnectionError('Device is not open.')
 
             if config is None:
-                config = ('ALEXON' if self.isALEX() else 'ALEXOFF') + '\r'
+                config = (
+                    ('ALEXON' if self.isALEX() else 'ALEXOFF')
+                    + f'HOLD{self.hold()}\r'
+                )
 
             self.__port.write(config.encode('utf-8'))
             self.__last = config
@@ -182,6 +195,7 @@ class RelayParams(Enum):
 
     MODEL = 'Model'
     ALEX = 'ALEX'
+    HOLD = 'Hold [ms]'
     SEND_COMMAND = 'Send Command'
 
     SERIAL_PORT = 'Serial Port'
@@ -234,6 +248,14 @@ class LaserRelayView(Tree):
                 'readonly': True,
             },
             {'name': str(RelayParams.ALEX), 'type': 'bool', 'value': False},
+            {
+                'name': str(RelayParams.HOLD),
+                'type': 'int',
+                'value': 0,
+                'limits': [0, 1000],
+                'tip': 'Keep a trigger active this long after it goes low; '
+                'bridges readout gaps (e.g. ORCA-Fusion BT). 0 = off.',
+            },
             {'name': str(RelayParams.SEND_COMMAND), 'type': 'action'},
             {
                 'name': str(RelayParams.SERIAL_PORT),
@@ -336,6 +358,12 @@ class LaserRelayController:
             self.set_config
         )
         self.__view.get_param(RelayParams.OPEN).sigActivated.connect(self.connect)
+        self.__view.get_param(RelayParams.ALEX).sigValueChanged.connect(
+            lambda _, value: self.__relay.setALEX(value)
+        )
+        self.__view.get_param(RelayParams.HOLD).sigValueChanged.connect(
+            lambda _, value: self.__relay.setHold(value)
+        )
 
     @property
     def sendCommandActivated(self):
@@ -539,21 +567,22 @@ class LaserRelayController:
         Get the full configuration command to send to the laser relay.
 
         This method returns the full configuration command to send to the laser relay,
-        including the ALEXON/ALEXOFF command based on the current ALEX flag.
+        including the ALEXON/ALEXOFF and HOLD<ms> commands.
 
         Parameters
         ----------
         config : str
             The configuration command to send to the laser relay,
-            excluding the ALEXON/ALEXOFF command.
+            excluding the ALEXON/ALEXOFF and HOLD commands.
 
         Returns
         -------
         str
             The full configuration command to send to the laser relay,
-            including the ALEXON/ALEXOFF command.
+            including the ALEXON/ALEXOFF and HOLD commands.
         '''
-        return config + ('ALEXON' if self.isALEX() else 'ALEXOFF') + '\r'
+        alex = 'ALEXON' if self.isALEX() else 'ALEXOFF'
+        return f'{config}{alex}HOLD{self.__relay.hold()}\r'
 
     def get_config(self) -> dict:
         '''
@@ -568,6 +597,7 @@ class LaserRelayController:
             'port': self.__relay.portName(),
             'baudrate': self.__relay.baudRate(),
             'alex': self.isALEX(),
+            'hold': self.__relay.hold(),
         }
 
     def load_config(self, config: dict):
@@ -590,8 +620,11 @@ class LaserRelayController:
             self.setPortName(port)
         if baudrate:
             self.setBaudRate(baudrate)
-        if alex:
-            self.__relay.setALEX(alex)
+        if alex is not None:
+            self.__view.set_param_value(RelayParams.ALEX, bool(alex))
+        hold = config.get('hold')
+        if hold is not None:
+            self.__view.set_param_value(RelayParams.HOLD, int(hold))
 
     def __str__(self):
         return 'Laser Relay Controller'

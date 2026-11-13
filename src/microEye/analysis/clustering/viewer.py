@@ -74,10 +74,10 @@ class ViewerParams(Tree):
 
         # connect signals for actions
         self.param_tree.param('Load Results').sigActivated.connect(
-            self.loadActivated.emit
+            lambda: self.loadActivated.emit()
         )
         self.param_tree.param('Save Results').sigActivated.connect(
-            self.saveActivated.emit
+            lambda: self.saveActivated.emit()
         )
 
     def change(self, param, changes):

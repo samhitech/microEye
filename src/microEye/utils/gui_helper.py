@@ -447,7 +447,7 @@ def time_string_ms(value: float):
         Formatted time string in minutes and seconds.
     '''
     seconds = value / 1000
-    return f'{seconds // 60:.0f} min {seconds % 60} seconds'
+    return f'{seconds // 60:.0f} min {seconds % 60:.3f} seconds'
 
 
 def time_string_s(value: float):

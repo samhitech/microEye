@@ -25,21 +25,19 @@ def photons_per_pixel_from_irradiance(flux, pixel_size_um, exposure_time_s):
 
 
 def fit_ptc_model(signal_path, dark_path, **kwargs):
-    signal = np.load(signal_path, mmap_mode='r').astype(np.float32)
-    dark = np.load(dark_path, mmap_mode='r').astype(np.float32)
+    signal = np.load(signal_path, mmap_mode='r')[:201]
+    dark = np.load(dark_path, mmap_mode='r')[:201]
 
-    if signal.shape[0] != 201:
-        signal = signal[:201, ...]
-
-    if dark.shape[0] != 201:
-        dark = dark[:201, ...]
-
-    s1, s2 = signal[:, 0, ...], signal[:, 1, ...]
-    d1, d2 = dark[:, 0, ...], dark[:, 1, ...]
-
-    mean_dn = (0.5 * (s1 + s2) - 0.5 * (d1 + d2)).mean(axis=(-2, -1), dtype=np.float64)
-    var_total = 0.5 * np.var(s1 - s2, axis=(-2, -1), ddof=1, dtype=np.float64)
-    var_dark = 0.5 * np.var(d1 - d2, axis=(-2, -1), ddof=1, dtype=np.float64)
+    # one exposure at a time: the whole stack as float32 does not fit in RAM
+    mean_dn = np.empty(len(signal), np.float32)
+    var_total = np.empty(len(signal), np.float32)
+    var_dark = np.empty(len(signal), np.float32)
+    for i in range(len(signal)):
+        s1, s2 = signal[i, 0].astype(np.float32), signal[i, 1].astype(np.float32)
+        d1, d2 = dark[i, 0].astype(np.float32), dark[i, 1].astype(np.float32)
+        mean_dn[i] = (0.5 * (s1 + s2) - 0.5 * (d1 + d2)).mean(dtype=np.float32)
+        var_total[i] = 0.5 * np.var(s1 - s2, ddof=1, dtype=np.float32)
+        var_dark[i] = 0.5 * np.var(d1 - d2, ddof=1, dtype=np.float32)
     var_shot = var_total - var_dark
 
     variance_source = str(kwargs.get('variance_source', 'shot')).lower()

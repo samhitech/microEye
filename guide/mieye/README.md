@@ -328,7 +328,11 @@ Currently, the `miEye` setup is using a laser engine with the following laser de
 
 The `Laser Relay` (LR) is an Arduino device that relays camera trigger signals to control the laser output.
 
-The `Send Command` is persisted in the laser relay's non-volatile memory, and has to be updated for the desired laser control behavior.
+The `Send Command` is lost when the relay restarts; send it again after powering on, and whenever the desired laser control behavior changes.
+
+The `ALEX` option alternates the `F1` and `F2` lasers between frames.
+
+`Hold [ms]` keeps a camera trigger active for that long after it goes low, so the laser stays on through the short gaps between exposures. Use it with cameras whose trigger output is high only during the exposure (for example the ORCA-Fusion BT, about 50-80 ms); leave it at `0` for other cameras. It needs the RelayBox firmware with the `HOLD` command; older firmware ignores it.
 
 > [!NOTE]
 >
